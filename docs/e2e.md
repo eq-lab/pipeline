@@ -4,10 +4,58 @@ A disposable local stack runs the real API, worker, contracts and apps; scripted
 
 ## Local stack
 
-Prerequisites, `up.sh` and `down.sh` are documented by the local stack (#1961). State lives outside the repository under `$E2E_HOME/stacks/<tag>/` (default `E2E_HOME=~/.cache/pipeline-e2e`): the generated env, logs in `logs/`, and `state.json`:
+Stellar only for now. Infrastructure runs in docker compose (project `pipeline-e2e`, `scripts/e2e/compose.yml`): Postgres on `54329` (database `pipeline_e2e`), MinIO on `59000` (the `SPACES_*` bucket), and `stellar/quickstart --local` (Soroban RPC on `58000/rpc`). On the host: the fakes on `58090`, `api` on `58080`, `worker`, the LP app on `55173` and the trustee app on `55174` (`vite dev`).
+
+### Prerequisites
+
+- Docker via colima, with docker compose (`brew install colima docker docker-compose && colima start`).
+- Stellar CLI 30 (`brew install stellar-cli`), `just` and `jq`.
+- Rust with the wasm target (`rustup target add wasm32v1-none`).
+- Node and yarn (`yarn install` in the checkout), Chromium for the journeys.
+- Read access to `eq-lab/pipeline-stellar-contracts` over HTTPS (`gh auth setup-git`).
+
+### Usage
+
+```bash
+scripts/e2e/up.sh --prepare             # once per machine: pull images, clone and build the contracts
+scripts/e2e/up.sh --tag <tag>           # bring the stack up; reports every service healthy
+scripts/e2e/up.sh --tag <tag> --reclaim # first tear down the stack of another tag (a killed run)
+scripts/e2e/down.sh --tag <tag>         # remove containers, volumes, processes and stacks/<tag>/
+```
+
+- `E2E_STELLAR_CONTRACTS_REF` (default `7646cef`) picks the contracts ref; `E2E_HEALTH_TIMEOUT_MS` (default 180000) the health timeout.
+- `up.sh` deploys every contract with the contracts repository's own `just deploy-all` (network `e2e`, USDC a local SAC, every role granted, including `MINTER` on PLUSD to the deposit manager and the minter), builds `api` and `worker` from the working tree and starts every service.
+- One stack per machine: `$E2E_HOME/stack.lock` names the tag holding it. `up.sh` of another tag is refused with the `down.sh` command to run.
+- `down.sh` finds containers, volumes and networks by the `pipeline-e2e.tag` label and processes by their pid files, so it works from any checkout and after the worktree that started the stack is gone. It is idempotent.
+- Exit `2`: a port is taken (named with the process holding it), another tag holds the lock, or a service did not become healthy (named with its log path).
+
+### State
+
+All state lives outside the repository under `$E2E_HOME` (default `~/.cache/pipeline-e2e`):
+
+- `contracts/pipeline-stellar-contracts@<ref>/`: the contracts cache, built in a temporary directory and renamed, under `<dir>.lock`.
+- `stacks/<tag>/`: `env.json` (the generated env), `.env.e2e-<app>` (the Vite variables), `pids/`, `logs/`, `stellar/` (the CLI config with the stack's keys), `contracts/` (the deployment and `addresses.json`) and `state.json`:
 
 ```json
 { "tag": "x", "chains": ["stellar"], "contracts": { "stellar": "7646cef" }, "durations": { "up": 0 }, "startedAt": "…", "ports": { "postgres": 54329 } }
+```
+
+### Clean environment
+
+The developer `.env` never reaches the stack. `api` and `worker` start with only `PATH`, `HOME` and `env.json`, in `stacks/<tag>/run/`, so `dotenvy` finds no `.env`. Each app runs its own Vite config through `scripts/e2e/vite.e2e.config.mts`, which moves `envDir` to `stacks/<tag>/`, with only the generated variables. Local Stellar uses chain id `99000001` with the standalone passphrase (`Standalone Network ; February 2017`) set explicitly for every component.
+
+### Fakes
+
+`scripts/e2e/fakes.ts`: `CRYSTAL_ENABLED=false`, `ELLIPTIC_ENABLED=false`; a Sumsub stub behind `SUMSUB_BASE_URL` (create applicant, get applicant, SDK token) and `postSumsubWebhook()` that posts a webhook signed with `SUMSUB_WEBHOOK_SECRET_KEY`; `EMAIL_DEV_LOG=true` (the passcode is in `logs/api.log`); `PRICE_PROVIDER_ALLOW_NON_MARKET=true` with static MetalpriceAPI rates; the IPFS gateways serve `stacks/<tag>/ipfs/<cid>`.
+
+### Guard
+
+`scripts/e2e/lib/guard.ts` refuses an env unless every URL is `localhost` / `127.0.0.1` (the database on `54329/pipeline_e2e`), nothing points at `stage.eqlab.net`, the only chain is `99000001` with the standalone passphrase, and every key comes from the tag's generated env. `up.sh` runs it on the generated env before starting anything.
+
+`scripts/e2e/guard-hook.ts` is a Claude Code PreToolUse hook running the same guard on `scripts/e2e/*` commands (inline variables and URL arguments); it exits `2` on a violation. It is wired in `.claude/settings.json` by:
+
+```json
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR\"/node_modules/.bin/tsx \"$CLAUDE_PROJECT_DIR\"/scripts/e2e/guard-hook.ts", "timeout": 30 } ] } ] } }
 ```
 
 ## Run and check
