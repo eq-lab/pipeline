@@ -65,14 +65,15 @@ const latestLedger = async () =>
     ).json()) as { result: { sequence: number } }
   ).result.sequence;
 
-export async function invoke(signer: Keypair, contractId: string, fn: string, args: xdr.ScVal[]): Promise<unknown> {
+export const invoke = (signer: Keypair, contractId: string, fn: string, args: xdr.ScVal[]): Promise<unknown> =>
+  submit(signer, new Contract(contractId).call(fn, ...args), fn);
+
+/** Simulates, signs and sends one Soroban operation; the return value as a native value. */
+export async function submit(signer: Keypair, op: xdr.Operation, fn: string): Promise<unknown> {
   // Simulated in the ledger of the previous write, a per-ledger key (sPLUSD's HolderCheckpoint) lands outside the footprint.
   while ((await latestLedger()) <= lastWrite) await new Promise((r) => setTimeout(r, 250));
   const account = await soroban.getAccount(signer.publicKey());
-  const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: STANDALONE_PASSPHRASE })
-    .addOperation(new Contract(contractId).call(fn, ...args))
-    .setTimeout(60)
-    .build();
+  const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: STANDALONE_PASSPHRASE }).addOperation(op).setTimeout(60).build();
   const sim = await soroban.simulateTransaction(tx);
   if (rpc.Api.isSimulationError(sim)) throw new Error(`${fn}: simulation failed: ${sim.error}`);
   const prepared = rpc.assembleTransaction(tx, sim).build();
@@ -96,4 +97,4 @@ export async function read<T>(source: string, contractId: string, fn: string, ar
   return scValToNative(sim.result!.retval) as T;
 }
 
-export { Asset, Keypair };
+export { Asset, Keypair, Operation };

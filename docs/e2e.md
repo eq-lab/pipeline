@@ -47,7 +47,7 @@ The developer `.env` never reaches the stack. `api` and `worker` start with only
 
 ### Fakes
 
-`scripts/e2e/fakes.ts`: `CRYSTAL_ENABLED=false`, `ELLIPTIC_ENABLED=false`; a Sumsub stub behind `SUMSUB_BASE_URL` (create applicant, get applicant, SDK token) and `postSumsubWebhook()` that posts a webhook signed with `SUMSUB_WEBHOOK_SECRET_KEY`; `EMAIL_DEV_LOG=true` (the passcode is in `logs/api.log`); `PRICE_PROVIDER_ALLOW_NON_MARKET=true` with static MetalpriceAPI rates; the IPFS gateways serve `stacks/<tag>/ipfs/<cid>`.
+`scripts/e2e/fakes.ts`: `CRYSTAL_ENABLED=false`, `ELLIPTIC_ENABLED=false`; a Sumsub stub behind `SUMSUB_BASE_URL` (create applicant, get applicant, SDK token) and `postSumsubWebhook()` that posts a webhook signed with `SUMSUB_WEBHOOK_SECRET_KEY`; `EMAIL_DEV_LOG=true` (the passcode is in `logs/api.log`); `PRICE_PROVIDER_ALLOW_NON_MARKET=true` with static MetalpriceAPI rates (XAU at 2500 USD), which the asset price collector (`JOB_ASSET_PRICE_COLLECTOR_ENABLED=true`, one cycle a minute) stores for the loans' valuation anchors; the IPFS gateways serve `stacks/<tag>/ipfs/<cid>`, else the object `ipfs/<cid>` of the MinIO bucket (that prefix is anonymous-download; `minioPut` in `lib/stellar-world.ts` stores one with `mc pipe`).
 
 ### Guard
 
@@ -73,11 +73,11 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 
 ## Stellar world
 
-`scripts/e2e/lib/stellar-world.ts` sets up what every Stellar journey needs; chain access is in `scripts/e2e/lib/stellar.ts`.
+`scripts/e2e/lib/stellar-world.ts` sets up what every Stellar journey needs, once per run (`world()`: the journeys of a run share it); chain access is in `scripts/e2e/lib/stellar.ts`.
 
 - **Accounts:** a fresh LP key funded by friendbot, with USDC and PLUSD trustlines and 1000 USDC from the mock issuer; the stack's `deployer` (deposit and withdrawal custodian), `capital`, `usdc-issuer` and `trustee` keys from `stacks/<tag>/stellar`.
 - **LP:** `POST /v1/auth/signup`, the passcode read from `logs/api.log` (`EMAIL_DEV_LOG=true`; it stays in the process), `POST /v1/auth/verify-otp`, `POST /v1/lps/me`, and the settlement address linked through the SEP-53 wallet challenge (`/v1/lps/me/link-address/challenge` and `/verify`).
-- **Operators:** `auth_users` rows for the stack's `trustee` key (`{trustee}`), an originator (`{originator}`) and a team member (no role: the API has no `team` role); the trustee signs in through `/v1/auth/challenge` and `/v1/auth/verify`.
+- **Operators:** `auth_users` rows for the stack's `trustee` key (`{trustee}`), an originator (`{originator}`) and a team member (no role: the API has no `team` role); the trustee and the originator sign in through `/v1/auth/challenge` and `/v1/auth/verify`.
 - **KYC** (`passKyc`, after the LP's first deposit request, from which the relayer creates its profile): the applicant through the Sumsub stub, a signed `GREEN` webhook, then a wait until the relayer has authorized the LP on PLUSD.
 - **Contract roles:** granted by `up.sh` (`deploy-all`); the `trustee` key holds `TRUSTEE`, risk council and cash reporter.
 
@@ -111,12 +111,46 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 
 | Entry | Coverage |
 |-------|----------|
-| BUG-25 (`effective_at` overflow) | not covered yet: needs a `MetalConcentrate` loan with a valuation anchor (a loan journey) |
+| BUG-25 (`effective_at` overflow) | not covered yet: needs a `MetalConcentrate` loan with a valuation anchor (the loan journey's is `StandardGoods`) |
 | BUG-27 (whitelist disallow pass) | not covered yet: needs Elliptic, which the stack disables |
 | BUG-14 (documents of old loans) | not observable: only loans indexed before `f73d54d` |
 | BUG-9 (`GroupedRequest` amounts) | not observable: no endpoint uses the code |
 | BUG-28, BUG-16 (trustee app) | not observable here: UI defects, for the browser pass |
 | BUG-22, BUG-19 | not observable: lint and `tsc` defects |
+
+## Stellar loan journey
+
+`scripts/e2e/journeys/stellar-loan.ts` (`--journeys loan`; in a full run after LP, on the same world). Contract calls are encoded with the apps' encoders from `packages/wallet-connect/src/stellar/contracts/` (`loanRegistry.ts`, `minter.ts`, `securityRegistry.ts`); privileged ones go through the AccessManager's `execute`, signed by the stack's `trustee` key (trustee, risk council and Cash reporter).
+
+1. **Submit and approve.** Two documents and the loan metadata JSON are stored in MinIO under `ipfs/<cid>` and served by the IPFS stub. The originator submits a 1000 USDC facility (800 senior, 200 equity, 12 %, offtaker price 1100) with a `StandardGoods` XAU anchor of quantity 1 and no haircut (`POST /v1/loan-book/loan`); the trustee approves it (`/review`).
+2. **Draw.** `draw_loan` with the `draw_loan` args the API serves on the approved submission; the API links the submission to the loan id.
+3. **Debt token**, as the contracts repo's `just new-deal <id>` does for ops: the trustee (the stack's DEBT issuer) sets `AUTH_REVOCABLE` and `AUTH_CLAWBACK_ENABLED`, deploys the `DEBT<nnnn>` SAC and makes the factory its admin, the capital wallet opens its trustline, and `register_deal`; `disburse` and `repay` sync the DEBT balance.
+4. **Wire in and disburse.** As Cash reporter, `record_wire_in` of 800 USD into the minter's escrow; `disburse` of the senior tranche; the trustee marks the off-ramp complete.
+5. **Collateral and margin call.** `set_terms` (advance 80 %, margin call 85 %), `register` and `perfect` a 1 Mt warehouse pledge carrying the receipt's sha256, `revalue` at the static price (2500), then at 900, which opens a margin call.
+6. **Loan book while active**, read once the price collector has priced the loan.
+7. **Repay** through the minter (`repay`, as Cash reporter): the outstanding principal and the interest accrued so far; the interest is minted to sPLUSD.
+8. **Close** (`close_loan`, `EarlyRepayment`) and the **loan book after close**.
+
+The pinned contracts' `setup-access` maps no role to the security registry's `register` and `perfect`, so they fall back to `ADMIN` and the journey signs them with the `deployer`. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
+
+| Check | What it compares |
+|-------|------------------|
+| `stellar.loan.submission` | `InReview` after submit, `Approved` after review; the served `draw_loan` args in 7-decimal units and `rate_bps × 100` |
+| `stellar.loan.documents` | each stored document's sha256 against the bytes the IPFS stub serves; the loan book lists the documents |
+| `stellar.loan.draw` | the loan is `Approved` on chain with the API's economics; the submission links to its id |
+| `stellar.loan.disburse` | the wire booked the cash, `disburse` took it and drew the tranche; the loan is `Performing` |
+| `stellar.loan.collateral` | the pledge is `Active` with the receipt's hash and valued at the static price; no margin call yet |
+| `stellar.loan.margin-call` | after the mark-down, LTV above 85 % and `margin_call_at` set |
+| `stellar.loan.repay` | interest minted equals the interest repaid and the sPLUSD vault's `total_assets` delta; outstanding 0 |
+| `stellar.loan.close` | `Closed` with `EarlyRepayment` |
+| `stellar.loan-book.entry` | `/v1/loan-book` `principal`, `original_senior_tranche`, `senior_outstanding` and `rate` against the registry |
+| `stellar.loan-book.collateral` | `spot_price` and `collateral` against the static price × quantity, less the haircut |
+| `stellar.loan-book.ltv-range` | optional, #765: `ltv` within 0–200 % and equal to `principal / collateral`; `details` always carry the LTV |
+| `stellar.loan-book.margin-call` | `margin_call_open` against the security registry's `margin_call_at` |
+| `stellar.loan-book.ltv-bps` | optional, pending: `ltv_bps` against `ceil(debt × 10000 / value)` from the security registry; the worker reads `coverage_detail`, which the pinned contracts lack, so it stays `null` |
+| `stellar.loan-book.summary` | while the loan is active: `weighted_rate` and `/v1/dashboard/summary` `loan_book_yield` against the loan's rate; `deployed_senior` against `outstanding_total`; `/v1/financial-position` secured loans and `outstanding_in_loans` against Σ facility of the registry's active loans (the spec's senior + equity, [dashboards.md](./product-specs/dashboards.md)) |
+| `stellar.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against the cumulative offtaker receipts, `deployed_senior` and secured loans as above |
+| `stellar.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `interest_minted` of the minter's repayments |
 
 ## Result contract
 

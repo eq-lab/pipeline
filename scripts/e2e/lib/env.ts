@@ -75,7 +75,7 @@ export function generateEnv({ ports: p, addresses: a, accounts: k, jwt, startLed
     JOB_PRICE_POLLER_ENABLED: "true",
     JOB_RELAYER_ENABLED: "true",
     JOB_KYC_ENABLED: "false",
-    JOB_ASSET_PRICE_COLLECTOR_ENABLED: "false",
+    JOB_ASSET_PRICE_COLLECTOR_ENABLED: "true",
     JOB_ASSET_PRICE_COLLECTOR_INTERVAL: "DAYS",
     JOB_ASSET_PRICE_COLLECTOR_RETENTION: "90",
     JOB_INDEXER_POLLING_INTERVAL_MS: "500",

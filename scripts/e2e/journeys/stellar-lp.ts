@@ -2,7 +2,7 @@
 
 import type { Check, Journey, Recorded } from "../lib/journey";
 import { addr, bytes, classic, contractError, i128, invoke, pay, read, u128, u64 } from "../lib/stellar";
-import { API, CHAIN, http, ok, ONE, passKyc, setupWorld, until, type World } from "../lib/stellar-world";
+import { API, CHAIN, http, ok, ONE, passKyc, until, world, type World } from "../lib/stellar-world";
 import { PORTS } from "../lib/env";
 
 const DEPOSIT = 100n * ONE;
@@ -51,7 +51,7 @@ const journey: Journey = {
   chain: "stellar",
   name: "lp",
   steps: [
-    { name: "world", run: async ({ tag, recorded }) => void (w = await setupWorld(tag, recorded)) },
+    { name: "world", run: async ({ tag, recorded }) => void (w = await world(tag, recorded)) },
     {
       name: "deposit request",
       run: async ({ recorded }) => {

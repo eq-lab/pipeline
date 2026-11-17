@@ -1,4 +1,6 @@
 {
   "stellar.known-bugs.lps-openapi-query": { "issue": "pending", "finding": "BUG-37 (known-bugs.md): GET /v1/lps OpenAPI documents payment_details as a required path parameter" },
-  "stellar.known-bugs.assay-decimal-bound": { "issue": "pending", "finding": "BUG-32 (known-bugs.md): assay validation accepts unbounded decimal exponents" }
+  "stellar.known-bugs.assay-decimal-bound": { "issue": "pending", "finding": "BUG-32 (known-bugs.md): assay validation accepts unbounded decimal exponents" },
+  "stellar.loan-book.ltv-range": { "issue": 765 },
+  "stellar.loan-book.ltv-bps": { "issue": "pending", "finding": "GET /v1/loan-book ltv_bps (and price_stale) stay null on Stellar: the worker's security valuation reads SecurityRegistry coverage_detail, which the e2e stack's pinned contracts (7646cef) do not have" }
 }
