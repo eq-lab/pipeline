@@ -13,6 +13,11 @@ import {
   SET_TERMS_ARGS,
   STELLAR,
   OTHER_CHAIN,
+  LOAN_REGISTRY,
+  LOAN_REGISTRY_ARGS,
+  MINTER,
+  loanRegistryOp,
+  minterOp,
   pendingOp,
 } from "./-riskCouncilFixtures";
 
@@ -41,12 +46,16 @@ import {
 } from "@/api/useRiskCouncil";
 import {
   callerText,
+  decodeLoanRegistryCall,
+  decodePendingCall,
+  decodeReverseRepayCall,
   decodeSecurityCall,
   fromServed,
   fromSession,
   mergePendingOps,
   pendingActionLabel,
   pendingArgRows,
+  pendingOwner,
   pendingStateText,
   SET_TERMS_PENDING_NOTICE,
   usePendingOperationView,
@@ -221,7 +230,10 @@ describe("pendingActionLabel", () => {
 describe("pendingArgRows", () => {
   it("shows set_terms in the form's units", () => {
     const rows = Object.fromEntries(
-      pendingArgRows(fromServed(pendingOp())).map((r) => [r.label, r.value]),
+      pendingArgRows(fromServed(pendingOp()), STELLAR).map((r) => [
+        r.label,
+        r.value,
+      ]),
     );
     expect(rows).toMatchObject({
       "Advance ratio": "70%",
@@ -246,6 +258,7 @@ describe("pendingArgRows", () => {
             args: termsArgs({ price_stale_after: "7200", cure_period: "90" }),
           }),
         ),
+        STELLAR,
       ).map((r) => [r.label, r.value]),
     );
     expect(rows["Price stale after"]).toBe("2 h");
@@ -256,6 +269,7 @@ describe("pendingArgRows", () => {
     expect(
       pendingArgRows(
         fromServed(pendingOp({ function: "resolve_flag", args: RESOLVE_ARGS })),
+        STELLAR,
       ),
     ).toEqual([
       { label: "Outcome", value: "Accepted" },
@@ -266,14 +280,244 @@ describe("pendingArgRows", () => {
         fromServed(
           pendingOp({ function: "release_with_consent", args: RELEASE_ARGS }),
         ),
+        STELLAR,
       ),
     ).toEqual([{ label: "Consent hash", value: "efefefefef…" }]);
   });
 
   it("falls back to one raw JSON row", () => {
     expect(
-      pendingArgRows(fromServed(pendingOp({ args: [9, { weird: true }] }))),
+      pendingArgRows(
+        fromServed(pendingOp({ args: [9, { weird: true }] })),
+        STELLAR,
+      ),
     ).toEqual([{ label: "Arguments", value: '[9,{"weird":true}]' }]);
+  });
+});
+
+const RATE_ARGS = LOAN_REGISTRY_ARGS.amend_economics;
+
+describe("decodeLoanRegistryCall", () => {
+  it("decodes every reference shape", () => {
+    expect(decodeLoanRegistryCall("set_default", [7])).toEqual({
+      fn: "set_default",
+      loanId: 7,
+    });
+    expect(decodeLoanRegistryCall("cure", [7])).toEqual({
+      fn: "cure",
+      loanId: 7,
+    });
+    expect(decodeLoanRegistryCall("amend_economics", RATE_ARGS)).toEqual({
+      fn: "amend_economics",
+      loanId: 7,
+      rateBps: 1450,
+      maturity: 1_816_128_000,
+    });
+    expect(
+      decodeLoanRegistryCall("adjust_interest", [7, "-1000000", HASH_A]),
+    ).toEqual({
+      fn: "adjust_interest",
+      loanId: 7,
+      delta: "-1000000",
+      reasonHash: HASH_A,
+    });
+    expect(decodeLoanRegistryCall("write_down", [7, "5000000"])).toEqual({
+      fn: "write_down",
+      loanId: 7,
+      amount: "5000000",
+    });
+    expect(
+      decodeLoanRegistryCall("close_defaulted", [7, ["OtherWriteDown"]]),
+    ).toEqual({ fn: "close_defaulted", loanId: 7, reason: "OtherWriteDown" });
+  });
+
+  it.each([
+    ["rate not a multiple of 100", "amend_economics", [7, 145_050, "100"]],
+    ["rate zero", "amend_economics", [7, 0, "100"]],
+    ["rate above 1 000 000", "amend_economics", [7, 1_000_100, "100"]],
+    ["zero maturity", "amend_economics", [7, 145_000, "0"]],
+    ["numeric maturity", "amend_economics", [7, 145_000, 100]],
+    ["unsafe maturity", "amend_economics", [7, 145_000, "9".repeat(20)]],
+    ["non-decimal amount", "write_down", [7, "5.5"]],
+    ["negative amount", "write_down", [7, "-5"]],
+    ["non-numeric delta", "adjust_interest", [7, "1e5", HASH_A]],
+    ["63-hex reason hash", "adjust_interest", [7, "5", "ab".repeat(31) + "a"]],
+    ["unknown variant", "close_defaulted", [7, ["Nope"]]],
+    ["bare variant", "close_defaulted", [7, "Default"]],
+    ["wrong length", "set_default", [7, 1]],
+    ["string loan id", "cure", ["7"]],
+    ["not an array", "cure", {}],
+    ["unknown function", "pause", [7]],
+  ])("returns null for %s", (_name, fn, args) => {
+    expect(decodeLoanRegistryCall(fn, args)).toBeNull();
+  });
+});
+
+describe("decodeReverseRepayCall and decodePendingCall", () => {
+  it("decodes reverse_repay", () => {
+    expect(decodeReverseRepayCall("reverse_repay", [3, 2, HASH_B])).toEqual({
+      fn: "reverse_repay",
+      loanId: 3,
+      repaymentId: 2,
+      refHash: HASH_B,
+    });
+  });
+
+  it.each([
+    ["63-hex hash", [3, 2, "cd".repeat(31) + "c"]],
+    ["wrong length", [3, 2]],
+    ["string repayment id", [3, "2", HASH_B]],
+  ])("rejects reverse_repay with %s", (_name, args) => {
+    expect(decodeReverseRepayCall("reverse_repay", args)).toBeNull();
+  });
+
+  it("dispatches on the function name across the three contracts", () => {
+    expect(decodePendingCall("set_terms", SET_TERMS_ARGS)?.fn).toBe(
+      "set_terms",
+    );
+    expect(decodePendingCall("write_down", [3, "5"])?.fn).toBe("write_down");
+    expect(decodePendingCall("reverse_repay", [3, 2, HASH_B])?.fn).toBe(
+      "reverse_repay",
+    );
+    expect(decodePendingCall("set_inspectors", [[]])).toBeNull();
+  });
+});
+
+describe("fromServed and fromSession for LoanRegistry and Minter rows", () => {
+  it("takes the target kind from the served value and decodes the call", () => {
+    const item = fromServed(loanRegistryOp("amend_economics"));
+    expect(item).toMatchObject({
+      targetKind: "loan_registry",
+      target: LOAN_REGISTRY,
+      loanId: 7,
+    });
+    expect(item.call).toMatchObject({ fn: "amend_economics", rateBps: 1450 });
+    expect(fromServed(minterOp())).toMatchObject({
+      targetKind: "minter",
+      target: MINTER,
+      loanId: 7,
+    });
+  });
+
+  it("prefers the loan id argument over the call", () => {
+    expect(fromServed(loanRegistryOp("cure"), 9).loanId).toBe(9);
+    expect(fromServed(loanRegistryOp("cure"), null).loanId).toBe(7);
+    expect(fromServed(pendingOp({ args: [1, 2, 3] })).loanId).toBeNull();
+  });
+
+  it("derives the loan id and the target kind of a LoanRegistry session op from its call", () => {
+    const item = fromSession(
+      sessionOp({
+        call: { fn: "write_down", loanId: 7, amount: "5" },
+        loanId: undefined,
+      }),
+      READY_AT,
+    )!;
+    expect(item).toMatchObject({ loanId: 7, targetKind: "loan_registry" });
+    expect(fromSession(sessionOp(), READY_AT)!.targetKind).toBe(
+      "security_registry",
+    );
+  });
+});
+
+describe("pendingOwner", () => {
+  it.each([
+    ["set_default", "escalate"],
+    ["amend_economics", "reterm"],
+    ["adjust_interest", "reterm"],
+    ["write_down", "writedown"],
+    ["close_defaulted", "writedown"],
+    ["cure", "writedown"],
+    ["set_terms", "security"],
+    ["resolve_flag", "security"],
+    ["release_with_consent", "security"],
+    ["reverse_repay", "recovery"],
+  ])("maps %s to %s", (fn, owner) => {
+    expect(pendingOwner(fn)).toBe(owner);
+  });
+
+  it("has no owner for set_inspectors or unknown functions", () => {
+    expect(pendingOwner("set_inspectors")).toBeNull();
+    expect(pendingOwner("pause")).toBeNull();
+    expect(pendingOwner("constructor")).toBeNull();
+  });
+});
+
+describe("labels and rows for the LoanRegistry and Minter functions", () => {
+  const rows = (item: ReturnType<typeof fromServed>) =>
+    pendingArgRows(item, STELLAR).map((r) => [r.label, r.value]);
+
+  it("labels the seven new functions", () => {
+    const labels = [
+      "set_default",
+      "cure",
+      "amend_economics",
+      "adjust_interest",
+      "write_down",
+      "close_defaulted",
+    ].map((fn) =>
+      pendingActionLabel(
+        fromServed(loanRegistryOp(fn as keyof typeof LOAN_REGISTRY_ARGS)),
+      ),
+    );
+    expect(labels).toEqual([
+      "Declare default",
+      "Cure",
+      "Amend economics",
+      "Adjust interest",
+      "Write down",
+      "Close defaulted loan",
+    ]);
+    expect(pendingActionLabel(fromServed(minterOp()))).toBe(
+      "Reverse repayment · repayment #2",
+    );
+    expect(
+      pendingActionLabel(fromServed(minterOp({ args: [7, 5, "bad"] }))),
+    ).toBe("Reverse repayment · repayment #5");
+    expect(pendingActionLabel(fromServed(minterOp({ args: "bad" })))).toBe(
+      "Reverse repayment",
+    );
+  });
+
+  it("shows no argument rows for set_default and cure", () => {
+    expect(rows(fromServed(loanRegistryOp("set_default")))).toEqual([]);
+    expect(rows(fromServed(loanRegistryOp("cure")))).toEqual([]);
+  });
+
+  it("shows the rate in percent and bps and the maturity date", () => {
+    expect(rows(fromServed(loanRegistryOp("amend_economics")))).toEqual([
+      ["New rate", "14.5% (1450 bps)"],
+      ["New maturity", "21 Jul 2027"],
+    ]);
+  });
+
+  it("shows a signed delta and a shortened reason hash", () => {
+    expect(rows(fromServed(loanRegistryOp("adjust_interest")))).toEqual([
+      ["Delta", "-$0.10"],
+      ["Reason hash", "ababababab…"],
+    ]);
+  });
+
+  it("shows the write-down amount and the closure reason", () => {
+    expect(rows(fromServed(loanRegistryOp("write_down")))).toEqual([
+      ["Amount", "$0.50"],
+    ]);
+    expect(rows(fromServed(loanRegistryOp("close_defaulted")))).toEqual([
+      ["Closure reason", "Other write-down"],
+    ]);
+  });
+
+  it("shows the repayment number and a shortened reference hash", () => {
+    expect(rows(fromServed(minterOp()))).toEqual([
+      ["Repayment", "#2"],
+      ["Reference hash", "cdcdcdcdcd…"],
+    ]);
+  });
+
+  it("falls back to the raw JSON row for an undecodable LoanRegistry shape", () => {
+    expect(
+      rows(fromServed(loanRegistryOp("write_down", { args: [7, 5] }))),
+    ).toEqual([["Arguments", "[7,5]"]]);
   });
 });
 
@@ -342,6 +586,7 @@ describe("mergePendingOps", () => {
   const base = {
     session: [] as ScheduledOp[],
     executed: new Map<string, ExecutedOperation>(),
+    everServed: new Set<string>(),
     chainId: STELLAR,
     loanId: 7,
     nowSec: READY_AT,
@@ -360,6 +605,26 @@ describe("mergePendingOps", () => {
     });
     expect(items).toHaveLength(1);
     expect(items[0]!.source).toBe("session");
+  });
+
+  it("drops a session row whose id was served earlier and is no longer served", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp()],
+      everServed: new Set(["11".repeat(32)]),
+    });
+    expect(items).toEqual([]);
+  });
+
+  it("keeps a session row whose id was never served", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp()],
+      everServed: new Set(["99".repeat(32)]),
+    });
+    expect(items).toHaveLength(1);
   });
 
   it("drops the session row once the API serves the same id", () => {
@@ -430,26 +695,50 @@ describe("mergePendingOps", () => {
     expect(items[0]!.executed).toEqual({ hash: "EH" });
   });
 
-  it("lists only SecurityRegistry operations", () => {
-    const loanId = "33".repeat(32);
-    const minterId = "44".repeat(32);
+  it("lists operations of every contract and stamps the given loan id", () => {
     const items = mergePendingOps({
       ...base,
-      served: [
-        pendingOp(),
-        pendingOp({
-          operation_id: loanId,
-          target_kind: "loan_registry",
-          function: "set_default",
+      served: [pendingOp(), loanRegistryOp("set_default"), minterOp()],
+    });
+    expect(items.map((i) => [i.fn, i.targetKind, i.loanId])).toEqual(
+      expect.arrayContaining([
+        ["set_terms", "security_registry", 7],
+        ["set_default", "loan_registry", 7],
+        ["reverse_repay", "minter", 7],
+      ]),
+    );
+    expect(items).toHaveLength(3);
+  });
+
+  it("de-duplicates served lists from two sources, keeping the first copy", () => {
+    const first = pendingOp({ args_xdr: "FIRST" });
+    const second = pendingOp({ args_xdr: "SECOND" });
+    const items = mergePendingOps({ ...base, served: [first, second] });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.argsXdr).toBe("FIRST");
+  });
+
+  it("shows a LoanRegistry session row of the loan taken from its call", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [
+        sessionOp({
+          call: { fn: "write_down", loanId: 7, amount: "5" },
+          loanId: undefined,
+          target: LOAN_REGISTRY,
         }),
-        pendingOp({
-          operation_id: minterId,
-          target_kind: "minter",
-          function: "reverse_repay",
+        sessionOp({
+          operationId: "22".repeat(32),
+          call: { fn: "write_down", loanId: 8, amount: "5" },
+          loanId: undefined,
+          target: LOAN_REGISTRY,
         }),
       ],
     });
-    expect(items.map((i) => i.operationId)).toEqual([OPERATION_ID]);
+    expect(items.map((i) => [i.fn, i.loanId, i.targetKind])).toEqual([
+      ["write_down", 7, "loan_registry"],
+    ]);
   });
 
   it("ignores session rows of another chain or loan or without an id", () => {
@@ -663,6 +952,86 @@ describe("usePendingOperationView", () => {
     expect(view().error?.message).toMatch(/expired/);
     withError(new Error("simulation failed: Error(Contract, #14)"));
     expect(view().error?.message).toMatch(/no security terms/);
+  });
+
+  it("names the contract in the target-mismatch copy", () => {
+    const loan = view({
+      item: fromServed(
+        loanRegistryOp("write_down", { target: "COTHERLOANREGISTRY1234567" }),
+      ),
+      expectedTarget: LOAN_REGISTRY,
+    });
+    expect(loan.disabled).toBe(true);
+    expect(loan.notice).toBe(
+      "This operation targets another LoanRegistry (COTHER…4567) than this console is configured for.",
+    );
+    const minter = view({
+      item: fromServed(minterOp({ target: "COTHERMINTER12345678901" })),
+      expectedTarget: MINTER,
+    });
+    expect(minter.notice).toBe(
+      "This operation targets another Minter (COTHER…8901) than this console is configured for.",
+    );
+  });
+
+  it("maps Minter errors with the recovery copy and LoanRegistry errors with the Risk Council copy", () => {
+    const item = fromServed(minterOp());
+    withError(new Error("simulation failed: Error(Contract, #25)"));
+    expect(view({ item, expectedTarget: MINTER }).error?.message).toBe(
+      "This repayment is already reversed.",
+    );
+    withError(new Error("simulation failed: Error(Contract, #8)"));
+    const minterCopy = view({ item, expectedTarget: MINTER }).error?.message;
+    const loanCopy = view({
+      item: fromServed(loanRegistryOp("cure")),
+      expectedTarget: LOAN_REGISTRY,
+    }).error?.message;
+    expect(minterCopy).toMatch(/expired/);
+    expect(loanCopy).toMatch(/expired/);
+    withError(new Error("simulation failed: Error(Contract, #14)"));
+    expect(
+      view({
+        item: fromServed(loanRegistryOp("cure")),
+        expectedTarget: LOAN_REGISTRY,
+      }).error?.message,
+    ).not.toMatch(/no security terms/);
+  });
+
+  it("applies a gate to a ready LoanRegistry row only and never marks it paused", () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ hash: "H" });
+    mocks.execute.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+      error: null,
+      hash: null,
+      stage: null,
+      reset: vi.fn(),
+    });
+    const item = fromServed(loanRegistryOp("write_down"));
+    const gated = view({
+      item,
+      expectedTarget: LOAN_REGISTRY,
+      executeGate: "This loan is not in Default.",
+    });
+    expect(gated.disabled).toBe(true);
+    expect(gated.notice).toBe("This loan is not in Default.");
+    const waiting = view({
+      item: fromServed(loanRegistryOp("write_down", { state: "waiting" })),
+      expectedTarget: LOAN_REGISTRY,
+      executeGate: "This loan is not in Default.",
+    });
+    expect(waiting.notice).toBeNull();
+    const open = view({ item, expectedTarget: LOAN_REGISTRY });
+    expect(open.disabled).toBe(false);
+    open.run();
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paused: false,
+        expectedTarget: LOAN_REGISTRY,
+        argsXdr: "AAAAEAAAAAA=",
+        fn: "write_down",
+      }),
+    );
   });
 
   it("exports the Set terms notice copy", () => {

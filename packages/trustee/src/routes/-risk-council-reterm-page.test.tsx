@@ -1,6 +1,12 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import {
   DELAYED,
   IMMEDIATE,
@@ -10,8 +16,13 @@ import {
   accessResult,
   loanBookResult,
   loanEntry,
+  loanRegistryOp,
   loanState,
+  minterOp,
+  pendingExecuteResult,
+  pendingOp,
   relayResult,
+  SCHEDULER,
   securityResult,
 } from "./-riskCouncilFixtures";
 
@@ -21,31 +32,73 @@ vi.mock("@tanstack/react-router", async () => {
   );
   return {
     ...actual,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
+    Link: ({
+      children,
+      to,
+      params,
+      search,
+      "data-testid": testId,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      params?: Record<string, string>;
+      search?: { chain: number };
+      "data-testid"?: string;
+    }) => (
+      <a
+        data-testid={testId}
+        href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}
+      >
+        {children}
+      </a>
     ),
   };
 });
 
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  const { LOAN_REGISTRY } = await import("./-riskCouncilFixtures");
+  return {
+    ...actual,
+    ENV: { ...actual.ENV, STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY },
+  };
+});
+const walletState = vi.hoisted(() => ({ address: null as string | null }));
+
 const HASH = "cd".repeat(32);
 vi.mock("@pipeline/wallet-connect", () => ({
+  FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
+  SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   riskCouncilReasonHash: vi.fn(async () => "cd".repeat(32)),
+  useStellarWallet: () => ({ address: walletState.address }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
-vi.mock("@/api/useRiskCouncil", () => ({
-  useRiskCouncilAccess: vi.fn(),
-  useRiskCouncilLoanState: vi.fn(),
-  useRiskCouncilRelay: vi.fn(),
-}));
+vi.mock("@/api/useRiskCouncil", async () => {
+  const actual = await vi.importActual<typeof import("@/api/useRiskCouncil")>(
+    "@/api/useRiskCouncil",
+  );
+  return {
+    NoLongerScheduledError: actual.NoLongerScheduledError,
+    PendingArgsMismatchError: actual.PendingArgsMismatchError,
+    PendingTargetMismatchError: actual.PendingTargetMismatchError,
+    RegistryPausedError: actual.RegistryPausedError,
+    useRiskCouncilAccess: vi.fn(),
+    useRiskCouncilLoanState: vi.fn(),
+    useRiskCouncilRelay: vi.fn(),
+    usePendingOperationExecute: vi.fn(),
+  };
+});
 
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
+  usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
 } from "@/api/useRiskCouncil";
+import { _resetRiskCouncilOpsForTests } from "@/lib/riskCouncilOps";
 import { Route } from "./risk-council.reterm.$id";
 
 const mockLoanBook = vi.mocked(useLoanBook);
@@ -53,6 +106,7 @@ const mockSecurity = vi.mocked(useLoanSecurity);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
+const mockPendingExecute = vi.mocked(usePendingOperationExecute);
 
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4471",
@@ -66,12 +120,17 @@ function renderRoute() {
 }
 
 let relay: ReturnType<typeof relayResult>;
+let pendingExecute: ReturnType<typeof pendingExecuteResult>;
 
 function setup(
   access: Parameters<typeof accessResult>[0],
   status = "WatchList",
+  pending?: ReturnType<typeof pendingOp>[],
 ) {
-  mockLoanBook.mockReturnValue(loanBookResult([loanEntry()]));
+  mockLoanBook.mockReturnValue(
+    loanBookResult([loanEntry({ pending_operations: pending })]),
+  );
+  mockPendingExecute.mockReturnValue(pendingExecute as never);
   mockSecurity.mockReturnValue(securityResult());
   mockAccess.mockReturnValue(accessResult(access) as never);
   mockLoanState.mockReturnValue({
@@ -92,6 +151,9 @@ function fillAmend(rate = "14.5", date = "2026-12-15") {
 beforeEach(() => {
   vi.clearAllMocks();
   relay = relayResult();
+  pendingExecute = pendingExecuteResult();
+  walletState.address = SCHEDULER;
+  _resetRiskCouncilOpsForTests();
 });
 
 describe("Amend economics — current terms", () => {
@@ -331,5 +393,147 @@ describe("Amend economics — read-only states", () => {
     ).toHaveTextContent(/On-chain actions run on Stellar only/);
     (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
       () => ({ chain: STELLAR });
+  });
+});
+
+describe("Amend economics — scheduled operations", () => {
+  const PENDING = "risk-council-reterm-pending";
+  const AMEND = loanRegistryOp("amend_economics", {
+    args: [4471, 145_000, "1816128000"],
+    args_xdr: "AMENDXDR",
+  });
+  const ADJUST = loanRegistryOp("adjust_interest", {
+    args: [4471, "-1000000", HASH],
+    args_xdr: "ADJUSTXDR",
+  });
+  const WRITE_DOWN = loanRegistryOp("write_down", { args: [4471, "5000000"] });
+  const SET_TERMS = pendingOp({ operation_id: "61".repeat(32) });
+  const REVERSE = minterOp({ args: [4471, 2, HASH] });
+  const id = (op: ReturnType<typeof pendingOp>) =>
+    `${PENDING}-${op.operation_id}`;
+
+  it("renders first in the right column, above Amend economics, with every operation of the loan", () => {
+    setup(DELAYED, "WatchList", [
+      AMEND,
+      ADJUST,
+      WRITE_DOWN,
+      SET_TERMS,
+      REVERSE,
+    ]);
+    renderRoute();
+    const card = screen.getByTestId(PENDING);
+    expect(
+      card.compareDocumentPosition(
+        screen.getByTestId("risk-council-reterm-amend"),
+      ),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(5);
+    expect(screen.getByTestId(`${id(AMEND)}-args`)).toHaveTextContent(
+      "New rate14.5% (1450 bps)",
+    );
+    expect(screen.getByTestId(`${id(ADJUST)}-args`)).toHaveTextContent(
+      "Delta-$0.10",
+    );
+  });
+
+  it("gives Execute to amend_economics and adjust_interest and links the rest", () => {
+    setup(DELAYED, "WatchList", [
+      AMEND,
+      ADJUST,
+      WRITE_DOWN,
+      SET_TERMS,
+      REVERSE,
+    ]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeEnabled();
+    expect(screen.getByTestId(`${id(ADJUST)}-button`)).toBeEnabled();
+    const links: Array<[ReturnType<typeof pendingOp>, string, string]> = [
+      [
+        WRITE_DOWN,
+        "Open Default resolution",
+        `/risk-council/writedown/4471?chain=${STELLAR}`,
+      ],
+      [
+        SET_TERMS,
+        "Open Security",
+        `/risk-council/security/4471?chain=${STELLAR}`,
+      ],
+      [
+        REVERSE,
+        "Open loan · Repayment recovery",
+        `/loans/4471?chain=${STELLAR}`,
+      ],
+    ];
+    for (const [op, label, href] of links) {
+      expect(screen.queryByTestId(`${id(op)}-button`)).toBeNull();
+      expect(screen.getByTestId(`${id(op)}-link`)).toHaveTextContent(label);
+      expect(screen.getByTestId(`${id(op)}-link`)).toHaveAttribute(
+        "href",
+        href,
+      );
+    }
+  });
+
+  it("shows the empty state", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toHaveTextContent(
+      "No scheduled operations found.",
+    );
+  });
+
+  it("executes with the served args verbatim and no form input", () => {
+    setup(DELAYED, "WatchList", [AMEND]);
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${id(AMEND)}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: STELLAR,
+      operationId: AMEND.operation_id,
+      caller: SCHEDULER,
+      target: AMEND.target,
+      expectedTarget: AMEND.target,
+      paused: false,
+      fn: "amend_economics",
+      argsXdr: "AMENDXDR",
+    });
+  });
+
+  it("shows the other-wallet copy for another wallet", () => {
+    walletState.address = "GOTHERWALLETADDRESS1234567890XYZ";
+    setup(DELAYED, "WatchList", [AMEND]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeDisabled();
+    expect(screen.getByTestId(`${id(AMEND)}-notice`)).toHaveTextContent(
+      "Only the scheduling wallet",
+    );
+  });
+
+  it("disables ready owned rows for a Closed loan and leaves link rows alone", () => {
+    setup(DELAYED, "Closed", [AMEND, WRITE_DOWN]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeDisabled();
+    expect(screen.getByTestId(`${id(AMEND)}-notice`)).toHaveTextContent(
+      "Not available for a Closed loan.",
+    );
+    expect(screen.queryByTestId(`${id(WRITE_DOWN)}-notice`)).toBeNull();
+    expect(screen.getByTestId(`${id(WRITE_DOWN)}-link`)).toBeInTheDocument();
+  });
+
+  it("does not block while the on-chain status is unknown", () => {
+    setup(DELAYED, "WatchList", [AMEND, ADJUST]);
+    mockLoanState.mockReturnValue({ data: undefined } as never);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeEnabled();
+    expect(screen.getByTestId(`${id(ADJUST)}-button`)).toBeEnabled();
+    expect(screen.queryByTestId(`${id(AMEND)}-notice`)).toBeNull();
+  });
+
+  it("never executes a link row", () => {
+    setup(DELAYED, "WatchList", [WRITE_DOWN, SET_TERMS, REVERSE]);
+    renderRoute();
+    expect(
+      within(screen.getByTestId(PENDING)).queryAllByRole("button"),
+    ).toHaveLength(0);
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
   });
 });

@@ -325,6 +325,7 @@ export type {
 
 export {
   encodeRiskCouncilArgs,
+  riskCouncilArgsXdr,
   relayRiskCouncil,
   readRiskCouncilSchedule,
   riskCouncilReasonHash,

@@ -2,6 +2,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
+  declareConfirmText,
   useRiskCouncilEscalate,
   type LedgerView,
   type PortfolioImpactView,
@@ -17,6 +18,7 @@ import {
   MAIN_CLASS,
   Muted,
   PageGate,
+  PendingOperationsCard,
   Row,
 } from "./-RiskCouncilParts";
 
@@ -160,7 +162,7 @@ function DeclareDefaultCard({
       <ActionControls
         prefix="risk-council-escalate"
         view={view.action}
-        confirmText={`Declare default on Loan #${id}? The pocket opens on the first default.`}
+        confirmText={declareConfirmText(id)}
       />
       <ChainStateRows
         rows={view.chainState}
@@ -206,7 +208,20 @@ function RiskCouncilEscalate() {
             ledger={view.ledger}
             portfolioImpact={view.portfolioImpact}
           />
-          <DeclareDefaultCard view={view} id={id} chain={chain} />
+          <div className="flex w-full flex-1 flex-col gap-[20px]">
+            <PendingOperationsCard
+              testId="risk-council-escalate-pending"
+              items={view.pending}
+              chainId={chain}
+              owner="escalate"
+              executeGate={view.pendingGate}
+              expectedTarget={view.expectedTarget}
+              confirmTextFor={(item) =>
+                item.fn === "set_default" ? declareConfirmText(id) : undefined
+              }
+            />
+            <DeclareDefaultCard view={view} id={id} chain={chain} />
+          </div>
         </div>
       </main>
     </PageGate>

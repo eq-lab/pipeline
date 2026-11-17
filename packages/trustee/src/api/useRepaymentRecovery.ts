@@ -24,6 +24,7 @@ import {
   type RelayStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
+import { markOperationExecuted } from "@/lib/riskCouncilOps";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 
 export type { RelayStage };
@@ -55,6 +56,7 @@ export interface ReverseRepayAccess {
 export interface ReverseRepayInput {
   loanId: number;
   repaymentId: number;
+  chainId?: number;
 }
 
 export interface UseReverseRepayMutationResult {
@@ -216,7 +218,11 @@ function useReverseRepayMutation(
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation<{ hash: string }, Error, ReverseRepayInput>({
+  const mutation = useMutation<
+    { hash: string; schedule?: OperationSchedule },
+    Error,
+    ReverseRepayInput
+  >({
     mutationFn: async ({ loanId, repaymentId }) => {
       setStage(null);
       const cfg = recoveryConfig();
@@ -241,11 +247,29 @@ function useReverseRepayMutation(
         signTransaction,
         onStageChange: setStage,
       };
-      return mode === "schedule"
-        ? scheduleReverseRepay(params)
-        : executeReverseRepay(params);
+      if (mode === "schedule") return scheduleReverseRepay(params);
+      let schedule: OperationSchedule | undefined;
+      try {
+        schedule = await readReverseRepaySchedule(params);
+      } catch {
+        schedule = undefined;
+      }
+      const { hash } = await executeReverseRepay(params);
+      return { hash, schedule };
     },
-    onSuccess: () => {
+    onSuccess: ({ hash, schedule }, { chainId }) => {
+      if (
+        chainId !== undefined &&
+        schedule?.operationId &&
+        schedule.readyAt > 0
+      ) {
+        markOperationExecuted(
+          chainId,
+          schedule.operationId,
+          hash,
+          schedule.readyAt,
+        );
+      }
       invalidateRecovery(queryClient);
       for (const delayMs of [5_000, 15_000]) {
         setTimeout(() => invalidateRecovery(queryClient), delayMs);

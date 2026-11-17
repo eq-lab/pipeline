@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
@@ -26,18 +26,13 @@ import {
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
 import { ENV } from "@/lib/env";
-import {
-  pruneExecutedOperations,
-  useExecutedOperations,
-  useScheduledOps,
-} from "@/lib/riskCouncilOps";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import {
-  mergePendingOps,
   PENDING_PAUSED,
   recordNumberOf,
   SET_TERMS_PENDING_NOTICE,
+  useLoanPendingOps,
   type PendingOpItem,
 } from "./-risk-council-pending";
 import { formatTermsRows, PAYMENT_TERM_LABELS } from "./-risk-council-terms";
@@ -489,29 +484,12 @@ export function useRiskCouncilSecurity(
   const served = security.data;
   const executeGate = served?.paused === true ? SECURITY_PAUSED_NOTE : null;
 
-  const sessionOps = useScheduledOps(chainId);
-  const executed = useExecutedOperations(chainId);
-  const servedOps = served?.pending_operations;
-  const servedFetchedAt = security.dataUpdatedAt;
-  useEffect(() => {
-    pruneExecutedOperations(
-      chainId,
-      new Map(
-        (servedOps ?? []).map((op) => [
-          op.operation_id,
-          Math.floor(Date.parse(op.ready_at) / 1000),
-        ]),
-      ),
-      servedFetchedAt,
-    );
-  }, [chainId, servedOps, servedFetchedAt]);
-  const pending = mergePendingOps({
-    served: servedOps ?? [],
-    session: sessionOps,
-    executed,
+  const pending = useLoanPendingOps({
     chainId,
     loanId: base.loanId,
-    nowSec: Date.now() / 1000,
+    entry: base.entry,
+    extraServed: served?.pending_operations,
+    extraFetchedAt: security.dataUpdatedAt,
   });
   const termsPending = pending.some(
     (item) =>

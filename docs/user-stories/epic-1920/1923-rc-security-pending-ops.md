@@ -122,5 +122,5 @@ Trustee app (`packages/trustee`), page `/risk-council/security/{id}?chain=<stell
 - Clicking "Execute" on the release row opens "Release record #N? This burns the record NFT and cannot be undone." with Cancel and Execute; Escape and the backdrop cancel with nothing sent.
 - Executing a resolve-flag row has no confirmation dialog.
 - A release row whose arguments cannot be decoded (raw "Arguments" JSON) still asks for confirmation ("Release this record? ..." when the record number is unknown); nothing is sent before Confirm.
-- Operations on other contracts of the loan (for example a LoanRegistry `set_default`) are not listed on this page.
+- Operations of the loan on other contracts (for example a LoanRegistry `set_default`) are listed too, with a link to the page that owns them instead of Execute ([1924](./1924-rc-hub-pending-ops.md)).
 - With no pending operation the card reads "No scheduled operations found."

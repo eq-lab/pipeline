@@ -58,6 +58,8 @@ export interface ExecutedOperation {
 }
 
 const executed = new Map<string, ExecutedOperation>();
+let servedByChain: ReadonlyMap<number, ReadonlySet<string>> = new Map();
+const NO_IDS: ReadonlySet<string> = new Set();
 let executedSnapshot: ReadonlyArray<[string, ExecutedOperation]> = [];
 const listeners = new Set<() => void>();
 let snapshot: ReadonlyArray<ScheduledOp> = [];
@@ -171,6 +173,20 @@ export function markExecuted(
   commit();
 }
 
+export function recordServedOperations(
+  chainId: number,
+  operationIds: Iterable<string>,
+): void {
+  const known = servedByChain.get(chainId) ?? NO_IDS;
+  const added = Array.from(operationIds).filter((id) => !known.has(id));
+  if (added.length === 0) return;
+  servedByChain = new Map(servedByChain).set(
+    chainId,
+    new Set([...known, ...added]),
+  );
+  listeners.forEach((listener) => listener());
+}
+
 export function pruneExecutedOperations(
   chainId: number,
   servedReadyAtById: ReadonlyMap<string, number>,
@@ -204,6 +220,19 @@ function subscribe(listener: () => void): () => void {
 
 function getSnapshot(): ReadonlyArray<ScheduledOp> {
   return snapshot;
+}
+
+function getServedSnapshot(): ReadonlyMap<number, ReadonlySet<string>> {
+  return servedByChain;
+}
+
+export function useServedOperationIds(chainId: number): ReadonlySet<string> {
+  const all = useSyncExternalStore(
+    subscribe,
+    getServedSnapshot,
+    getServedSnapshot,
+  );
+  return all.get(chainId) ?? NO_IDS;
 }
 
 function getExecutedSnapshot(): ReadonlyArray<[string, ExecutedOperation]> {
@@ -267,6 +296,7 @@ export function _resetRiskCouncilOpsForTests(): void {
   chainSnapshots.clear();
   snapshot = [];
   executed.clear();
+  servedByChain = new Map();
   executedChainSnapshots.clear();
   executedSnapshot = [];
 }

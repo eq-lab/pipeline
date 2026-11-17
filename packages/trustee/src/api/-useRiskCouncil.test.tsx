@@ -4,14 +4,12 @@ import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  hubCallsFor,
   NoLongerScheduledError,
   PendingArgsMismatchError,
   PendingTargetMismatchError,
   RegistryPausedError,
   usePendingOperationExecute,
   useRiskCouncilAccess,
-  useRiskCouncilHubLookups,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
   useSecurityInspectors,
@@ -31,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   readScheduledOperation: vi.fn(),
   executeScheduledOperation: vi.fn(),
   securityRegistryArgsXdr: vi.fn(),
+  riskCouncilArgsXdr: vi.fn(),
   readCanCall: vi.fn(),
   readRiskCouncilSchedule: vi.fn(),
   readLoanChainState: vi.fn(),
@@ -47,6 +46,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   readScheduledOperation: mocks.readScheduledOperation,
   executeScheduledOperation: mocks.executeScheduledOperation,
   securityRegistryArgsXdr: mocks.securityRegistryArgsXdr,
+  riskCouncilArgsXdr: mocks.riskCouncilArgsXdr,
   readCanCall: mocks.readCanCall,
   readRiskCouncilSchedule: mocks.readRiskCouncilSchedule,
   readLoanChainState: mocks.readLoanChainState,
@@ -103,6 +103,7 @@ beforeEach(() => {
   envMock.STELLAR_SECURITY_REGISTRY_ID = "CSECURITY";
   mocks.relaySecurityRegistry.mockResolvedValue({ hash: "SH" });
   mocks.securityRegistryArgsXdr.mockReturnValue("ARGSXDR");
+  mocks.riskCouncilArgsXdr.mockReturnValue("RCARGSXDR");
   _resetRiskCouncilOpsForTests();
 });
 
@@ -373,7 +374,6 @@ describe("useRiskCouncilRelay", () => {
     const expected = [
       "risk-council-access",
       "risk-council-loan",
-      "risk-council-hub",
       "risk-council-inspectors",
       "loan-book",
       "loan-financials",
@@ -505,63 +505,6 @@ describe("useRiskCouncilRelay", () => {
   });
 });
 
-describe("hub lookups", () => {
-  const loans = [
-    { loan_id: "1", onchain_status: "Performing" },
-    { loan_id: "2", onchain_status: "WatchList" },
-    { loan_id: "3", onchain_status: "Default" },
-    { loan_id: "4", onchain_status: "Closed" },
-  ];
-
-  it("builds calls only for eligible statuses and merges page-local ops", () => {
-    recordScheduledOp({
-      chainId: STELLAR,
-      call: { fn: "set_default", loanId: 1 },
-    });
-    recordScheduledOp({
-      chainId: STELLAR,
-      call: { fn: "write_down", loanId: 3, amount: "5" },
-    });
-    const ops = renderHook(() => useScheduledOps(STELLAR)).result.current;
-    const calls = hubCallsFor(loans, ops);
-    expect(
-      calls.map(
-        (c) => `${c.call.fn}:${"loanId" in c.call ? c.call.loanId : "-"}`,
-      ),
-    ).toEqual(["set_default:1", "set_default:2", "cure:3", "write_down:3"]);
-    expect(calls[0]!.pageLocal).toBeDefined();
-    expect(calls[1]!.pageLocal).toBeUndefined();
-  });
-
-  it("runs one schedule read per eligible call and keeps the ready times", async () => {
-    mocks.readRiskCouncilSchedule.mockImplementation(
-      async ({ call }: { call: { loanId: number } }) => ({
-        operationId: "x",
-        readyAt: call.loanId === 2 ? 77 : 0,
-      }),
-    );
-    const { result } = renderHook(
-      () => useRiskCouncilHubLookups(STELLAR, loans, [], true),
-      { wrapper: makeWrapper() },
-    );
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(mocks.readRiskCouncilSchedule).toHaveBeenCalledTimes(3);
-    expect(
-      result.current.lookups.filter((l) => l && l.readyAt > 0),
-    ).toHaveLength(1);
-  });
-
-  it("does not look anything up when disabled or on EVM", () => {
-    renderHook(() => useRiskCouncilHubLookups(STELLAR, loans, [], false), {
-      wrapper: makeWrapper(),
-    });
-    renderHook(() => useRiskCouncilHubLookups(EVM, loans, [], true), {
-      wrapper: makeWrapper(),
-    });
-    expect(mocks.readRiskCouncilSchedule).not.toHaveBeenCalled();
-  });
-});
-
 describe("useRiskCouncilRelay schedule bridge", () => {
   it("records the operation id and ready time from the follow-up read", async () => {
     fakeRelayTimers();
@@ -610,8 +553,17 @@ describe("useRiskCouncilRelay schedule bridge", () => {
     expect(ops.result.current[0]!.operationId).toBeUndefined();
   });
 
-  it("does not read the schedule after an execute", async () => {
+  it("reads the schedule before an execute, never after it", async () => {
     fakeRelayTimers();
+    const order: string[] = [];
+    mocks.readSecurityRegistrySchedule.mockImplementation(async () => {
+      order.push("read");
+      return { operationId: "OPS", readyAt: 5 };
+    });
+    mocks.relaySecurityRegistry.mockImplementation(async () => {
+      order.push("relay");
+      return { hash: "SH" };
+    });
     const relay = renderHook(() => useRiskCouncilRelay(), {
       wrapper: makeWrapper(),
     });
@@ -622,10 +574,92 @@ describe("useRiskCouncilRelay schedule bridge", () => {
         chainId: STELLAR,
       });
     });
-    expect(mocks.readSecurityRegistrySchedule).not.toHaveBeenCalled();
+    expect(order).toEqual(["read", "relay"]);
   });
 
-  it("leaves argsXdr empty for a LoanRegistry call", async () => {
+  it("marks an operation scheduled in another session executed by its id", async () => {
+    fakeRelayTimers();
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OTHERSESSION",
+      readyAt: 9,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.get("OTHERSESSION")).toMatchObject({
+      hash: "H",
+      readyAt: 9,
+    });
+  });
+
+  it("marks nothing when the pre-read fails or the schedule is empty, and still executes", async () => {
+    fakeRelayTimers();
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    mocks.readRiskCouncilSchedule.mockRejectedValue(new Error("rpc"));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "ZERO",
+      readyAt: 0,
+    });
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(mocks.relayRiskCouncil).toHaveBeenCalledTimes(2);
+    expect(executed.result.current.size).toBe(0);
+  });
+
+  it("records the riskCouncilArgsXdr of an amend_economics schedule", async () => {
+    fakeRelayTimers();
+    const amend = {
+      fn: "amend_economics",
+      loanId: 4,
+      rateBps: 1450,
+      maturity: 1_816_128_000,
+    } as const;
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OP3",
+      readyAt: 9,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: amend,
+        chainId: STELLAR,
+      });
+    });
+    expect(mocks.riskCouncilArgsXdr).toHaveBeenCalledWith(amend);
+    expect(ops.result.current[0]).toMatchObject({
+      operationId: "OP3",
+      argsXdr: "RCARGSXDR",
+    });
+  });
+
+  it("records the encoded argsXdr for a LoanRegistry call", async () => {
     fakeRelayTimers();
     mocks.readRiskCouncilSchedule.mockResolvedValue({
       operationId: "OP2",
@@ -642,7 +676,8 @@ describe("useRiskCouncilRelay schedule bridge", () => {
         chainId: STELLAR,
       });
     });
-    expect(ops.result.current[0]!.argsXdr).toBeUndefined();
+    expect(mocks.riskCouncilArgsXdr).toHaveBeenCalledWith(SET_DEFAULT);
+    expect(ops.result.current[0]!.argsXdr).toBe("RCARGSXDR");
   });
 });
 
@@ -791,6 +826,31 @@ describe("usePendingOperationExecute", () => {
     });
     expect(keys(spy)).toContain("loan-security");
     await waitFor(() => expect(result.current.hash).toBe("EH"));
+  });
+
+  it("also invalidates the repayment recovery and waterfall keys now, at 5 s and at 15 s", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    await act(async () => {
+      await result.current.mutateAsync(INPUT);
+    });
+    const extra = [
+      "repayment-recovery",
+      "repayment-recovery-access",
+      "loan-waterfall",
+    ];
+    for (const key of [...extra, "loan-book"]) {
+      expect(keys(spy)).toContain(key);
+    }
+    const now = keys(spy).length;
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(keys(spy)).toHaveLength(now * 3);
+    expect(keys(spy).filter((key) => key === "loan-waterfall")).toHaveLength(3);
   });
 
   it("flags matching session operations as executed here", async () => {

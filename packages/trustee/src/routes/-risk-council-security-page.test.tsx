@@ -26,7 +26,9 @@ import {
   accessResult,
   loanBookResult,
   loanEntry,
+  loanRegistryOp,
   loanState,
+  minterOp,
   pendingOp,
   relayResult,
   securityResult,
@@ -38,8 +40,25 @@ vi.mock("@tanstack/react-router", async () => {
   );
   return {
     ...actual,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
+    Link: ({
+      children,
+      to,
+      params,
+      search,
+      "data-testid": testId,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      params?: Record<string, string>;
+      search?: { chain: number };
+      "data-testid"?: string;
+    }) => (
+      <a
+        data-testid={testId}
+        href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}
+      >
+        {children}
+      </a>
     ),
   };
 });
@@ -825,7 +844,7 @@ describe("Security page — scheduled operations", () => {
     ).toHaveTextContent("Release this record?");
   });
 
-  it("lists only SecurityRegistry operations", () => {
+  it("lists other contracts' operations with an owner link instead of Execute", () => {
     setup(
       DELAYED,
       served(
@@ -834,15 +853,92 @@ describe("Security page — scheduled operations", () => {
           operation_id: ID_WAITING,
           target_kind: "loan_registry",
           function: "set_default",
-          args: [7],
+          args: [4471],
         }),
       ),
     );
     renderRoute();
-    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(2);
     expect(
       screen.queryByTestId(`${PENDING}-${ID_WAITING}-button`),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-${ID_WAITING}-link`)).toHaveAttribute(
+      "href",
+      `/risk-council/escalate/4471?chain=${STELLAR}`,
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-link`),
+    ).toHaveTextContent("Open Escalate to Default");
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("does not execute a security function served with another target kind", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_WAITING,
+          target_kind: "other",
+          function: "set_terms",
+        }),
+      ),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-link`),
+    ).toHaveTextContent("Open Security");
+  });
+
+  it("adds the loan-book operations of the loan with their owner links", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({
+          pending_operations: [
+            loanRegistryOp("write_down", { args: [4471, "5000000"] }),
+            minterOp({ args: [4471, 2, HASH_A] }),
+          ],
+        }),
+      ]) as never,
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(3);
+    const writeDownId = loanRegistryOp("write_down").operation_id;
+    const minterId = minterOp().operation_id;
+    expect(
+      screen.getByTestId(`${PENDING}-${writeDownId}-link`),
+    ).toHaveAttribute("href", `/risk-council/writedown/4471?chain=${STELLAR}`);
+    expect(
+      screen.getByTestId(`${PENDING}-${writeDownId}-link`),
+    ).toHaveTextContent("Open Default resolution");
+    expect(screen.getByTestId(`${PENDING}-${minterId}-link`)).toHaveAttribute(
+      "href",
+      `/loans/4471?chain=${STELLAR}`,
+    );
+    expect(
+      screen.queryByTestId(`${PENDING}-${writeDownId}-button`),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("lists an operation served by both sources once and keeps the security copy", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, args_xdr: "SECURITYCOPY" }));
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({
+          pending_operations: [{ ...READY_SET_TERMS, args_xdr: "BOOKCOPY" }],
+        }),
+      ]) as never,
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_READY}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ argsXdr: "SECURITYCOPY" }),
+    );
   });
 
   it("keeps an executed row with its hash until the API stops serving it", () => {

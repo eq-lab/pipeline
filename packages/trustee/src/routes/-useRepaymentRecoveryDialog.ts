@@ -13,6 +13,7 @@ import {
   useScheduleReverseRepay,
   type RecoveryRow,
 } from "@/api/useRepaymentRecovery";
+import { ENV } from "@/lib/env";
 import { findLoanEntry } from "@/lib/loanRoute";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
@@ -32,8 +33,11 @@ import {
   type RecoveryCardState,
   type ReverseAction,
 } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 
 export interface RecoveryDialogView {
+  pending: PendingOpItem[];
+  pendingTarget: string;
   loading: boolean;
   loadError: UserFacingError | null;
   candidates: CandidateRow[];
@@ -80,6 +84,13 @@ export function useRepaymentRecoveryDialog(
   onchainStatus: string | null,
   open: boolean,
 ): RecoveryDialogView {
+  const loanBook = useLoanBook();
+  const loanNumber = Number(loanId);
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: Number.isInteger(loanNumber) ? loanNumber : null,
+    entry: findLoanEntry(loanBook.data?.loans, chainId, loanId),
+  });
   const candidatesQuery = useRecoveryCandidates(chainId, loanId, onchainStatus);
   const rows = useMemo(
     () => candidatesQuery.data?.rows ?? [],
@@ -164,6 +175,8 @@ export function useRepaymentRecoveryDialog(
   const reverseMode = action === "schedule" ? "schedule" : "execute";
 
   return {
+    pending,
+    pendingTarget: ENV.STELLAR_YIELD_MINTER_ID,
     loading: candidatesQuery.isLoading,
     loadError: candidatesQuery.error
       ? toUserError(candidatesQuery.error, "Failed to load the repayments.")
@@ -187,7 +200,11 @@ export function useRepaymentRecoveryDialog(
     reverse: () => {
       if (selectedId === null) return;
       void reverseMutation
-        .mutateAsync({ loanId: Number(loanId), repaymentId: selectedId })
+        .mutateAsync({
+          loanId: Number(loanId),
+          repaymentId: selectedId,
+          chainId,
+        })
         .catch(() => {});
     },
     step2: {

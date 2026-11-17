@@ -366,6 +366,7 @@ function RiskCouncilSecurity() {
                 testId="risk-council-security-pending"
                 items={view.pending}
                 chainId={view.chainId}
+                owner="security"
                 executeGate={view.executeGate}
                 expectedTarget={view.expectedTarget}
                 confirmTextFor={pendingConfirmText}
