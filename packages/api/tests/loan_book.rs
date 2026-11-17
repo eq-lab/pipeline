@@ -408,7 +408,7 @@ fn collateral_and_ltv_computed_from_map() {
     // ltv = principal / collateral = 100k / 125k = 0.8000.
     assert_eq!(r.loans[0].ltv.as_deref(), Some("0.8000"));
     assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
-    // coverage = total_collateral / Σ senior = 125k / 80k = 1.5625 → "1.56".
+    // coverage = collateral / Σ outstanding senior = 125k / 80k = 1.5625 → "1.56".
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.56"));
 }
 
@@ -446,7 +446,7 @@ fn missing_price_is_null_and_summary_sums_only_priced() {
     assert_eq!(b.ltv, None);
 
     // total_collateral counts only the priced loan (A); coverage denominator is
-    // Σ senior over ALL active loans (A 80k + B 40k = 120k): 125k / 120k → "1.04".
+    // Σ outstanding senior over ALL active loans (A 80k + B 40k = 120k): 125k / 120k → "1.04".
     assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.04"));
 }
@@ -463,6 +463,55 @@ fn zero_collateral_yields_value_zero_and_null_ltv() {
     assert_eq!(r.summary.total_collateral.as_deref(), Some("0.000000"));
     // coverage = 0 / 80k = "0.00".
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("0.00"));
+}
+
+#[test]
+fn coverage_is_over_outstanding_senior_not_the_original_tranche() {
+    // Day 0: loan A only, senior 80k with 30k repaid → outstanding 50k. Collateral 125k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(30_000);
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    // 125k / 50k = 2.50, not 125k / 80k = 1.56.
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("2.50"));
+}
+
+#[test]
+fn coverage_leaves_out_the_collateral_of_a_loan_with_nothing_outstanding() {
+    // Day 60: A (80k outstanding, collateral 125k) and B (not disbursed, collateral 75k).
+    let mut loans = fixture_loans();
+    loans[1].snapshot.disbursed = BigDecimal::from(0_i64);
+    let collateral = collateral_map(&[(1, usdc(125_000)), (2, usdc(75_000))]);
+    let r = at_with(60, &loans, &[], &collateral);
+    // total_collateral still counts both loans.
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("200000.000000"));
+    assert_eq!(r.summary.deployed_senior, "80000.000000");
+    // coverage = 125k / 80k = 1.5625 → "1.56"; B's 75k covers no debt.
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.56"));
+}
+
+#[test]
+fn coverage_null_when_only_loans_with_nothing_outstanding_are_priced() {
+    // Day 60: A outstanding 80k but unpriced; B not disbursed, collateral 75k.
+    let mut loans = fixture_loans();
+    loans[1].snapshot.disbursed = BigDecimal::from(0_i64);
+    let collateral = collateral_map(&[(2, usdc(75_000))]);
+    let r = at_with(60, &loans, &[], &collateral);
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("75000.000000"));
+    assert_eq!(r.summary.senior_debt_coverage, None);
+}
+
+#[test]
+fn coverage_null_when_nothing_is_outstanding() {
+    // Day 0: loan A fully repaid, collateral 125k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(80_000);
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(80_000);
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
+    assert_eq!(r.summary.senior_debt_coverage, None);
 }
 
 // ── Trustee "Loans" page metrics (deployed senior, at-risk, top concentration) ──
