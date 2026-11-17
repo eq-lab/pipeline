@@ -8,5 +8,6 @@ export default defineConfig(() => {
   const base = { frontend, trustee }[process.env.E2E_VITE_APP ?? ""];
   const envDir = process.env.E2E_VITE_ENV_DIR;
   if (!base || !envDir) throw new Error("E2E_VITE_APP (frontend|trustee) and E2E_VITE_ENV_DIR are required");
-  return mergeConfig(base, { envDir });
+  // The LP app's test wallet reads its key from E2E_WALLET_SECRET, which only this config exposes (see packages/frontend/src/wallet/README.md).
+  return mergeConfig(base, process.env.E2E_VITE_APP === "frontend" ? { envDir, envPrefix: ["VITE_", "E2E_WALLET_SECRET"] } : { envDir });
 });

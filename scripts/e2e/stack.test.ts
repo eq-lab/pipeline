@@ -28,7 +28,7 @@ const G = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const envInput = {
   ports: PORTS,
   addresses,
-  accounts: { issuer: G, verifierSecret: "SV", relayerSecret: "SR", depositCustodian: G, withdrawalCustodian: G, capitalWallet: G },
+  accounts: { issuer: G, verifierSecret: "SV", relayerSecret: "SR", depositCustodian: G, withdrawalCustodian: G, capitalWallet: G, browserLpSecret: "SB" },
   jwt: { privatePem: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n", publicPem: "-----BEGIN PUBLIC KEY-----\ny\n-----END PUBLIC KEY-----\n" },
   startLedger: 1234,
 };

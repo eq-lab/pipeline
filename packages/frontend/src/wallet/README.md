@@ -874,6 +874,40 @@ with the connected address and the configured network passphrase, and returns
 link flow. Rejects on the mock path (`[stellar mock] signMessage is not mockable`)
 and when the wallet does not support SEP-0053 (e.g. Albedo, Rabet).
 
+### E2E test wallet
+
+A Stellar Wallets Kit module (`@pipeline/wallet-connect/e2e-wallet`,
+`packages/wallet-connect/src/stellar/e2eWallet.ts`) that signs transactions and
+SEP-0053 messages with the e2e run's generated key, so an agent-driven browser
+sends real Soroban transactions on the local stack (`docs/e2e.md`). Unlike the
+localStorage mock wallet, nothing is mocked: every write goes through
+`signTransaction` and the chain.
+
+Guards — the module is registered only when **all** hold:
+
+- `import.meta.env.DEV` (a `vite dev` server). `stellar/config.ts` loads the
+  module with a dynamic `import()` inside a branch on the literal
+  `import.meta.env.DEV`, so a production build drops it.
+- `VITE_E2E_WALLET` is set (the flag).
+- The configured passphrase is the local standalone one
+  (`Standalone Network ; February 2017`); the module also refuses to sign for
+  any other passphrase.
+
+The key is in `E2E_WALLET_SECRET`, not a `VITE_*` variable: a production build
+inlines every `VITE_*` value (`lib/env.ts` reads `import.meta.env[key]`), while
+`E2E_WALLET_SECRET` is exposed only by `scripts/e2e/vite.e2e.config.mts`, which
+`scripts/e2e/up.sh` runs with `envDir` at `$E2E_HOME/stacks/<tag>/`. The
+developer `.env` never carries it.
+
+When registered, the Connect modal's Soroban tab lists an **E2E test wallet**
+row first (`useStellarConnectors().e2eWalletId`); it connects like any other
+Soroban wallet.
+
+`scripts/e2e/assert-prod-wallet.ts` (CI, JS job) builds the LP app in
+production mode with `VITE_E2E_WALLET` and a dummy `E2E_WALLET_SECRET` set and
+fails if the bundle contains the module's marker (`pipeline-e2e-wallet`) or
+the dummy secret.
+
 ### `useStellarToken()`
 
 ```ts
