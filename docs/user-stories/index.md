@@ -437,3 +437,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1938 EVM SecurityRegistry indexer: records, terms, marks, margin calls, inspections (SecurityRegistry + RecordNft)](https://github.com/eq-lab/pipeline/issues/1938) | [1938-evm-security-registry-indexer.md](./epic-1937/1938-evm-security-registry-indexer.md) | Initial |
+| [#1939 EVM AccessManager indexer: scheduled / canceled / executed operations with calldata](https://github.com/eq-lab/pipeline/issues/1939) | [1939-evm-access-manager-indexer.md](./epic-1937/1939-evm-access-manager-indexer.md) | Initial |
+

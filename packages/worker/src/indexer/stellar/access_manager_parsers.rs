@@ -14,6 +14,9 @@ use crate::indexer::stellar::parsers::{sc_address_to_strkey, synthesise_log_inde
 use crate::indexer::stellar::rpc::RawEvent;
 use shared::access_manager_repo::{OP_EVENT_CANCELED, OP_EVENT_EXECUTED, OP_EVENT_SCHEDULED};
 
+use crate::indexer::access_manager_sync::{num_param, str_param};
+pub use crate::indexer::access_manager_sync::{AmTopic, CanceledRow, LoanRef};
+
 pub const ACCESS_MANAGER_ALLOW_LISTED_TOPICS: [&str; 8] = [
     "role_granted",
     "role_revoked",
@@ -24,15 +27,6 @@ pub const ACCESS_MANAGER_ALLOW_LISTED_TOPICS: [&str; 8] = [
     "target_closed",
     "target_admin_delay_updated",
 ];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AmTopic {
-    Scheduled,
-    Canceled,
-    Executed,
-    AllowListed,
-    Unknown,
-}
 
 pub fn classify_access_manager_topic(topic: &str) -> AmTopic {
     match topic {
@@ -186,14 +180,6 @@ pub fn dispatch_access_manager(raw: &RawEvent) -> Option<StellarLog> {
     parsed
 }
 
-fn str_param(v: &Value, key: &str) -> Option<String> {
-    v.get(key)?.as_str().map(str::to_owned)
-}
-
-fn num_param<T: std::str::FromStr>(v: &Value, key: &str) -> Option<T> {
-    v.get(key)?.as_str()?.parse().ok()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduledRow {
     pub operation_id: String,
@@ -213,21 +199,6 @@ impl ScheduledRow {
             when: num_param(p, "when")?,
             target: str_param(p, "target")?,
             function: str_param(p, "function")?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CanceledRow {
-    pub operation_id: String,
-    pub nonce: u32,
-}
-
-impl CanceledRow {
-    pub fn from_params(p: &Value) -> Option<Self> {
-        Some(Self {
-            operation_id: str_param(p, "operation_id")?,
-            nonce: num_param(p, "nonce")?,
         })
     }
 }
@@ -486,13 +457,6 @@ pub struct TargetIds {
     pub loan_registry: Option<String>,
     pub minter: Option<String>,
     pub security_registry: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoanRef {
-    Loan(u32),
-    Record(u32),
-    None,
 }
 
 const LOAN_REGISTRY_FUNCTIONS: [&str; 6] = [

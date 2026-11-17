@@ -5,6 +5,9 @@ use shared::access_manager_repo::{INSERT_SCHEDULED_SQL, MARK_CANCELED_SQL, MARK_
 const MIGRATION: &str =
     include_str!("../migrations/20261117000001_access_manager_operations_schedule_key.sql");
 
+const CALLDATA_MIGRATION: &str =
+    include_str!("../migrations/20261118000002_access_manager_operations_calldata.sql");
+
 fn flat(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -30,6 +33,15 @@ fn the_insert_conflict_target_is_the_migration_key() {
         )
     );
     assert!(insert.ends_with("DO NOTHING"));
+}
+
+#[test]
+fn the_insert_lists_the_calldata_column_and_its_placeholder() {
+    let insert = flat(INSERT_SCHEDULED_SQL);
+    assert!(insert.contains("args_xdr, calldata, args_json,"));
+    assert!(insert.contains("$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13,"));
+    assert!(insert.contains("$18)"));
+    assert!(flat(CALLDATA_MIGRATION).contains("ADD COLUMN IF NOT EXISTS calldata TEXT NULL"));
 }
 
 #[test]

@@ -124,16 +124,16 @@ the chain-level reason for each.
     transaction together with the cursor.
   - Optional contracts are wired through `register_*_handler`, which wraps `ContractLogMapper`. Their collision
     checks sit in `run_indexer_job`; see `plusd_transfers.rs`.
-  - `run_indexer_job` spawns no supervised task yet. #1938 adds the first one (`evm-security-registry-sync`),
-    importing `crate::indexer::stellar::supervise` as is.
+  - `run_indexer_job` spawns the supervised `evm-security-registry-sync` task from #1938 and imports the chain-neutral
+    `crate::indexer::supervise` (#1938 moved it from `stellar/supervise.rs`, which re-exports it).
 - **#1938, the parallel sibling** (`origin/feat/1938-evm-security-registry-indexer`, plan only). This plan aligns
   with it:
   - Config: `IndexerJobSettings.security_registry: Option<EvmSecurityRegistryConfig { registry, record_nft,
     reader }>` from `CHAIN_<id>_EVM_INDEXER_SECURITY_{REGISTRY,RECORD_NFT,REGISTRY_READER}_ADDRESS`.
   - Format: EIP-55 `contract_address`, and `SecurityRecordRegistered` params `loan_id` / `record_id` as decimal
     strings, so `RECORD_LOAN_SQL` reads EVM records unchanged.
-  - Structure: chain-neutral sync code moves out of `indexer/stellar/` with re-exports, and `supervise.rs` stays
-    where it is.
+  - Structure: chain-neutral sync code moves out of `indexer/stellar/` with re-exports; `supervise.rs` is already at
+    `indexer/supervise.rs`.
   - Migration `20261118000001_security_registry_evm.sql`.
 
 ### Decisions (planner; mirror Stellar)
@@ -284,8 +284,8 @@ loop, constants, backoff, supervision, close SQL, insert SQL, record lookup, `ex
 - **Refactor safety.** Chain-neutral items move out of `indexer/stellar/` with `pub use` re-exports at the old paths.
   Every Stellar test (`stellar_access_manager_*.rs`) must compile and pass unchanged; the only exception is the
   support-module split in step 9.
-- **`supervise.rs` stays under `indexer/stellar/`.** It is imported from the EVM side, as #1938 does. The tech-debt
-  entry #1938 adds for this (or a new one, if #1938 has not landed) names #1939 as a second EVM user.
+- **`supervise.rs` is at `indexer/supervise.rs`.** #1938 moved it there with a re-export at the old Stellar path, so
+  the EVM tasks import it directly and no tech-debt entry is needed.
 - **Address case.** The sync loop's `contract_id` must be `am.to_checksum(None)`, exactly what `ContractLogMapper`
   writes. Otherwise `LIST_ROWS_AFTER_SQL` finds nothing. Target comparisons parse the row's `target` into an
   `Address`, so case never matters in the resolver. #1941 must compare EIP-55 strings on the read side.
@@ -346,7 +346,7 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
 
 ## Implementation Steps
 
-1. **Migration** `packages/shared/migrations/20261118000002_access_manager_operations_calldata.sql`. Re-check the
+1. **Migration** (done) `packages/shared/migrations/20261118000002_access_manager_operations_calldata.sql`. Re-check the
    version against `main` and #1938 first.
    - Header `-- spec: docs/references/access-manager-events.md#table` and a `-- Rollback:` block, in the style of
      `20261117000001`: drop the constraint, drop the column, delete the `_sqlx_migrations` row.
@@ -354,13 +354,13 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
    - `access_manager_operations_one_args_encoding CHECK (args_xdr IS NULL OR calldata IS NULL)`, added in a `DO $$`
      block guarded by a `pg_constraint` lookup, so a re-run is a no-op.
    - No index or data change.
-2. **Shared repo** `packages/shared/src/access_manager_repo.rs`:
+2. **Shared repo** (done) `packages/shared/src/access_manager_repo.rs`:
    - `NewScheduledOp` gains `calldata: Option<String>`. `expires_at()` is unchanged.
    - `INSERT_SCHEDULED_SQL` gains the `calldata` column and a placeholder. The `ON CONFLICT` target and `DO NOTHING`
      are unchanged. `AccessManagerRepo::apply` binds it.
    - Everything else is unchanged: `MARK_*`, `RECORD_LOAN_SQL`, the watermark SQL, `LIST_ROWS_AFTER_SQL`,
      `HAS_PENDING_CALL_SQL`, `LIST_PENDING_LOAN_OPS_SQL` and `PendingOpRow`.
-3. **Chain-neutral sync core**: new `packages/worker/src/indexer/access_manager_sync.rs`, with header
+3. **Chain-neutral sync core** (done): new `packages/worker/src/indexer/access_manager_sync.rs`, with header
    `// spec: docs/references/access-manager-events.md#sync-loop`, declared in `indexer/mod.rs`.
    - Move out of `stellar/access_manager_sync.rs`:
      - `ACCESS_MANAGER_SYNC_INTERVAL`, `ROWS_PER_CYCLE`, `CYCLE_BUDGET`;
@@ -382,8 +382,8 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
    - `run_cycle(chain_id, store, resolver, backoff)` keeps the budget and the panic guard.
    - `pub async fn run_sync_loop(chain_id, store: &dyn AmSyncStore, resolver: &mut dyn AmRowResolver) ->
      Result<()>`: sleep `ACCESS_MANAGER_SYNC_INTERVAL` when `applied < ROWS_PER_CYCLE`.
-   - `KeyedBackoff` is imported from `crate::indexer::stellar::supervise`, unchanged.
-4. **Stellar becomes a resolver** (refactor only, no behaviour change):
+   - `KeyedBackoff` is imported from `crate::indexer::supervise`.
+4. **Stellar becomes a resolver** (done) (refactor only, no behaviour change):
    - `stellar/access_manager_sync.rs` keeps `TxFetch`, `TxEnvelopeSource`, `AmSyncConfig`, `classify_transaction`,
      `RpcTxSource`, `TX_FETCH_TIMEOUT`, `fetch_cached`, `resolve_schedule` and `resolve_execute`.
      - New `StellarRowResolver<'a> { tx: &'a dyn TxEnvelopeSource, cfg: &'a AmSyncConfig, cache: HashMap<String,
@@ -397,7 +397,7 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
      - `pub use crate::indexer::access_manager_sync::{AmSyncStore, RepoStore, Retry, ACCESS_MANAGER_SYNC_INTERVAL,
        ROWS_PER_CYCLE, CYCLE_BUDGET};`.
    - `stellar/access_manager_parsers.rs`: `pub use crate::indexer::access_manager_sync::{AmTopic, CanceledRow, LoanRef};`.
-5. **EVM parser**: new `packages/worker/src/indexer/access_manager_evm_parsers.rs`, header
+5. **EVM parser** (done): new `packages/worker/src/indexer/access_manager_evm_parsers.rs`, header
    `// spec: docs/references/access-manager-events.md#evm-encoding`. It is pure and DB-free; naming follows #1938's
    `security_registry_evm_parsers.rs`.
    - `sol!` events: the 3 operation events and the 9 allow-listed `IAccessManager` events (topic0 only).
@@ -431,7 +431,7 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
    - `pub fn loan_ref(target: Address, function: &str, args: &[DynSolValue], targets: &EvmTargets) -> LoanRef`
      follows Decision 7. Use const name lists like Stellar's `LOAN_REGISTRY_FUNCTIONS`. Arg 0 must be a
      `Uint(_, 256)` that fits `u32`; otherwise `None` with a `warn`.
-6. **EVM resolver and loop**: new `packages/worker/src/indexer/access_manager_evm_sync.rs`, header
+6. **EVM resolver and loop** (done): new `packages/worker/src/indexer/access_manager_evm_sync.rs`, header
    `// spec: docs/references/access-manager-events.md#evm-sync-loop`.
    - `pub struct EvmAmSyncConfig { contract_id: String /* EIP-55 */, targets: EvmTargets }`.
    - `pub struct EvmRowResolver<'a> { cfg: &'a EvmAmSyncConfig }` implements `AmRowResolver`:
@@ -453,12 +453,12 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
      `sync_rows`, mirroring the Stellar entry point for tests.
    - `pub async fn run_access_manager_sync_loop(repo: AccessManagerRepo, chain_id, cfg: EvmAmSyncConfig) ->
      Result<()>`. It builds `RepoStore { repo, chain_id, contract_id }` and calls `run_sync_loop`.
-7. **Config** `packages/worker/src/indexer/config.rs`:
+7. **Config** (done) `packages/worker/src/indexer/config.rs`:
    - Add `IndexerJobSettings.access_manager_address: Option<Address>` from `{ip}ACCESS_MANAGER_ADDRESS`, via
      `env_nonblank` + `parse_evm_address`.
    - If #1938 has not merged yet, also add `security_registry: Option<EvmSecurityRegistryConfig>` exactly as #1938's
      plan step 7 defines it: parsing and pairing errors only, no handler.
-8. **Wiring** (`packages/worker/src/indexer/mod.rs`, plus the handler module):
+8. **Wiring** (done) (`packages/worker/src/indexer/mod.rs`, plus the handler module):
    - `access_manager_evm_parsers.rs`:
      - `pub fn reject_access_manager_collision(chain_id, am: Address, roles: &[(&str, Address)]) -> Result<()>`,
        following the `reject_plusd_collision` pattern. Its error names both keys, and `ASSET_ADDRESS` maps to
@@ -479,7 +479,7 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
         - `security_registry` / `record_nft` from `settings.security_registry`.
 
      When the key is unset, none of this runs.
-9. **Test support split** (no Stellar behaviour change). Move the chain-neutral fakes `Op`, `StoreState`,
+9. **Test support split** (done) (no Stellar behaviour change). Move the chain-neutral fakes `Op`, `StoreState`,
    `MemStore`, `newest_before` and its `AmSyncStore` impl from `packages/worker/tests/stellar_access_manager_support/mod.rs`
    to a new `packages/worker/tests/access_manager_support/mod.rs`.
    - `stellar_access_manager_support/mod.rs` includes it with `#[path = "../access_manager_support/mod.rs"] mod
@@ -491,7 +491,7 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
      - `scheduled_row` / `canceled_row` / `executed_row` `AmLogRow` builders;
      - `config()`, which returns the `EvmAmSyncConfig`;
      - the Anvil golden constants from step 10.
-10. **Anvil fixtures** (manual, once). Keep the recipe in the PR description and commit the results as test
+10. **Anvil fixtures** (done) (manual, once). Keep the recipe in the PR description and commit the results as test
     constants:
     1. Start `anvil`. Deploy OpenZeppelin `AccessManager(admin)` from `pipeline-contracts/lib/openzeppelin-contracts`
        with `forge create`, then deploy a trivial target with a payable fallback.
@@ -502,8 +502,8 @@ _None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, 
        `operationId`s into `evm_access_manager_support/mod.rs`.
 
     Never point anything at the local pipeline database.
-11. **Docs and env**: see Docs to Update.
-12. **Checks:**
+11. **Docs and env** (done): see Docs to Update.
+12. **Checks:** (done)
     - `cargo fmt --all --check` and `cargo clippy --all -- -D warnings`;
     - `cargo test -p pipeline-worker -p shared -p api` (the API crate confirms the #1922 tests still pass);
     - `scripts/check-chain-env-names.sh` and `npx tsx scripts/lint-docs.ts`.
@@ -622,5 +622,5 @@ or `POSTGRES_URL`. The layout mirrors the Stellar suites one-to-one.
   - Role events produce nothing.
   - Live-chain stories are marked as needing #1944 on Hoodi.
 - `docs/product-specs/loan-security-state.md`: no change. API behaviour is unchanged; #1941 updates it.
-- `docs/exec-plans/tech-debt-tracker.md`: add #1939 to the "`supervise.rs` under `indexer/stellar/` serves EVM"
-  entry. #1938 adds that entry; create it if #1938 has not landed. No EVM counterpart of TD-187 is needed.
+- `docs/exec-plans/tech-debt-tracker.md`: no change. #1938 moved `supervise.rs` to `indexer/supervise.rs`, so there
+  is no `supervise.rs` debt entry. No EVM counterpart of TD-187 is needed.
