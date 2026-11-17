@@ -109,12 +109,14 @@ pub struct LoanBookSummary {
     ///
     /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
-    /// Senior debt coverage = `total_collateral / Σ senior_tranche`, 2-decimal
-    /// string (e.g. `"1.50"`). The denominator is Σ senior tranche over **all**
-    /// active loans (not just priced ones), so unpriced loans make coverage more
-    /// conservative.
+    /// Senior debt coverage = `Σ collateral of active loans with outstanding senior > 0 /
+    /// Σ outstanding senior` (the book-level CCR), 2-decimal string (e.g. `"1.50"`). The
+    /// denominator is `deployed_senior`, over **all** active loans (not just priced ones),
+    /// so unpriced loans make coverage more conservative; collateral of a loan with nothing
+    /// outstanding (not yet disbursed, or fully repaid) covers no debt and is left out.
     ///
-    /// `null` when `total_collateral` is unavailable or Σ senior tranche is zero.
+    /// `null` when no active loan with outstanding senior has a priced collateral value, or
+    /// Σ outstanding senior is zero.
     pub senior_debt_coverage: Option<String>,
     /// Outstanding-senior-weighted current senior interest rate as a decimal fraction
     /// (e.g. `"0.112000"` = 11.2 %), 6-decimal string:
@@ -1738,8 +1740,9 @@ fn principal_of(loan: &LoanSnapshotRow) -> BigDecimal {
 ///
 /// `collateral_by_loan` maps `loan_ref(chain_id, loan_id)` → collateral value in micro-USDC
 /// (the valuation record's collateral value × 1e6); loans absent from the map have no
-/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
-/// `senior_debt_coverage` are `null` when no active loan has a value.
+/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` is
+/// `null` when no active loan has a value, `senior_debt_coverage` when no active loan with
+/// outstanding senior has one.
 ///
 /// `disbursement_by_loan` maps `loan_ref(chain_id, loan_id)` → `off_ramp_complete`. Loans absent
 /// from the map are treated as NOT complete (still `Disbursing`), matching the
@@ -1944,11 +1947,13 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // Collateral aggregation (micro-USDC). `any_collateral` tracks whether at least
     // one active loan had a priced value, so a book with none reports `null`.
     let mut total_collateral = BigDecimal::from(0);
-    // total_senior = Σ ORIGINAL senior (used by senior_debt_coverage);
     // total_outstanding_senior = Σ OUTSTANDING senior (net of repaid), used by
-    // deployed_senior + top_concentration so all "senior exposure" figures share a basis.
-    let mut total_senior = BigDecimal::from(0);
+    // deployed_senior, senior_debt_coverage and top_concentration so all "senior
+    // exposure" figures share a basis. covered_collateral = collateral of the loans
+    // that have outstanding senior (the coverage numerator).
     let mut total_outstanding_senior = BigDecimal::from(0);
+    let mut covered_collateral = BigDecimal::from(0);
+    let mut any_covered_collateral = false;
     // Outstanding senior per commodity, for the top-concentration tile.
     let mut senior_by_commodity: HashMap<&str, BigDecimal> = HashMap::new();
     let mut any_collateral = false;
@@ -1974,7 +1979,6 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             comp.outstanding_senior.clone(),
             BigDecimal::from(comp.duration_days),
         ));
-        total_senior += &s.original_senior_tranche;
         total_outstanding_senior += &comp.outstanding_senior;
         *senior_by_commodity
             .entry(s.commodity.as_str())
@@ -1982,6 +1986,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         if let Some(c) = &comp.collateral {
             any_collateral = true;
             total_collateral += c;
+            if comp.outstanding_senior > zero {
+                any_covered_collateral = true;
+                covered_collateral += c;
+            }
         }
 
         entries.push(comp.entry);
@@ -2009,13 +2017,14 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         .and_then(|m| m.with_scale_round(0, RoundingMode::HalfUp).to_i64());
 
     // total_collateral = Σ per-loan collateral (only loans that had a value);
-    // null when none did. Coverage = total_collateral / Σ senior, 2 decimals.
+    // null when none did. Coverage = covered_collateral / Σ outstanding senior, 2 decimals.
     let total_collateral_str = any_collateral.then(|| base6_to_decimal_string(&total_collateral));
-    let senior_debt_coverage = (any_collateral && total_senior > zero).then(|| {
-        (&total_collateral / &total_senior)
-            .with_scale_round(2, RoundingMode::HalfUp)
-            .to_plain_string()
-    });
+    let senior_debt_coverage =
+        (any_covered_collateral && total_outstanding_senior > zero).then(|| {
+            (&covered_collateral / &total_outstanding_senior)
+                .with_scale_round(2, RoundingMode::HalfUp)
+                .to_plain_string()
+        });
 
     // ── Trustee "Loans" page metrics ──────────────────────────────────────────
     // At-risk = Σ outstanding senior of at-risk loans, computed over the FULL `loans`
