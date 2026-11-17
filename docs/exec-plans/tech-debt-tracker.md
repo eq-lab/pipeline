@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-188.**
+**Next free number: TD-189.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.

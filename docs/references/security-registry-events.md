@@ -16,7 +16,7 @@ EVM source of truth: `pipeline-contracts@150631a` (`src/securityRegistry/Securit
 | D4 | "Not found" | `Error(Contract, #1 / #14 / #25)` in the message | the 4-byte selectors of `SecurityRegistryNonExistentRecord()`, `SecurityRegistryNoTerms()` and `SecurityRecordNftNonExistentInspection()` in the revert data |
 | D5 | Event decoding | field names over ScVal maps | `sol!` events, positional ABI decoding, same stored names and params |
 | D6 | Amount scale and par mark | raw 7 dp, USD par `10000000` | raw 6 dp, USD par `1000000` (`PAR_VALUE`) |
-| D7 | Id width | `u32` | `uint256`; parsers store the decimal string verbatim, views error and the fold skips ids above `u32::MAX` |
+| D7 | Id width | `u32` | `uint256`; parsers store the decimal string verbatim. Views error on ids above `u32::MAX`; the repo reads ids as `bigint` (SQL cast) and drops values above `u32::MAX` from the result lists. A stored id at or above 2^63 would fail the cast (the cycle errors and is retried), but EVM ids are counters, so the bound is unreachable in practice |
 | D8 | Address text | Strkey `G…` / `C…` | EIP-55 |
 | D9 | `Terms` | 12 fields | plus `defaultRatioBps`, `originatorFeeRate`, `defaultBreachAt` in nullable columns (`NULL` on Stellar) |
 | D10 | Margin-call history | `open` / `price_stale` / `cured` | plus `default_breach`, `default_breach_price_stale`, `default_breach_cleared` |
@@ -124,7 +124,7 @@ That is 25 stored events: 21 from the registry and 4 from the RecordNft. `Defaul
 
 The legacy CollateralRegistry dispatcher warns once per process when it sees a topic that exists only on the SecurityRegistry (`record_registered`, `terms_set`, `inspection_recorded`, …); this means the id was configured under the legacy key by mistake. Its return values and stored rows are unchanged.
 
-**EVM.** The legacy EVM CollateralRegistry parser warns once per process, with the same meaning, when a log it could not parse carries a topic0 that only the SecurityRegistry or RecordNft emits (`TermsSet`, `RecordRegistered`, `InspectionRecorded`, …). `Revalued`, `DocAdded` and `Paused` / `Unpaused` are excluded because their topic0s are shared with other contracts. The text names `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS`.
+**EVM.** The legacy EVM CollateralRegistry parser warns once per process, with the same meaning, when a log it could not parse carries a topic0 that only the SecurityRegistry or RecordNft emits (`TermsSet`, `RecordRegistered`, `InspectionRecorded`, …). `Revalued`, `DocAdded`, `LoanRegistrySet` and `Paused` / `Unpaused` are excluded because their topic0s are shared with the legacy CollateralRegistry or other contracts. The text names `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS`.
 
 ## State without its own event
 
@@ -177,7 +177,7 @@ The lot latest inspection mirrors the on-chain `LotLatestInspection` that caps a
 
 - *Head and height (D3).* The source's head is `eth_blockNumber − LOG_CONFIRMATIONS_DELAY`, the same head as the indexer's, so `SNAPSHOT_MAX_LAG` stays 20. Every view read first takes that head, names it in the `eth_call` and returns it as its height; the call is not pinned to the cursor. Snapshots wait in `hold` / `release_ready` until the cursor passes that height, exactly as on Stellar. Reads target a block 12 behind the node's head, so non-archive nodes (about 128 recent states) serve them.
 - *Views.* `Reader.record(id)` returns the registry record and the RecordNft details in one call; `RecordNft.inspection(id)` and `inspectors()`; registry `terms`, `extensionConsents`, `paused` and `loanRegistry`; `Reader.coverageDetail(loanId)`; `LoanRegistry.loanMoney(loanId)`. `coverageDetail` and `loanMoney` are two reads, each at its own head.
-- *Not found (D4).* The source classifies a read as "missing" by the revert selector (`is_missing_record`, `is_missing_inspection`), and `terms` returns `None` on the `SecurityRegistryNoTerms` selector, as Stellar returns `terms: null` on `#14`. Revert data comes from the JSON-RPC error payload (`data` as a hex string or nested JSON, or hex in the `message`).
+- *Not found (D4).* The source classifies a read as "missing" by the revert selector (`is_missing_record`, `is_missing_inspection`), and `terms` returns `None` on the `SecurityRegistryNoTerms` selector, as Stellar returns `terms: null` on `#14`. Revert data comes only from the JSON-RPC error payload's `data` field (a hex string, or nested `data.data`); its first 4 bytes are matched against the three selectors. Free text such as `message` is never scanned, and an unknown shape is not "missing" but a normal error that the loop retries.
 - *Two emitters (D2).* Every worker-side `contract_logs` query takes the list of log addresses (`[registry, nft]`), so the fold receives one event stream ordered by `(block_number, log_index)`; the loan-registry arm of the known-loans query stays on the configured loan registry.
 
 1. **Snapshot reads.** Simulate the views a record, inspection, loan or the contract needs and upsert them with `as_of_ledger = simulateTransaction.latestLedger`:

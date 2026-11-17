@@ -769,6 +769,20 @@ fn the_security_only_trap_warns_without_panicking() {
 }
 
 #[test]
+fn the_security_only_trap_excludes_topics_shared_with_the_legacy_registry() {
+    for (topic, expected) in [
+        (sr::Revalued::SIGNATURE_HASH, false),
+        (sr::DocAdded::SIGNATURE_HASH, false),
+        (sr::LoanRegistrySet::SIGNATURE_HASH, false),
+        (sr::Paused::SIGNATURE_HASH, false),
+        (sr::Unpaused::SIGNATURE_HASH, false),
+        (sr::TermsSet::SIGNATURE_HASH, true),
+    ] {
+        assert_eq!(is_security_only_topic(&topic), expected, "{topic}");
+    }
+}
+
+#[test]
 fn the_index_path_is_a_pure_synchronous_function() {
     let _: fn(&Log, Address, Address) -> Option<ContractLog> = dispatch_security_registry;
     let _: fn(&Log, SecurityEmitter) -> Option<ContractLog> = parse_security_event;

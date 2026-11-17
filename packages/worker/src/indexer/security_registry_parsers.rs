@@ -634,21 +634,25 @@ pub fn dispatch_security_registry(
 
 static TRAP_WARNED: AtomicBool = AtomicBool::new(false);
 
-pub fn warn_if_security_registry_topic(log: &Log) {
-    let Some(topic0) = log.topic0() else {
-        return;
-    };
-    let security_only = SPECS.iter().any(|s| {
+pub fn is_security_only_topic(topic0: &B256) -> bool {
+    SPECS.iter().any(|s| {
         s.topic == *topic0
             && !matches!(
                 s.name,
                 "SecurityRevalued"
                     | "SecurityDocAdded"
+                    | "SecurityLoanRegistrySet"
                     | "SecurityRegistryPaused"
                     | "SecurityRegistryUnpaused"
             )
-    });
-    if security_only && !TRAP_WARNED.swap(true, Ordering::Relaxed) {
+    })
+}
+
+pub fn warn_if_security_registry_topic(log: &Log) {
+    let Some(topic0) = log.topic0() else {
+        return;
+    };
+    if is_security_only_topic(topic0) && !TRAP_WARNED.swap(true, Ordering::Relaxed) {
         tracing::warn!(
             contract_address = %log.address(),
             topic0 = %topic0,

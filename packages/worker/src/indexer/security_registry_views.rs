@@ -335,21 +335,18 @@ pub fn decode_bool(result: &[u8]) -> Result<bool> {
         ._0)
 }
 
-fn selector_in_text(s: &str) -> Option<[u8; 4]> {
-    let start = s.find("0x")? + 2;
-    let digits: String = s[start..]
-        .chars()
-        .take_while(char::is_ascii_hexdigit)
-        .collect();
-    let bytes = hex::decode(&digits[..digits.len() & !1]).ok()?;
-    bytes.get(..4)?.try_into().ok()
+fn selector_in_hex(s: &str) -> Option<[u8; 4]> {
+    let digits = s.strip_prefix("0x")?;
+    if !digits.is_ascii() || digits.len() < 8 {
+        return None;
+    }
+    hex::decode(&digits[..8]).ok()?.try_into().ok()
 }
 
-fn selector_in_value(v: &Value) -> Option<[u8; 4]> {
+fn selector_in_data(v: &Value) -> Option<[u8; 4]> {
     match v {
-        Value::String(s) => selector_in_text(s),
-        Value::Object(o) => o.values().find_map(selector_in_value),
-        Value::Array(a) => a.iter().find_map(selector_in_value),
+        Value::String(s) => selector_in_hex(s),
+        Value::Object(o) => o.get("data").and_then(selector_in_data),
         _ => None,
     }
 }
@@ -357,12 +354,8 @@ fn selector_in_value(v: &Value) -> Option<[u8; 4]> {
 pub fn revert_selector_from_payload(
     payload: &alloy::rpc::json_rpc::ErrorPayload,
 ) -> Option<[u8; 4]> {
-    payload
-        .data
-        .as_ref()
-        .and_then(|raw| serde_json::from_str::<Value>(raw.get()).ok())
-        .and_then(|v| selector_in_value(&v))
-        .or_else(|| selector_in_text(&payload.message))
+    let raw = payload.data.as_ref()?;
+    selector_in_data(&serde_json::from_str::<Value>(raw.get()).ok()?)
 }
 
 pub fn revert_selector(e: &anyhow::Error) -> Option<[u8; 4]> {

@@ -328,19 +328,36 @@ fn revert_selector_reads_a_hex_string_in_data() {
 #[test]
 fn revert_selector_reads_nested_json_data() {
     let e = rpc_error(
-        r#"{"code":3,"message":"execution reverted","data":{"data":{"0xabc":"0x3a418dcd"}}}"#,
+        r#"{"code":3,"message":"execution reverted","data":{"data":"0x3a418dcd","message":"x"}}"#,
     );
     assert_eq!(revert_selector(&e), Some([0x3a, 0x41, 0x8d, 0xcd]));
+    let deeper = rpc_error(
+        r#"{"code":3,"message":"execution reverted","data":{"data":{"data":"0xd281f404"}}}"#,
+    );
+    assert_eq!(revert_selector(&deeper), Some([0xd2, 0x81, 0xf4, 0x04]));
+    let other_keys = rpc_error(
+        r#"{"code":3,"message":"execution reverted","data":{"trace":"0x3a418dcd","extra":{"x":"0x3a418dcd"}}}"#,
+    );
+    assert_eq!(revert_selector(&other_keys), None);
 }
 
 #[test]
-fn revert_selector_reads_hex_in_the_message() {
-    let e = rpc_error(r#"{"code":3,"message":"execution reverted: custom error 0xd281f404"}"#);
-    assert_eq!(revert_selector(&e), Some([0xd2, 0x81, 0xf4, 0x04]));
-    let with_args = rpc_error(
-        r#"{"code":-32000,"message":"execution reverted: custom error 0x3a418dcd: 0000"}"#,
+fn revert_selector_ignores_hex_in_free_text() {
+    let in_message =
+        rpc_error(r#"{"code":3,"message":"execution reverted: custom error 0xd281f404"}"#);
+    assert_eq!(revert_selector(&in_message), None);
+    let unrelated = rpc_error(
+        r#"{"code":-32000,"message":"call from 0x3a418dcd5286b930d281f404aaaaaaaaaaaaaaaa failed"}"#,
     );
-    assert_eq!(revert_selector(&with_args), Some([0x3a, 0x41, 0x8d, 0xcd]));
+    assert_eq!(revert_selector(&unrelated), None);
+    let message_beside_data =
+        rpc_error(r#"{"code":3,"message":"reverted at 0xd281f404","data":"0x5286b930"}"#);
+    assert_eq!(
+        revert_selector(&message_beside_data),
+        Some([0x52, 0x86, 0xb9, 0x30])
+    );
+    let non_hex_data = rpc_error(r#"{"code":3,"message":"m","data":"see 0xd281f404"}"#);
+    assert_eq!(revert_selector(&non_hex_data), None);
 }
 
 #[test]
@@ -353,6 +370,8 @@ fn revert_selector_is_none_without_revert_data() {
         .context("eth_call failed");
     assert_eq!(revert_selector(&transport), None);
     assert_eq!(revert_selector(&anyhow::anyhow!("0xd281f404")), None);
+    let odd_shape = rpc_error(r#"{"code":3,"message":"m","data":[1,2]}"#);
+    assert_eq!(revert_selector(&odd_shape), None);
 }
 
 #[test]
