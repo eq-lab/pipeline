@@ -5,25 +5,36 @@ Source: https://github.com/eq-lab/pipeline/issues/1939
 Parent epic: #1937, merge-order step 1 (in parallel with #1938). #1941 (API `pending_operations` for EVM) reads
 what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix). Contracts are frozen.
 
+**Revision 2026-11-17 (human directive).** The EVM indexer mirrors the merged Stellar implementation (epic #1920:
+#1921 + #1927) one-to-one. That covers architecture, data flow, tables, SQL, close rules, config, test layout and
+docs structure. Every remaining deviation is listed in [Differences from Stellar](#differences-from-stellar), with
+the chain-level reason for each.
+
 ## Scope
 
 ### Source of truth (checked by the planner on 2026-11-17)
 
 - **Contracts:** `pipeline-contracts@150631a`.
-  - `lib/openzeppelin-contracts/contracts/access/manager/AccessManager.sol`, stock OpenZeppelin:
+  - `lib/openzeppelin-contracts/contracts/access/manager/AccessManager.sol`, stock OpenZeppelin, deployed plain
+    (`script/deployers/DeployAccessManager.sol:17`: `new AccessManager(accessManagerAdmin)`, no subclass):
     - `schedule(target, data, when)` (:441) emits
       `OperationScheduled(bytes32 indexed operationId, uint32 indexed nonce, uint48 schedule, address caller, address target, bytes data)` (:472).
-      `schedule` is the resolved timepoint (`max(when, now + setback)`).
+      `schedule` is the resolved timepoint (`max(when, now + setback)`). `setback` is always > 0, and
+      `data.length >= 4` (`_checkSelector`).
     - `cancel` (:528) emits `OperationCanceled(bytes32 indexed operationId, uint32 indexed nonce)` (:545).
     - `_consumeScheduledOp` (:564) emits `OperationExecuted(bytes32 indexed operationId, uint32 indexed nonce)` (:577).
-      It is reached from `AccessManager.execute` (only when a schedule exists or the caller has a delay) and from a
-      target's `restricted` modifier via `consumeScheduledOp` (a direct call to the target). Both emit from the
-      AccessManager. Immediate calls emit nothing.
+      Two paths reach it, and both emit from the AccessManager:
+      - `AccessManager.execute`, which consumes only when a schedule exists or the caller has a delay;
+      - a target's `restricted` modifier through `consumeScheduledOp`, when the target is called directly.
+
+      Immediate calls emit nothing.
     - `hashOperation = keccak256(abi.encode(caller, target, data))` (:583).
-    - `expiration()` (:159) returns `1 weeks` (604 800 s).
-    - The nonce is in `_schedules[id].nonce` (persistent). Cancel and execute keep it; a re-schedule (allowed only once
-      the previous one is closed or expired) uses `nonce + 1`. So `(operation_id, nonce)` is unique for the life of
-      the contract. The Stellar nonce-reset logic (#1927) is not needed.
+    - `expiration()` (:159) is `return 1 weeks;`, a compile-time constant (604 800 s), as Stellar's `EXPIRATION` is.
+    - The nonce is stored in `_schedules[id].nonce`, which is persistent. Cancel and execute keep the nonce. A
+      re-schedule uses `nonce + 1`, and is allowed only once the previous schedule is closed or expired.
+    - Other events, allow-listed below: `RoleLabel`, `RoleGranted`, `RoleRevoked`, `RoleAdminChanged`,
+      `RoleGuardianChanged`, `RoleGrantDelayChanged`, `TargetClosed`, `TargetFunctionRoleUpdated`,
+      `TargetAdminDelayUpdated` (`IAccessManager.sol:32-76`).
   - Targets (all ids `uint256`):
     - `src/PipelineLoanRegistry.sol`: `setDefault(uint256)`, `cure(uint256)`, `amendEconomics(uint256,uint32,uint64)`,
       `adjustInterest(uint256,int256,bytes32)`, `writeDown(uint256,uint256)`, `closeDefaulted(uint256,uint8)`, plus the
@@ -35,7 +46,6 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
     - `src/securityRegistry/SecurityRegistryUpgradeable.sol`: `setTerms(uint256 loanId, Terms)` (:303),
       `releaseWithConsent(uint256 recordId, bytes32)` (:264), `resolveFlag(uint256 recordId, FlagOutcome, bytes32)` (:271),
       plus the agent, valuer and trustee functions. `Terms` (`src/interfaces/ISecurityRegistry.sol:79`) has 15 fields.
-      `record(recordId)` (:364) returns `Record { recordId, loanId, … }`. `RecordRegistered(loanId indexed, recordId indexed, …)` (:30).
     - `src/PipelineSecurityRecordNft.sol`: `setInspectors(address[])` (:205), `addDoc`, `recordInspection`,
       `approveInspection`, `setSecurityRegistry`.
   - Roles: `script/roles/*.sol`. All Hoodi delays are 0 (`script/base/ChainValues.sol`), so nothing is scheduled on
@@ -43,13 +53,22 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
   - Hoodi (`deployments/hoodi-v5.json`): AccessManager `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`,
     LoanRegistry `0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`, Minter `0x621BaAb0ced6b11f88019582183b081A118755f4`,
     SecurityRegistry `0xB51E7f13420D106946376A67Fe5921C63B09BE15`, RecordNft `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`.
-- **Selectors and topics** (`cast sig` / `cast keccak`; tests pin them):
+- **Selectors and topics** (from `cast sig` / `cast keccak`; tests pin them):
 
   | Signature | Value |
   |---|---|
   | `OperationScheduled(bytes32,uint32,uint48,address,address,bytes)` | `0x82a2da5dee54ea8021c6545b4444620291e07ee83be6dd57edb175062715f3b4` |
   | `OperationExecuted(bytes32,uint32)` | `0x76a2a46953689d4861a5d3f6ed883ad7e6af674a21f8e162707159fc9dde614d` |
   | `OperationCanceled(bytes32,uint32)` | `0xbd9ac67a6e2f6463b80927326310338bcbb4bdb7936ce1365ea3e01067e7b9f7` |
+  | `RoleLabel(uint64,string)` | `0x1256f5b5ecb89caec12db449738f2fbcd1ba5806cf38f35413f4e5c15bf6a450` |
+  | `RoleGranted(uint64,address,uint32,uint48,bool)` | `0xf98448b987f1428e0e230e1f3c6e2ce15b5693eaf31827fbd0b1ec4b424ae7cf` |
+  | `RoleRevoked(uint64,address)` | `0xf229baa593af28c41b1d16b748cd7688f0c83aaf92d4be41c44005defe84c166` |
+  | `RoleAdminChanged(uint64,uint64)` | `0x1fd6dd7631312dfac2205b52913f99de03b4d7e381d5d27d3dbfe0713e6e6340` |
+  | `RoleGuardianChanged(uint64,uint64)` | `0x7a8059630b897b5de4c08ade69f8b90c3ead1f8596d62d10b6c4d14a0afb4ae2` |
+  | `RoleGrantDelayChanged(uint64,uint32,uint48)` | `0xfeb69018ee8b8fd50ea86348f1267d07673379f72cffdeccec63853ee8ce8b48` |
+  | `TargetClosed(address,bool)` | `0x90d4e7bb7e5d933792b3562e1741306f8be94837e1348dacef9b6f1df56eb138` |
+  | `TargetFunctionRoleUpdated(address,bytes4,uint64)` | `0x9ea6790c7dadfd01c9f8b9762b3682607af2c7e79e05a9f9fdf5580dde949151` |
+  | `TargetAdminDelayUpdated(address,uint32,uint48)` | `0xa56b76017453f399ec2327ba00375dbfb1fd070ff854341ad6191e6a2e2de19c` |
   | `setDefault(uint256)` | `0xe0da6b66` |
   | `cure(uint256)` | `0xb7e5262a` |
   | `amendEconomics(uint256,uint32,uint64)` | `0x00b14774` |
@@ -61,59 +80,126 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
   | `releaseWithConsent(uint256,bytes32)` | `0x115f901f` |
   | `resolveFlag(uint256,uint8,bytes32)` | `0xdf84b5b3` |
   | `setInspectors(address[])` | `0xa84489a4` |
-  | `setTerms(uint256,(uint32,uint32,uint32,uint64,uint64,uint8,uint64,uint32,uint32,uint64,uint64,uint32,uint32,uint64,uint64))` | `0x45f225f5` (re-check with `forge inspect SecurityRegistryUpgradeable methodIdentifiers` after `forge build`; the local `out/` is stale) |
-  | `expiration()` | `0x4665096d` |
+  | `setTerms(uint256,(uint32,uint32,uint32,uint64,uint64,uint8,uint64,uint32,uint32,uint64,uint64,uint32,uint32,uint64,uint64))` | `0x45f225f5`. Re-check with `forge inspect SecurityRegistryUpgradeable methodIdentifiers` after `forge build`; the local `out/` is stale. |
 
-- **Pipeline today:** `access_manager_operations` (migrations `20261116000001`, `20261117000001`) holds Stellar rows
-  only. `AccessManagerRepo` (`packages/shared/src/access_manager_repo.rs`) works on a `PgPool` with a watermark
-  (`access_manager_sync_state`). The #1922 API query `LIST_PENDING_LOAN_OPS_SQL` requires `args_xdr IS NOT NULL`
-  and `pending_ops_by_loan` (`packages/api/src/routes/loan_book.rs:1511`) skips non-Stellar chains. The EVM indexer
-  (`packages/worker/src/indexer/{mod.rs,evm_parsers.rs,config.rs,poller.rs}`) writes every mapper of a block range in
-  one database transaction together with the cursor (`index_once`).
+- **The Stellar implementation this mirrors** (`origin/main`):
+  - `packages/worker/src/indexer/stellar/access_manager_parsers.rs`: event decode into `contract_logs` rows
+    (`dispatch_access_manager`), the typed param readers (`ScheduledRow`, `CanceledRow`, `ExecutedRow`),
+    `hash_operation`, `args_display_json`, `TargetIds` and `loan_ref`.
+  - `.../stellar/access_manager_sync.rs`: the supervised `access-manager-sync` loop.
+    - Store and transaction source: `AmSyncStore`, `RepoStore`, `TxEnvelopeSource`.
+    - Per-row resolve: `resolve_schedule`, `resolve_execute`, `resolve_row`.
+    - Loop: `sync_once` with `KeyedBackoff<i64>`, then `run_cycle` with a 60 s budget and a panic guard, then
+      `run_access_manager_sync_loop`, which sleeps 15 s when fewer than 200 rows were applied.
+  - `.../stellar/poller.rs`: the AccessManager id is added to the `getEvents` filter. `dispatch_access_manager`
+    feeds a plain log mapper. The `info` line "Stellar AccessManager indexer enabled" is logged, and
+    `spawn_supervised("access-manager-sync", …)` is called with
+    `TargetIds { loan_registry, minter, security_registry }`.
+  - `.../indexer/config.rs`: optional `CHAIN_<id>_STELLAR_INDEXER_ACCESS_MANAGER_ADDRESS`. Blank means unset. A bad
+    Strkey is an error naming the key. The key joins the distinct-role check as `ACCESS_MANAGER_ADDRESS`.
+  - `packages/shared/src/access_manager_repo.rs`:
+    - names and constants: `OP_EVENT_*`, `EXPIRATION_SECS = 604_800`, `NewScheduledOp::expires_at()`, `OpWrite`;
+    - watermark and row reads: `GET_WATERMARK_SQL`, `LIST_ROWS_AFTER_SQL`, `ADVANCE_WATERMARK_SQL`;
+    - projection writes: `INSERT_SCHEDULED_SQL` (`ON CONFLICT … DO NOTHING`), `MARK_CANCELED_SQL`,
+      `MARK_EXECUTED_SQL`;
+    - lookups: `HAS_PENDING_CALL_SQL`, `RECORD_LOAN_SQL`, `LIST_PENDING_LOAN_OPS_SQL`;
+    - `AccessManagerRepo::apply`, which writes one row's change and advances the watermark in one transaction.
+  - Migrations `20261116000001_access_manager_operations.sql` and `20261117000001_access_manager_operations_schedule_key.sql`
+    create the table, the watermark table `access_manager_sync_state`, and the key
+    `UNIQUE (chain_id, contract_address, operation_id, schedule_ledger, nonce)`.
+  - Tests:
+    - worker: `packages/worker/tests/stellar_access_manager_{parsers,hash,sync,loan_ref,config}.rs` and
+      `stellar_access_manager_support/mod.rs` (`MemStore` emulates the SQL, `FakeTx` stands in for the RPC);
+    - shared: `packages/shared/tests/access_manager_{projection,pending}_sql.rs` and
+      `migration_access_manager_schedule_key.rs`.
+  - Docs: `docs/references/access-manager-events.md`.
+  - **Record → loan, as on Stellar:**
+    - `resolve_schedule` runs `RECORD_LOAN_SQL` when the schedule is projected. It tries `security_records`, then
+      the `SecurityRecordRegistered` rows of `contract_logs`, then `security_view_snapshots`.
+    - On a miss, `loan_id` stays `NULL` and `record_id` is kept.
+    - The fallback ("backfill") is the read-time `COALESCE(o.loan_id, <same lookup>)` in
+      `LIST_PENDING_LOAN_OPS_SQL`. **No write-side backfill job exists**, and the EVM path adds none.
+- **The EVM indexer today.** The code is in `packages/worker/src/indexer/{mod.rs,evm_parsers.rs,config.rs,poller.rs}`.
+  - `index_once` writes every mapper of a block range, in `(block, log_index)` order (`sort_logs`), in one database
+    transaction together with the cursor.
+  - Optional contracts are wired through `register_*_handler`, which wraps `ContractLogMapper`. Their collision
+    checks sit in `run_indexer_job`; see `plusd_transfers.rs`.
+  - `run_indexer_job` spawns no supervised task yet. #1938 adds the first one (`evm-security-registry-sync`),
+    importing `crate::indexer::stellar::supervise` as is.
+- **#1938, the parallel sibling** (`origin/feat/1938-evm-security-registry-indexer`, plan only). This plan aligns
+  with it:
+  - Config: `IndexerJobSettings.security_registry: Option<EvmSecurityRegistryConfig { registry, record_nft,
+    reader }>` from `CHAIN_<id>_EVM_INDEXER_SECURITY_{REGISTRY,RECORD_NFT,REGISTRY_READER}_ADDRESS`.
+  - Format: EIP-55 `contract_address`, and `SecurityRecordRegistered` params `loan_id` / `record_id` as decimal
+    strings, so `RECORD_LOAN_SQL` reads EVM records unchanged.
+  - Structure: chain-neutral sync code moves out of `indexer/stellar/` with re-exports, and `supervise.rs` stays
+    where it is.
+  - Migration `20261118000001_security_registry_evm.sql`.
 
-### Decisions
+### Decisions (planner; mirror Stellar)
 
-1. **Schema: a new nullable `calldata TEXT` column.** No generalized column. `args_xdr` keeps its name and meaning, so
-   the Stellar rows, the Stellar sync code, `LIST_PENDING_LOAN_OPS_SQL`, `PendingOpRow` and the #1922 DTO stay
-   unchanged. EVM rows have `args_xdr = NULL` and are therefore never served by the current API query (which also
-   skips EVM chains); #1941 adds the EVM read. A named CHECK `access_manager_operations_one_args_encoding`
-   (`args_xdr IS NULL OR calldata IS NULL`) keeps the two encodings exclusive. Both may be `NULL` (a Stellar row
-   out of retention). Value: the full calldata (selector + arguments) as `0x` + lowercase hex, exactly the event's
-   `data`, which is what `execute(target, data)` and `cancel(caller, target, data)` need.
-2. **No sync loop for EVM: direct projection in the EVM log mapper.** The event carries everything; no transaction
-   fetch is needed. A new `AccessManagerLogMapper` writes the raw `contract_logs` row **and** the projection change in
-   the same `index_once` transaction as the cursor. Ordering, idempotence and crash safety come from that transaction:
-   the raw row and the projection are committed together or not at all, and a replay skips both (`is_duplicate` on
-   `contract_logs`). No watermark, no `access_manager_sync_state` row, no new task, no backoff. The EVM path does not
-   touch `access_manager_sync.rs`.
-   - The raw row is still written (parity, audit, and a re-projection source).
-   - Re-projection after a decoder fix: stop the worker, delete the chain's AccessManager rows from `contract_logs`
-     and `access_manager_operations`, rewind the EVM cursor to at or before the earliest schedule to rebuild, start.
-     EVM RPC keeps full history, so (unlike Stellar) nothing is lost.
-3. **Close by `(operation_id, nonce)` exactly.** Cancel sets `canceled`, execute sets `executed`, only when the row is
-   `pending`. New SQL constants; the Stellar `MARK_CANCELED_SQL` / `MARK_EXECUTED_SQL` stay unchanged. A close with no
-   matching row (schedule before indexing started) changes nothing and logs `debug`.
-4. **Decoding.** Per target, using the ABI of the configured contract (LoanRegistry, Minter, SecurityRegistry,
-   RecordNft):
-   - `function` = the Solidity function name (`setDefault`, `releaseWithConsent`, …). Unknown selector, or a target
-     that is none of the four configured contracts (including the AccessManager itself): `function` =
-     `0x` + 8 lowercase hex of the selector, `args_json = NULL`. A known selector whose arguments fail to decode:
-     `function` = the name, `args_json = NULL`, `warn`. `calldata` is always stored.
-   - `args_json` is a positional JSON array, display only, same spirit as the Stellar form: `uint8`–`uint32` and
-     `int8`–`int32` (enums included) as JSON numbers; wider integers as decimal strings; `bool`; `address` as EIP-55;
-     `bytes` / `bytesN` as lowercase hex without `0x` (the EVM `contract_logs` hash convention and the Stellar
-     `args_json` bytes form); `string` as string; arrays as arrays; tuples as objects keyed by the Solidity component
-     names (`setTerms` → `["7", {"advanceRatioBps": 7000, …, "defaultBreachAt": "0"}]`).
-   - ABI source: `alloy::sol!` interface blocks for the four contracts (structs with field names) in the new parser
-     module, compiled into a selector → `alloy::json_abi::Function` table (via `#[sol(abi)]`, or
-     `Function::parse` of full human-readable signatures with parameter names if `#[sol(abi)]` is not available
-     under the workspace's alloy 0.8 features; `contract` already enables `dyn-abi` and `json-abi`). Decode with
-     `alloy::dyn_abi::JsonAbiExt::abi_decode_input(&data[4..], true)` and render `DynSolValue` with the `Param`
-     component names.
-   - Sanity check: recompute `keccak256(abi.encode(caller, target, data))` and compare with `operationId`. A mismatch
-     cannot happen on the stock contract; if it does, store the row anyway (the event is authoritative) and `warn`.
-5. **Loan scoping** (see Open Question 1), resolved when the schedule is projected, by comparing `target` with the
-   indexer's own addresses:
+1. **Same data flow as Stellar: raw rows in `index_once`, projection in a supervised sync loop.**
+   - `index_once` gets a plain `ContractLogMapper` for each AccessManager operation log, as on Stellar.
+   - A supervised `access-manager-sync` task reads the AccessManager rows past its own watermark
+     (`access_manager_sync_state`, keyed `(chain_id, EIP-55 AccessManager address)`). It writes
+     `access_manager_operations` through the same `AccessManagerRepo::apply`, which applies one row and advances the
+     watermark in one transaction.
+   - The loop, the 15 s interval, the 200-row batch, the 60 s budget, the panic guard, `KeyedBackoff<i64>` and
+     `spawn_supervised` are **shared code**, not a twin. The chain-neutral parts of
+     `stellar/access_manager_sync.rs` move to `indexer/access_manager_sync.rs` (the #1938 pattern, with
+     re-exports). Each chain supplies only a row resolver, the step that turns one `AmLogRow` into an `OpWrite`.
+2. **Same `contract_logs` names**: `AccessManagerOperationScheduled`, `AccessManagerOperationCanceled` and
+   `AccessManagerOperationExecuted` (`OP_EVENT_*`). Params use Stellar's keys and formats, with only the fields the
+   EVM event carries:
+   - Scheduled: `{operation_id, caller, nonce, when, target, data}`. The OpenZeppelin `schedule` field is stored
+     under Stellar's key `when`. `data` is the event's calldata as `0x` + lowercase hex.
+   - Canceled: `{operation_id, nonce}`, identical to Stellar.
+   - Executed: `{operation_id, nonce}`.
+
+   Formats: `operation_id` is 64 lowercase hex without `0x`, as on Stellar. `nonce` and `when` are decimal strings,
+   as on Stellar. `caller` and `target` are EIP-55, the EVM `contract_logs` address convention.
+   - **Decoding is in the sync loop, not the parser**, as on Stellar. The parser only decodes the event. The
+     resolver derives `function`, `args_json` and the loan reference, and verifies the operation id.
+3. **Same close rules and the same SQL.**
+   - A cancel uses `MARK_CANCELED_SQL`: it closes the newest schedule of the `operation_id` logged before the cancel,
+     only if that row is `pending` and its `nonce` matches.
+   - An execute uses `MARK_EXECUTED_SQL` with `ids = [operation_id]`: newest schedule before it, only if `pending`.
+   - Both run unchanged. No new close SQL is added.
+   - On EVM, the newest schedule before a close is always the one the close refers to: the nonce never resets, a
+     re-schedule needs the previous one closed or expired, and indexing is contiguous. So the Stellar rule gives the
+     same result as an exact `(operation_id, nonce)` match. This overrides the issue text "Close the row by
+     `(operation_id, nonce)`", per the directive.
+4. **Same args model: a native encoding plus `args_json`.**
+   - Stellar keeps `args_xdr` (base64 `ScVal::Vec`, the `args` argument of `schedule` exactly as invoked). The EVM
+     equivalent is a new nullable column **`calldata`**: `0x` + lowercase hex, holding the `data` argument of
+     `schedule` exactly as invoked (selector + ABI-encoded arguments). That is what `execute(target, data)` and
+     `cancel(caller, target, data)` need, and #1941 already names the DTO field `calldata`.
+   - A named CHECK `access_manager_operations_one_args_encoding` (`args_xdr IS NULL OR calldata IS NULL`) keeps the
+     two exclusive.
+   - `args_xdr`, the Stellar rows and `LIST_PENDING_LOAN_OPS_SQL` (which requires `args_xdr IS NOT NULL`) stay
+     unchanged, so EVM rows are not served until #1941.
+5. **Same "never guess" rule for the operation id.** The resolver recomputes
+   `keccak256(abi.encode(caller, target, data))`:
+   - Equal: `calldata`, `function`, `args_json`, `loan_id` and `record_id` are filled.
+   - Different: the row is stored with `calldata`, `args_json`, `loan_id` and `record_id` all `NULL`, and a `warn`.
+     That is exactly Stellar's no-candidate case. A mismatch cannot happen on the stock contract.
+6. **`function` and `args_json`.** `function` is the contract's native function name, as on Stellar.
+   - Stellar stores the `Symbol` from the event (snake_case). EVM stores the Solidity name (camelCase), decoded
+     from the selector with the ABI of the configured target (LoanRegistry, Minter, SecurityRegistry, RecordNft).
+   - If the selector is unknown, or the target is not one of the four (including the AccessManager itself):
+     `function` = `0x` + 8 lowercase hex, `args_json = NULL`, and `calldata` is kept.
+   - If the selector is known but the arguments fail to decode: `function` = the name, `args_json = NULL`, `warn`.
+   - `args_json` is a positional JSON array, display only, following Stellar's `args_display_json` rules:
+     - `uint8`–`uint32` and `int8`–`int32`, enums included, are numbers. This matches Stellar's `u32` / `i32`.
+     - Wider integers are decimal strings.
+     - `bool` stays a boolean.
+     - `address` is EIP-55.
+     - `bytes` / `bytesN` are lowercase hex without `0x`, as Stellar's bytes are.
+     - `string` stays a string, and arrays are arrays.
+     - Tuples are objects keyed by the Solidity component names, as Stellar's `Symbol`-keyed maps are. For example,
+       `setTerms` → `["7", {"advanceRatioBps": 7000, …, "defaultBreachAt": "0"}]`.
+7. **Loan scoping**: Stellar's `loan_ref` table with EVM targets and names, resolved by the sync loop when the row is
+   projected, only when the id verified.
 
    | Target | Function | `loan_id` / `record_id` |
    |---|---|---|
@@ -123,41 +209,29 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
    | SecurityRegistry | `releaseWithConsent`, `resolveFlag` | arg 0 is `record_id`; `loan_id` looked up |
    | anything else | `setInspectors` (RecordNft), other functions, unknown selectors, unconfigured targets | both `NULL` |
 
-   A `uint256` id above `i64::MAX` leaves the column `NULL` with a `warn`. The table is driven by a const list so a
-   later widening is one line.
-6. **`record_id → loan_id` without RPC** (see Open Question 3). Inside the mapper, in a `SAVEPOINT`
-   (`conn.begin()` on the `PgConnection`), run the existing `RECORD_LOAN_SQL` (security_records, then
-   `SecurityRecordRegistered` rows of `contract_logs`, then `security_view_snapshots`) with the SecurityRegistry
-   address. A miss or any error leaves `loan_id = NULL` with `record_id` kept (`debug` on a miss, `warn` on an error);
-   the read side already resolves `COALESCE(loan_id, lookup)` at read time (#1922 pattern, reused by #1941). The
-   savepoint keeps a lookup failure from aborting the batch, so it can never stall the chain cursor. A record's
-   loan is immutable, so read-time resolution gives the same answer an `eth_call record(recordId)` would.
-7. **`expires_at = schedule + expiration()`**, `expiration()` read once at `run_indexer_job` start when the key is set:
-   `eth_call` on the AccessManager, up to 3 attempts with a 10 s timeout each. On failure, use 604 800 (the stock
-   OpenZeppelin constant) and `warn` (see Open Question 5). Never fail the job: `run_indexer_job` errors are not
-   restarted (`packages/worker/src/main.rs:47`), so an RPC blip at boot must not kill the whole EVM indexer.
-   `NewScheduledOp` gets an explicit `expires_at: i64` field in place of the `expires_at()` method (the Stellar sync
-   sets `when + EXPIRATION_SECS`, same values as today).
-8. **Stored formats** (EVM rows): `contract_address`, `caller`, `target` EIP-55 (same as `contract_logs.contract_address`
-   on EVM); `operation_id` 64 lowercase hex without `0x` (same as Stellar); `nonce` from the event; `ready_at` = the
-   event's `schedule`; `schedule_tx_hash` / `closed_tx_hash` `0x` lowercase (the EVM `contract_logs.tx_hash` format);
-   `schedule_ledger` / `closed_ledger` = block numbers; `scheduled_at` = block timestamp; `source_log_id` = the
-   `contract_logs.id` of the schedule row (needs `RETURNING id`).
-9. **`contract_logs` rows** reuse the Stellar event names (`OP_EVENT_SCHEDULED` / `_CANCELED` / `_EXECUTED`):
-   - `AccessManagerOperationScheduled`: `{operation_id, nonce, when, caller, target, function, data}`
-     (`nonce` and `when` decimal strings, `data` the calldata hex with `0x`).
-   - `AccessManagerOperationCanceled` and `AccessManagerOperationExecuted`: `{operation_id, nonce}`. (The Stellar
-     execute row carries `{target, function, caller}` instead; consumers already scope by chain and contract.)
-   - Other AccessManager events (role, target, guardian, delay events) produce no row and no log line. One of the
-     three topics that fails to decode logs `warn` and produces no row.
-10. **Config.** New optional `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS` (`IndexerJobSettings.access_manager_address:
-    Option<Address>`, blank = unset, invalid = startup error naming the key). Unset ships dark: no handler, no
-    `eth_call`, the worker boots as before. It must differ from every core role, the collateral registry, the
-    deal-token factory, PLUSD, the tracked asset and the security registry / record NFT keys (startup error naming
-    both keys). Set: log `info` "EVM AccessManager indexer enabled" with chain id, address and expiration.
-    The SecurityRegistry and RecordNft addresses come from the keys #1938 introduces,
-    `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_SECURITY_RECORD_NFT_ADDRESS`
-    (see Open Question 4). LoanRegistry and Minter are required keys already.
+   The shared `LoanRef` (`Loan(u32)`, `Record(u32)`, `None`) is reused. A `uint256` arg 0 above `u32::MAX` gives
+   `None` with a `warn`. This is the EVM counterpart of Stellar's "non-`u32` first arg", and #1938 keeps the same
+   `u32` id plumbing.
+8. **Record → loan: the Stellar code path.** The shared helper calls `AmSyncStore::record_loan(security_registry,
+   record_id)`, which runs `RECORD_LOAN_SQL`, with the SecurityRegistry's EIP-55 address. A miss leaves `loan_id`
+   `NULL` and keeps `record_id`. The API resolves it later at read time (`LIST_PENDING_LOAN_OPS_SQL`, #1941). There
+   is no RPC in the sync loop and no RPC in `index_once`.
+9. **`expires_at = ready_at + EXPIRATION_SECS` (604 800)**, through the unchanged `NewScheduledOp::expires_at()`.
+   - Stellar uses the contract constant `EXPIRATION`. The EVM contract's `expiration()` is the compile-time constant
+     `1 weeks` on the deployed stock `AccessManager`, so the closest equivalent is the same constant.
+   - No `eth_call` at boot and no fallback. The issue text "reading `expiration()` once" is superseded, per the
+     directive.
+10. **Config: the Stellar pattern.**
+    - New optional `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`: blank means unset, an invalid address is a
+      startup error naming the key, and unset ships dark (no handler, no task, the worker boots as before).
+    - The address must differ from every other indexer contract key. On EVM that check lives in `run_indexer_job`
+      as `reject_access_manager_collision`, next to `reject_plusd_collision`. That is EVM's equivalent of Stellar's
+      distinct-role loop.
+    - Set: log `info` "EVM AccessManager indexer enabled" with the chain id and address, and spawn the supervised
+      `access-manager-sync` task.
+    - Targets come from the existing required keys (`LOAN_REGISTRY_ADDRESS`, `MINTER_ADDRESS`) and from #1938's
+      `security_registry.{registry, record_nft}`. An unset SecurityRegistry config leaves `loan_id` `NULL` for those
+      operations, and the row is still stored, as on Stellar.
 
 ### Out of scope
 
@@ -165,201 +239,396 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
   `loan-security-state.md#pending-operations` keeps saying "EVM chains: empty array", which stays true.
 - The Trustee and wallet-connect (#1942, #1943); AccessManager role events; role changes on Hoodi (#1944).
 - Stage / prod deploy config (epic merge-order step 3).
-- Any change to the Stellar indexer behaviour or the Stellar rows.
+- Any change to Stellar behaviour or Stellar rows. Moving the chain-neutral code is a refactor with re-exports, and
+  every Stellar test must pass unchanged, apart from the test-support move in step 9.
+- Decoding the AccessManager's own admin functions (`grantRole`, …) when scheduled against itself. They are stored
+  with `function = 0x<selector>`.
+
+## Differences from Stellar
+
+Every remaining difference, with the chain-level reason. Anything not listed here is identical: table, watermark,
+loop, constants, backoff, supervision, close SQL, insert SQL, record lookup, `expires_at` and the read query.
+
+| # | Area | Stellar (#1921 / #1927) | EVM (#1939) | Chain-level reason |
+|---|---|---|---|---|
+| 1 | Where args come from | The sync loop fetches `getTransaction` and recovers `schedule` args from the envelope and auth trees (`TxEnvelopeSource`, `contract_invocations`, per-cycle tx cache). | From the raw row's `data` param. No RPC in the resolver, and nothing is ever retried for RPC reasons. | OpenZeppelin `OperationScheduled` carries the full calldata. The Soroban event carries no args. |
+| 2 | Scheduled raw-row params | `{operation_id, caller, nonce, when, target, function}` | `{operation_id, caller, nonce, when, target, data}`. `function` is derived in the sync loop. | The EVM event has no function name, only the selector inside `data`. |
+| 3 | Executed raw-row params | `{target, function, caller}` | `{operation_id, nonce}` | OpenZeppelin emits `OperationExecuted(operationId, nonce)`. Soroban emits `operation_executed(target, function, caller)`. |
+| 4 | Execute resolution | `has_pending_call` gate, then a transaction fetch, then re-hash of `execute` candidates, giving `ids`. | `ids = [operation_id]` straight from the row. Same `OpWrite::Execute` and same `MARK_EXECUTED_SQL`. The event's `nonce` is not used, as on Stellar's execute. With contiguous indexing, the newest schedule before the execute carries that nonce. | The EVM event names the operation. The Soroban event names only the call triple. |
+| 5 | When an execute event fires | For every `execute`, including immediate ones, which explains Stellar's "immediate execute marks a matching pending schedule `executed`" limitation (TD-187). | Only when a schedule is consumed, through `AccessManager.execute` or a direct target call (`consumeScheduledOp`). The Stellar limitation and the "sub-call without an auth entry" limitations do not exist on EVM. | `_consumeScheduledOp` is the only emitter. |
+| 6 | Operation id | `sha256(XDR(Map{args, caller, function, target}))`, used to **select** the args among candidates | `keccak256(abi.encode(caller, target, data))`, used to **verify** the event's own `data`. On a mismatch the outcome is the same: stored without args, with a `warn`. | Different hash preimage per contract. |
+| 7 | Native args column | `args_xdr`: base64 `ScVal::Vec(args)` | `calldata`: `0x` + lowercase hex of the whole `data`, selector included. A CHECK makes `args_xdr` and `calldata` exclusive. | Different native call encodings. An EVM `execute` takes the full `data`. |
+| 8 | `function` value | Event `Symbol`, snake_case, always present | Solidity name (camelCase) decoded via the target's ABI. An unknown selector or unconfigured target gives `0x<selector>` with `args_json = NULL`. | ABI calldata is not self-describing; XDR is. Both store the contract's native name. |
+| 9 | `args_json` type mapping | XDR types: `u32`/`i32` numbers, 64-bit+ strings, Strkeys, `Symbol`-keyed maps as objects, enums as `Vec[Symbol]` | ABI types: `≤32`-bit ints numbers, wider strings, EIP-55, tuples as objects by component name, enums as their `uint8` ordinal | Different type systems; the same display rules otherwise. |
+| 10 | Loan id width | First arg must be `ScVal::U32` | First arg is `uint256`. Values above `u32::MAX` give `LoanRef::None` with a `warn`. | Solidity ids are `uint256`. |
+| 11 | Loan-scoped list | `reverse_repay` only on the Minter | `reverseRepay` **and `reverseDisburse`** | **Not chain-level.** Human decision 1 (2026-11-17) and the issue body; see Open Question 1. |
+| 12 | Nonce | Resets to 1 after the temporary entry lapses. #1927 made the key `(…, schedule_ledger, nonce)` and the close rule "newest before". | Never resets. The same key and rule apply with no EVM-specific code. | Persistent `_schedules[id].nonce`. |
+| 13 | Formats | Strkeys, tx hash 64 hex, `schedule_ledger` = ledger | EIP-55, tx hash `0x…` (the EVM `contract_logs` convention), `schedule_ledger` = block number | Per-chain `contract_logs` conventions. |
+| 14 | Allow-listed events | 8 snake_case topics | 9 OpenZeppelin topic0 values (`Role*`, `Target*`) | Different event sets. |
+| 15 | Config validation site | `StellarIndexerSettings::from_chain_env` distinct-role loop | Parse in `IndexerJobSettings::from_chain_env`, collision check in `run_indexer_job` (`reject_access_manager_collision`) | The EVM indexer checks optional-key collisions in `run_indexer_job` (PLUSD, asset, DTF, #1938). |
+| 16 | Retention and re-projection | RPC retention of about 7 days: never truncate the table, and a rewind is bounded by `oldestLedger` (TD-187). | No log retention. The table can be rebuilt without loss: delete the chain's AccessManager rows, reset the watermark, and the raw rows still hold the calldata. A rewind can go back to the AccessManager deploy block. | `eth_getLogs` keeps full history. |
 
 ## Assumptions and Risks
 
-- **Nothing is scheduled on Hoodi** until #1944 lands, so there is no live data to verify against. Verification uses
-  synthetic logs plus golden logs captured from a local Anvil AccessManager with a delayed role (step 9).
-- **Parallel work with #1938** (worktree `pipeline-feat-1938-evm-security-registry-indexer`, no plan yet at
-  planning time):
-  - Both may add the SecurityRegistry / RecordNft keys to `IndexerJobSettings`. Whichever merges second rebases onto
-    the first one's fields; the key names must be identical.
-  - Both may add a migration dated 2026-11-17/18. sqlx versions must be unique: before writing the migration, check
-    `main` and the #1938 branch and pick an unused version (default `20261118000001`; if #1938 has taken it, the
-    next free one).
-  - `RECORD_LOAN_SQL` finds an EVM record only if #1938 projects EVM records into `security_records` (keyed by the
-    EIP-55 SecurityRegistry address and a `BIGINT` record id) or stores `SecurityRecordRegistered` rows with
-    `loan_id` / `record_id` params. If #1938 picks other names, `loan_id` stays `NULL` on EVM until the lookup gets
-    an EVM branch; that branch belongs to #1941 (read side) or a follow-up. The savepoint keeps any cast error in
-    that SQL (for example a `record_id` above `BIGINT`) from aborting the batch.
-- **First-match-wins handlers.** Other EVM handlers decode by topic0 without an address check. The three AccessManager
-  topics are unique to OpenZeppelin AccessManager, and the new handler checks `log.address() == access_manager`.
-- **Address string comparison.** Loan scoping compares the event `target` (an `Address`) with the configured
-  `Address` values, so case never matters in the worker. #1941 must compare EIP-55 strings (or normalise) on the read
-  side; noted for that issue.
-- **Projection write failure** (as opposed to the lookup) aborts the `index_once` batch and retries it, like every
-  other EVM mapper. That is the intended behaviour for a transient DB error; a deterministic one would show up in the
-  SQL text tests.
-- **Expired-then-rescheduled operations** keep the old row `pending` (it reads as expired); the API's existing
-  "later schedule supersedes" rule handles it. Same as Stellar.
-- No RPC is added inside `index_once`; the only new RPC call is the one-off `expiration()` read at job start.
+- **Nothing is scheduled on Hoodi** until #1944 lands, so there is no live data. Verification uses synthetic rows,
+  plus golden logs captured once from a local Anvil AccessManager with a delayed role (step 10).
+- **Parallel work with #1938.** Both issues touch `indexer/config.rs`, `indexer/mod.rs`, `.env.example` and
+  `backend.md`. Expect trivial rebase conflicts.
+  - Config: #1939 reads `settings.security_registry` (#1938's struct). If #1939 merges first, it adds
+    `EvmSecurityRegistryConfig` and its parsing **exactly as #1938's plan specifies**: the same names, the same three
+    keys and the same pairing errors (#1938 Decision 5). It adds no handler and no task; #1938 then rebases onto it.
+  - Migration: #1938 takes `20261118000001`, so #1939 uses `20261118000002`. Re-check `main` and the #1938 branch
+    before the PR.
+  - `RECORD_LOAN_SQL` finds an EVM record only once #1938 projects `security_records` (EIP-55 registry address) or
+    stores `SecurityRecordRegistered` with decimal-string `loan_id` / `record_id`; #1938's plan does both. Until
+    then, `loan_id` stays `NULL` with `record_id` kept, and the read side resolves it later, as on Stellar.
+- **Refactor safety.** Chain-neutral items move out of `indexer/stellar/` with `pub use` re-exports at the old paths.
+  Every Stellar test (`stellar_access_manager_*.rs`) must compile and pass unchanged; the only exception is the
+  support-module split in step 9.
+- **`supervise.rs` stays under `indexer/stellar/`.** It is imported from the EVM side, as #1938 does. The tech-debt
+  entry #1938 adds for this (or a new one, if #1938 has not landed) names #1939 as a second EVM user.
+- **Address case.** The sync loop's `contract_id` must be `am.to_checksum(None)`, exactly what `ContractLogMapper`
+  writes. Otherwise `LIST_ROWS_AFTER_SQL` finds nothing. Target comparisons parse the row's `target` into an
+  `Address`, so case never matters in the resolver. #1941 must compare EIP-55 strings on the read side.
+- **Ordering.** The Stellar ordering argument holds on EVM. The chain's AccessManager rows are written only by that
+  chain's `index_once`, sequentially, in one transaction per batch, in `(block, log_index)` order. So a higher
+  `contract_logs.id` is never committed before a lower one for `(chain_id, contract_address)`.
+- **First-match-wins handlers.** Some EVM handlers decode by topic0 without checking the address. The 12
+  AccessManager topics do not collide with any registered event; the parser test pins the three operation topics.
+  The new handler also checks `log.address() == access_manager`.
+- **Execute nonce unused.** If an `OperationScheduled` failed to decode (no raw row), a later execute of the same id
+  could close an older, expired `pending` row of that id. Stellar has the same exposure. A decode failure logs
+  `warn` and cannot happen for the stock event.
+- **Expired-then-rescheduled operations** keep the old row `pending` (it reads as expired). The API's existing
+  "later schedule supersedes" rule handles it, as on Stellar.
 
 ## Decisions (human, 2026-11-17)
 
-All open questions were resolved; the steps below implement these answers.
+All open questions of the first plan were resolved. The steps below implement these answers, as amended by the
+directive.
 
-1. **Loan-scoped functions:** the explicit list from the issue, plus `Minter.reverseDisburse`.
-2. **`function` naming:** Solidity camelCase. #1941 / #1943 map it per chain.
-3. **Record → loan:** the same approach as Stellar.
-   - First, `RECORD_LOAN_SQL` (`security_records`, then the `SecurityRecordRegistered` log).
-   - If that misses, `loan_id` stays NULL with `record_id` kept, and the existing null-`loan_id` backfill in `access_manager_repo.rs` fills it later.
-   - No RPC inside `index_once`.
-4. **SecurityRegistry / RecordNft keys:** shared with #1938 (`CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS`, `…_SECURITY_RECORD_NFT_ADDRESS`). Whichever PR merges first adds them.
-5. **`expiration()` unreadable at boot:** fall back to 604800 and log a warning.
-6. **Anvil:** golden log fixtures only, with no end-to-end worker run against Postgres.
+0. **Directive (2026-11-17, overrides earlier plan choices):** "Everything must be done the same way as on Stellar —
+   one and the same approach." The EVM indexer mirrors #1921 + #1927 one-to-one. It deviates only where the EVM chain
+   data makes the Stellar mechanism impossible or meaningless; see [Differences from Stellar](#differences-from-stellar).
+1. **Loan-scoped functions:** the explicit list from the issue, plus `Minter.reverseDisburse`. *Unchanged.* It is
+   the one non-chain-level difference (row 11); see Open Question 1.
+2. **`function` naming:** Solidity camelCase. #1941 / #1943 map it per chain. *Unchanged, and consistent with
+   Stellar:* both chains store the contract's native name.
+3. **Record → loan:** the same approach as Stellar. *Unchanged; wording corrected:*
+   - First, `RECORD_LOAN_SQL` (`security_records`, then the `SecurityRecordRegistered` log, then
+     `security_view_snapshots`), run from the sync loop as on Stellar.
+   - If that misses, `loan_id` stays NULL with `record_id` kept. The fallback that fills it is the read-time
+     `COALESCE` lookup in `LIST_PENDING_LOAN_OPS_SQL`; `access_manager_repo.rs` has no write-side backfill job.
+   - No RPC inside `index_once`, and none in the sync loop either.
+4. **SecurityRegistry / RecordNft keys:** shared with #1938 (`CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS`,
+   `…_SECURITY_RECORD_NFT_ADDRESS`). Whichever PR merges first adds them. *Unchanged.* The field shape now follows
+   #1938's plan: `security_registry: Option<EvmSecurityRegistryConfig>`.
+5. **`expiration()` unreadable at boot:** fall back to 604800 and log a warning. *Superseded and moot.* There is no
+   boot read: `expires_at` uses `EXPIRATION_SECS`, as on Stellar (planner Decision 9).
+6. **Anvil:** golden log fixtures only, with no end-to-end worker run against Postgres. *Unchanged.*
+
+**Earlier planner choices changed by the directive:**
+
+| Before | Now |
+|---|---|
+| No sync loop; a custom mapper projected inside `index_once` | Raw `contract_logs` rows in `index_once`, plus the shared supervised `access-manager-sync` loop, watermark and backoff |
+| New `CLOSE_BY_NONCE_SQL` (exact `(operation_id, nonce)`) | `MARK_CANCELED_SQL` / `MARK_EXECUTED_SQL` unchanged |
+| `function` decoded in the parser and stored in the raw row | Raw row stores only event fields (`data`); decoding happens in the sync resolver |
+| `expiration()` `eth_call` at boot, and `NewScheduledOp.expires_at` as a field | `EXPIRATION_SECS` constant and the unchanged `expires_at()` method |
+| Hash mismatch: store the args anyway | Never guess: store without args, with a `warn` |
+| `insert_scheduled_on`, `close_by_nonce_on`, `record_loan_on`, `insert_log_returning_id`, savepoint | Dropped: the existing `AccessManagerRepo` pool methods are used through `RepoStore` |
+| Field-per-key `security_registry_address` / `security_record_nft_address` | #1938's `EvmSecurityRegistryConfig` |
+| Test files `evm_access_manager_parsers.rs`, `_config.rs`, `access_manager_evm_sql.rs` | Stellar's layout: `evm_access_manager_{parsers,hash,sync,loan_ref,config}.rs`, plus `migration_access_manager_calldata.rs` and the extended `access_manager_projection_sql.rs` |
 
 ## Open Questions
 
-_None_ (resolved 2026-11-17, see Decisions).
+1. **`reverseDisburse` asymmetry.** EVM treats `Minter.reverseDisburse` as loan-scoped (human decision 1). Stellar's
+   `loan_ref` covers only `reverse_repay`, although the Stellar Minter has `reverse_disburse`
+   (`pipeline-stellar-contracts` `contracts/minter/src/lib.rs:235`). The directive asks for one approach.
+   **Recommended default:** keep `reverseDisburse` on EVM as decided, change nothing on Stellar in this issue, and
+   open a follow-up to add `reverse_disburse` to Stellar's `loan_ref`.
+   Alternatives:
+   - (b) drop `reverseDisburse` on EVM, for strict parity;
+   - (c) add `reverse_disburse` to Stellar here, as a one-line Stellar behaviour change, outside this issue's stated
+     scope.
 
 ## Implementation Steps
 
-1. **Migration** `packages/shared/migrations/20261118000001_access_manager_operations_calldata.sql` (version per the
-   Risks note):
-   - Header `-- spec: docs/references/access-manager-events.md#table` and a rollback note, as in `20261117000001`.
+1. **Migration** `packages/shared/migrations/20261118000002_access_manager_operations_calldata.sql`. Re-check the
+   version against `main` and #1938 first.
+   - Header `-- spec: docs/references/access-manager-events.md#table` and a `-- Rollback:` block, in the style of
+     `20261117000001`: drop the constraint, drop the column, delete the `_sqlx_migrations` row.
    - `ALTER TABLE access_manager_operations ADD COLUMN IF NOT EXISTS calldata TEXT NULL;`
-   - Add `CONSTRAINT access_manager_operations_one_args_encoding CHECK (args_xdr IS NULL OR calldata IS NULL)`,
-     guarded by a `pg_constraint` existence check in a `DO $$` block so a re-run is a no-op.
-   - No index change (EVM closes by `(chain_id, contract_address, operation_id, …)`, covered by the unique key's
-     leading columns).
+   - `access_manager_operations_one_args_encoding CHECK (args_xdr IS NULL OR calldata IS NULL)`, added in a `DO $$`
+     block guarded by a `pg_constraint` lookup, so a re-run is a no-op.
+   - No index or data change.
 2. **Shared repo** `packages/shared/src/access_manager_repo.rs`:
-   - `NewScheduledOp`: add `calldata: Option<String>`, replace `fn expires_at()` with a field `expires_at: i64`.
-   - `INSERT_SCHEDULED_SQL`: add the `calldata` column and placeholder; `ON CONFLICT` target and `DO NOTHING`
-     unchanged.
-   - Extract the schedule insert into `pub async fn insert_scheduled_on(conn: &mut PgConnection, chain_id, contract,
-     op: &NewScheduledOp) -> anyhow::Result<u64>`; `AccessManagerRepo::apply` calls it inside its own transaction
-     (Stellar behaviour unchanged).
-   - New `pub const CLOSE_BY_NONCE_SQL`: `UPDATE access_manager_operations SET status = $5, closed_tx_hash = $6,
-     closed_ledger = $7, updated_at = now() WHERE chain_id = $1 AND contract_address = $2 AND operation_id = $3 AND
-     nonce = $4 AND status = 'pending'`, plus `pub async fn close_by_nonce_on(conn, chain_id, contract, operation_id,
-     nonce, status: OpStatus, tx_hash, block) -> anyhow::Result<u64>` (rejects `OpStatus::Pending`).
-   - `pub async fn record_loan_on(conn: &mut PgConnection, chain_id, security_contract, record_id) ->
-     anyhow::Result<Option<i64>>` running `RECORD_LOAN_SQL`; `AccessManagerRepo::record_loan` keeps its pool version.
-   - `LIST_PENDING_LOAN_OPS_SQL`, `PendingOpRow`, the watermark SQL and the Stellar close SQL: unchanged.
-3. **Raw row insert with id** `packages/shared/src/db.rs`: `EventRepo::insert_log_returning_id(conn, event:
-   &ContractLog, chain_id) -> anyhow::Result<i64>` (same columns and formats as `insert_log`, `RETURNING id`).
-4. **Stellar call sites** (mechanical, no behaviour change):
-   `packages/worker/src/indexer/stellar/access_manager_sync.rs` `resolve_schedule` sets `calldata: None` and
-   `expires_at: sched.when as i64 + EXPIRATION_SECS`; update
-   `packages/worker/tests/stellar_access_manager_support/mod.rs` (`expires_at: new.expires_at`) and any other
-   `NewScheduledOp` literal (`stellar_access_manager_loan_ref.rs`).
-5. **Config** `packages/worker/src/indexer/config.rs`: `IndexerJobSettings.access_manager_address: Option<Address>` from
-   `{ip}ACCESS_MANAGER_ADDRESS` via `env_nonblank` + `parse_evm_address`. If #1938 has not merged yet, also add
-   `security_registry_address` / `security_record_nft_address: Option<Address>` from
-   `{ip}SECURITY_REGISTRY_ADDRESS` / `{ip}SECURITY_RECORD_NFT_ADDRESS` (parse only; #1938 uses the same fields).
-6. **Pure parser module** `packages/worker/src/indexer/evm_access_manager_parsers.rs` (spec header pointing at
-   `docs/references/access-manager-events.md#evm`), all synchronous and DB-free:
-   - `sol!` events `OperationScheduled`, `OperationExecuted`, `OperationCanceled`.
-   - `pub struct EvmAmTargets { loan_registry: Address, minter: Address, security_registry: Option<Address>,
-     record_nft: Option<Address> }`.
-   - ABI tables for the four targets (Decision 4) and `pub fn decode_call(target: Address, data: &[u8], targets:
-     &EvmAmTargets) -> DecodedCall { function: String, args_json: Option<Value>, args: Option<Vec<DynSolValue>> }`.
-   - `pub fn abi_display_json(value: &DynSolValue, param: &Param) -> Value` per Decision 4.
-   - `pub enum EvmLoanRef { Loan(i64), Record(i64), None }` and `pub fn evm_loan_ref(target, function, args,
-     targets) -> EvmLoanRef` per Decision 5 (const function lists; arg 0 must be a `Uint(_, 256)`; overflow → `None`
-     with `warn`).
-   - `pub fn hash_operation(caller: Address, target: Address, data: &[u8]) -> B256`.
-   - `pub enum ParsedAmLog { Scheduled { log: ContractLog, op: EvmScheduled }, Canceled { log, operation_id, nonce },
-     Executed { log, operation_id, nonce } }` with `EvmScheduled { operation_id, nonce, ready_at: u64, caller,
-     target, function, calldata: String, args_json, loan_ref }`.
-   - `pub fn parse_access_manager_log(log: &Log, access_manager: Address, targets: &EvmAmTargets) ->
-     Option<ParsedAmLog>`: returns `None` for another emitter, silently for non-operation topics, with `warn` for one
-     of the three topics that fails to decode. Builds the `contract_logs` params of Decision 9 and runs the hash check.
-   - `pub fn schedule_write(op: &EvmScheduled, loan_id: Option<i64>, source_log_id: i64, tx_hash: &str, block: u64,
-     block_timestamp: u64, expiration_secs: u32) -> NewScheduledOp` (pure, so the mapper glue stays thin and the
-     row shape is testable without a DB).
-7. **Mapper and wiring** `packages/worker/src/indexer/evm_access_manager.rs`:
-   - `pub fn reject_access_manager_collision(chain_id, am: Address, roles: &[(&str, Address)]) -> Result<()>`
-     (pattern: `plusd_transfers::reject_plusd_collision`).
-   - `pub async fn read_expiration(rpc_url: &str, am: Address) -> u32` per Decision 7 (alloy provider +
-     `sol!` `function expiration() external view returns (uint32)`; pattern: `loan_registry_reader.rs`).
-   - `pub struct AccessManagerLogMapper { parsed: ParsedAmLog, chain_id, contract: String, security_registry:
-     Option<String>, expiration_secs: u32, repo: Arc<EventRepo> }` implementing `LogMapper`:
-     - `is_duplicate`: `EventRepo::is_duplicate` on the raw row.
-     - `insert`: `insert_log_returning_id`; then for a schedule resolve `EvmLoanRef::Record` with `record_loan_on`
-       inside a savepoint (Decision 6), build `schedule_write(..)`, `insert_scheduled_on`; for cancel / execute
-       `close_by_nonce_on` (`debug` when 0 rows).
-     - `set_block_timestamp` sets the raw row's timestamp (used as `scheduled_at`).
-   - `pub fn register_access_manager_handler(builder, chain_id, am, targets, expiration_secs, repo) ->
-     EvmEventPollerBuilder` using `add_event_handler(vec![am], …)`.
-   - `packages/worker/src/indexer/mod.rs`: declare both modules. In `run_indexer_job`, when
-     `settings.access_manager_address` is `Some`: run the collision check against `core_roles` plus the deal-token
-     factory, PLUSD, the asset and the security keys; `read_expiration`; log the `info` line; register the handler on
-     the builder before `build()`. Unset: none of this runs.
-8. **Docs and env** (see Docs to Update).
-9. **Anvil fixtures** (manual, once; recipe kept in the PR description, results committed as test constants):
-   `anvil`; deploy OpenZeppelin `AccessManager(admin)` from `pipeline-contracts/lib/openzeppelin-contracts` with
-   `forge create`; deploy a trivial target with a payable fallback; as admin `setTargetFunctionRole(target,
-   [0xe0da6b66], 7)` and `grantRole(7, caller, 3600)`; as caller `schedule(target, setDefault(7) calldata, 0)`,
-   `evm_increaseTime 3601`, `execute(target, data)`; schedule a second call (`resolveFlag(3, 1, 0x…)`) and `cancel`
-   it. Save the three logs (`cast logs` / `eth_getLogs`: address, topics, data, block, tx hash, log index) as
-   constants in `packages/worker/tests/evm_access_manager_parsers.rs`. With the target address configured as the
-   LoanRegistry (respectively SecurityRegistry) in the test, they must decode to the expected rows. Never point
-   anything at the local pipeline database.
-10. **Checks:** `cargo clippy --all -- -D warnings`, `cargo test -p pipeline-worker -p shared -p api` (the API crate
-    only to confirm #1922 tests still pass), `scripts/check-chain-env-names.sh`, `npx tsx scripts/lint-docs.ts`.
+   - `NewScheduledOp` gains `calldata: Option<String>`. `expires_at()` is unchanged.
+   - `INSERT_SCHEDULED_SQL` gains the `calldata` column and a placeholder. The `ON CONFLICT` target and `DO NOTHING`
+     are unchanged. `AccessManagerRepo::apply` binds it.
+   - Everything else is unchanged: `MARK_*`, `RECORD_LOAN_SQL`, the watermark SQL, `LIST_ROWS_AFTER_SQL`,
+     `HAS_PENDING_CALL_SQL`, `LIST_PENDING_LOAN_OPS_SQL` and `PendingOpRow`.
+3. **Chain-neutral sync core**: new `packages/worker/src/indexer/access_manager_sync.rs`, with header
+   `// spec: docs/references/access-manager-events.md#sync-loop`, declared in `indexer/mod.rs`.
+   - Move out of `stellar/access_manager_sync.rs`:
+     - `ACCESS_MANAGER_SYNC_INTERVAL`, `ROWS_PER_CYCLE`, `CYCLE_BUDGET`;
+     - `Retry`, `AmSyncStore`, `RepoStore`;
+     - `unparsable`, as `pub fn unparsable_row`.
+   - Move out of `stellar/access_manager_parsers.rs`:
+     - `CanceledRow` and its `str_param` / `num_param` helpers, which are chain-neutral;
+     - `LoanRef` and `AmTopic`.
+   - New: `#[async_trait] pub trait AmRowResolver: Send { fn begin_cycle(&mut self) {} async fn resolve(&mut self,
+     row: &AmLogRow, store: &dyn AmSyncStore) -> Result<OpWrite, Retry>; }`.
+   - New: `pub fn cancel_write(row: &AmLogRow) -> OpWrite`. This is today's `OP_EVENT_CANCELED` arm; both chains
+     use it.
+   - New: `pub async fn loan_columns(loan_ref: LoanRef, security_registry: Option<&str>, store: &dyn AmSyncStore) ->
+     Result<(Option<i64>, Option<i64>), Retry>`. This is today's `loan_ref` match block in `resolve_schedule`,
+     including the `record_loan` call.
+   - `pub async fn sync_rows(store, resolver: &mut dyn AmRowResolver, backoff: &mut KeyedBackoff<i64>, now) ->
+     Result<usize>`. It is today's `sync_once` body: `begin_cycle()` first, then `resolver.resolve(&row, store)`
+     in place of `resolve_row`. The warn/debug messages, `break` rules and backoff are unchanged.
+   - `run_cycle(chain_id, store, resolver, backoff)` keeps the budget and the panic guard.
+   - `pub async fn run_sync_loop(chain_id, store: &dyn AmSyncStore, resolver: &mut dyn AmRowResolver) ->
+     Result<()>`: sleep `ACCESS_MANAGER_SYNC_INTERVAL` when `applied < ROWS_PER_CYCLE`.
+   - `KeyedBackoff` is imported from `crate::indexer::stellar::supervise`, unchanged.
+4. **Stellar becomes a resolver** (refactor only, no behaviour change):
+   - `stellar/access_manager_sync.rs` keeps `TxFetch`, `TxEnvelopeSource`, `AmSyncConfig`, `classify_transaction`,
+     `RpcTxSource`, `TX_FETCH_TIMEOUT`, `fetch_cached`, `resolve_schedule` and `resolve_execute`.
+     - New `StellarRowResolver<'a> { tx: &'a dyn TxEnvelopeSource, cfg: &'a AmSyncConfig, cache: HashMap<String,
+       TxFetch> }` implements `AmRowResolver`. `begin_cycle` clears the cache, so there is one cache per cycle, as
+       today.
+     - `resolve_schedule` sets `calldata: None` and uses `loan_columns`. The cancel arm uses `cancel_write`.
+     - `pub async fn sync_once(store, tx, cfg, backoff, now)` keeps its signature and calls `sync_rows` with a fresh
+       resolver.
+     - `run_access_manager_sync_loop(rpc, repo, chain_id, contract_id, ids)` keeps its signature and calls
+       `run_sync_loop`.
+     - `pub use crate::indexer::access_manager_sync::{AmSyncStore, RepoStore, Retry, ACCESS_MANAGER_SYNC_INTERVAL,
+       ROWS_PER_CYCLE, CYCLE_BUDGET};`.
+   - `stellar/access_manager_parsers.rs`: `pub use crate::indexer::access_manager_sync::{AmTopic, CanceledRow, LoanRef};`.
+5. **EVM parser**: new `packages/worker/src/indexer/access_manager_evm_parsers.rs`, header
+   `// spec: docs/references/access-manager-events.md#evm-encoding`. It is pure and DB-free; naming follows #1938's
+   `security_registry_evm_parsers.rs`.
+   - `sol!` events: the 3 operation events and the 9 allow-listed `IAccessManager` events (topic0 only).
+   - `pub const ACCESS_MANAGER_EVM_ALLOW_LISTED_TOPICS: [B256; 9]` and
+     `pub fn classify_access_manager_topic(topic0: B256) -> AmTopic`, with the shared `AmTopic` semantics:
+     Scheduled, Canceled, Executed, AllowListed, Unknown. It returns the shared `AmTopic` (moved to the core in step 3).
+   - `pub fn parse_access_manager_log(log: &Log, access_manager: Address) -> Option<ContractLog>`. It mirrors
+     `dispatch_access_manager`:
+     - `None` for another emitter;
+     - silent `None` for allow-listed topics;
+     - `warn` + `None` for an unknown topic, or for one of the three that fails to decode;
+     - otherwise a `ContractLog` named `OP_EVENT_*` with the Decision 2 params, built with `extract_log_meta`
+       (`block_timestamp: 0`, set later by `index_once`).
+   - Typed readers: `EvmScheduledRow { operation_id, caller, nonce: u32, when: u64, target, data: String }` and
+     `EvmExecutedRow { operation_id, nonce: u32 }`, each with `from_params`. Canceled uses the shared `CanceledRow`.
+   - `pub fn hash_operation(caller: Address, target: Address, data: &[u8]) -> [u8; 32]`, which is
+     `keccak256((caller, target, Bytes(data)).abi_encode_params())`. Verify the encoding against a `cast` vector
+     (Test Strategy).
+   - `pub struct EvmTargets { loan_registry: Address, minter: Address, security_registry: Option<Address>,
+     record_nft: Option<Address> }`, the counterpart of `TargetIds`.
+   - ABI tables: `alloy::sol!` interface blocks for the four contracts, covering every external non-view function,
+     with named parameters and the `Terms` struct. Build a per-target selector → `alloy::json_abi::Function` lookup:
+     via `#[sol(abi)]`, or via `Function::parse` of full human-readable signatures with parameter names if
+     `#[sol(abi)]` is unavailable under the workspace's alloy 0.8 features (`contract` enables `dyn-abi` and
+     `json-abi`).
+     - `pub fn decode_call(target: Address, data: &[u8], targets: &EvmTargets) -> DecodedCall { function: String,
+       args: Option<Vec<DynSolValue>>, args_json: Option<Value> }` follows Decision 6. Decode with
+       `abi_decode_input(&data[4..], true)`.
+   - `pub fn args_display_json(values: &[DynSolValue], params: &[Param]) -> Value` follows Decision 6, by analogy
+     with Stellar's `args_display_json`.
+   - `pub fn loan_ref(target: Address, function: &str, args: &[DynSolValue], targets: &EvmTargets) -> LoanRef`
+     follows Decision 7. Use const name lists like Stellar's `LOAN_REGISTRY_FUNCTIONS`. Arg 0 must be a
+     `Uint(_, 256)` that fits `u32`; otherwise `None` with a `warn`.
+6. **EVM resolver and loop**: new `packages/worker/src/indexer/access_manager_evm_sync.rs`, header
+   `// spec: docs/references/access-manager-events.md#evm-sync-loop`.
+   - `pub struct EvmAmSyncConfig { contract_id: String /* EIP-55 */, targets: EvmTargets }`.
+   - `pub struct EvmRowResolver<'a> { cfg: &'a EvmAmSyncConfig }` implements `AmRowResolver`:
+     - `OP_EVENT_SCHEDULED`: `EvmScheduledRow::from_params`; if that fails, `unparsable_row`. Decode `data` (`0x`
+       hex); if invalid hex or shorter than 4 bytes, `unparsable_row` + `warn`. Then the hash check (Decision 5):
+       - mismatch → `NewScheduledOp` with `calldata`, `args_json`, `loan_id` and `record_id` all `None`, plus the
+         `warn` "no schedule reproduces the operation id; args not stored". `function` comes from `decode_call`,
+         with no args.
+       - match → `decode_call`, then `loan_ref`, then `loan_columns(.., targets.security_registry.map(|a|
+         a.to_checksum(None)), store)`. `calldata` = the normalised `0x` lowercase hex.
+
+       The other fields are as on Stellar: `ready_at = when`, `schedule_tx_hash` / `schedule_ledger` /
+       `scheduled_at` / `source_log_id` from the row, and `args_xdr: None`.
+     - `OP_EVENT_CANCELED`: `cancel_write(row)`.
+     - `OP_EVENT_EXECUTED`: `EvmExecutedRow::from_params`, giving `OpWrite::Execute { ids: vec![operation_id],
+       tx_hash, ledger }`. If it fails, `unparsable_row`.
+     - Anything else: `unparsable_row`.
+   - `pub async fn sync_once(store, cfg: &EvmAmSyncConfig, backoff, now) -> Result<usize>`, a thin wrapper over
+     `sync_rows`, mirroring the Stellar entry point for tests.
+   - `pub async fn run_access_manager_sync_loop(repo: AccessManagerRepo, chain_id, cfg: EvmAmSyncConfig) ->
+     Result<()>`. It builds `RepoStore { repo, chain_id, contract_id }` and calls `run_sync_loop`.
+7. **Config** `packages/worker/src/indexer/config.rs`:
+   - Add `IndexerJobSettings.access_manager_address: Option<Address>` from `{ip}ACCESS_MANAGER_ADDRESS`, via
+     `env_nonblank` + `parse_evm_address`.
+   - If #1938 has not merged yet, also add `security_registry: Option<EvmSecurityRegistryConfig>` exactly as #1938's
+     plan step 7 defines it: parsing and pairing errors only, no handler.
+8. **Wiring** (`packages/worker/src/indexer/mod.rs`, plus the handler module):
+   - `access_manager_evm_parsers.rs`:
+     - `pub fn reject_access_manager_collision(chain_id, am: Address, roles: &[(&str, Address)]) -> Result<()>`,
+       following the `reject_plusd_collision` pattern. Its error names both keys, and `ASSET_ADDRESS` maps to
+       `JOB_INDEXER_EVM_<id>_ASSET_ADDRESS`.
+     - `pub fn register_access_manager_handler(builder, chain_id, am, repo: Arc<EventRepo>) ->
+       EvmEventPollerBuilder`, built with `add_event_handler(vec![am], …)`. It wraps `parse_access_manager_log` in a
+       plain `ContractLogMapper`, as `register_plusd_transfer_handler` does.
+   - `run_indexer_job`, when `settings.access_manager_address` is `Some(am)`, does the following after the PLUSD
+     block (and after #1938's security block):
+     1. Run `reject_access_manager_collision` against `core_roles`, which by then include DM, WQ, sPLUSD, LR,
+        Minter, CR, DTF and #1938's security keys, plus `PLUSD_ADDRESS` and `ASSET_ADDRESS` when set.
+     2. Log `info` "EVM AccessManager indexer enabled" (chain_id, access_manager).
+     3. Register the handler.
+     4. Keep `let _access_manager_guard = spawn_supervised("access-manager-sync", chain_id, move || …)` alive across
+        `index_loop`. The task builds `EvmAmSyncConfig` with:
+        - `contract_id: am.to_checksum(None)`;
+        - `loan_registry` / `minter` from the parsed `loan_registry_contracts[0]` and `yield_minter_contracts[0]`;
+        - `security_registry` / `record_nft` from `settings.security_registry`.
+
+     When the key is unset, none of this runs.
+9. **Test support split** (no Stellar behaviour change). Move the chain-neutral fakes `Op`, `StoreState`,
+   `MemStore`, `newest_before` and its `AmSyncStore` impl from `packages/worker/tests/stellar_access_manager_support/mod.rs`
+   to a new `packages/worker/tests/access_manager_support/mod.rs`.
+   - `stellar_access_manager_support/mod.rs` includes it with `#[path = "../access_manager_support/mod.rs"] mod
+     access_manager_support; pub use access_manager_support::*;`, so every Stellar test keeps its imports.
+   - `MemStore` stores the new `calldata` through `NewScheduledOp`; no other change.
+   - A new `packages/worker/tests/evm_access_manager_support/mod.rs` holds the EVM builders and fixtures:
+     - log builders for the three events and an allow-listed event, using `SolEvent::encode_log_data` as in
+       `evm_minter_parsers.rs`;
+     - `scheduled_row` / `canceled_row` / `executed_row` `AmLogRow` builders;
+     - `config()`, which returns the `EvmAmSyncConfig`;
+     - the Anvil golden constants from step 10.
+10. **Anvil fixtures** (manual, once). Keep the recipe in the PR description and commit the results as test
+    constants:
+    1. Start `anvil`. Deploy OpenZeppelin `AccessManager(admin)` from `pipeline-contracts/lib/openzeppelin-contracts`
+       with `forge create`, then deploy a trivial target with a payable fallback.
+    2. As admin: `setTargetFunctionRole(target, [0xe0da6b66, 0xdf84b5b3], 7)` and `grantRole(7, caller, 3600)`.
+    3. As caller: `schedule(target, setDefault(7) calldata, 0)`, `evm_increaseTime 3601`, `execute(target, data)`.
+    4. Schedule `resolveFlag(3, 1, 0x…)` and `cancel` it.
+    5. Save the four logs (address, topics, data, block, tx hash, log index, from `cast logs`) and the four
+       `operationId`s into `evm_access_manager_support/mod.rs`.
+
+    Never point anything at the local pipeline database.
+11. **Docs and env**: see Docs to Update.
+12. **Checks:**
+    - `cargo fmt --all --check` and `cargo clippy --all -- -D warnings`;
+    - `cargo test -p pipeline-worker -p shared -p api` (the API crate confirms the #1922 tests still pass);
+    - `scripts/check-chain-env-names.sh` and `npx tsx scripts/lint-docs.ts`.
 
 ## Test Strategy
 
-All tests live in `packages/<pkg>/tests/*.rs`, are pure and never open a database or read `DATABASE_URL` /
-`POSTGRES_URL`.
+All tests live in `packages/<pkg>/tests/*.rs`. They are pure, never open a database, and never read `DATABASE_URL`
+or `POSTGRES_URL`. The layout mirrors the Stellar suites one-to-one.
 
-- `packages/worker/tests/evm_access_manager_parsers.rs` (new):
-  - Topic hashes and the selectors in the Scope table equal the computed values (catches a mistyped signature,
-    especially the 15-field `Terms` tuple).
-  - `OperationScheduled` synthetic log (built with `SolEvent::encode_log_data`, as in `evm_minter_parsers.rs`) →
-    `ParsedAmLog::Scheduled` with params `{operation_id (no 0x), nonce, when, caller, target (EIP-55), function, data}`.
-  - Executed and Canceled → `{operation_id, nonce}`; a `RoleGranted`-style log from the AccessManager → `None`;
-    a log from another address with the same topic → `None`; a truncated `OperationScheduled` → `None`.
-  - `decode_call` for every Risk Council function and `setInspectors`: name and `args_json` (numbers vs decimal
-    strings, negative `int256` for `adjustInterest`, `bytes32` hex without `0x`, enum as number, `setTerms` tuple
-    as an object with all 15 field names, address array as EIP-55).
-  - Unknown selector, unconfigured target, AccessManager-as-target → `function = "0x…"`, `args_json = None`; known
-    selector with garbage arguments → name kept, `args_json = None`; data shorter than 4 bytes → no panic.
-  - `evm_loan_ref`: each row of the Decision 5 table, the same function on the wrong target, an unset
-    SecurityRegistry, loan id 0, an id above `i64::MAX` → `None`.
-  - `hash_operation` equals the event `operationId` for the Anvil golden logs; a mismatching synthetic id still
-    parses.
-  - `schedule_write`: `ready_at` = `schedule`, `expires_at = ready_at + expiration`, `calldata` set, `args_xdr`
-    `None`, `source_log_id`, tx hash and block fields copied; `Record` ref keeps `record_id` and takes the given
-    `loan_id` (or `None`).
-  - Anvil golden logs (step 9) decode to the expected schedule, execute and cancel rows.
-- `packages/worker/tests/evm_access_manager_config.rs` (new, `ENV_LOCK` pattern of
-  `evm_collateral_registry_config.rs`): unset and blank key → `None`; invalid → error naming the key; valid →
-  `Some`; `reject_access_manager_collision` names both keys for a clash with each role (core, CR, DTF, PLUSD, asset,
-  security registry, record NFT) and passes for a distinct address.
-- `packages/shared/tests/access_manager_evm_sql.rs` (new, SQL-text pattern of `access_manager_projection_sql.rs`):
-  the calldata migration adds a nullable `calldata` column and the named CHECK; `INSERT_SCHEDULED_SQL` lists
-  `calldata` and its conflict target still equals the `access_manager_operations_schedule_key` columns;
-  `CLOSE_BY_NONCE_SQL` filters on `operation_id`, `nonce` and `status = 'pending'` and has no `ORDER BY`;
-  `LIST_PENDING_LOAN_OPS_SQL` still requires `args_xdr IS NOT NULL` (EVM rows stay out of the #1922 read).
-- Existing Stellar suites (`stellar_access_manager_*.rs`, `access_manager_projection_sql.rs`,
-  `access_manager_pending_sql.rs`, `packages/api/tests/pending_operations.rs`) pass unchanged apart from the
-  `NewScheduledOp` field updates.
-- Edge cases covered above: cancel / execute for an unknown schedule (0 rows, no error) is a mapper-glue path
-  verified by review and the SQL text test; re-schedule after cancel (nonce + 1, new row) is covered by
-  `schedule_write` + the unique key test.
+- `packages/worker/tests/evm_access_manager_parsers.rs` (mirrors `stellar_access_manager_parsers.rs`):
+  - Topic hashes for all 12 events, and every selector in the Scope table, equal the computed values. This catches a
+    mistyped signature, especially the 15-field `Terms` tuple.
+  - The golden `OperationScheduled` decodes to `AccessManagerOperationScheduled` with
+    `{operation_id (no 0x), caller, nonce, when, target (EIP-55), data (0x hex)}` and the right block, tx and log
+    index.
+  - Canceled and executed logs decode to `{operation_id, nonce}`.
+  - A wrong topic count or truncated data gives `None`. A log from another address with the same topic gives
+    `None`. Each allow-listed topic is dropped silently. An unknown topic is dropped.
+  - `EvmScheduledRow` / `EvmExecutedRow` / `CanceledRow` round-trip through `from_params` and reject missing or
+    malformed fields.
+  - `decode_call`:
+    - every Risk Council function and `setInspectors` decodes to the right name and `args_json`;
+    - an unknown selector, an unconfigured target, or the AccessManager as target gives `function = "0x…"` and
+      `args_json = None`;
+    - a known selector with garbage arguments keeps the name and gives `args_json = None`.
+- `packages/worker/tests/evm_access_manager_hash.rs` (mirrors `stellar_access_manager_hash.rs`):
+  - `hash_operation` equals the event `operationId` for every Anvil golden log.
+  - It equals a precomputed `cast keccak $(cast abi-encode "f(address,address,bytes)" …)` vector, which pins the
+    `abi.encode` layout of the dynamic `bytes`.
+  - Changing the caller, the target or one byte of data changes the id.
+  - The golden schedule and execute share the id.
+- `packages/worker/tests/evm_access_manager_sync.rs` (mirrors `stellar_access_manager_sync.rs`; uses `MemStore` and
+  the EVM `sync_once`):
+  - A schedule becomes a `pending` row with `calldata`, `function`, `args_json` and `ready_at = when`,
+    `expires_at = when + 604800`, and `args_xdr = None`.
+  - An id mismatch stores the row without `calldata`, args or loan, and advances the watermark.
+  - Schedule then execute in one batch gives `executed`. Schedule then cancel in one batch gives `canceled`.
+  - A cancel or execute of an unknown operation is a no-op that advances the watermark.
+  - An execute touches only the newest schedule of the id.
+  - A cancel naming another nonce than the newest schedule changes nothing.
+  - A re-schedule after a cancel (`nonce + 1`) gets its own row. A later cancel closes only that row, and a replay
+    never closes the later schedule.
+  - Replaying from a reset watermark changes nothing.
+  - An unknown selector is stored with `function = "0x…"`, `args_json = None` and `calldata` set.
+  - Invalid hex `data`, or data shorter than 4 bytes, is skipped and advances the watermark.
+  - One call is capped at `ROWS_PER_CYCLE`.
+  - A failing apply backs off without advancing and retries later.
+  - Unparsable params are skipped and advance the watermark.
+- `packages/worker/tests/evm_access_manager_loan_ref.rs` (mirrors `stellar_access_manager_loan_ref.rs`):
+  - `loan_ref` matches every row of the Decision 7 table.
+  - Loan 0 is valid. An id above `u32::MAX` gives `None`.
+  - The same function on the wrong target, or an unset SecurityRegistry, gives `None`.
+  - A record is resolved through the store (`MemStore.records`). An unresolved record keeps `record_id`.
+  - `args_display_json`:
+    - small integers and enums are numbers, wide integers are decimal strings, and a negative `int256`
+      (`adjustInterest`) is right;
+    - `bytes32` is hex without `0x`, and `address[]` is EIP-55;
+    - the `setTerms` tuple is an object with all 15 field names, and the output never contains NUL.
+- `packages/worker/tests/evm_access_manager_config.rs` (mirrors `stellar_access_manager_config.rs`; uses the
+  `ENV_LOCK` pattern of `evm_collateral_registry_config.rs`):
+  - An unset or whitespace-only key gives `None`. A valid key gives `Some`. An invalid key is an error naming the
+    key.
+  - `reject_access_manager_collision` names both keys for a clash with each role (core, CR, DTF, PLUSD, asset,
+    security registry, record NFT), and passes for a distinct address.
+  - The key coexists with the security registry and loan registry keys.
+- `packages/shared/tests/migration_access_manager_calldata.rs` (mirrors `migration_access_manager_schedule_key.rs`):
+  - The migration adds a nullable `calldata` column and the named CHECK, guarded by a `pg_constraint` lookup.
+  - It has no data change and has a rollback block.
+- `packages/shared/tests/access_manager_projection_sql.rs` (extended): `INSERT_SCHEDULED_SQL` lists `calldata`, and
+  its conflict target still equals the `access_manager_operations_schedule_key` columns. The existing `MARK_*`
+  assertions stay and now cover both chains.
+- `packages/shared/tests/access_manager_pending_sql.rs`: unchanged. It still pins `args_xdr IS NOT NULL`, so EVM
+  rows stay out of the #1922 read until #1941.
+- Existing Stellar suites (`stellar_access_manager_*.rs`, `stellar_supervise.rs`, `packages/api/tests/pending_operations.rs`)
+  pass unchanged after the refactor and the support split.
 
 ## Docs to Update
 
-- `docs/references/access-manager-events.md`: retitle to "AccessManager scheduled operations"; keep the Stellar
-  content under a "Stellar" heading and add an `## EVM` section: configuration key and collision rule, the three
-  events and their `contract_logs` params, decoding and `args_json` form, the `calldata` column, direct projection
-  in `index_once` (no sync loop, no watermark), close by `(operation_id, nonce)`, loan id table, record lookup,
-  `expires_at` from `expiration()`, re-projection procedure, rollout (set the key, rewind the cursor to at or before
-  the earliest pending schedule, or to the AccessManager deploy block), and known limitations. Update the Table
-  section with the `calldata` column and the CHECK, and note that EVM rows never touch `access_manager_sync_state`.
-- `docs/references/index.md`: the entry title and summary (no longer Stellar only).
-- `docs/references/backend.md`: a new "#### EVM AccessManager indexing" subsection next to the Stellar one (key,
-  dark default, direct projection, link to the reference); note the key in the EVM env text if an EVM key table
-  exists there.
-- `.env.example`: `# CHAIN_1_EVM_INDEXER_ACCESS_MANAGER_ADDRESS=  # optional — OZ AccessManager (Hoodi 0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992); OperationScheduled/Canceled/Executed into contract_logs + access_manager_operations with calldata (#1939); unset ships dark; rewind the cursor to at or before the earliest pending schedule`.
-- `docs/user-stories/epic-1937/1939-evm-access-manager-indexer.md` (new; the epic names this folder): operator stories
-  mirroring `epic-1920/1921-access-manager-indexer.md` — key set / unset / invalid / colliding; a scheduled
-  Risk Council call projected with `calldata`, `args_json`, `loan_id`, `ready_at`, `expires_at`; execute (via
-  `AccessManager.execute` and via a direct target call) and cancel close the row; re-schedule adds a row with
-  `nonce + 1`; role events produce nothing. Live-chain stories are marked as needing #1944 on Hoodi.
-- `docs/product-specs/loan-security-state.md`: no change (API behaviour is unchanged; #1941 updates it).
-- `docs/exec-plans/tech-debt-tracker.md`: none expected. If Open Question 3 is resolved as "DB lookup" and #1938
-  stores EVM records under names `RECORD_LOAN_SQL` does not read, log the missing EVM branch as a TD.
+- `docs/references/access-manager-events.md`:
+  - Retitle it to "AccessManager scheduled operations" and update the intro to cover both chains.
+  - Keep every existing section and anchor (`#configuration`, `#encoding`, `#table`, `#sync-loop`, `#args-recovery`,
+    `#loan-id`, `#cursor-and-retention`, `#api-read`, `#known-limitations`) as the Stellar description.
+  - `## Table`: add the `calldata` column and the CHECK. State that the status rules and close SQL apply to both
+    chains, and that `expires_at` is `ready_at + 604800` on both.
+  - `## Sync loop`: one sentence saying that the loop, watermark, ordering, per-row transaction and backoff are
+    shared, and that only the per-chain row resolver differs.
+  - Append `## EVM` with these subsections, which are the anchors the EVM `// spec:` headers point at:
+    - `### EVM configuration`: the key, the dark default, the collision rule, and the targets from the indexer keys.
+    - `### EVM encoding`: the event table, stored names and params, and the allow-list.
+    - `### EVM sync loop`: the resolver: no RPC, execute by id, `cancel_write`.
+    - `### EVM args and operation id`: `calldata`, the keccak check and "never guess", decoding, `function`
+      naming, and the `args_json` form.
+    - `### EVM loan id`: the table and the record lookup.
+    - `### EVM cursor and rollout`: no retention, rewind to the AccessManager deploy block if needed, lossless
+      re-projection, and the check queries.
+    - `### EVM known limitations`: the unused execute nonce, and AccessManager-self targets shown as selectors.
+    - `### Differences from Stellar`: the table from this plan.
+- `docs/references/index.md`: update the entry title and summary; it is no longer Stellar-only.
+- `docs/references/backend.md`:
+  - Add a new "#### EVM AccessManager indexing" next to the Stellar subsection: the key, the dark default, the raw
+    rows plus the shared `access-manager-sync` task with no RPC, and a link to the reference.
+  - Add one EVM rollout line next to the Stellar "AccessManager rollout" paragraph.
+- `ARCHITECTURE.md` line 64: change "AccessManager scheduled-operation events (Stellar)" to "(EVM and Stellar)".
+- `.env.example`: in the EVM block after `…_PLUSD_ADDRESS`, add `# CHAIN_1_EVM_INDEXER_ACCESS_MANAGER_ADDRESS=  #
+  optional — OZ AccessManager (Hoodi 0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992); OperationScheduled/Canceled/Executed
+  into contract_logs + access_manager_operations (calldata) via the access-manager-sync task (#1939); unset ships
+  dark; rewind the cursor to at or before the earliest pending schedule`.
+- `docs/user-stories/epic-1937/1939-evm-access-manager-indexer.md` (new): operator stories mirroring
+  `epic-1920/1921-access-manager-indexer.md`. Add an "Epic #1937" table to `docs/user-stories/index.md` if #1938 has
+  not added one.
+  - Config: the key set, unset, invalid or colliding.
+  - Projection: a scheduled Risk Council call is projected by the sync task with `calldata`, `function`,
+    `args_json`, `loan_id`, `ready_at` and `expires_at`, and `access_manager_sync_state` advances.
+  - Closing: execute (via `AccessManager.execute`, or via a direct target call) and cancel close the row. A
+    re-schedule adds a row with `nonce + 1`.
+  - Role events produce nothing.
+  - Live-chain stories are marked as needing #1944 on Hoodi.
+- `docs/product-specs/loan-security-state.md`: no change. API behaviour is unchanged; #1941 updates it.
+- `docs/exec-plans/tech-debt-tracker.md`: add #1939 to the "`supervise.rs` under `indexer/stellar/` serves EVM"
+  entry. #1938 adds that entry; create it if #1938 has not landed. No EVM counterpart of TD-187 is needed.
