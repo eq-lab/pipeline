@@ -195,29 +195,23 @@ what this issue writes. The Stellar counterpart is #1921 (with the #1927 key fix
   "later schedule supersedes" rule handles it. Same as Stellar.
 - No RPC is added inside `index_once`; the only new RPC call is the one-off `expiration()` read at job start.
 
+## Decisions (human, 2026-11-17)
+
+All open questions were resolved; the steps below implement these answers.
+
+1. **Loan-scoped functions:** the explicit list from the issue, plus `Minter.reverseDisburse`.
+2. **`function` naming:** Solidity camelCase. #1941 / #1943 map it per chain.
+3. **Record → loan:** the same approach as Stellar.
+   - First, `RECORD_LOAN_SQL` (`security_records`, then the `SecurityRecordRegistered` log).
+   - If that misses, `loan_id` stays NULL with `record_id` kept, and the existing null-`loan_id` backfill in `access_manager_repo.rs` fills it later.
+   - No RPC inside `index_once`.
+4. **SecurityRegistry / RecordNft keys:** shared with #1938 (`CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS`, `…_SECURITY_RECORD_NFT_ADDRESS`). Whichever PR merges first adds them.
+5. **`expiration()` unreadable at boot:** fall back to 604800 and log a warning.
+6. **Anvil:** golden log fixtures only, with no end-to-end worker run against Postgres.
+
 ## Open Questions
 
-1. **Which functions are loan-scoped on EVM?** Recommended default: the explicit list in Decision 5 (the issue's list:
-   the six LoanRegistry Risk Council functions, `Minter.reverseRepay` / `reverseDisburse`, `setTerms`,
-   `releaseWithConsent`, `resolveFlag`). Alternative: scope every decoded call on a configured target whose first
-   input is named `loanId` / `recordId` (would also attach `rollover`, `closeLoan`, `updateMutable`, `disburse`, …
-   if #1944 ends up putting a delay on the shared `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`).
-2. **`function` naming on EVM.** Recommended default: the Solidity name (`setDefault`, `releaseWithConsent`), with #1941
-   and #1943 mapping per chain kind. Alternative: store the Stellar snake_case names (`set_default`) so the Trustee's
-   label maps are shared; arguments still differ per chain.
-3. **`record_id → loan_id`.** Recommended default: the in-transaction `RECORD_LOAN_SQL` lookup in a savepoint (no
-   RPC), `loan_id = NULL` with `record_id` kept on a miss, read-time resolution in the API. Alternative: an
-   `eth_call record(recordId)` in the mapper (RPC inside `index_once`; an RPC failure would stall the chain cursor).
-4. **Shared SecurityRegistry / RecordNft keys with #1938.** Recommended default: reuse
-   `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` / `…_SECURITY_RECORD_NFT_ADDRESS`, added by whichever of #1938
-   and #1939 merges first; no AccessManager-specific copies.
-5. **`expiration()` read failure at boot.** Recommended default: fall back to 604 800 with a `warn` and keep indexing.
-   Alternative: leave the AccessManager handler off (dark) for that run with an `error`, so no row is ever written
-   with an assumed expiration.
-6. **Anvil verification depth.** Recommended default: capture real `OperationScheduled` / `OperationExecuted` /
-   `OperationCanceled` logs from a local Anvil AccessManager with a delayed role and commit them as golden test
-   constants; no end-to-end worker run (that needs a Postgres, and tests and checks never use the local pipeline
-   database). Alternative: also run the worker against Anvil with a disposable Postgres container.
+_None_ (resolved 2026-11-17, see Decisions).
 
 ## Implementation Steps
 
