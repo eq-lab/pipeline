@@ -64,23 +64,21 @@ Contracts are frozen: `pipeline-contracts@150631a`, Hoodi `deployments/hoodi-v5.
 - **API compile impact.** New fields on `TermsRow`, `TermsView` and `MarginCallEventRow` require explicit-literal constructions in `packages/api` and its tests to add them, or to use `..Default::default()`. The API's behaviour must not change. EVM rows are only read once #1940 lands. The audit log already lists `Security*` rows by name and formats amounts per `ChainKind` (`audit_log.rs:467`), so EVM security rows will start appearing there with correct 6 dp amounts as soon as the worker key is set. That is acceptable and expected. `SecurityDefaultBreach*` are not in its allow-list (#1940).
 - **alloy 0.8.3.** Revert data is read from `RpcError::ErrorResp(ErrorPayload)` (`as_error_resp()` → `as_revert_data()`). Some RPCs return the revert data as a hex string in `message`. The helper accepts both and is unit-tested on constructed payloads.
 
+## Decisions (human, 2026-11-17)
+
+All open questions were resolved; the steps below implement these answers.
+
+1. **Valuation source: as on Stellar.** Read the contract's coverage view, never recompute in Rust. On EVM, Stellar's `coverage_detail` lives on `PipelineSecurityRegistryReader.coverageDetail(loanId)`. Add the optional key `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_READER_ADDRESS`; without it, `security_loan_valuations` is not filled.
+2. **Amount units:** raw on-chain units (6 dp on EVM). #1940 makes the API decimals-aware per chain.
+3. **RecordNft events:** stored under the RecordNft's own address. Queries read `contract_address = ANY(...)`.
+4. **EVM-only `Terms` fields and the `DefaultBreach*` events:** kept.
+   - `security_terms` gets nullable `default_ratio_bps`, `originator_fee_rate` and `default_breach_at`.
+   - The three events fold into `security_margin_call_events` as new kinds, with a `default_ratio_bps` column.
+5. **Partial config:** fail boot and name the missing or invalid key. This covers a registry key without the RecordNft key (or the reverse), a Reader key without the registry key, a malformed address and a role collision.
+
 ## Open Questions
 
-Each question has a recommended default. The plan below implements the defaults, so a human only needs to answer where they disagree.
-
-1. **Q1 — Valuation source.** The registry has no `coverage_detail`. Only the `PipelineSecurityRegistryReader` returns `value`, `stale_value`, `flagged_value`, `debt`, `coverage_bps`, `ltv_bps`, `price_stale` and the counted records in one call. `collateralValue` + `coverage` alone cannot give `price_stale` or the stale/flagged splits.
-   - **Default:** add a third optional key, `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_READER_ADDRESS`. When unset, events, records, terms, inspections and margin history are still indexed, and `security_loan_valuations` stays empty (warn once). The key is valid only with the registry key, and at loop start `reader.securityRegistry()` must equal the registry.
-   - **Alternative:** reimplement the Reader's `coverageDetail` in Rust from `terms`, `recordIds`, `record`, `latestInspection`, `loanMoney` and `immutableLoanData` at one block. This adds about 20 reads per loan per cycle and duplicates contract math.
-2. **Q2 — Amount units in the projection.** **Default:** store raw on-chain units: 6 dp on EVM, 7 dp on Stellar, unchanged. This follows the house rule in `shared/src/chains.rs` ("`contract_logs` always stores the raw value … normalize only when … reading back out for an API consumer") and the audit log's per-`ChainKind` formatting. #1940 makes `format_7dp` / `UNIT` chain-aware. The only fold change is the PAR mark (`1000000` on EVM). **Alternative:** scale EVM amounts ×10 into 7 dp at fold time. API stays unchanged, but the projection no longer matches `contract_logs` or the contract, and the Trustee must divide again to write `revalue`.
-3. **Q3 — Where RecordNft events live.** **Default:** store them under the RecordNft's real address, and give the worker-side repo event queries a `log_contracts: &[String]` (`ANY`). **Alternative:** rewrite their `contract_address` to the registry address in the mapper. That needs zero repo changes, but `contract_logs` would misattribute the emitter.
-4. **Q4 — EVM-only terms and default-breach events.** **Default:** keep them.
-   - Add nullable `security_terms.default_ratio_bps`, `originator_fee_rate` and `default_breach_at` (NULL on Stellar).
-   - Store the three events in `contract_logs`.
-   - Fold them into `security_margin_call_events` with new kinds `default_breach`, `default_breach_price_stale` and `default_breach_cleared`, plus a new nullable `default_ratio_bps` column.
-   - `DefaultBreach` sets `security_terms.default_breach_at` to the block timestamp; `DefaultBreachCleared` sets it to 0 (mirrors `MarginCall` / `MarginCallCured`).
-
-   The API ignores the new kinds until #1940 (it filters `kind == "open"` / `"price_stale"`). **Alternative:** store the raw logs only and leave them out of the projection.
-5. **Q5 — Partial configuration.** **Default:** the registry and NFT keys must be set together. Setting only one fails boot and names the missing key, because a registry without the NFT silently loses docs, inspections and inspectors. A Reader key without the registry key also fails boot. A malformed address or a collision with any other configured EVM role (DM, WQ, sPLUSD, LoanRegistry, Minter, legacy CollateralRegistry, DealTokenFactory, PLUSD, USDC asset) fails boot. **Alternative:** warn and ship dark.
+_None_ (resolved 2026-11-17, see Decisions).
 
 ## Implementation Steps
 
