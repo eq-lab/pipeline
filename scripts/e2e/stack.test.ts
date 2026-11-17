@@ -101,10 +101,13 @@ describe("clean environment", { timeout: TIMEOUT }, () => {
     }
   };
 
-  it("a poisoned working-tree .env reaches neither api/worker nor Vite", async () => {
+  it("a poisoned working-tree or ancestor .env reaches neither api/worker nor Vite", async () => {
     const worktree = join(home, "worktree");
     mkdirSync(worktree, { recursive: true });
     writeFileSync(join(worktree, ".env"), poison);
+    // An ancestor of E2E_HOME (like ~/.env above ~/.cache), with a key the generated env does not shadow.
+    const ancestorEnv = join(home, ".env");
+    writeFileSync(ancestorEnv, `TURNSTILE_SECRET_KEY=${SENTINEL_KEY}\n`);
     const cwd = process.cwd();
     const saved = { ...process.env };
     process.chdir(worktree);
@@ -120,6 +123,7 @@ describe("clean environment", { timeout: TIMEOUT }, () => {
       const effective = JSON.parse(out.slice(out.indexOf("EFFECTIVE ") + 10)) as Record<string, string>;
       assert.equal(effective.SUMSUB_BASE_URL, generated.SUMSUB_BASE_URL);
       assert.equal(effective.SUMSUB_SECRET_KEY, generated.SUMSUB_SECRET_KEY);
+      assert.equal(effective.TURNSTILE_SECRET_KEY, undefined);
       assert.ok(!out.includes(SENTINEL_KEY) && !out.includes(SENTINEL_URL), out);
 
       const dir = stackDir("poison");
@@ -138,6 +142,7 @@ describe("clean environment", { timeout: TIMEOUT }, () => {
       assert.equal(resolved.env.VITE_API_BASE_URL, generated.VITE_API_BASE_URL);
       assert.ok(!vout.includes(SENTINEL_URL), vout);
     } finally {
+      rmSync(ancestorEnv, { force: true });
       process.chdir(cwd);
       process.env = saved;
     }

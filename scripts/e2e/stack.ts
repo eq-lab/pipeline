@@ -43,6 +43,8 @@ export function cleanEnv(generated: Record<string, string>): Record<string, stri
 export function startService(tag: string, name: string, cmd: string, args: string[], generated: Record<string, string>, cwd = join(stackDir(tag), "run")) {
   const dir = stackDir(tag);
   for (const d of ["logs", "pids", "run"]) fs.mkdirSync(join(dir, d), { recursive: true });
+  // dotenvy loads the first .env walking up from the cwd; this empty one stops it before an ancestor's (e.g. ~/.env).
+  fs.writeFileSync(join(dir, "run", ".env"), "# empty on purpose: see docs/e2e.md \"Clean environment\"\n");
   const log = join(dir, "logs", `${name}.log`);
   const fd = fs.openSync(log, "a");
   const child = spawn(cmd, args, { cwd, env: cleanEnv(generated), detached: true, stdio: ["ignore", fd, fd] });
