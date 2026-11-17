@@ -97,23 +97,32 @@ function passcodeFor(tag: string, email: string): string | undefined {
   return at < 0 ? undefined : /verification code is (\d{6})/.exec(log.slice(at))?.[1];
 }
 
-async function signupLp(tag: string, lp: Keypair, recorded: Recorded): Promise<string> {
+/** The wallet an LP links as its settlement address, with its personal-message signer. */
+export interface LinkWallet {
+  chainId: string;
+  address: string;
+  sign(message: string): string | Promise<string>;
+}
+
+/** A fresh LP by email + OTP with `wallet` linked by challenge; recorded under `key`. */
+export async function signupLp(tag: string, wallet: LinkWallet, recorded: Recorded, key = "world.lp"): Promise<string> {
   const email = `lp-${Date.now()}@example.com`;
   const password = `E2e-${randomBytes(8).toString("hex")}!1`;
   ok(await http("POST", "/v1/auth/signup", { body: { email, password, captcha_token: "e2e" } }), "signup");
   const code = await until("the signup passcode in logs/api.log", async () => passcodeFor(tag, email), 30_000);
   const { token } = ok(await http("POST", "/v1/auth/verify-otp", { body: { email, code } }), "verify-otp");
   ok(await http("POST", "/v1/lps/me", { token, body: { legal_name: "E2E Lender", contact_email: email, country: "CH" } }), "create LP");
-  const q = `${CHAIN}&address=${lp.publicKey()}`;
+  const q = `chain_id=${wallet.chainId}&address=${wallet.address}`;
   const { message } = ok(await http("GET", `/v1/lps/me/link-address/challenge?${q}`, { token }), "link-address challenge");
   const linked = ok(
     await http("POST", "/v1/lps/me/link-address/verify", {
       token,
-      body: { chain_id: Number(STELLAR_CHAIN_ID), address: lp.publicKey(), signature: signMessage(lp, message) },
+      body: { chain_id: Number(wallet.chainId), address: wallet.address, signature: await wallet.sign(message) },
     }),
     "link-address verify",
   );
-  recorded["world.lp"] = { address: lp.publicKey(), emailVerified: true, linkedAddress: linked.stellar_address ?? null };
+  const linkedAddress = wallet.chainId === STELLAR_CHAIN_ID ? linked.stellar_address : linked.evm_address;
+  recorded[key] = { address: wallet.address, emailVerified: true, linkedAddress: linkedAddress ?? null };
   return token;
 }
 
@@ -158,7 +167,7 @@ export async function setupWorld(tag: string, recorded: Recorded): Promise<World
   await classic(usdcIssuer, [pay(lp.publicKey(), usdc, LP_USDC)]);
   recorded["world.accounts"] = { lp: lp.publicKey(), usdc: LP_USDC.toString() };
 
-  const lpToken = await signupLp(tag, lp, recorded);
+  const lpToken = await signupLp(tag, { chainId: STELLAR_CHAIN_ID, address: lp.publicKey(), sign: (m) => signMessage(lp, m) }, recorded);
   const [trusteeToken, originatorToken] = await operators(tag, stackKey(tag, "trustee"), Keypair.random(), recorded);
   return { tag, env, lp, lpToken, trusteeToken, originatorToken, deployer, capital, usdc, plusd };
 }
@@ -167,15 +176,14 @@ let shared: Promise<World> | undefined;
 /** One world per run: the journeys of a run share its LP, operators and recorded `world.*`. */
 export const world = (tag: string, recorded: Recorded): Promise<World> => (shared ??= setupWorld(tag, recorded));
 
-/** Sumsub through the stub and a signed GREEN webhook, then waits until the relayer has whitelisted the LP on PLUSD. */
-export async function passKyc(w: World, recorded: Recorded): Promise<void> {
-  const wallet = w.lp.publicKey();
+/** Sumsub through the stub and a signed GREEN webhook for `wallet`; returns the API's KYC status. */
+export async function sumsubGreen(env: Record<string, string>, chainId: string, wallet: string): Promise<Record<string, unknown>> {
   // The API creates the applicant only once the relayer has a profile for the wallet, i.e. after its first DepositRequested.
   const { applicant_id } = await until("the LP's KYC profile", async () => {
-    const r = await http("POST", `/v1/kyc/applicants?${CHAIN}`, { body: { wallet_address: wallet } });
+    const r = await http("POST", `/v1/kyc/applicants?chain_id=${chainId}`, { body: { wallet_address: wallet } });
     return r.status === 403 ? undefined : ok(r, "kyc applicant");
   });
-  const hook = await postSumsubWebhook(API, w.env.SUMSUB_WEBHOOK_SECRET_KEY, {
+  const hook = await postSumsubWebhook(API, env.SUMSUB_WEBHOOK_SECRET_KEY, {
     applicantId: applicant_id,
     type: "applicantReviewed",
     externalUserId: wallet,
@@ -184,7 +192,13 @@ export async function passKyc(w: World, recorded: Recorded): Promise<void> {
     reviewResult: { reviewAnswer: "GREEN" },
   });
   if (!hook.ok) throw new Error(`sumsub webhook: HTTP ${hook.status} ${await hook.text()}`);
-  const status = ok(await http("GET", `/v1/kyc/status/${wallet}?${CHAIN}`), "kyc status");
+  return ok(await http("GET", `/v1/kyc/status/${wallet}?chain_id=${chainId}`), "kyc status");
+}
+
+/** KYC through `sumsubGreen`, then waits until the relayer has whitelisted the LP on PLUSD. */
+export async function passKyc(w: World, recorded: Recorded): Promise<void> {
+  const wallet = w.lp.publicKey();
+  const status = await sumsubGreen(w.env, STELLAR_CHAIN_ID, wallet);
   await until("the relayer to whitelist the LP on PLUSD", async () =>
     (await read<boolean>(wallet, w.env.CHAIN_99000001_RELAYER_STELLAR_PLUSD_SAC_ID, "authorized", [addr(wallet)])) || undefined,
   );

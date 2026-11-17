@@ -155,6 +155,36 @@ The pinned contracts' `setup-access` maps no role to the security registry's `re
 | `stellar.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against the cumulative offtaker receipts, `deployed_senior` and secured loans as above |
 | `stellar.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `interest_minted` of the minter's repayments |
 
+## EVM world
+
+`scripts/e2e/lib/evm-world.ts` sets up what the EVM journeys need on anvil (`31337`), once per run (`evmWorld()`), with viem; addresses come from the stack's `env.json` (`CHAIN_31337_*`, `VITE_*`), USDC and PLUSD from the deposit manager.
+
+- **LP:** a fresh key, 100 ETH by `anvil_setBalance` and 2000 USDC of the mock by `anvil_dealERC20`; signed up as the Stellar LP is (`signupLp` in `lib/stellar-world.ts`), with its EVM address linked through the EIP-191 `personal_sign` challenge. LP calls are signed by its own key.
+- **Custody:** the custodian (the deposit manager's `custodian()`, also the queue's asset holder) and the capital wallet are unlocked anvil accounts; their calls go out as `eth_sendTransaction`.
+- **KYC** (`passEvmKyc`, after the first deposit request): the Sumsub stub and a `GREEN` webhook (`sumsubGreen`, shared with Stellar), then a wait until the relayer has allowed the LP on the `WhitelistRegistry`.
+
+## EVM LP journey
+
+`scripts/e2e/journeys/evm-lp.ts` (`--chains evm --journeys lp`): world → `approve` and `requestDeposit` of 1000 USDC (the anvil minimum deposit of the pinned contracts) → KYC → deposit voucher and `claimDeposit` → `approve` and `deposit` 600 PLUSD on sPLUSD → `redeem` a third of the shares → the custodian moves its USDC to the capital wallet, `requestWithdrawal` of all the LP's PLUSD and a `claimWithdrawal`, which must revert → the capital wallet sends the USDC back, the custodian approves the queue for it, and the claim succeeds → reconcile for chain `31337`. Writes use the LP app's ABIs (`packages/frontend/src/wallet/evm/abis/`); reads use a small ABI of the pinned contracts.
+
+| Check | What it compares |
+|-------|------------------|
+| `evm.lp.onboarding` | email + OTP signup, EVM address linked by challenge, Sumsub statuses green, LP allowed on the `WhitelistRegistry` |
+| `evm.lp.deposit-voucher` | the deposit moved the USDC; the voucher's amount and user |
+| `evm.lp.voucher-deadline` | optional, #1798: the deposit and withdrawal vouchers carry a deadline in the future and within 24 h; `details` always carry what the API returned (EVM vouchers return `deadline: null`) |
+| `evm.lp.deposit-claim` | PLUSD minted equals the deposit; the request is claimed on chain |
+| `evm.lp.stake` | shares minted, PLUSD spent, sPLUSD balance |
+| `evm.lp.unstake` | PLUSD returned, shares burned |
+| `evm.lp.withdrawal-too-early` | the unfunded claim reverts with `WithdrawalQueueTooEarly` |
+| `evm.lp.withdrawal-claim` | USDC paid equals the queue's `convertToAssets`, PLUSD burned, the request claimed |
+| `evm.reconcile.tvl` | `/v1/dashboard/summary` `tvl` against Σ deposit requests on chain less the USDC value of the queue's `totalClaimed` |
+| `evm.reconcile.plusd-supply` | PLUSD `totalSupply` against the API TVL less unclaimed deposits |
+| `evm.reconcile.positions` | `/v1/pnl` sPLUSD shares against the vault balance; `/v1/requests` statuses against the requests' `claimed` on chain |
+| `evm.reconcile.withdrawal-queue` | `/v1/withdrawal-queue` Σ items against `queueMetadata().totalQueued`, Σ completed items against `totalClaimed`, `in_queue_usd` against their difference; the API serves `total_queued`, `total_claimed` and `rate` for Stellar only (#1791), so they are recorded but not compared |
+| `evm.reconcile.financial-position` | `/v1/financial-position` secured loans outstanding against the loan registry's `outstandingTotal()` |
+
+EVM amounts have 6 decimals, as the API's USD strings. `/v1/requests` shows the claim before the queue's events and the PLUSD burn are indexed, so the reconcile waits up to 30 s for the queue and TVL to show it, then records what the API serves. The reconcile is chain-wide, so the journey may run again on the same stack.
+
 ## Result contract
 
 `check.ts --json` (and `result.json`):
