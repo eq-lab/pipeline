@@ -8,10 +8,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { route } from "./fakes";
-import { generateEnv, PORTS, type Addresses } from "./lib/env";
+import { EVM_CONTRACTS, generateEnv, PORTS, type Addresses, type EvmAddresses } from "./lib/env";
 import { guard } from "./lib/guard";
 import { stackDir } from "./lib/stack";
-import { acquireStackLock, down, startService, viteArgs } from "./stack";
+import { acquireStackLock, down, EVM_ROLES, patchChainValues, startService, viteArgs } from "./stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "../..");
@@ -25,12 +25,22 @@ const addresses = Object.fromEntries(
   ["usdc", "plusd", "access_manager", "deposit_manager", "withdrawal_queue", "staked_pl_usd", "pocket", "loan_registry", "collateral_registry", "deal_token_factory", "minter"].map((k) => [k, C]),
 ) as unknown as Addresses;
 const G = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const envInput = {
-  ports: PORTS,
+const stellar = {
   addresses,
   accounts: { issuer: G, verifierSecret: "SV", relayerSecret: "SR", depositCustodian: G, withdrawalCustodian: G, capitalWallet: G, browserLpSecret: "SB" },
-  jwt: { privatePem: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n", publicPem: "-----BEGIN PUBLIC KEY-----\ny\n-----END PUBLIC KEY-----\n" },
   startLedger: 1234,
+};
+const E = "0x00000000000000000000000000000000000000E2";
+const evm = {
+  addresses: Object.fromEntries([...EVM_CONTRACTS, "USDC"].map((k) => [k, E])) as EvmAddresses,
+  accounts: { relayerKey: `0x${"11".repeat(32)}`, verifierKey: `0x${"22".repeat(32)}`, capitalWallet: E },
+  pricePollerStartBlock: 60,
+};
+const envInput = {
+  ports: PORTS,
+  jwt: { privatePem: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n", publicPem: "-----BEGIN PUBLIC KEY-----\ny\n-----END PUBLIC KEY-----\n" },
+  stellar,
+  evm,
 };
 const generated = generateEnv(envInput);
 const check = (overrides: Record<string, string>) => guard({ env: { ...generated, ...overrides }, generated, postgresPort: PORTS.postgres });
@@ -58,7 +68,23 @@ describe("guard", () => {
 
   it("refuses chain id 99000002", () => {
     refuses({ CHAINS: "99000002" }, /CHAINS: chain 99000002/);
-    refuses({ CHAIN_99000002_STELLAR_RPC_URL: "http://localhost:1/rpc" }, /chain 99000002 is not the local Stellar chain/);
+    refuses({ CHAIN_99000002_STELLAR_RPC_URL: "http://localhost:1/rpc" }, /chain 99000002 is not a local chain/);
+  });
+
+  it("accepts only 31337 for EVM: refuses mainnet (1) and Hoodi (560048)", () => {
+    assert.equal(generated.CHAINS, "99000001,31337");
+    for (const id of ["1", "560048"]) {
+      refuses({ CHAINS: `99000001,${id}` }, new RegExp(`CHAINS: chain ${id} is not a local chain`));
+      refuses({ DEFAULT_CHAIN_ID: id }, new RegExp(`DEFAULT_CHAIN_ID: chain ${id} is not a local chain`));
+      refuses({ [`CHAIN_${id}_EVM_RPC_URL`]: "http://localhost:1" }, new RegExp(`CHAIN_${id}_EVM_RPC_URL: chain ${id} is not a local chain`));
+      refuses({ VITE_EVM_CHAIN_ID: id }, new RegExp(`VITE_EVM_CHAIN_ID: chain ${id} is not the local chain 31337`));
+    }
+  });
+
+  it("accepts an EVM-only env, which needs no Stellar passphrase", () => {
+    const evmOnly = generateEnv({ ...envInput, stellar: undefined });
+    assert.equal(evmOnly.CHAINS, "31337");
+    assert.deepEqual(guard({ env: evmOnly, generated: evmOnly, postgresPort: PORTS.postgres }), []);
   });
 
   it("refuses a key not from the generated env", () => refuses({ EXTRA_SECRET: "x" }, /EXTRA_SECRET: not from this tag's generated env/));
@@ -68,7 +94,27 @@ describe("generated env", () => {
   // getEvents refuses a startLedger below the RPC's oldest ledger, so a 0 cursor would stall the indexer for good.
   it("starts the Stellar indexer at the deploy-time ledger and refuses ledger 0", () => {
     assert.equal(generated.CHAIN_99000001_STELLAR_START_BLOCK, "1234");
-    assert.throws(() => generateEnv({ ...envInput, startLedger: 0 }), /startLedger must be a positive ledger/);
+    assert.throws(() => generateEnv({ ...envInput, stellar: { ...stellar, startLedger: 0 } }), /startLedger must be a positive ledger/);
+  });
+});
+
+describe("pipeline-contracts anvil values", () => {
+  const line = (name: string, a = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266") => `        values[ANVIL_CHAIN_ID]["${name}"] =\n            bytes32(uint256(uint160(${a})));\n`;
+  const source = (names: string[]) =>
+    `pragma solidity ^0.8.34;\n\ncontract ChainValues {\n    function _loadHoodiValues() private {\n        values[HOODI_CHAIN_ID]["Treasury"] = bytes32(uint256(uint160(0xFE1748f511583f6c9349f672593E6312BeDfcE40)));\n    }\n    function _loadAnvilValues() private {\n${names.map((n) => line(n)).join("")}        values[ANVIL_CHAIN_ID]["DepositManager__MinDeposit"] = bytes32(uint256(1_000_000_000));\n    }\n}\n`;
+  const names = [...Object.keys(EVM_ROLES), "USDC"];
+
+  it("reads every anvil address from E2E_EVM_<name> and leaves other chains alone", () => {
+    const out = patchChainValues(source(names));
+    assert.ok(!/ANVIL_CHAIN_ID\]\["\w+"\] =\s*bytes32\(uint256\(uint160\(0x/.test(out), out);
+    for (const n of names) assert.ok(out.includes(`envAddress("E2E_EVM_${n}")`), n);
+    assert.match(out, /0xFE1748f511583f6c9349f672593E6312BeDfcE40/);
+    assert.match(out, /^pragma solidity \^0\.8\.34;\n\nimport \{Vm\} from "forge-std\/Vm\.sol";/);
+  });
+
+  it("refuses a ref whose anvil values differ, instead of deploying with default-mnemonic holders", () => {
+    assert.throws(() => patchChainValues(source(names.slice(1))), /expects/);
+    assert.throws(() => patchChainValues(source([...names, "NewRole"])), /NewRole/);
   });
 });
 
@@ -228,7 +274,7 @@ describe("contracts cache", { timeout: TIMEOUT }, () => {
     const counter = join(root, "builds");
     writeFileSync(join(bin, "stellar"), `#!/bin/sh\necho "$*" >> "${counter}"\nsleep 1\nmkdir -p target\n`, { mode: 0o755 });
     const script = join(root, "ensure.ts");
-    writeFileSync(script, `import { ensureContracts } from ${JSON.stringify(join(HERE, "stack.ts"))};\nensureContracts(process.argv[2]).then((d) => console.log(d));\n`);
+    writeFileSync(script, `import { ensureContracts, STELLAR_CONTRACTS } from ${JSON.stringify(join(HERE, "stack.ts"))};\nensureContracts({ ...STELLAR_CONTRACTS, ref: process.argv[2] }).then((d) => console.log(d));\n`);
     const e2eHome = join(root, "home");
     const env = { ...process.env, E2E_HOME: e2eHome, E2E_STELLAR_CONTRACTS_REPO: repo, PATH: `${bin}:${process.env.PATH}` };
     const one = () =>

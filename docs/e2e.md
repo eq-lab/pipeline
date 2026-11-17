@@ -4,7 +4,7 @@ A disposable local stack runs the real API, worker, contracts and apps; scripted
 
 ## Local stack
 
-Stellar only for now. Infrastructure runs in docker compose (project `pipeline-e2e`, `scripts/e2e/compose.yml`): Postgres on `54329` (database `pipeline_e2e`), MinIO on `59000` (the `SPACES_*` bucket), and `stellar/quickstart --local` (Soroban RPC on `58000/rpc`). On the host: the fakes on `58090`, `api` on `58080`, `worker`, the LP app on `55173` and the trustee app on `55174` (`vite dev`).
+Two chains, Stellar and EVM; `--chains stellar,evm` picks them (default both). Infrastructure runs in docker compose (project `pipeline-e2e`, `scripts/e2e/compose.yml`): Postgres on `54329` (database `pipeline_e2e`), MinIO on `59000` (the `SPACES_*` bucket), `stellar/quickstart --local` (Soroban RPC on `58000/rpc`) and anvil (Foundry 1.9, chain id `31337`, RPC on `58545`). On the host: the fakes on `58090`, `api` on `58080`, `worker`, the LP app on `55173` and the trustee app on `55174` (`vite dev`).
 
 ### Prerequisites
 
@@ -13,37 +13,40 @@ Stellar only for now. Infrastructure runs in docker compose (project `pipeline-e
 - Rust with the wasm target (`rustup target add wasm32v1-none`).
 - Node and yarn (`yarn install` in the checkout), Chromium for the journeys.
 - Read access to `eq-lab/pipeline-stellar-contracts` over HTTPS (`gh auth setup-git`).
+- For EVM: Foundry 1.9 (`foundryup`; `forge` on the host), read access to `eq-lab/pipeline-contracts` and its submodules over HTTPS, and npm registry access (the OpenZeppelin upgrades plugin runs `npx @openzeppelin/upgrades-core` during the deploy).
 
 ### Usage
 
 ```bash
-scripts/e2e/up.sh --prepare             # once per machine: pull images, clone and build the contracts
-scripts/e2e/up.sh --tag <tag>           # bring the stack up; reports every service healthy
-scripts/e2e/up.sh --tag <tag> --reclaim # first tear down the stack of another tag (a killed run)
-scripts/e2e/down.sh --tag <tag>         # remove containers, volumes, processes and stacks/<tag>/
+scripts/e2e/up.sh --prepare                     # once per machine: pull images, clone and build both contract sets
+scripts/e2e/up.sh --tag <tag>                   # bring the stack up with both chains; reports every service healthy
+scripts/e2e/up.sh --tag <tag> --chains stellar  # one chain only: stellar or evm
+scripts/e2e/up.sh --tag <tag> --reclaim         # first tear down the stack of another tag (a killed run)
+scripts/e2e/down.sh --tag <tag>                 # remove containers (anvil too), volumes, processes and stacks/<tag>/
 ```
 
-- `E2E_STELLAR_CONTRACTS_REF` (default `7646cef`) picks the contracts ref; `E2E_HEALTH_TIMEOUT_MS` (default 180000) the health timeout.
+- `E2E_STELLAR_CONTRACTS_REF` (default `7646cef`) and `E2E_CONTRACTS_REF` (default `3b74e98`, `eq-lab/pipeline-contracts`) pick the contracts refs; `E2E_HEALTH_TIMEOUT_MS` (default 180000) the health timeout.
+- The EVM chain: anvil runs with a mnemonic generated per run (never anvil's default one); its ten accounts are unlocked, and custody is plain EOAs among them. `up.sh` deploys the contracts' `test/mocks/USDCMock` as USDC, then runs `script/Deploy.s.sol`, `script/RoleSetup.s.sol` and `script/Configure.s.sol` (deployment tag `e2e`) with `forge script --unlocked` in a copy of the cached build under `stacks/<tag>/evm-contracts/`. The pinned scripts hard-code anvil's default-mnemonic accounts and mainnet USDC for chain `31337` (`script/base/ChainValues.sol`); the cache build rewrites each of those addresses to `vm.envAddress("E2E_EVM_<name>")` and stops if the ref's names differ from the expected set (`EVM_ROLES` in `scripts/e2e/stack.ts`: account 0 the admin, whitelist manager and relayer signer, 1 treasury, 2 custodian, 3 verifier and API voucher signer, 4 capital wallet, 5 loan registry manager, 6 mint caller, 7 minter ops, 8 collateral trustee, 9 collateral valuer). forge runs with only `PATH`, `HOME` and those variables. The indexer reads chain `31337` from block 0 with `CHAIN_31337_EVM_INDEXER_LOG_CONFIRMATIONS_DELAY=0`, the price poller from the last deploy block; the apps get `VITE_EVM_CHAIN_ID=31337`, `VITE_EVM_RPC_URL` and the deployed addresses.
 - `up.sh` also generates `lp-browser`, the key of the LP app's [E2E test wallet](../packages/frontend/src/wallet/README.md#e2e-test-wallet): funded by friendbot, a USDC trustline and 1000 USDC from the mock issuer (the app opens the PLUSD trustline itself). Its secret is `E2E_WALLET_SECRET` in `.env.e2e-frontend` only, next to the flag `VITE_E2E_WALLET=1`; `scripts/e2e/assert-prod-wallet.ts` (CI) proves a production build carries neither the module nor the secret.
 - `up.sh` deploys every contract with the contracts repository's own `just deploy-all` (network `e2e`, USDC a local SAC, every role granted, including `MINTER` on PLUSD to the deposit manager and the minter), builds `api` and `worker` from the working tree and starts every service. Before `deploy-all` it opens the capital wallet's USDC and PLUSD trustlines (the Minter refuses a custodian without them); after it, the custodian approves the withdrawal queue to spend its USDC (`deploy-all`'s own `approve-usdc` passes `--expiration_ledger`, but the SAC's `approve` takes `live_until_ledger`).
 - One stack per machine: `$E2E_HOME/stack.lock` names the tag holding it. `up.sh` of another tag is refused with the `down.sh` command to run.
 - `down.sh` finds containers, volumes and networks by the `pipeline-e2e.tag` label and processes by their pid files, so it works from any checkout and after the worktree that started the stack is gone. It is idempotent.
-- Exit `2`: a port is taken (named with the process holding it), another tag holds the lock, or a service did not become healthy (named with its log path).
+- Exit `2`: a port is taken (named with the process holding it), another tag holds the lock, a service did not become healthy (named with its log path), or a deploy step failed (named with its output, such as `logs/evm-deploy.log` for forge).
 
 ### State
 
 All state lives outside the repository under `$E2E_HOME` (default `~/.cache/pipeline-e2e`):
 
-- `contracts/pipeline-stellar-contracts@<ref>/`: the contracts cache, built in a temporary directory and renamed, under `<dir>.lock` (which holds the builder's pid; a lock whose builder is gone, such as a killed run's, is broken by the next invocation).
-- `stacks/<tag>/`: `env.json` (the generated env), `.env.e2e-<app>` (the Vite variables), `pids/`, `logs/`, `stellar/` (the CLI config with the stack's keys), `contracts/` (the deployment and `addresses.json`) and `state.json`:
+- `contracts/pipeline-stellar-contracts@<ref>/` and `contracts/pipeline-contracts@<ref>/`: the contracts caches, one directory per ref, each built in a temporary directory and renamed, under `<dir>.lock` (which holds the builder's pid; a lock whose builder is gone, such as a killed run's, is broken by the next invocation).
+- `stacks/<tag>/`: `env.json` (the generated env), `.env.e2e-<app>` (the Vite variables), `pids/`, `logs/`, `stellar/` (the CLI config with the stack's keys), `contracts/` (the Stellar deployment and `addresses.json`), `evm-contracts/` (the EVM deployment, `deployments/anvil-e2e.json`) and `state.json`:
 
 ```json
-{ "tag": "x", "chains": ["stellar"], "contracts": { "stellar": "7646cef" }, "durations": { "up": 0 }, "startedAt": "…", "ports": { "postgres": 54329 } }
+{ "tag": "x", "chains": ["stellar", "evm"], "contracts": { "stellar": "7646cef", "evm": "3b74e98" }, "durations": { "up": 0 }, "startedAt": "…", "ports": { "postgres": 54329 } }
 ```
 
 ### Clean environment
 
-The developer `.env` never reaches the stack. `api` and `worker` start with only `PATH`, `HOME` and `env.json`, in `stacks/<tag>/run/`, whose empty `.env` is the first one `dotenvy` finds walking up, so neither a worktree `.env` nor an ancestor's (such as `~/.env`) loads. Each app runs its own Vite config through `scripts/e2e/vite.e2e.config.mts`, which moves `envDir` to `stacks/<tag>/`, with only the generated variables. Local Stellar uses chain id `99000001` with the standalone passphrase (`Standalone Network ; February 2017`) set explicitly for every component.
+The developer `.env` never reaches the stack. `api` and `worker` start with only `PATH`, `HOME` and `env.json`, in `stacks/<tag>/run/`, whose empty `.env` is the first one `dotenvy` finds walking up, so neither a worktree `.env` nor an ancestor's (such as `~/.env`) loads. Each app runs its own Vite config through `scripts/e2e/vite.e2e.config.mts`, which moves `envDir` to `stacks/<tag>/`, with only the generated variables. Local Stellar uses chain id `99000001` with the standalone passphrase (`Standalone Network ; February 2017`) set explicitly for every component; local EVM uses chain id `31337`. anvil runs `--silent`: its startup banner would print the run's private keys into a log artifact.
 
 ### Fakes
 
@@ -51,7 +54,7 @@ The developer `.env` never reaches the stack. `api` and `worker` start with only
 
 ### Guard
 
-`scripts/e2e/lib/guard.ts` refuses an env unless every URL is `localhost` / `127.0.0.1` (the database on `54329/pipeline_e2e`), nothing points at `stage.eqlab.net`, the only chain is `99000001` with the standalone passphrase, and every key comes from the tag's generated env. `up.sh` runs it on the generated env before starting anything.
+`scripts/e2e/lib/guard.ts` refuses an env unless every URL is `localhost` / `127.0.0.1` (the database on `54329/pipeline_e2e`), nothing points at `stage.eqlab.net`, the only chains are `99000001` (with the standalone passphrase) and `31337` (so mainnet ids and Hoodi `560048` are refused in `CHAINS`, `DEFAULT_CHAIN_ID`, `CHAIN_<id>_*` and `VITE_EVM_CHAIN_ID`), and every key comes from the tag's generated env. `up.sh` runs it on the generated env before starting anything.
 
 `scripts/e2e/guard-hook.ts` is a Claude Code PreToolUse hook running the same guard on `scripts/e2e/*` commands (inline variables and URL arguments); it exits `2` on a violation. It is wired in `.claude/settings.json` by:
 

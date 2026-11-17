@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-188.**
+**Next free number: TD-189.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,14 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-188: The e2e stack patches pipeline-contracts' anvil values to read them from the env
+
+- **Date:** 2026-11-18
+- **Location:** `scripts/e2e/stack.ts` (`patchChainValues`, `EVM_ROLES`) — Issue #1966.
+- **Gap:** `script/base/ChainValues.sol` at `3b74e98` hard-codes anvil's default-mnemonic accounts and mainnet USDC for chain `31337`. The contracts cache build rewrites those addresses to `vm.envAddress("E2E_EVM_<name>")` so a per-run mnemonic and the mock USDC can hold the roles.
+- **Impact:** A ref that renames, adds or drops an anvil value stops the cache build until `EVM_ROLES` is updated; the cache directory is keyed by ref only, so a change to the patch itself needs the old `pipeline-contracts@<ref>` cache removed by hand.
+- **Suggested fix:** Have pipeline-contracts read the anvil values (or all of them) from the env with the current addresses as defaults, then drop the patch.
 
 ### TD-144: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
 
