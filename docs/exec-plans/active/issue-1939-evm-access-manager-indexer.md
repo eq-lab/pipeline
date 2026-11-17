@@ -204,7 +204,7 @@ the chain-level reason for each.
    | Target | Function | `loan_id` / `record_id` |
    |---|---|---|
    | LoanRegistry | `setDefault`, `cure`, `amendEconomics`, `adjustInterest`, `writeDown`, `closeDefaulted` | arg 0 is the loan id |
-   | Minter | `reverseRepay`, `reverseDisburse` | arg 0 is the loan id |
+   | Minter | `reverseRepay` | arg 0 is the loan id (as Stellar `reverse_repay`; `reverseDisburse` is decoded but not loan-scoped, as Stellar `reverse_disburse`) |
    | SecurityRegistry | `setTerms` | arg 0 is the loan id |
    | SecurityRegistry | `releaseWithConsent`, `resolveFlag` | arg 0 is `record_id`; `loan_id` looked up |
    | anything else | `setInspectors` (RecordNft), other functions, unknown selectors, unconfigured targets | both `NULL` |
@@ -261,7 +261,6 @@ loop, constants, backoff, supervision, close SQL, insert SQL, record lookup, `ex
 | 8 | `function` value | Event `Symbol`, snake_case, always present | Solidity name (camelCase) decoded via the target's ABI. An unknown selector or unconfigured target gives `0x<selector>` with `args_json = NULL`. | ABI calldata is not self-describing; XDR is. Both store the contract's native name. |
 | 9 | `args_json` type mapping | XDR types: `u32`/`i32` numbers, 64-bit+ strings, Strkeys, `Symbol`-keyed maps as objects, enums as `Vec[Symbol]` | ABI types: `≤32`-bit ints numbers, wider strings, EIP-55, tuples as objects by component name, enums as their `uint8` ordinal | Different type systems; the same display rules otherwise. |
 | 10 | Loan id width | First arg must be `ScVal::U32` | First arg is `uint256`. Values above `u32::MAX` give `LoanRef::None` with a `warn`. | Solidity ids are `uint256`. |
-| 11 | Loan-scoped list | `reverse_repay` only on the Minter | `reverseRepay` **and `reverseDisburse`** | **Not chain-level.** Human decision 1 (2026-11-17) and the issue body; see Open Question 1. |
 | 12 | Nonce | Resets to 1 after the temporary entry lapses. #1927 made the key `(…, schedule_ledger, nonce)` and the close rule "newest before". | Never resets. The same key and rule apply with no EVM-specific code. | Persistent `_schedules[id].nonce`. |
 | 13 | Formats | Strkeys, tx hash 64 hex, `schedule_ledger` = ledger | EIP-55, tx hash `0x…` (the EVM `contract_logs` convention), `schedule_ledger` = block number | Per-chain `contract_logs` conventions. |
 | 14 | Allow-listed events | 8 snake_case topics | 9 OpenZeppelin topic0 values (`Role*`, `Target*`) | Different event sets. |
@@ -310,8 +309,9 @@ directive.
 0. **Directive (2026-11-17, overrides earlier plan choices):** "Everything must be done the same way as on Stellar —
    one and the same approach." The EVM indexer mirrors #1921 + #1927 one-to-one. It deviates only where the EVM chain
    data makes the Stellar mechanism impossible or meaningless; see [Differences from Stellar](#differences-from-stellar).
-1. **Loan-scoped functions:** the explicit list from the issue, plus `Minter.reverseDisburse`. *Unchanged.* It is
-   the one non-chain-level difference (row 11); see Open Question 1.
+1. **Loan-scoped functions:** the explicit list from the issue, exactly as on Stellar. *Changed 2026-11-17:* the
+   human dropped `Minter.reverseDisburse` for strict parity, because Stellar's `loan_ref` covers only `reverse_repay`.
+   `reverseDisburse` is still decoded (`function`, `args_json`), but its `loan_id` stays NULL.
 2. **`function` naming:** Solidity camelCase. #1941 / #1943 map it per chain. *Unchanged, and consistent with
    Stellar:* both chains store the contract's native name.
 3. **Record → loan:** the same approach as Stellar. *Unchanged; wording corrected:*
@@ -342,15 +342,7 @@ directive.
 
 ## Open Questions
 
-1. **`reverseDisburse` asymmetry.** EVM treats `Minter.reverseDisburse` as loan-scoped (human decision 1). Stellar's
-   `loan_ref` covers only `reverse_repay`, although the Stellar Minter has `reverse_disburse`
-   (`pipeline-stellar-contracts` `contracts/minter/src/lib.rs:235`). The directive asks for one approach.
-   **Recommended default:** keep `reverseDisburse` on EVM as decided, change nothing on Stellar in this issue, and
-   open a follow-up to add `reverse_disburse` to Stellar's `loan_ref`.
-   Alternatives:
-   - (b) drop `reverseDisburse` on EVM, for strict parity;
-   - (c) add `reverse_disburse` to Stellar here, as a one-line Stellar behaviour change, outside this issue's stated
-     scope.
+_None_ (the `reverseDisburse` question was resolved 2026-11-17: dropped on EVM, see Decisions 1).
 
 ## Implementation Steps
 
