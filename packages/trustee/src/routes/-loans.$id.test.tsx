@@ -5,6 +5,11 @@ import userEvent from "@testing-library/user-event";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import type { SecurityCardView } from "./-loanSecurity";
 import {
+  buildSecurityRecords,
+  type SecurityRecordsView,
+} from "./-loanSecurityRecords";
+import { securityResult } from "./-riskCouncilFixtures";
+import {
   CLOSED_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
   PERFORMING_OTHER_ACTIONS,
@@ -179,6 +184,37 @@ function securityView(
   };
 }
 
+const RECORDS_VIEW: SecurityRecordsView = buildSecurityRecords(
+  securityResult({
+    data: {
+      terms: { advance_ratio_bps: 8000 },
+      records: [
+        {
+          record_id: "7",
+          protection: "warehouse_receipt",
+          commodity: "Copper Cathode",
+          unit: "MT",
+          status: "Active",
+          open: true,
+          attestation_stale: true,
+          reference_quantity: "1250.0000000",
+          mark: { value_per_unit: "9500.5000000", benchmark: "LME Copper" },
+          valuation: { counted_quantity: "1200.0000000", value: "11400600.0" },
+          inspections: [
+            { inspection_id: "11", kind: "periodic", approved_by: null },
+            { inspection_id: "12", kind: "spot", approved_by: "GAPPROVER" },
+          ],
+        },
+        {
+          record_id: "8",
+          protection: "cash_cover",
+          counts_toward_value: false,
+        },
+      ],
+    },
+  }),
+);
+
 function makeResult(
   overrides: Partial<UseLoanDetailResult> = {},
 ): UseLoanDetailResult {
@@ -263,6 +299,7 @@ function makeResult(
     currentStage: null,
     otherActions: PERFORMING_OTHER_ACTIONS,
     security: securityView(),
+    securityRecords: RECORDS_VIEW,
     ...overrides,
   };
 }
@@ -610,6 +647,53 @@ describe("Loan detail route — static action sections", () => {
   });
 });
 
+describe("Loan detail route — Security records card (#1767)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "renders the records, chips and inspections on the %s layout",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const card = screen.getByTestId("loan-detail-security-records");
+      expect(within(card).getByText("Security records")).toBeInTheDocument();
+      const records = within(card).getAllByTestId(
+        "loan-detail-security-record",
+      );
+      expect(records).toHaveLength(2);
+      expect(records[0]).toHaveAttribute("data-record-id", "7");
+      expect(records[0]).toHaveTextContent("Record #7 · warehouse_receipt");
+      expect(records[0]).toHaveTextContent("LME Copper · $9,500.5 per MT");
+      expect(records[0]).toHaveTextContent("Attestation stale");
+      expect(records[1]).toHaveTextContent("Not counted");
+      const inspections = within(card).getAllByTestId(
+        "loan-detail-security-inspection",
+      );
+      expect(inspections).toHaveLength(2);
+      expect(inspections[0]).toHaveTextContent("Awaiting approval");
+      expect(records[1]).toHaveTextContent("No inspections.");
+    },
+  );
+
+  it("shows the empty line when no records are registered", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ securityRecords: { state: "empty", records: [] } }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-records-empty"),
+    ).toHaveTextContent("No security records are registered for this loan.");
+  });
+
+  it("renders no records card when hidden", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ securityRecords: { state: "hidden", records: [] } }),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-security-records"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Loan detail route — Matured variant (#866)", () => {
   function maturedResult() {
     return makeResult({
@@ -763,8 +847,13 @@ describe("Loan detail route — Matured variant (#866)", () => {
     renderRoute();
     const notice = screen.getByTestId("loan-detail-past-due-notice");
     expect(notice).toHaveTextContent("Past due");
+    expect(notice).toHaveTextContent(
+      "escalate the loan to the Risk Council. Default is never automatic.",
+    );
+    expect(
+      screen.getByTestId("loan-detail-past-due-escalate"),
+    ).toHaveTextContent("Escalate to Risk Council");
 
-    // "Record payment" → the existing full-page Record-coupon route.
     fireEvent.click(screen.getByTestId("loan-detail-past-due-record"));
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id/record-coupon",
@@ -772,7 +861,6 @@ describe("Loan detail route — Matured variant (#866)", () => {
       search: { chain: 99_000_001 },
     });
 
-    // "Escalate to default" → the existing Escalate-to-Default route.
     fireEvent.click(screen.getByTestId("loan-detail-past-due-escalate"));
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/risk-council/escalate/$id",

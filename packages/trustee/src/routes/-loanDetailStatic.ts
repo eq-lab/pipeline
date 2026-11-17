@@ -67,7 +67,7 @@ export const WATCHLIST_CURRENT_STAGE: CurrentStage = {
   title: "Current stage — escalation decision pending",
   tag: "Risk Council · 24h timelock",
   tagTone: "risk",
-  body: "A margin call is open or the LTV is above the margin-call ratio. If the loan is past recovery on the active path, escalate it to the Risk Council.",
+  body: "A margin call is open or the LTV is above the margin-call ratio. The borrower has the cure period to bring the LTV back to the advance ratio. The end of the cure period does not trigger default by itself: if the loan is past recovery, escalate it to the Risk Council.",
   actionLabel: "Open escalation →",
 };
 

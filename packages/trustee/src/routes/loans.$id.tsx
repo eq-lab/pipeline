@@ -38,6 +38,7 @@ import {
   type TileTone,
 } from "./-loanDetailStatic";
 import type { SecurityCardView } from "./-loanSecurity";
+import { SecurityRecordsCard } from "./-SecurityRecordsCard";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
@@ -1222,7 +1223,7 @@ function PastDueNotice({
           style={{ color: INK_MUTED }}
         >
           Maturity has passed. If the payment arrived, record it. If it didn’t,
-          escalate the loan to default.
+          escalate the loan to the Risk Council. Default is never automatic.
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-[10px]">
@@ -1242,7 +1243,7 @@ function PastDueNotice({
           className="h-[40px] rounded-[4px] border border-solid px-[16px] font-[family-name:var(--font-body)] text-[15px]"
           style={{ borderColor: LINE_COLOR, color: INK }}
         >
-          Escalate to default
+          Escalate to Risk Council
         </button>
       </div>
     </div>
@@ -1333,13 +1334,13 @@ function LoanDetail() {
           ))}
         </div>
       ) : detail.variant === "watchlist" ? (
-        // Watchlist layout (#859): no lifecycle stepper, no Registry card.
         <>
           <Hero hero={detail.hero} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} />
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
@@ -1365,10 +1366,6 @@ function LoanDetail() {
           />
         </>
       ) : detail.variant === "matured" ? (
-        // Matured layout (#866): no stepper, no Registry — a rollover card sits
-        // beside Security (rollover is the matured-only fast-path).
-        // The past-maturity/Past-Due state is an attention prompt (#940): record
-        // the payment, or escalate to default.
         <>
           <Hero hero={detail.hero} />
           <PastDueNotice
@@ -1390,6 +1387,7 @@ function LoanDetail() {
               />
             )}
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} />
           <RegisterDebtTokenAction
             chainId={chain}
             loanId={debtLoanId}
@@ -1421,7 +1419,6 @@ function LoanDetail() {
             }
             onClose={() => setRolloverOpen(false)}
             onConfirm={(newRateBps, newMaturity) => {
-              // Close on success; the error surfaces inline via the hook state.
               void rolloverMutation
                 .mutateAsync({ loanId: Number(id), newRateBps, newMaturity })
                 .then(() => setRolloverOpen(false))
@@ -1430,8 +1427,6 @@ function LoanDetail() {
           />
         </>
       ) : (
-        // Performing layout (default) + Disbursing (same layout, but the
-        // current-stage card is the wired disbursement-complete action, #862).
         <>
           <Hero hero={detail.hero} />
           <Lifecycle steps={detail.lifecycle} />
@@ -1440,6 +1435,7 @@ function LoanDetail() {
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
             <RegistryCard registry={detail.registry} />
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} />
           {detail.variant === "disbursing" && (
             <DisbursementActionCard
               loanName={detail.hero.title}

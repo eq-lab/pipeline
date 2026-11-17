@@ -6,11 +6,20 @@ import type {
 } from "@/api/useLoanSecurity";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
+import { formatServedDuration } from "@/utils/securityTermsUnits";
 import { toUserError } from "@/utils/userError";
 
 export const LTV_NO_VALUE_SENTINEL = 4_294_967_295;
 export const REFRESH_FAILED_NOTE =
   "Couldn't refresh — showing the last loaded data.";
+export const CURE_ENDED_NOTE =
+  "The cure period has ended. Default is not automatic: the Risk Council decides whether to declare it.";
+export const CURABLE_NOTE =
+  "LTV is back at or below the advance ratio. The registry cures the margin call at its next coverage check.";
+export const ABOVE_RATIO_NO_CALL_NOTE =
+  "LTV is above the margin-call ratio. The registry has not opened a margin call yet.";
+export const PRICE_STALE_NOTE =
+  "A stale price does not open a margin call; it alerts the Risk Council.";
 export const LTV_LOADING_TEXT = "Loading…";
 export const LTV_ERROR_TEXT = "Couldn't load";
 export const SECURITY_ACTIONS_LINK_LABEL = "Security actions";
@@ -47,7 +56,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function formatUnixDate(value: unknown): string {
+export function formatUnixDate(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) return "—";
   const seconds = Number(value);
   return Number.isFinite(seconds) ? formatMaturityDate(seconds) : "—";
@@ -61,7 +70,7 @@ export function formatMarginCall(
     if (typeof mc.cure_by === "string" && mc.cure_by.length > 0) {
       text += ` · cure by ${formatUnixDate(mc.cure_by)}`;
     }
-    if (mc.cure_overdue === true) text += " (overdue)";
+    if (mc.cure_overdue === true) text += " · cure period ended";
     return text;
   }
   if (mc?.open === false) return "None";
@@ -138,6 +147,16 @@ export function buildSecurityCard(
 
   const notes: string[] = [];
   if (sec.valuation == null) notes.push("No valuation yet.");
+  const mc = sec.margin_call;
+  if (mc?.open === true && mc.cure_overdue === true)
+    notes.push(CURE_ENDED_NOTE);
+  if (mc?.open === true && mc.open_call_curable === true) {
+    notes.push(CURABLE_NOTE);
+  }
+  if (mc?.ltv_above_ratio_no_onchain_call === true) {
+    notes.push(ABOVE_RATIO_NO_CALL_NOTE);
+  }
+  if (priceStale(sec)) notes.push(PRICE_STALE_NOTE);
   if (result.error) notes.push(REFRESH_FAILED_NOTE);
 
   return {
@@ -152,6 +171,10 @@ export function buildSecurityCard(
       {
         label: "Margin-call ratio",
         value: formatLtvBps(sec.terms.margin_call_ratio_bps),
+      },
+      {
+        label: "Cure period",
+        value: formatServedDuration(sec.terms.cure_period ?? undefined),
       },
       {
         label: "Security value",

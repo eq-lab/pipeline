@@ -617,7 +617,8 @@ line, whichever section it lands in.
   page's Security card hand-mirrors a subset of the backend `LoanSecurityResponse`
   (`packages/api/src/security_state.rs`) as `packages/trustee/src/api/useLoanSecurity.ts`'s
   self-contained `LoanSecurityResponse` (terms ratios, valuation value/debt/LTV/stale flag, margin
-  call, prices, `refresh_pending`; every field optional) — same epic-#775 app-separation
+  call, prices, `refresh_pending`; every field optional; since #1767 also the record and inspection
+  display fields) — same epic-#775 app-separation
   constraint, no LP counterpart. It replaced the earlier `useLoanValuation.ts` mirror of
   `CollateralValuationResponse`, removed with the `/valuations` endpoint (backend #1786). The
   loan-book `LoanBookEntry` hand-mirror also carries the `loan_id`/`chain_id` fields (used as the
