@@ -20,11 +20,11 @@ Runs the scripted end-to-end harness against a disposable local stack. The contr
 4. Check: `npx tsx scripts/e2e/check.ts --tag <tag> --json`. Exit `0`: every required check passed; `1`: a required check failed; `2`: the run itself failed.
 5. Read the JSON: `ok`, every `checks[]` entry (`details`, `issue`, `finding`), `canBeRequired`, `error`. Read the `artifacts` logs (already redacted) for every ❌.
 6. Do the browser passes below that apply.
+7. Tear down: `scripts/e2e/down.sh --tag <tag>`, also after a failure.
 
 ## Journeys
 
 - **Stellar LP** (`--chains stellar --journeys lp`): onboarding (email + OTP, wallet challenge, Sumsub), deposit → voucher → claim → stake → unstake → withdrawal (too early, then claim), and the API ↔ chain reconcile of TVL, PLUSD supply, positions, withdrawal queue and `/v1/financial-position`. Checks `stellar.lp.*` and `stellar.reconcile.*` are required; `stellar.known-bugs.*` are optional (BUG-37, BUG-32). The other open known bugs are listed in `docs/e2e.md` as not covered yet or not observable.
-7. Tear down: `scripts/e2e/down.sh --tag <tag>`, also after a failure.
 
 ## Browser pass: LP app
 
