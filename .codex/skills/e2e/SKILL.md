@@ -25,6 +25,7 @@ Runs the scripted end-to-end harness against a disposable local stack. The contr
 ## Journeys
 
 - **Stellar LP** (`--chains stellar --journeys lp`): onboarding (email + OTP, wallet challenge, Sumsub), deposit → voucher → claim → stake → unstake → withdrawal (too early, then claim), and the API ↔ chain reconcile of TVL, PLUSD supply, positions, withdrawal queue and `/v1/financial-position`. Checks `stellar.lp.*` and `stellar.reconcile.*` are required; `stellar.known-bugs.*` are optional (BUG-37, BUG-32). The other open known bugs are listed in `docs/e2e.md` as not covered yet or not observable.
+- **Stellar loan** (`--chains stellar --journeys loan`, after LP in a full run, sharing its world): the originator submits through the API with documents in MinIO served by the IPFS stub, the trustee approves, `draw_loan`, `record_wire_in` and `disburse`, a warehouse pledge on the security registry marked at the static price, a mark-down that opens a margin call, `repay` (interest minted to sPLUSD) and `close_loan`, then the reconcile of `/v1/loan-book`, `/v1/dashboard/summary` and `/v1/financial-position` with the chain. Checks `stellar.loan.*` and `stellar.loan-book.*`; `stellar.loan-book.ltv-range` is optional (#765) and always reports the LTV in `details`.
 
 ## Browser pass: LP app
 

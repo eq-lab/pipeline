@@ -326,7 +326,7 @@ export async function up(tag: string, reclaim: boolean) {
     ["stellar", stellarHealthy],
   ];
   for (const [svc, probe] of infra) await waitFor(svc, join(dir, "logs", `${svc}.log`), probe).catch((e) => (containerLog(svc), Promise.reject(e)));
-  sh("docker", ["compose", "-f", COMPOSE, "exec", "-T", "minio", "sh", "-c", `mc alias set l http://localhost:9000 ${SPACES.key} ${SPACES.secret} && mc mb -p l/${SPACES.bucket}`], { env: composeEnv(tag) });
+  sh("docker", ["compose", "-f", COMPOSE, "exec", "-T", "minio", "sh", "-c", `mc alias set l http://localhost:9000 ${SPACES.key} ${SPACES.secret} && mc mb -p l/${SPACES.bucket} && mc anonymous set download l/${SPACES.bucket}/ipfs`], { env: composeEnv(tag) });
 
   const startLedger = await deployStartLedger();
   const { addresses, accounts } = await deployContracts(tag, contracts, startLedger);
@@ -346,7 +346,7 @@ export async function up(tag: string, reclaim: boolean) {
     const s = startService(tag, name, cmd, args, e, cwd);
     services.push([name, s, probe(s.pid)]);
   };
-  start("fakes", process.execPath, [join(REPO, "node_modules/.bin/tsx"), join(HERE,"fakes.ts"), String(PORTS.fakes), join(dir, "ipfs")], {}, () => () => http(`http://localhost:${PORTS.fakes}/health`));
+  start("fakes", process.execPath, [join(REPO, "node_modules/.bin/tsx"), join(HERE,"fakes.ts"), String(PORTS.fakes), join(dir, "ipfs"), `http://localhost:${PORTS.minio}/${SPACES.bucket}/ipfs`], {}, () => () => http(`http://localhost:${PORTS.fakes}/health`));
   start("api", join(bin, "pipeline-api"), [], env, () => () => http(`http://localhost:${PORTS.api}/`));
   start("worker", join(bin, "pipeline-worker"), [], env, alive);
   start("lp", process.execPath, viteArgs(tag, "frontend", PORTS.lp), { ...viteEnv, E2E_VITE_APP: "frontend" }, () => () => http(`http://localhost:${PORTS.lp}/`), join(REPO, "packages/frontend"));

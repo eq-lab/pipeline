@@ -5,7 +5,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { postSumsubWebhook } from "../fakes";
-import { PORTS } from "./env";
+import { PORTS, SPACES } from "./env";
 import { STELLAR_CHAIN_ID } from "./guard";
 import type { Recorded } from "./journey";
 import { readJson, stackDir } from "./stack";
@@ -22,6 +22,7 @@ export interface World {
   lp: Keypair;
   lpToken: string;
   trusteeToken: string;
+  originatorToken: string;
   deployer: Keypair;
   capital: Keypair;
   usdc: Asset;
@@ -74,10 +75,19 @@ export async function until<T>(what: string, probe: () => Promise<T | undefined>
 export const signMessage = (kp: Keypair, message: string) =>
   kp.sign(createHash("sha256").update(`Stellar Signed Message:\n${message}`, "utf8").digest()).toString("base64");
 
+function container(tag: string, service: string): string {
+  const id = execFileSync("docker", ["ps", "-q", "--filter", `label=pipeline-e2e.tag=${tag}`, "--filter", `label=com.docker.compose.service=${service}`], { encoding: "utf8" }).trim();
+  if (!id) throw new Error(`no ${service} container for stack ${tag}`);
+  return id;
+}
+
 export function psql(tag: string, sql: string): string {
-  const id = execFileSync("docker", ["ps", "-q", "--filter", `label=pipeline-e2e.tag=${tag}`, "--filter", "label=com.docker.compose.service=postgres"], { encoding: "utf8" }).trim();
-  if (!id) throw new Error(`no postgres container for stack ${tag}`);
-  return execFileSync("docker", ["exec", "-i", id, "psql", "-U", "pipeline", "-d", "pipeline_e2e", "-tAq", "-v", "ON_ERROR_STOP=1"], { input: sql, encoding: "utf8" }).trim();
+  return execFileSync("docker", ["exec", "-i", container(tag, "postgres"), "psql", "-U", "pipeline", "-d", "pipeline_e2e", "-tAq", "-v", "ON_ERROR_STOP=1"], { input: sql, encoding: "utf8" }).trim();
+}
+
+/** Stores `body` in the stack's bucket under `key` with mc (alias `l`, set by up.sh). */
+export function minioPut(tag: string, key: string, body: string | Buffer): void {
+  execFileSync("docker", ["exec", "-i", container(tag, "minio"), "mc", "pipe", "-q", `l/${SPACES.bucket}/${key}`], { input: body });
 }
 
 /** The latest email passcode the API logged for `email` (EMAIL_DEV_LOG=true); it never leaves this process. */
@@ -107,11 +117,17 @@ async function signupLp(tag: string, lp: Keypair, recorded: Recorded): Promise<s
   return token;
 }
 
-async function operators(tag: string, trustee: Keypair, recorded: Recorded): Promise<string> {
+async function signIn(kp: Keypair): Promise<string> {
+  const { message } = ok(await http("GET", `/v1/auth/challenge?${CHAIN}&address=${kp.publicKey()}`), "operator challenge");
+  const body = { chain_id: Number(STELLAR_CHAIN_ID), address: kp.publicKey(), signature: signMessage(kp, message) };
+  return ok(await http("POST", "/v1/auth/verify", { body }), "operator verify").token;
+}
+
+async function operators(tag: string, trustee: Keypair, originator: Keypair, recorded: Recorded): Promise<[string, string]> {
   // shortcut: there is no `team` role in the API (only trustee and originator), so the team member is an operator row without roles; give it one when the API grows it.
   const rows: [string, string][] = [
     [trustee.publicKey(), "{trustee}"],
-    [Keypair.random().publicKey(), "{originator}"],
+    [originator.publicKey(), "{originator}"],
     [Keypair.random().publicKey(), "{}"],
   ];
   for (const [address, roles] of rows)
@@ -120,13 +136,9 @@ async function operators(tag: string, trustee: Keypair, recorded: Recorded): Pro
       `WITH a AS (INSERT INTO accounts (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM auth_users WHERE chain_id=${STELLAR_CHAIN_ID} AND address='${address}') RETURNING id)
        INSERT INTO auth_users (chain_id, address, roles, account_id) SELECT ${STELLAR_CHAIN_ID}, '${address}', '${roles}', id FROM a;`,
     );
-  const { message } = ok(await http("GET", `/v1/auth/challenge?${CHAIN}&address=${trustee.publicKey()}`), "operator challenge");
-  const { token } = ok(
-    await http("POST", "/v1/auth/verify", { body: { chain_id: Number(STELLAR_CHAIN_ID), address: trustee.publicKey(), signature: signMessage(trustee, message) } }),
-    "operator verify",
-  );
+  const tokens: [string, string] = [await signIn(trustee), await signIn(originator)];
   recorded["world.operators"] = { rows: rows.length, trusteeLogin: true };
-  return token;
+  return tokens;
 }
 
 export async function setupWorld(tag: string, recorded: Recorded): Promise<World> {
@@ -147,9 +159,13 @@ export async function setupWorld(tag: string, recorded: Recorded): Promise<World
   recorded["world.accounts"] = { lp: lp.publicKey(), usdc: LP_USDC.toString() };
 
   const lpToken = await signupLp(tag, lp, recorded);
-  const trusteeToken = await operators(tag, stackKey(tag, "trustee"), recorded);
-  return { tag, env, lp, lpToken, trusteeToken, deployer, capital, usdc, plusd };
+  const [trusteeToken, originatorToken] = await operators(tag, stackKey(tag, "trustee"), Keypair.random(), recorded);
+  return { tag, env, lp, lpToken, trusteeToken, originatorToken, deployer, capital, usdc, plusd };
 }
+
+let shared: Promise<World> | undefined;
+/** One world per run: the journeys of a run share its LP, operators and recorded `world.*`. */
+export const world = (tag: string, recorded: Recorded): Promise<World> => (shared ??= setupWorld(tag, recorded));
 
 /** Sumsub through the stub and a signed GREEN webhook, then waits until the relayer has whitelisted the LP on PLUSD. */
 export async function passKyc(w: World, recorded: Recorded): Promise<void> {

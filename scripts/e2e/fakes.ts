@@ -22,10 +22,19 @@ export function route(method: string, path: string, ipfsDir: string) {
   return { status: 404, body: "not faked", type: "text/plain" };
 }
 
-export function serve(port: number, ipfsDir: string): Server {
+/** An `/ipfs/<cid>` not on disk is read from the object store prefix (MinIO `ipfs/`, anonymous download). */
+async function fromStore(store: string, path: string) {
+  const r = await fetch(`${store}/${path.slice("/ipfs/".length).replace(/[^A-Za-z0-9._-]/g, "_")}`).catch(() => undefined);
+  if (!r?.ok) return undefined;
+  return { status: 200, body: Buffer.from(await r.arrayBuffer()), type: r.headers.get("content-type") ?? "application/octet-stream" };
+}
+
+export function serve(port: number, ipfsDir: string, ipfsStore?: string): Server {
   return createServer((req, res) => {
-    req.resume().on("end", () => {
-      const r = route(req.method ?? "GET", new URL(req.url ?? "/", "http://x").pathname, ipfsDir);
+    req.resume().on("end", async () => {
+      const path = new URL(req.url ?? "/", "http://x").pathname;
+      let r: { status: number; body: string | Buffer; type: string } = route(req.method ?? "GET", path, ipfsDir);
+      if (r.status === 404 && ipfsStore && path.startsWith("/ipfs/")) r = (await fromStore(ipfsStore, path)) ?? r;
       console.log(`${req.method} ${req.url} -> ${r.status}`);
       res.writeHead(r.status, { "content-type": r.type }).end(r.body);
     });
@@ -42,4 +51,4 @@ export async function postSumsubWebhook(apiUrl: string, secret: string, payload:
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) serve(Number(process.argv[2]), process.argv[3]);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) serve(Number(process.argv[2]), process.argv[3], process.argv[4]);
