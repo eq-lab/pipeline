@@ -223,7 +223,7 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
   const env = { ...process.env, STELLAR_CONFIG_HOME: join(dir, "stellar"), NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" };
   const stellar = (...args: string[]) => sh("stellar", args, { env });
   stellar("network", "add", "e2e", "--rpc-url", `http://localhost:${PORTS.stellar}/rpc`, "--network-passphrase", STANDALONE_PASSPHRASE);
-  const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital"] as const;
+  const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital", "lp-browser"] as const;
   const addr: Record<string, string> = {};
   for (const n of names) {
     // `keys generate --fund` exits 0 when friendbot is not up yet, so the probe asks Horizon whether the account exists.
@@ -273,6 +273,10 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
   const addresses = readJson<Addresses>(join(net, "addresses.json"))!;
   const expiration = startLedger + Number(config.allowance_ttl);
   logged(log, "stellar", ["contract", "invoke", "--id", addresses.usdc, "--source-account", "deployer", "--network", "e2e", "--", "approve", "--from", addr.deployer, "--spender", addresses.withdrawal_queue, "--amount", "100000000000000", "--live_until_ledger", String(expiration)], { env });
+  // The LP app's e2e test wallet (lp-browser) starts with 1000 USDC; the app opens the PLUSD trustline itself.
+  const usdc = `USDC:${addr["usdc-issuer"]}`;
+  logged(log, "stellar", ["tx", "new", "change-trust", "--source-account", "lp-browser", "--line", usdc, "--network", "e2e"], { env });
+  logged(log, "stellar", ["tx", "new", "payment", "--source-account", "usdc-issuer", "--destination", addr["lp-browser"], "--asset", usdc, "--amount", "10000000000", "--network", "e2e"], { env });
   const secret = (n: string) => stellar("keys", "secret", n);
   const accounts: Accounts = {
     issuer: addr.deployer,
@@ -281,6 +285,7 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
     depositCustodian: addr.deployer,
     withdrawalCustodian: addr.deployer,
     capitalWallet: addr.capital,
+    browserLpSecret: secret("lp-browser"),
   };
   return { addresses, accounts };
 }
@@ -329,7 +334,8 @@ export async function up(tag: string, reclaim: boolean) {
   assertGuarded(env);
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
   const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));
-  for (const app of ["frontend", "trustee"]) fs.writeFileSync(join(dir, `.env.e2e-${app}`), vite.map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
+  const envFiles = { frontend: [...vite, ["E2E_WALLET_SECRET", env.E2E_WALLET_SECRET]], trustee: vite };
+  for (const [app, vars] of Object.entries(envFiles)) fs.writeFileSync(join(dir, `.env.e2e-${app}`), vars.map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
   fs.mkdirSync(join(dir, "ipfs"), { recursive: true });
 
   logged(join(dir, "logs", "build.log"), "cargo", ["build", "-p", "pipeline-api", "-p", "pipeline-worker"], { cwd: REPO });

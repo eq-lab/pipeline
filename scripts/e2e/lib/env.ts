@@ -28,6 +28,7 @@ export interface Accounts {
   depositCustodian: string;
   withdrawalCustodian: string;
   capitalWallet: string;
+  browserLpSecret: string;
 }
 
 export interface EnvInput {
@@ -124,6 +125,7 @@ export function generateEnv({ ports: p, addresses: a, accounts: k, jwt, startLed
     SPACES_ENDPOINT: `http://localhost:${p.minio}`,
     SPACES_REGION: SPACES.region,
     SPACES_BUCKET: SPACES.bucket,
+    E2E_WALLET_SECRET: k.browserLpSecret,
     ...viteEnv(p, a, k),
   };
 }
@@ -148,6 +150,7 @@ function viteEnv(p: Ports, a: Addresses, k: Accounts): Record<string, string> {
     VITE_STELLAR_DEAL_TOKEN_FACTORY_ID: a.deal_token_factory,
     VITE_STELLAR_CAPITAL_WALLET_ID: k.capitalWallet,
     VITE_WALLETCONNECT_PROJECT_ID: "e2e",
+    VITE_E2E_WALLET: "1",
     // No EVM chain yet: a dead local port, so the apps never fall back to the public Hoodi node.
     VITE_EVM_RPC_URL: `http://localhost:${p.evm}`,
   };

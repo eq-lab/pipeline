@@ -8,6 +8,7 @@ import {
   HANA_ID,
   ALBEDO_ID,
   RABET_ID,
+  E2E_WALLET_ID,
 } from "./config";
 import { networkPassphrase } from "./chain";
 import {
@@ -185,6 +186,7 @@ export type SorobanWalletId =
 
 export interface UseStellarConnectorsResult {
   connectWallet(walletId: string, onUnavailable?: () => void): Promise<void>;
+  e2eWalletId: string | undefined;
 }
 
 export function useStellarConnectors(): UseStellarConnectorsResult {
@@ -207,5 +209,5 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
     [mockAddress],
   );
 
-  return { connectWallet };
+  return { connectWallet, e2eWalletId: E2E_WALLET_ID };
 }
