@@ -142,7 +142,8 @@ describe("optional and required checks", () => {
   });
 });
 
-describe("run.ts and check.ts on disk", () => {
+// run() spawns git for the commit sha.
+describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
   const home = mkdtempSync(join(tmpdir(), "e2e-test-"));
   const checksPath = join(home, "checks.json");
   const tag = "t1";
@@ -213,5 +214,13 @@ describe("run.ts and check.ts on disk", () => {
 
   it("redacts secret values from the environment", () => {
     assert.equal(redact("token abcdefgh in url", ["abcdefgh"]), "token *** in url");
+  });
+
+  it("redacts every word of a mnemonic", () => {
+    const words = "abandon ability able about above absent absorb abstract absurd abuse access accident";
+    for (const line of [`Mnemonic: ${words}`, `{"mnemonic": "${words}"}`, `MNEMONIC=${words}`]) {
+      const out = redact(line, []);
+      for (const w of words.split(" ")) assert.ok(!out.includes(w), `${w} leaked from ${out}`);
+    }
   });
 });

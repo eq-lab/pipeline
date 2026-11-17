@@ -5,7 +5,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 const STELLAR_SECRET = /\bS[A-Z2-7]{55}\b/g;
 const NAMED =
   /(?<![A-Za-z])((?:private[_-]?key|secret(?:[_-]?key)?|seed|mnemonic|password|passcode|otp|token|verification code)["']?\s*(?:[:=]|\bis\b)\s*["']?)[^\s"'&,;}]+/gi;
-const SECRET_ENV = /KEY|SECRET|SEED|MNEMONIC|PASSWORD|PASSCODE|OTP|TOKEN/i;
+// A mnemonic is several words; NAMED would stop after the first one.
+const MNEMONIC = /(?<![A-Za-z])(mnemonic["']?\s*[:=]\s*["']?)[a-z]+(?:[ \t]+[a-z]+)*/gi;
+const SECRET_ENV =/KEY|SECRET|SEED|MNEMONIC|PASSWORD|PASSCODE|OTP|TOKEN/i;
 
 export function envSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
   return Object.entries(env)
@@ -14,7 +16,7 @@ export function envSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
 }
 
 export function redact(text: string, secrets: string[] = envSecrets()): string {
-  let out = text.replace(STELLAR_SECRET, "***").replace(NAMED, "$1***");
+  let out = text.replace(STELLAR_SECRET, "***").replace(MNEMONIC, "$1***").replace(NAMED, "$1***");
   for (const s of secrets) out = out.split(s).join("***");
   return out;
 }
