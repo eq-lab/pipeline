@@ -121,6 +121,11 @@ export function generateEnv({ ports: p, jwt, stellar, evm }: EnvInput): Record<s
     VITE_WALLETCONNECT_PROJECT_ID: "e2e",
     // Without the EVM chain a dead local port, so the apps never fall back to the public Hoodi node.
     VITE_EVM_RPC_URL: `http://localhost:${p.evm}`,
+    // Likewise without the Stellar chain: the apps would otherwise default to the public Stellar testnet.
+    VITE_STELLAR_NETWORK_PASSPHRASE: STANDALONE_PASSPHRASE,
+    VITE_STELLAR_CHAIN_ID: ID,
+    VITE_STELLAR_HORIZON_URL: `http://localhost:${p.stellar}`,
+    VITE_STELLAR_RPC_URL: `http://localhost:${p.stellar}/rpc`,
     ...(stellar && stellarEnv(p, stellar)),
     ...(evm && evmEnv(p, evm)),
   };
@@ -168,10 +173,6 @@ function stellarEnv(p: Ports, { addresses: a, accounts: k, startLedger }: Stella
     [`${S}_API_PLUSD_ADDRESS`]: a.plusd,
     [`${S}_API_MINTER_ADDRESS`]: a.minter,
     E2E_WALLET_SECRET: k.browserLpSecret,
-    VITE_STELLAR_NETWORK_PASSPHRASE: STANDALONE_PASSPHRASE,
-    VITE_STELLAR_CHAIN_ID: ID,
-    VITE_STELLAR_HORIZON_URL: `http://localhost:${p.stellar}`,
-    VITE_STELLAR_RPC_URL: rpc,
     VITE_STELLAR_DEPOSIT_MANAGER_ID: a.deposit_manager,
     VITE_STELLAR_WITHDRAWAL_QUEUE_ID: a.withdrawal_queue,
     VITE_STELLAR_STAKED_PLUSD_ID: a.staked_pl_usd,

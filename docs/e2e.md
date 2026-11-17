@@ -46,7 +46,7 @@ All state lives outside the repository under `$E2E_HOME` (default `~/.cache/pipe
 
 ### Clean environment
 
-The developer `.env` never reaches the stack. `api` and `worker` start with only `PATH`, `HOME` and `env.json`, in `stacks/<tag>/run/`, whose empty `.env` is the first one `dotenvy` finds walking up, so neither a worktree `.env` nor an ancestor's (such as `~/.env`) loads. Each app runs its own Vite config through `scripts/e2e/vite.e2e.config.mts`, which moves `envDir` to `stacks/<tag>/`, with only the generated variables. Local Stellar uses chain id `99000001` with the standalone passphrase (`Standalone Network ; February 2017`) set explicitly for every component; local EVM uses chain id `31337`. anvil runs `--silent`: its startup banner would print the run's private keys into a log artifact.
+The developer `.env` never reaches the stack. `api` and `worker` start with only `PATH`, `HOME` and `env.json`, in `stacks/<tag>/run/`, whose empty `.env` is the first one `dotenvy` finds walking up, so neither a worktree `.env` nor an ancestor's (such as `~/.env`) loads. Each app runs its own Vite config through `scripts/e2e/vite.e2e.config.mts`, which moves `envDir` to `stacks/<tag>/`, with only the generated variables. Local Stellar uses chain id `99000001` with the standalone passphrase (`Standalone Network ; February 2017`) set explicitly for every component; local EVM uses chain id `31337`. With one chain, the apps still get the other chain's RPC (and Horizon) URLs on its local port, which is then dead, so they never fall back to the public Hoodi or Stellar testnet nodes. anvil runs `--silent`: its startup banner would print the run's private keys into a log artifact.
 
 ### Fakes
 

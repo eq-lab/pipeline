@@ -96,6 +96,15 @@ describe("generated env", () => {
     assert.equal(generated.CHAIN_99000001_STELLAR_START_BLOCK, "1234");
     assert.throws(() => generateEnv({ ...envInput, stellar: { ...stellar, startLedger: 0 } }), /startLedger must be a positive ledger/);
   });
+
+  // An unset app RPC falls back to a public node (Hoodi, Stellar testnet), so a one-chain stack still points the other chain's at this machine.
+  it("points both chains' app endpoints at localhost whichever chains run", () => {
+    for (const env of [generated, generateEnv({ ...envInput, stellar: undefined }), generateEnv({ ...envInput, evm: undefined })]) {
+      for (const key of ["VITE_EVM_RPC_URL", "VITE_STELLAR_RPC_URL", "VITE_STELLAR_HORIZON_URL"]) assert.match(env[key] ?? "", /^http:\/\/localhost:\d+/, key);
+      assert.equal(env.VITE_STELLAR_NETWORK_PASSPHRASE, "Standalone Network ; February 2017");
+      assert.deepEqual(guard({ env, generated: env, postgresPort: PORTS.postgres }), []);
+    }
+  });
 });
 
 describe("pipeline-contracts anvil values", () => {
