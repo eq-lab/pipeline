@@ -11,7 +11,7 @@ import {
 } from "./usePortfolioChart";
 import { ChartDatesRow } from "./ChartDatesRow";
 import { ChartValueAxis } from "./ChartValueAxis";
-import { sampleAxisDates } from "@/utils/formatDate";
+import { sampleAxisDates, sampleAxisDatesByTime } from "@/utils/formatDate";
 import type { ChartSeries } from "./usePortfolioChart";
 import type { AxisTicks } from "@/utils/chartAxis";
 
@@ -118,7 +118,8 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const {
     period,
     timestamps,
-    slotCount,
+    xOf,
+    stepWidth,
     hoveredIdx,
     tooltip,
     onPointerMove,
@@ -137,7 +138,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
 
   const cursorLeftPct =
     hoveredIdx !== null
-      ? ((slotCentreX(hoveredIdx, slotCount) / VB_W) * 100).toFixed(2)
+      ? ((xOf(hoveredIdx, VB_W) / VB_W) * 100).toFixed(2)
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
@@ -161,7 +162,10 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const barH = (PLACEHOLDER_BAR_H / 100) * VB_H;
   const y0 = VB_H - barH;
 
-  const seriesMaxValue = series !== null ? Math.max(...series.values) : 0;
+  const presentValues =
+    series !== null ? series.values.filter((v): v is number => v !== null) : [];
+  const seriesMaxValue =
+    presentValues.length > 0 ? Math.max(...presentValues) : 0;
   const domainMax =
     yAxisDomainMax != null &&
     Number.isFinite(yAxisDomainMax) &&
@@ -339,12 +343,17 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             >
               {series !== null
                 ? series.values.map((value, i) => {
-                    const cx = slotCentreX(i, slotCount);
+                    if (value === null) {
+                      return (
+                        <g key={i} data-bar-slot={i} data-missing="true" />
+                      );
+                    }
+                    const cx = xOf(i, VB_W);
                     const h =
                       domainMax > 0
                         ? Math.max((value / domainMax) * VB_H * 0.9, barH * 0.3)
                         : barH * 0.3;
-                    const slotW = VB_W / slotCount;
+                    const slotW = stepWidth(VB_W);
                     const spikeW = Math.min(1, Math.max(0.35, slotW * 0.25));
                     const bandW = Math.min(3, Math.max(0.7, slotW * 0.6));
                     return (
@@ -434,7 +443,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               {tooltip !== null ? (
                 <>
                   <span className="block font-[var(--font-weight-medium)]">
-                    {formatMoney(tooltip.balance)}
+                    {tooltip.balance === null
+                      ? "—"
+                      : formatMoney(tooltip.balance)}
                   </span>
                   <span className="block opacity-70">
                     {formatTime(tooltip.timestamp, period.fmt)}
@@ -450,7 +461,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             <div className="w-[32px] shrink-0" aria-hidden="true" />
           )}
           <div className="flex-1">
-            <ChartDatesRow labels={sampleAxisDates(timestamps)} />
+            <ChartDatesRow
+              labels={
+                series !== null
+                  ? sampleAxisDatesByTime(timestamps)
+                  : sampleAxisDates(timestamps)
+              }
+            />
           </div>
         </div>
       </div>

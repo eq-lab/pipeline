@@ -177,15 +177,12 @@ function Home() {
     { signed: true, suffix: "unrealized" },
   );
 
-  const portfolioSeries = buildSeries(
-    positionsHistory.data?.history,
-    splusdDecimals,
-  );
+  const portfolioSeries = buildSeries(positionsHistory.data?.history);
 
-  const sharesStats = positionsHistory.data?.shares_balance;
+  const splusdValueMax = positionsHistory.data?.splusd_value?.max;
   const portfolioAxisMax =
-    sharesStats?.max != null && splusdDecimals !== undefined
-      ? Number(sharesStats.max) / 10 ** splusdDecimals
+    splusdValueMax != null && Number.isFinite(Number(splusdValueMax))
+      ? Number(splusdValueMax)
       : null;
   const portfolioAxis = computeAxisTicks(portfolioAxisMax);
 

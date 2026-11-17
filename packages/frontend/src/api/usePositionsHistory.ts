@@ -1,7 +1,4 @@
-/**
- * Fetches the wallet's dense sPLUSD history from `GET /v1/positions/history`.
- * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
- */
+// spec: docs/product-specs/lp-total-balance.md, docs/frontend/dashboard-components.md#portfolioplaceholdercard
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { ENV } from "@/lib/env";
@@ -18,6 +15,10 @@ export interface PositionHistoryItem {
   shares_balance: string;
   avg_cost_basis: string;
   cumulative_realized_pnl: string;
+  splusd_value?: string;
+  plusd_balance?: string;
+  wire_out_escrow?: string;
+  total_balance?: string;
 }
 
 export interface SeriesStat {
@@ -33,6 +34,8 @@ export interface PositionHistoryResponse {
   history: PositionHistoryItem[];
   shares_balance: SeriesStat;
   cumulative_realized_pnl: SeriesStat;
+  splusd_value?: SeriesStat;
+  total_balance?: SeriesStat;
 }
 
 export type HistoryInterval = "hourly" | "daily" | "weekly";

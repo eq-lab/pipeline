@@ -1,10 +1,4 @@
-/**
- * Zero-value placeholder chart state for PortfolioPlaceholderCard (#1114):
- * period tabs, per-slot timestamps over the selected window, and hover state.
- * Every balance is 0 until a per-address history series exists (#1116) — no
- * synthetic curve is generated.
- * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
- */
+// spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard
 import { useCallback, useRef, useState } from "react";
 
 export const N = 100;
@@ -82,30 +76,84 @@ export function slotTimestamps(periodId: string, now: number): number[] {
 }
 
 export interface TooltipInfo {
-  balance: number;
+  balance: number | null;
   timestamp: number;
 }
 
 export interface ChartSeries {
   timestamps: number[];
-  values: number[];
+  values: (number | null)[];
 }
 
 export function buildSeries(
-  history: { timestamp: string; shares_balance: string }[] | undefined,
-  decimals: number | undefined,
+  history: { timestamp: string; splusd_value?: string }[] | undefined,
 ): ChartSeries | null {
-  if (!history || history.length === 0 || decimals === undefined) return null;
+  if (!history || history.length === 0) return null;
   const timestamps: number[] = [];
-  const values: number[] = [];
+  const values: (number | null)[] = [];
   for (const item of history) {
     const ts = Date.parse(item.timestamp);
-    const value = Number(item.shares_balance) / 10 ** decimals;
-    if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
+    if (!Number.isFinite(ts)) return null;
+    const value =
+      item.splusd_value === undefined ? null : Number(item.splusd_value);
     timestamps.push(ts);
-    values.push(value);
+    values.push(value !== null && Number.isFinite(value) ? value : null);
   }
   return { timestamps, values };
+}
+
+export interface SeriesSpans {
+  t0: number;
+  tEnd: number;
+  step: number;
+}
+
+export function seriesSpans(timestamps: number[]): SeriesSpans {
+  const diffs: number[] = [];
+  for (let i = 1; i < timestamps.length; i++) {
+    diffs.push(timestamps[i]! - timestamps[i - 1]!);
+  }
+  let step = 1;
+  if (diffs.length > 0) {
+    const sorted = [...diffs].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    step =
+      sorted.length % 2 === 1
+        ? sorted[mid]!
+        : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  }
+  const t0 = timestamps[0] ?? 0;
+  const last = timestamps[timestamps.length - 1] ?? 0;
+  return { t0, tEnd: last + step, step };
+}
+
+export function bucketCentreX(
+  i: number,
+  timestamps: number[],
+  spans: SeriesSpans,
+  width: number,
+): number {
+  const start = timestamps[i]!;
+  const end = i + 1 < timestamps.length ? timestamps[i + 1]! : spans.tEnd;
+  const domain = spans.tEnd - spans.t0;
+  if (domain <= 0) return width / 2;
+  return (((start + end) / 2 - spans.t0) / domain) * width;
+}
+
+export function stepIndexAt(timestamps: number[], t: number): number {
+  let lo = 0;
+  let hi = timestamps.length - 1;
+  let found = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (timestamps[mid]! <= t) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found;
 }
 
 export interface PortfolioChartState {
@@ -114,6 +162,8 @@ export interface PortfolioChartState {
   period: PeriodConfig;
   timestamps: number[];
   slotCount: number;
+  xOf: (i: number, width: number) => number;
+  stepWidth: (width: number) => number;
   hoveredIdx: number | null;
   tooltip: TooltipInfo | null;
   onPointerMove: (clientX: number, rect: DOMRect) => void;
@@ -134,13 +184,29 @@ export function usePortfolioChart(params: {
     : slotTimestamps(activeId, nowRef.current);
   const slotCount = timestamps.length;
 
+  const isSeries = !!series?.timestamps.length;
+  const spans = seriesSpans(timestamps);
+  const { t0, tEnd, step } = spans;
+
+  const xOf = (i: number, width: number): number =>
+    isSeries
+      ? bucketCentreX(i, timestamps, spans, width)
+      : ((i + 0.5) * width) / slotCount;
+
+  const stepWidth = (width: number): number =>
+    isSeries && tEnd > t0 ? (step / (tEnd - t0)) * width : width / slotCount;
+
   const onPointerMove = useCallback(
     (clientX: number, rect: DOMRect) => {
       const x = clientX - rect.left;
       const fraction = Math.max(0, Math.min(1, x / rect.width));
+      if (isSeries) {
+        setHoveredIdx(stepIndexAt(timestamps, t0 + fraction * (tEnd - t0)));
+        return;
+      }
       setHoveredIdx(Math.min(slotCount - 1, Math.floor(fraction * slotCount)));
     },
-    [slotCount],
+    [isSeries, timestamps, t0, tEnd, slotCount],
   );
 
   const onPointerLeave = useCallback(() => {
@@ -150,7 +216,7 @@ export function usePortfolioChart(params: {
   const tooltip: TooltipInfo | null =
     hoveredIdx !== null && timestamps[hoveredIdx] != null
       ? {
-          balance: series?.values[hoveredIdx] ?? 0,
+          balance: isSeries ? (series?.values[hoveredIdx] ?? null) : 0,
           timestamp: timestamps[hoveredIdx]!,
         }
       : null;
@@ -161,6 +227,8 @@ export function usePortfolioChart(params: {
     period: getPeriod(activeId),
     timestamps,
     slotCount,
+    xOf,
+    stepWidth,
     hoveredIdx,
     tooltip,
     onPointerMove,

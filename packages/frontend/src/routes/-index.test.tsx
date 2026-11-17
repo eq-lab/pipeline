@@ -101,6 +101,10 @@ vi.mock("@/auth", () => ({
   }),
 }));
 
+const mockPositionsHistory = vi.hoisted(() => ({
+  current: undefined as Record<string, unknown> | undefined,
+}));
+
 const mockPnlData = vi.hoisted(() => ({
   current: undefined as
     | {
@@ -218,7 +222,7 @@ vi.mock("@/api", () => ({
     refetch: vi.fn(),
   }),
   usePositionsHistory: () => ({
-    data: undefined,
+    data: mockPositionsHistory.current,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -254,6 +258,7 @@ function renderHomeStellar() {
 
 beforeEach(() => {
   mockPnlData.current = undefined;
+  mockPositionsHistory.current = undefined;
   mockAuthState.isAuthenticated = true;
   mockAuthState.lpRead = "loaded";
   mockAuthState.kybStatus = undefined;
@@ -2910,5 +2915,72 @@ describe("Home page — nothing navigates after the connect modal opens (#1809)"
       search: { tab: "stake" },
     });
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — portfolio chart on the served splusd_value (#1629)", () => {
+  const stat = (max: string) => ({ max, min: "0", average: "0" });
+  const history = [
+    { h: "2026-09-21T00:00:00Z", v: "500.000000" },
+    { h: "2026-09-21T01:00:00Z", v: "1500.000000" },
+    { h: "2026-09-21T02:00:00Z", v: "2000.000000" },
+  ].map(({ h, v }) => ({
+    timestamp: h,
+    shares_balance: "999000000",
+    avg_cost_basis: "0",
+    cumulative_realized_pnl: "0",
+    splusd_value: v,
+  }));
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  function serve(withStat: boolean) {
+    mockPositionsHistory.current = {
+      wallet: WALLET_ADDRESS,
+      interval: "hourly",
+      history,
+      shares_balance: stat("999000000"),
+      cumulative_realized_pnl: stat("0"),
+      ...(withStat ? { splusd_value: stat("2000.000000") } : {}),
+    };
+  }
+
+  it("derives the Y axis from splusd_value.max and renders one slot per bucket", async () => {
+    serve(true);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("chart-value-axis-max")[0],
+      ).toHaveTextContent("$2K");
+    });
+    expect(screen.getAllByTestId("chart-value-axis-mid")[0]).toHaveTextContent(
+      "$1K",
+    );
+    expect(
+      screen.getAllByTestId("chart-value-axis-bottom")[0],
+    ).toHaveTextContent("$0");
+    expect(document.querySelectorAll("[data-bar-slot]").length % 3).toBe(0);
+    expect(document.querySelectorAll("[data-bar-slot]").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("renders no Y axis when the splusd_value stat is absent", async () => {
+    serve(false);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("tab", { name: "All" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByTestId("chart-value-axis")).not.toBeInTheDocument();
   });
 });

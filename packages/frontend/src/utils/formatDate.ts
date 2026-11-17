@@ -88,6 +88,16 @@ export function formatAxisDateRange(
   };
 }
 
+function formatPickedDates(picked: number[]): string[] {
+  const crossesYear =
+    new Set(picked.map((ms) => new Date(ms).getFullYear())).size > 1;
+  return picked.map((ms) => {
+    const label = formatAxisDate(ms);
+    if (label === "—" || !crossesYear) return label;
+    return `${label} '${String(new Date(ms).getFullYear()).slice(-2)}`;
+  });
+}
+
 export function sampleAxisDates(timestampsMs: number[], count = 5): string[] {
   if (timestampsMs.length === 0) return [];
   const indices =
@@ -96,12 +106,23 @@ export function sampleAxisDates(timestampsMs: number[], count = 5): string[] {
       : Array.from({ length: count }, (_, i) =>
           Math.round((i / (count - 1)) * (timestampsMs.length - 1)),
         );
-  const picked = indices.map((idx) => timestampsMs[idx]!);
-  const crossesYear =
-    new Set(picked.map((ms) => new Date(ms).getFullYear())).size > 1;
-  return picked.map((ms) => {
-    const label = formatAxisDate(ms);
-    if (label === "—" || !crossesYear) return label;
-    return `${label} '${String(new Date(ms).getFullYear()).slice(-2)}`;
+  return formatPickedDates(indices.map((idx) => timestampsMs[idx]!));
+}
+
+export function sampleAxisDatesByTime(
+  timestampsMs: number[],
+  count = 5,
+): string[] {
+  if (timestampsMs.length === 0) return [];
+  const first = timestampsMs[0]!;
+  const last = timestampsMs[timestampsMs.length - 1]!;
+  const picked = Array.from({ length: count }, (_, i) => {
+    const target = first + (i / (count - 1)) * (last - first);
+    let best = timestampsMs[0]!;
+    for (const ms of timestampsMs) {
+      if (Math.abs(ms - target) < Math.abs(best - target)) best = ms;
+    }
+    return best;
   });
+  return formatPickedDates(picked);
 }
