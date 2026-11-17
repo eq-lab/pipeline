@@ -203,14 +203,14 @@ const journey: Journey = {
 };
 
 type Rec = Record<string, any>;
-function need(recorded: Recorded, key: string): Rec {
+export function need(recorded: Recorded, key: string): Rec {
   const v = recorded[key];
   if (v === undefined) throw new Error(`"${key}" not recorded: the run stopped before it`);
   return v as Rec;
 }
-const check = (id: string, title: string, evaluate: (r: Recorded) => { ok: boolean; details?: string }): Check => ({ id, title, evaluate });
-const verdict = (ok: boolean, details: string) => ({ ok, ...(ok ? {} : { details }) });
-const same = (label: string, api: unknown, chain: unknown) => verdict(api !== null && api !== undefined && units(String(api), 6) === BigInt(String(chain)), `${label}: API ${api} vs chain ${chain}`);
+export const check = (id: string, title: string, evaluate: (r: Recorded) => { ok: boolean; details?: string }): Check => ({ id, title, evaluate });
+export const verdict = (ok: boolean, details: string) => ({ ok, ...(ok ? {} : { details }) });
+export const same = (label: string, api: unknown, chain: unknown) => verdict(api !== null && api !== undefined && units(String(api), 6) === BigInt(String(chain)), `${label}: API ${api} vs chain ${chain}`);
 
 journey.checks = [
   check("stellar.lp.onboarding", "LP signs up by email + OTP, links its wallet by challenge, passes Sumsub and is whitelisted on PLUSD", (r) => {
