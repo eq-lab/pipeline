@@ -11,7 +11,7 @@ import { route } from "./fakes";
 import { EVM_CONTRACTS, generateEnv, PORTS, type Addresses, type EvmAddresses } from "./lib/env";
 import { guard } from "./lib/guard";
 import { stackDir } from "./lib/stack";
-import { acquireStackLock, down, EVM_ROLES, patchChainValues, startService, viteArgs } from "./stack";
+import { acquireStackLock, down, EVM_ROLES, parseArgs, patchChainValues, startService, viteArgs } from "./stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "../..");
@@ -226,6 +226,23 @@ const gone = async (pid: number) => {
     await new Promise((r) => setTimeout(r, 200));
   }
 };
+
+describe("--chains", () => {
+  const chains = (...args: string[]) => parseArgs(["up", "--tag", "t", ...args]).chains;
+
+  it("defaults to both chains and selects one or both in a fixed order", () => {
+    assert.deepEqual(chains(), ["stellar", "evm"]);
+    assert.deepEqual(chains("--chains", "stellar"), ["stellar"]);
+    assert.deepEqual(chains("--chains", "evm", "--reclaim"), ["evm"]);
+    assert.deepEqual(chains("--chains", "evm,stellar"), ["stellar", "evm"]);
+  });
+
+  it("refuses an unknown or missing chain instead of starting a different stack", () => {
+    assert.throws(() => chains("--chains", "hoodi"), /--chains takes stellar,evm; got "hoodi"/);
+    assert.throws(() => chains("--chains"), /--chains takes stellar,evm; got ""/);
+    assert.throws(() => chains("--chains", "--reclaim"), /got "--reclaim"/);
+  });
+});
 
 describe("stack lock", { timeout: TIMEOUT }, () => {
   it("refuses another tag, names it, and --reclaim takes over", () => {
