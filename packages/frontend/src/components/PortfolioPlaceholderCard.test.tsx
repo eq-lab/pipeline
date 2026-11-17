@@ -11,7 +11,13 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
-import { slotTimestamps, buildSeries } from "./usePortfolioChart";
+import {
+  slotTimestamps,
+  buildSeries,
+  seriesSpans,
+  bucketCentreX,
+  stepIndexAt,
+} from "./usePortfolioChart";
 import { sampleAxisDates } from "@/utils/formatDate";
 import type { AxisTicks } from "@/utils/chartAxis";
 
@@ -289,32 +295,160 @@ describe("PortfolioPlaceholderCard — Y axis (#1234)", () => {
   });
 });
 
-describe("buildSeries (#1138)", () => {
-  it("scales raw share strings by decimals and parses timestamps", () => {
-    const s = buildSeries(
-      [
-        {
-          timestamp: "2026-07-20T00:00:00Z",
-          shares_balance: "10000000",
-        },
-        {
-          timestamp: "2026-08-20T00:00:00Z",
-          shares_balance: "25000000",
-        },
-      ],
-      7,
-    );
+describe("buildSeries (#1138, #1629)", () => {
+  it("parses served splusd_value verbatim, ignoring shares_balance and decimals", () => {
+    const s = buildSeries([
+      {
+        timestamp: "2026-07-20T00:00:00Z",
+        splusd_value: "1001.503214",
+        shares_balance: "999",
+      } as { timestamp: string; splusd_value?: string },
+      { timestamp: "2026-08-20T00:00:00Z", splusd_value: "2.5" },
+    ]);
     expect(s).not.toBeNull();
-    expect(s!.values).toEqual([1, 2.5]);
+    expect(s!.values).toEqual([1001.503214, 2.5]);
     expect(s!.timestamps[0]).toBe(Date.parse("2026-07-20T00:00:00Z"));
   });
 
+  it("maps a bucket without splusd_value to null and keeps its timestamp", () => {
+    const s = buildSeries([
+      { timestamp: "2026-07-20T00:00:00Z" },
+      { timestamp: "2026-08-20T00:00:00Z", splusd_value: "abc" },
+    ]);
+    expect(s!.values).toEqual([null, null]);
+    expect(s!.timestamps).toHaveLength(2);
+  });
+
   it("returns null for empty or malformed history", () => {
-    expect(buildSeries([], 7)).toBeNull();
-    expect(buildSeries(undefined, 7)).toBeNull();
+    expect(buildSeries([])).toBeNull();
+    expect(buildSeries(undefined)).toBeNull();
     expect(
-      buildSeries([{ timestamp: "not-a-date", shares_balance: "1" }], 7),
+      buildSeries([{ timestamp: "not-a-date", splusd_value: "1" }]),
     ).toBeNull();
+  });
+});
+
+describe("step helpers (#1629)", () => {
+  const H = 3_600_000;
+  const t = Date.UTC(2026, 8, 21, 0, 0);
+
+  it("stepIndexAt picks the latest bucket at or before the time, clamped", () => {
+    const ts = [t, t + H, t + 10 * H];
+    expect(stepIndexAt(ts, t + H)).toBe(1);
+    expect(stepIndexAt(ts, t + 5 * H)).toBe(1);
+    expect(stepIndexAt(ts, t - H)).toBe(0);
+    expect(stepIndexAt(ts, t + 99 * H)).toBe(2);
+    expect(stepIndexAt([t], t + H)).toBe(0);
+  });
+
+  it("seriesSpans uses the median step and 1 for a single bucket", () => {
+    expect(seriesSpans([t, t + H, t + 2 * H])).toEqual({
+      t0: t,
+      tEnd: t + 3 * H,
+      step: H,
+    });
+    expect(seriesSpans([t, t + H, t + 10 * H])).toEqual({
+      t0: t,
+      tEnd: t + 10 * H + 5 * H,
+      step: 5 * H,
+    });
+    expect(seriesSpans([t])).toEqual({ t0: t, tEnd: t + 1, step: 1 });
+  });
+
+  it("bucketCentreX equals the index slot centre for a uniform series", () => {
+    const ts = [t, t + H, t + 2 * H];
+    const spans = seriesSpans(ts);
+    ts.forEach((_, i) => {
+      expect(bucketCentreX(i, ts, spans, 680)).toBeCloseTo(
+        ((i + 0.5) * 680) / 3,
+        6,
+      );
+    });
+  });
+});
+
+describe("series mode on the served value (#1629)", () => {
+  const H = 3_600_000;
+  const t = Date.UTC(2026, 8, 21, 0, 0);
+
+  function renderSeries(timestamps: number[], values: (number | null)[]) {
+    const view = render(
+      <PortfolioPlaceholderCard
+        balanceLabel="$0.00"
+        series={{ timestamps, values }}
+      />,
+    );
+    const chartWrap = view.container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    return { ...view, chartWrap };
+  }
+
+  function barCentre(container: HTMLElement, i: number): number {
+    const rect = container.querySelector(
+      `[data-bar-slot='${i}'] rect`,
+    ) as SVGRectElement;
+    return (
+      Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2
+    );
+  }
+
+  it("tooltip shows the formatted value, and an em dash for a missing bucket", () => {
+    const { chartWrap } = renderSeries(
+      [t, t + H, t + 2 * H],
+      [1001.5, null, 3],
+    );
+    const tooltip = screen.getByTestId("chart-tooltip");
+    fireEvent.pointerMove(chartWrap, { clientX: 10 });
+    expect(tooltip.textContent).toContain("$1,001.50");
+    fireEvent.pointerMove(chartWrap, { clientX: 300 });
+    expect(tooltip.textContent).toContain("—");
+    expect(tooltip.textContent).not.toContain("$0.00");
+  });
+
+  it("a null bucket renders a data-missing slot with no rect", () => {
+    const { container } = renderSeries([t, t + H], [null, 5]);
+    const slot = container.querySelector("[data-bar-slot='0']")!;
+    expect(slot).toHaveAttribute("data-missing", "true");
+    expect(slot.querySelector("rect")).toBeNull();
+    expect(container.querySelectorAll("[data-bar-slot]")).toHaveLength(2);
+  });
+
+  it("places bars on the timestamp scale", () => {
+    const { container } = renderSeries([t, t + H, t + 10 * H], [1, 2, 3]);
+    [1 / 30, 11 / 30, 25 / 30].forEach((f, i) => {
+      expect(barCentre(container as HTMLElement, i)).toBeCloseTo(680 * f, 4);
+    });
+  });
+
+  it("hover picks the latest bucket at or before the cursor time", () => {
+    const { chartWrap } = renderSeries([t, t + H, t + 10 * H], [1, 2, 3]);
+    const tooltip = screen.getByTestId("chart-tooltip");
+    fireEvent.pointerMove(chartWrap, { clientX: 600 * (5 / 15) });
+    expect(tooltip.textContent).toContain("$2.00");
+    fireEvent.pointerMove(chartWrap, { clientX: 600 * (0.5 / 15) });
+    expect(tooltip.textContent).toContain("$1.00");
+  });
+
+  it("a dense uniform series keeps the index slot positions", () => {
+    const { container } = renderSeries([t, t + H, t + 2 * H], [1, 2, 3]);
+    [0, 1, 2].forEach((i) => {
+      expect(barCentre(container as HTMLElement, i)).toBeCloseTo(
+        ((i + 0.5) * 680) / 3,
+        4,
+      );
+    });
   });
 });
 

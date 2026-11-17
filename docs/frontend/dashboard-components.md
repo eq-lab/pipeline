@@ -391,10 +391,14 @@ Like `"get-plusd"`, this variant renders no unrealized-PnL caption and ignores `
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
 period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
 7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily), maps the
-response with `buildSeries` (raw share strings scaled by the active chain's decimals), and
+response with `buildSeries` (#1629: the served per-bucket `splusd_value` — whole USD, a 6-dp
+string from #1313 — parsed verbatim, no decimals scaling, never `shares_balance`), and
 passes `series` into the card — the card stays presentational. Non-empty series → one bar per
-served bucket (height ∝ `shares_balance`), tooltip shows the bucket's served balance +
-timestamp. Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
+served bucket (height ∝ `splusd_value`), tooltip shows the bucket's served value + timestamp.
+A bucket without `splusd_value` draws no bar (`data-missing`) and its tooltip reads `—`. The
+headline is the live on-chain `convertToAssets` read and the last bar is the closing price
+sample, so the two can differ slightly; both are served, neither is derived. The composite
+`total_balance` series is #1282's scope. Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
 1m/3m = `Month D, YYYY` (never a time); 1y/all = `Month D, YYYY` plus `, HH:MM` only when the
 served timestamp carries a non-midnight time (e.g. the All tab's hourly rung) — never just the
 month. Empty/absent series → the zero placeholder below, unchanged.
@@ -413,20 +417,21 @@ full-value-height spike (~1px) plus a wider band at 40% of the value height (~3p
 scaled down when slots are narrow. The grey `#D5D8C8` triple-rect construction remains
 placeholder-only.
 
+**Time axis (#1629).** Series buckets sit on a timestamp scale: each bucket spans from its own
+timestamp to the next, the last spans one median step, and the bar is centred in its span. Hover
+selects the latest bucket at or before the cursor time (`stepIndexAt`, step interpolation). A
+dense uniform series renders exactly like index slots; placeholder mode keeps index slots.
+
 **Dates row (#1133/#1138, widened to 5 labels by #1234).** A `ChartDatesRow` under the chart: in
-served-series mode the 5 labels are `sampleAxisDates(timestamps)` sampled from the served bucket
+served-series mode the 5 labels are `sampleAxisDatesByTime(timestamps)` (#1629, by time) sampled from the served bucket
 timestamps; in placeholder mode they fall back to the active period window's timestamps
 (`slotTimestamps` — the same timestamps the hover tooltip already exposes, so no fabrication),
 updating with the period tab.
 
-**Y axis (#1234).** A `ChartValueAxis` — 1:1 USD over the `shares_balance` series, consistent
-with the shipped headline (`formatBigintCurrency(splusdSharesActive, activeDecimals)` already
-displays shares as dollars 1:1). The home route scales `positions/history`'s additive
-`shares_balance.max` `SeriesStat` field by the active chain's decimals (the same
-`/ 10 ** decimals` treatment `buildSeries` applies to `history[]`) and passes the resulting
-`AxisTicks` in as `yAxis`, plus the raw scaled max as `yAxisDomainMax` for bar-height
-normalisation (`Math.max(...series.values)` is hoisted out of the per-bar loop and only used as
-a fallback when `yAxisDomainMax` is omitted/invalid). No axis renders in placeholder mode
+**Y axis (#1234, #1629).** A `ChartValueAxis` from the served `splusd_value.max` `SeriesStat`
+(parsed verbatim, no decimals scaling), passed in as `yAxis` plus the raw max as `yAxisDomainMax`
+for bar-height normalisation (the max over non-null bucket values is only a fallback when it is
+omitted/invalid). No axis when the stat is absent (any bucket lacks `splusd_value`). No axis renders in placeholder mode
 (`series === null`) even if `yAxis` is passed — the zero-value placeholder fabricates nothing.
 
 **Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
@@ -461,10 +466,10 @@ variant.
 **Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
 **Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
-`$0.00 unrealized`) are always real data. The chart itself is either the served `shares_balance`
-series (#1138) or, absent that, a constant-zero placeholder — in both cases every rendered value
+`$0.00 unrealized`) are always real data. The chart itself is either the served `splusd_value`
+series (#1138, #1629) or, absent that, a constant-zero placeholder — in both cases every rendered value
 (bars, dates, Y axis) comes from served data or a documented zero default; nothing is
-client-side-derived beyond unit scaling (÷ decimals) and presentation formatting.
+client-side-derived beyond presentation formatting.
 
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
@@ -1771,7 +1776,7 @@ Sell is disabled (`sellDisabled`,
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
-**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `shares_balance` history (#1138) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it scales `positionsHistory.data.shares_balance.max` (a raw share string, same scale as `history[]`) by `activeDecimals` and passes `computeAxisTicks`'s result as `yAxis` plus the raw scaled max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
+**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `splusd_value` history (#1138, #1629) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it parses `positionsHistory.data.splusd_value.max` verbatim (no decimals scaling) and passes `computeAxisTicks`'s result as `yAxis` plus the parsed max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 
