@@ -1019,7 +1019,8 @@ Blends REST `GET /v1/financial-position?chain_id` + on-chain reads of the dashbo
 (`useDashboardChain().kind`). All four on-chain hooks are called every render; the pair matching
 `kind` is used and the EVM pair is disabled (no RPC) on Stellar:
 
-- PLUSD outstanding → Stellar `useStellarPlusdTotalSupply()` (Horizon decimal string) or EVM
+- PLUSD outstanding → Stellar `useStellarPlusdTotalSupply()` (Horizon decimal string: `balances` + `contracts_amount` +
+  `claimable_balances_amount` + `liquidity_pools_amount`, so vault-held PLUSD counts) or EVM
   `useEvmPlusdTotalSupply()` (`PLUSD.totalSupply()`, human-decimal string)
 - Cash — stablecoins → Stellar `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint) or EVM
   `useEvmUsdcCustodyBalance()` (`USDC.balanceOf(DepositManager.custodian())`, human-decimal string)

@@ -121,7 +121,17 @@ describe("useStellarPlusdTotalSupply", () => {
       ok: true,
       json: async () => ({
         _embedded: {
-          records: [{ balances: { authorized: "10000711.9961018" } }],
+          records: [
+            {
+              balances: {
+                authorized: "10000711.9961018",
+                unauthorized: "0.0000000",
+              },
+              contracts_amount: "100.0000000",
+              claimable_balances_amount: "0.0000001",
+              liquidity_pools_amount: "1.0000000",
+            },
+          ],
         },
       }),
     });
@@ -131,7 +141,7 @@ describe("useStellarPlusdTotalSupply", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.data).toBe("10000711.9961018");
+      expect(result.current.data).toBe("10000812.9961019");
     });
 
     expect(result.current.isLoading).toBe(false);
