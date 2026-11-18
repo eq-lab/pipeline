@@ -106,13 +106,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
 - **Resolution (2026-10-28, #1671):** `git check-ignore packages/frontend/tsconfig.tsbuildinfo` matches and the file is not tracked.
 
-### TD-6: No Foundation/Tokens Storybook story
+### TD-6: No Foundation/Tokens Storybook story [RESOLVED 2026-11-18 / #1329]
 
 - **Date:** 2026-05-12
-- **Location:** packages/ui/src/stories/
+- **Location:** packages/ui/src/foundation/
 - **Gap:** There is no Storybook story that previews every `--color-pipeline-*`, `--text-pipeline-*`, `--radius-pipeline-*` token so reviewers can compare values to Figma visually. Deferred from Issue #41 to keep that issue tightly scoped to the `@theme` declaration.
 - **Impact:** Token verification is manual (DevTools console); visual regression is invisible until a consuming component breaks.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
+- **Resolution (2026-11-18, #1329):** `packages/ui/src/foundation/Tokens.stories.tsx` (`Foundation/Tokens`: `Colors`, `TypeRamp`, `Radii`) enumerates the tokens from the `@theme` block of `theme.css`.
 
 ### TD-100: Same-tab mock bridge not testable in jsdom
 

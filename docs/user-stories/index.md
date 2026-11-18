@@ -441,3 +441,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1940 API: /security and loan-book LTV fields for EVM chains](https://github.com/eq-lab/pipeline/issues/1940) | [1940-evm-security-api.md](./epic-1937/1940-evm-security-api.md) | Initial |
 | [#1941 API: pending_operations for EVM chains (calldata args)](https://github.com/eq-lab/pipeline/issues/1941) | [1941-evm-pending-operations-api.md](./epic-1937/1941-evm-pending-operations-api.md) | Initial |
 
+
+## Epic #2029 — Frontend tech debt
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1329 Add a Foundation/Tokens Storybook story for design-token visual review](https://github.com/eq-lab/pipeline/issues/1329) | [1329-tokens-storybook-story.md](./epic-2029/1329-tokens-storybook-story.md) | Initial |

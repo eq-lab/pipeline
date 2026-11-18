@@ -26,6 +26,8 @@ Rule: components must not inline raw hex codes. All color, radius, and typograph
 
 The integration point is `packages/frontend/src/index.css`, which imports `@pipeline/ui/styles/theme.css` and adds an `@source` directive so Tailwind v4 scans `packages/ui/src` for utility class names. `packages/frontend/src/routes/index.tsx` carries a token-styled smoke probe that exercises color, typography, and radius tokens until the real WelcomeScreen lands (component issues #42–#49).
 
+Storybook `Foundation/Tokens` (`packages/ui/src/foundation/Tokens.stories.tsx`) is the visual review surface for these tokens: stories `Colors`, `TypeRamp` and `Radii` list every `--color-pipeline-*`, `--text-pipeline-*` (size / line-height) and `--radius-pipeline-*` token, parsed from the `@theme` block of `theme.css` so new tokens appear automatically. Swatches paint `var(--token)`, so they show what the browser resolves; `var()` aliases also print the resolved colour. Font weights, tracking and font families are out of scope (see `Foundation/Typography`).
+
 ## Component workshop
 
 Storybook lives in `packages/ui/.storybook/` and is launched with:
