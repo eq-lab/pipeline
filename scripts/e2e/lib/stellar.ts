@@ -31,7 +31,7 @@ export const u64 = (n: bigint) => nativeToScVal(n, { type: "u64" });
 export const bytes = (hex: string) => nativeToScVal(Buffer.from(hex.replace(/^0x/, ""), "hex"));
 
 export function stackKey(tag: string, name: string): Keypair {
-  const env = { ...process.env, STELLAR_CONFIG_HOME: join(stackDir(tag), "stellar") };
+  const env = { ...process.env, XDG_CONFIG_HOME: stackDir(tag) };
   return Keypair.fromSecret(execFileSync("stellar", ["keys", "secret", name], { encoding: "utf8", env }).trim());
 }
 
