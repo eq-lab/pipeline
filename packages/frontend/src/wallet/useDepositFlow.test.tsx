@@ -49,6 +49,7 @@ const ctl = vi.hoisted(() => ({
   },
   stellarRequestDepositSuccess: false,
   stellarMinDeposit: 10_000_000_000n as bigint | undefined,
+  evmMinDeposit: 1_000_000_000n,
   requests: undefined as
     | {
         type: string;
@@ -110,7 +111,7 @@ vi.mock("@/wallet", () => ({
   }),
   useDepositManagerAddresses: () => ({ plusd: undefined, usdc: undefined }),
   useDepositManagerMinDeposit: () => ({
-    minDeposit: ctl.evmConnected ? 1_000_000_000n : undefined,
+    minDeposit: ctl.evmConnected ? ctl.evmMinDeposit : undefined,
   }),
   useEvmToken: () => ({
     decimals: ctl.evmConnected ? 6 : undefined,
@@ -325,6 +326,7 @@ function resetCtl() {
   ctl.stDepositData = undefined;
   ctl.stWithdrawData = undefined;
   ctl.stellarMinDeposit = 10_000_000_000n;
+  ctl.evmMinDeposit = 1_000_000_000n;
   ctl.requests = undefined;
   ctl.stellarClaimError = null;
   ctl.refetchIntervalFn = undefined;
@@ -868,6 +870,104 @@ describe("useDepositFlow — Stellar min deposit from the contract (#1658)", () 
       result.current.onQuickAmount(0);
     });
     expect(setAmount).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositFlow — isBelowMinimum keeps a pending claim reachable (BUG-40)", () => {
+  const deposit = (status: string) => ({
+    type: "Deposit",
+    request_id: "42",
+    amount: "10000000000",
+    status,
+    created_at: new Date().toISOString(),
+  });
+  const pendingClaimDeposit = () => [deposit("PendingClaim")];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+  });
+
+  describe("EVM (balance 5,000 USDC, minimum 10,000)", () => {
+    beforeEach(() => {
+      mockXlmState.kind = "evm";
+      ctl.evmConnected = true;
+      ctl.evmMinDeposit = 10_000_000_000n;
+    });
+
+    it("is true with no deposit request", () => {
+      ctl.requests = [];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+
+    it("is false while a deposit awaits its claim", () => {
+      ctl.requests = pendingClaimDeposit();
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is false while an in-flight deposit is not yet listed", () => {
+      ctl.requests = [];
+      ctl.evmDepositInflight = {
+        requestId: "9",
+        amount: "5000000000",
+        txHash: "0xdead",
+        createdAt: 1,
+      };
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is true again once the deposit is Completed", () => {
+      ctl.requests = [deposit("Completed")];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+  });
+
+  describe("Stellar (balance 1,000 USDC, minimum 2,000)", () => {
+    beforeEach(() => {
+      mockXlmState.kind = "stellar";
+      ctl.stellarMinDeposit = 20_000_000_000n;
+    });
+
+    it("is true with no deposit request", () => {
+      ctl.requests = [];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+
+    it("is false while a deposit awaits its claim", () => {
+      ctl.requests = pendingClaimDeposit();
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is false right after the deposit request succeeds", () => {
+      ctl.requests = [];
+      ctl.stellarRequestDepositSuccess = true;
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
   });
 });
 
