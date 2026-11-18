@@ -185,6 +185,40 @@ The pinned contracts' `setup-access` maps no role to the security registry's `re
 
 EVM amounts have 6 decimals, as the API's USD strings. `/v1/requests` shows the claim before the queue's events and the PLUSD burn are indexed, so the reconcile waits up to 30 s for the queue and TVL to show it, then records what the API serves. The reconcile is chain-wide, so the journey may run again on the same stack.
 
+## EVM loan journey
+
+`scripts/e2e/journeys/evm-loan.ts` (`--chains evm --journeys loan`; in a full run after the EVM LP journey), the Stellar loan journey on anvil. Contract calls go straight to the pinned contracts (AccessManager-`restricted`, no relay), each from the unlocked anvil account holding the role (`EVM_ROLES` in `scripts/e2e/stack.ts`): loan registry manager for `drawLoan`, `registerDeal` and `closeLoan`; mint caller (the Cash reporter) for `recordWireIn` and `repay`, the latter with the LP app's minter ABI (`packages/wallet-connect/src/evm/contracts/minter.ts`); minter ops for `disburse`; collateral trustee and valuer for the collateral registry. The API's trustee and originator are fresh EVM keys with `auth_users` rows on `31337`, signed in by `personal_sign` challenge.
+
+1. **Submit and approve**, as on Stellar, with `chain_id=31337`. The API serves no `draw_loan` args for an EVM target, so the journey encodes `drawLoan` from the approved submission's `loan_data`: 6-decimal amounts, the rate in ppm (`bps × 100`).
+2. **Draw** and wait until the API links the submission to the loan id.
+3. **Deal tokens**: `registerDeal`, which `disburse` and `repay` need for `syncDebt`.
+4. **Wire in and disburse.** `recordWireIn` of 800 USD into the minter's escrow, `disburse` of the senior tranche; the trustee marks the off-ramp complete.
+5. **Collateral and margin call.** `pledge` a 1 Mt gold cargo lot, `setControl` (collateral manager agreement) and `addDoc` with the receipt's sha256, `revalue` at the static price (2500), `setFloor` 11765 bps (the coverage of an 85 % LTV), then `revalue` at 900, which emits `MarginCall`.
+6. **Loan book while active**, once the price collector has priced the loan, and the margin call in `/v1/audit-log`.
+7. **Repay** through the minter: the outstanding principal and the interest accrued so far; the interest is minted to sPLUSD.
+8. **Close** (`closeLoan`, `EarlyRepayment`) and the **loan book after close**.
+
+The same as on Stellar: play it once per stack, after the EVM LP journey, whose reconcile does not count the PLUSD this journey mints.
+
+| Check | What it compares |
+|-------|------------------|
+| `evm.loan.submission` | `InReview` after submit, `Approved` after review |
+| `evm.loan.documents` | each stored document's sha256 against the bytes the IPFS stub serves; the loan book lists the documents |
+| `evm.loan.draw` | the loan is `Approved` on chain with the submission's economics in 6-decimal units and the rate in ppm; the submission links to its id |
+| `evm.loan.disburse` | the deal is registered; the wire booked the cash, `disburse` took it and drew the tranche; the loan is `Performing` and the capital wallet's DEBT balance equals the outstanding |
+| `evm.loan.collateral` | the lot has its control and the receipt's hash, is valued at the static price and covers the floor; no `MarginCall` yet |
+| `evm.loan.margin-call` | after the mark-down, `coverage` below the floor and a `MarginCall` with that floor |
+| `evm.loan.repay` | `CashRepaid.interestMinted` equals the interest repaid and the sPLUSD `totalAssets` delta; outstanding and DEBT balance 0 |
+| `evm.loan.close` | `Closed` with `EarlyRepayment` |
+| `evm.loan-book.entry` | `/v1/loan-book` `principal`, `original_senior_tranche` and `senior_outstanding` against the registry |
+| `evm.loan-book.rate` | the rate half of #765 (fixed in #1434): `/v1/loan-book` `rate` against the registry's `currentRate` (ppm) / 10⁶ and the submitted 12 %; `details` always carry both |
+| `evm.loan-book.collateral` | `spot_price` and `collateral` against the static price × quantity, less the haircut |
+| `evm.loan-book.ltv-range` | optional, #765: `ltv` within 0–200 % and equal to `principal / collateral`; `details` always carry the LTV |
+| `evm.loan-book.margin-call` | the `MarginCall` row of `/v1/audit-log` for the loan against the chain event's coverage and floor (the loan book's `margin_call_open` and `ltv_bps` come from the Stellar security registry only) |
+| `evm.loan-book.summary` | while the loan is active: `weighted_rate` and `loan_book_yield` against the loan's rate; `deployed_senior` against `outstandingTotal()`; `/v1/financial-position` secured loans and `outstanding_in_loans` against Σ facility of the registry's active loans |
+| `evm.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against Σ `PaymentRecorded` offtaker receipts, `deployed_senior` and secured loans as above |
+| `evm.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `CashRepaid.interestMinted` |
+
 ## Result contract
 
 `check.ts --json` (and `result.json`):

@@ -26,7 +26,7 @@ const LP_USDC = 2_000_000_000n;
 const LP_ETH = 10n ** 20n;
 
 const transport = rpc(`http://localhost:${PORTS.evm}`);
-const anvil = createPublicClient({ chain: foundry, transport });
+export const anvil = createPublicClient({ chain: foundry, transport });
 const wallet = createWalletClient({ chain: foundry, transport });
 
 export const views = parseAbi([
@@ -46,13 +46,16 @@ export const views = parseAbi([
   "function approve(address, uint256) returns (bool)",
 ]);
 
-export const read = <T>(address: Address, functionName: string, args: unknown[] = []) =>
-  anvil.readContract({ address, abi: views, functionName, args } as never) as Promise<T>;
+export const read = <T>(address: Address, functionName: string, args: unknown[] = [], abi: Abi = views) =>
+  anvil.readContract({ address, abi, functionName, args } as never) as Promise<T>;
 
 /** Simulates then sends a call from `from` (a local key, or an address anvil holds unlocked); returns the simulated result. */
 export async function send<T = unknown>(from: Account | Address, address: Address, abi: Abi, functionName: string, args: unknown[]): Promise<T> {
-  const { request, result } = await anvil.simulateContract({ account: from, address, abi, functionName, args } as never);
-  const hash = await wallet.writeContract(request as never);
+  const call = { account: from, address, abi, functionName, args } as never;
+  const { request, result } = await anvil.simulateContract(call);
+  // The estimate falls short for the collateral registry's pledge (OutOfGas), so every call gets 50 % headroom.
+  const gas = ((await anvil.estimateContractGas(call)) * 3n) / 2n;
+  const hash = await wallet.writeContract({ ...(request as object), gas } as never);
   const receipt = await anvil.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`${functionName} reverted in ${hash}`);
   return result as T;
