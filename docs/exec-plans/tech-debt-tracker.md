@@ -114,13 +114,16 @@ line, whichever section it lands in.
 - **Impact:** Token verification is manual (DevTools console); visual regression is invisible until a consuming component breaks.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
 
-### TD-100: Same-tab mock bridge not testable in jsdom
+### TD-100: Same-tab mock bridge not testable in jsdom [RESOLVED-BY-DECISION 2026-11-18 / #1680]
 
 - **Date:** 2026-05-14
 - **Location:** `packages/frontend/src/wallet/mock.ts` — `installSameTabMockBridge`
 - **Gap:** jsdom's `localStorage` uses non-configurable property descriptors, so `localStorage.setItem` cannot be replaced via direct assignment or `vi.spyOn`. The bridge's patching behavior (dispatching `pipeline-mock:wallet` when a mock key is written from the DevTools console) cannot be verified in the vitest/jsdom test suite. Tests cover the observable result (hook re-renders when the custom event fires) but not the patch mechanism itself.
 - **Impact:** The bridge works in real browsers (verified manually) but the unit-test coverage gap means a regression could slip through.
 - **Suggested fix:** Add a Playwright/browser test in CI that opens the dev server, sets a mock key via DevTools evaluation, and asserts the UI updates without a reload. Alternatively, refactor the bridge to be injectable/mockable (e.g., accept a `storage` parameter in `installSameTabMockBridge` for test injection).
+- **Resolution (2026-11-18, #1680):** closed by decision. The bridge serves only the DevTools
+  localStorage mock layer, which is no longer used for verification; the LP copy is replaced by the
+  `@pipeline/wallet-connect` copy under #1349. No unit coverage is added.
 
 ### TD-8: LoanMintedMapper does metadata fetch inside the indexer transaction, blocking forward progress on URI outage
 
