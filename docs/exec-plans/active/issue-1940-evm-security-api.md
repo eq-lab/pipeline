@@ -93,12 +93,18 @@ Anything not listed here is identical: the route path and method, the 400 / 404 
   - **The main checkout's uncommitted #1786 Phase 2** (`chore/1786-retire-ccr-phase2`) also edits `docs/product-specs/loan-security-state.md`, `docs/references/backend.md` and `packages/api/src/routes/loan_book.rs`. Expect doc merge conflicts. This issue does not need to touch `loan_book.rs`.
 - **Ops ordering.** Set the API keys only after the worker's three EVM keys are live and the cursor is rewound (epic merge order, step 3). Before that, the route answers `200` with empty state (`terms: null`), as Stellar does before its first write.
 
+## Decisions (human, 2026-11-18)
+
+All open questions were resolved with the recommended defaults:
+
+1. EVM amount strings are native 6 dp (exact `raw / 10^decimals`), not padded to 7.
+2. Default breach is a top-level `default_breach` object mirroring `margin_call`, `null` on Stellar. Breach rows stay out of `margin_call.events`.
+3. Default breach is not added to the loan book or attention counts in this issue; that comes with #1942 if needed.
+4. Audit-log rendering of the three `SecurityDefaultBreach*` events and the EVM `SecurityTermsSet` extras is included here.
+
 ## Open Questions
 
-1. **EVM amount strings: native 6 dp or normalised to 7 dp?** Recommended default: **native**, so `"1.000000"` on EVM and `"1.0000000"` on Stellar. Each value is exact `raw / 10^decimals`, the same rule with the chain's scale, as the indexer stores raw 6 dp with no normalisation (D6). A Trustee write (#1942) then parses the string with the chain's decimals and never has to drop a seventh digit. The alternative appends a `0` on EVM so strings are byte-shaped like Stellar's. It is lossless, but an EVM writer would have to strip the extra digit before `parseUnits(…, 6)`.
-2. **Shape of the EVM default-breach state.** Recommended default: a top-level `default_breach` object that mirrors `margin_call`, with keys `open`, `opened_at`, `last_default_breach_ltv_bps`, `last_price_stale`, `ltv_above_ratio_no_onchain_breach`, `open_breach_clearable` and `events`. Breach rows stay out of `margin_call.events`. It is `null` on Stellar and when `terms` is `null`. The alternative is flat keys on `margin_call` (`default_breach_open`, `default_breach_at`), with breach kinds mixed into `margin_call.events`. That is smaller, but it changes what `margin_call.events` means on EVM.
-3. **Default breach in the loan book and attention counts?** Recommended default: **no** in this issue. The issue scopes the loan book to `ltv_bps` / `margin_call_open` / `price_stale` and the attention counts to margin calls. Add `default_breach_open` / a `default_breach_open` count with #1942 if the Trustee needs them (minimal endpoint surface).
-4. **Audit-log rendering of `SecurityDefaultBreach*` in this issue?** The issue body does not list it, but the merged #1938 plan and `security-registry-events.md#known-limitations` hand it to #1940. Recommended default: **include it** (step 8). It is small, and it keeps the EVM rows from being silently dropped from `/v1/audit-log`.
+_None_ (resolved 2026-11-18, see Decisions).
 
 ## Implementation Steps
 
