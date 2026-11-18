@@ -90,10 +90,14 @@ Everything not listed is identical: routes, page layout and test ids, the cards,
 - **Sibling #1943** will extend the same hooks for LoanRegistry functions. Keep the EVM arms generic over `CouncilTarget` (target address resolved by a per-chain function), so #1943 adds encoders and flips `riskCouncilBlockedReason` only.
 - **Wagmi API names:** wagmi is `^3.6.8` and the existing code still uses `useAccount`. The coder uses whatever `@wagmi/core` exports for the connected account in the installed version (`getAccount` or `getConnection`), plus `switchChain`, `simulateContract`, `estimateContractGas`, `writeContract`, `waitForTransactionReceipt` and `readContract`.
 
+## Decisions (human, 2026-11-18)
+
+1. **EVM write client:** #1942 builds the reusable wallet-connect EVM write client (`src/evm/contracts/write.ts`). #1573, #1574, #1755 and #1943 reuse it.
+2. **Immediate path:** `AccessManager.execute(target, data)` for both immediate and scheduled executes, as on Stellar. No direct target call.
+
 ## Open Questions
 
-1. **EVM write client: build it in #1942, or wait for #1573?** The #1942 body says "Reuse the EVM signing client that #1573 establishes", but #1573 is `blocked` on #1503 (stage config) and has no plan, and nothing in `@pipeline/wallet-connect` can sign an EVM transaction today. **Recommended default:** #1942 builds the reusable client (`src/evm/contracts/write.ts`: simulate, capped gas, `writeContract`, receipt, stage callbacks, mock and wrong-network handling) and the AccessManager bindings. #1573, #1574, #1755 and #1943 reuse it, and the manager updates those issue bodies ("reuse the client from #1942"). The alternative blocks #1942, and so the whole frontend half of epic #1937, on #1503.
-2. **Immediate path: `AccessManager.execute(target, data)` or a direct call to the target?** The issue says "Call directly when `immediate`". Both work on OpenZeppelin (`restricted` accepts an immediate caller). **Recommended default:** `AccessManager.execute` for immediate and scheduled executes alike. It is one-to-one with Stellar (`AM.execute` in both cases), it consumes a matching pending schedule (so the indexer closes the row instead of leaving it live until expiry), and none of the four functions reads `msg.sender`. Read "call directly" as "execute at once, without scheduling".
+_None_ (resolved 2026-11-18, see Decisions).
 
 ## Implementation Steps
 
