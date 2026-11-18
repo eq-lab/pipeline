@@ -320,8 +320,9 @@ pub fn nsr_per_dmt<S: std::hash::BuildHasher>(
 
 /// Parse a stored JSON decimal string, tagging the field on failure.
 fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
-    BigDecimal::from_str(value)
-        .map_err(|e| anyhow::anyhow!("collateral valuation field `{field}` = `{value}`: {e}"))
+    crate::security_marks::bounded_dec_str(value).ok_or_else(|| {
+        anyhow::anyhow!("collateral valuation field `{field}` = `{value}` is not a bounded decimal")
+    })
 }
 
 /// Join offtake payable terms with assay grades, refining charges, and each metal's own

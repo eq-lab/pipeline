@@ -105,7 +105,7 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 | `stellar.reconcile.withdrawal-queue` | `/v1/withdrawal-queue` `total_queued`, `total_claimed`, `rate` against the contract |
 | `stellar.reconcile.financial-position` | `/v1/financial-position` secured loans outstanding against the loan registry's `outstanding_total` |
 | `stellar.known-bugs.lps-openapi-query` | optional, BUG-37 (#1990): `payment_details` of `GET /v1/lps` in `/api-docs/openapi.json` is a query parameter |
-| `stellar.known-bugs.assay-decimal-bound` | optional, BUG-32 (#1991): a `1e1000` assay grade is refused with `400`; validation runs before the loan lookup, so `404` on an unknown loan means it passed |
+| `stellar.known-bugs.assay-decimal-bound` | a `1e1000` assay grade is refused with `400`; validation runs before the loan lookup, so `404` on an unknown loan means it passed |
 
 API figures in 6-decimal USD strings are compared with chain amounts divided by 10 (truncated, as the API normalizes them).
 
