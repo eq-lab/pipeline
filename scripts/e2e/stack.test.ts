@@ -13,7 +13,7 @@ import { guard } from "./lib/guard";
 import { findPasscode } from "./passcode";
 import { stackDir } from "./lib/stack";
 import { stackKey, stackStellarEnv } from "./lib/stellar";
-import { acquireStackLock, down, EVM_ROLES, parseArgs, patchChainValues, startService, viteArgs } from "./stack";
+import { acquireStackLock, deployEnv, down, EVM_ROLES, parseArgs, patchChainValues, startService, viteArgs } from "./stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "../..");
@@ -412,5 +412,21 @@ describe("stack stellar keys", { timeout: TIMEOUT, skip: hasStellar ? false : "s
     assert.ok(!existsSync(join(devConfig, "stellar")), "the key went to the developer config");
     assert.ok(!existsSync(devStellar), "the key went to the developer's STELLAR_CONFIG_HOME");
     assert.equal(stackKey("keys", "e2e-isolation-1981").publicKey(), cli("keys", "address", "e2e-isolation-1981"));
+  });
+});
+
+// #1984: a caller's USDC / RPC_URL / STELLAR_* must not reach the contracts deploy.
+describe("deployEnv", () => {
+  it("drops the caller's variables", () => {
+    const keys = ["USDC", "RPC_URL", "STELLAR_RPC_URL"];
+    const saved = keys.map((k) => process.env[k]);
+    for (const k of keys) process.env[k] = "x";
+    try {
+      const env = deployEnv("deploy-env");
+      assert.deepEqual(keys.filter((k) => k in env), []);
+      assert.equal(env.NETWORK, "e2e");
+    } finally {
+      keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+    }
   });
 });
