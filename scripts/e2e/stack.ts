@@ -11,7 +11,7 @@ import { english, generateMnemonic, generatePrivateKey, mnemonicToAccount, priva
 import { EVM_CONTRACTS, generateEnv, PORTS, SPACES, type Accounts, type Addresses, type EvmDeployment } from "./lib/env";
 import { EVM_CHAIN_ID, guard, STANDALONE_PASSPHRASE } from "./lib/guard";
 import { e2eHome, errorMessage, readJson, stackDir } from "./lib/stack";
-import { stackKey } from "./lib/stellar";
+import { stackKey, stackStellarEnv } from "./lib/stellar";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../..");
@@ -341,7 +341,7 @@ async function deployEvmContracts(tag: string, contracts: string, mnemonic: stri
 async function deployContracts(tag: string, contracts: string, startLedger: number): Promise<{ addresses: Addresses; accounts: Accounts }> {
   const dir = stackDir(tag);
   const log = join(dir, "logs", "deploy.log");
-  const env = { ...process.env, XDG_CONFIG_HOME: dir,NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" };
+  const env = { ...stackStellarEnv(tag), NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" };
   const stellar = (...args: string[]) => sh("stellar", args, { env });
   stellar("network", "add", "e2e", "--rpc-url", `http://localhost:${PORTS.stellar}/rpc`, "--network-passphrase", STANDALONE_PASSPHRASE);
   const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital", "lp-browser"] as const;

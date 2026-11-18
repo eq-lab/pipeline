@@ -12,6 +12,7 @@ import { EVM_CONTRACTS, generateEnv, PORTS, type Addresses, type EvmAddresses } 
 import { guard } from "./lib/guard";
 import { findPasscode } from "./passcode";
 import { stackDir } from "./lib/stack";
+import { stackKey, stackStellarEnv } from "./lib/stellar";
 import { acquireStackLock, down, EVM_ROLES, parseArgs, patchChainValues, startService, viteArgs } from "./stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -393,5 +394,20 @@ describe("fakes", () => {
     assert.equal(route("POST", "/sumsub/resources/applicants", home).status, 200);
     assert.equal(route("GET", "/sumsub/resources/applicants/-;externalUserId=G1/one", home).status, 200);
     assert.equal(route("POST", "/sumsub/resources/accessTokens/sdk", home).status, 200);
+  });
+});
+
+// #1981: with the real CLI, a stack's keys stay out of the developer's ~/.config/stellar, where `keys generate --overwrite` would replace same-named identities.
+const hasStellar = spawnSync("stellar", ["--version"]).status === 0;
+describe("stack stellar keys", { timeout: TIMEOUT, skip: hasStellar ? false : "stellar CLI not on PATH" }, () => {
+  it("generates and reads keys under stacks/<tag>/stellar, never under the developer config", () => {
+    const fakeHome = mkdtempSync(join(home, "stellar-home-"));
+    const devConfig = join(fakeHome, ".config");
+    const env = stackStellarEnv("keys", { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: devConfig });
+    const cli = (...args: string[]) => execFileSync("stellar", args, { env, encoding: "utf8" }).trim();
+    cli("keys", "generate", "e2e-isolation-1981", "--overwrite");
+    assert.ok(existsSync(join(stackDir("keys"), "stellar", "identity", "e2e-isolation-1981.toml")));
+    assert.ok(!existsSync(join(devConfig, "stellar")), "the key went to the developer config");
+    assert.equal(stackKey("keys", "e2e-isolation-1981").publicKey(), cli("keys", "address", "e2e-isolation-1981"));
   });
 });
