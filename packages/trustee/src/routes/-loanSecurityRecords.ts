@@ -6,6 +6,12 @@ import type {
 } from "@/api/useLoanSecurity";
 import { formatFullUsd, formatUsdExact } from "@/utils/formatUsd";
 import {
+  formatMoveBps,
+  markDueReasonsText,
+  suggestionStatusLabel,
+  type RevalueSeed,
+} from "@/lib/securityMarks";
+import {
   buildSecurityCard,
   formatUnixDate,
   type SecurityRow,
@@ -52,6 +58,8 @@ export interface SecurityRecordView {
   rows: SecurityRow[];
   attestedBy: string | null;
   inspections: SecurityInspectionRow[];
+  revalue: RevalueSeed | null;
+  revalueRows: SecurityRow[];
 }
 
 export interface SecurityRecordsView {
@@ -107,6 +115,67 @@ function formatPrice(record: LoanSecurityRecord): string {
     : price;
 }
 
+function isRevaluable(record: LoanSecurityRecord): boolean {
+  return (
+    record.open === true &&
+    (record.suggestion_status != null || record.mark?.value_per_unit != null)
+  );
+}
+
+function formatSuggested(record: LoanSecurityRecord): string {
+  const statusText = suggestionStatusLabel(record.suggestion_status);
+  if (statusText != null) return statusText;
+  const mark = record.suggested_mark;
+  const perUnit = trimDecimal(mark?.value_per_unit);
+  if (perUnit == null) return "—";
+  const unit = record.unit;
+  const price = `${formatUsdExact(perUnit)}${
+    typeof unit === "string" && unit.length > 0 ? ` per ${unit}` : ""
+  }`;
+  return typeof mark?.benchmark === "string" && mark.benchmark.length > 0
+    ? `${mark.benchmark} · ${price}`
+    : price;
+}
+
+function revalueRows(record: LoanSecurityRecord): SecurityRow[] {
+  return [
+    { label: "Current price", value: formatPrice(record) },
+    { label: "Suggested price", value: formatSuggested(record) },
+    { label: "Move vs suggestion", value: formatMoveBps(record.move_bps) },
+    {
+      label: "Mark due",
+      value:
+        record.mark_due === true
+          ? markDueReasonsText(record.mark_due_reasons)
+          : record.mark_due === false
+            ? "No"
+            : "—",
+    },
+    { label: "Mark due at", value: formatUnixDate(record.mark_due_at) },
+  ];
+}
+
+function revalueSeed(
+  record: LoanSecurityRecord,
+  title: string,
+): RevalueSeed | null {
+  const id = record.record_id;
+  if (!isRevaluable(record) || typeof id !== "string" || !/^\d+$/.test(id)) {
+    return null;
+  }
+  const suggested = record.suggested_mark;
+  const served = (value: unknown) =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  return {
+    recordId: Number(id),
+    title,
+    suggestedValue: served(suggested?.value_per_unit),
+    suggestedBenchmark: served(suggested?.benchmark),
+    suggestedHash: served(suggested?.report_hash),
+    currentBenchmark: served(record.mark?.benchmark),
+  };
+}
+
 function recordChips(record: LoanSecurityRecord): SecurityRecordChip[] {
   const chips: SecurityRecordChip[] = [];
   if (record.flagged_by != null || record.valuation?.flagged === true) {
@@ -120,6 +189,9 @@ function recordChips(record: LoanSecurityRecord): SecurityRecordChip[] {
   }
   if (record.mark_stale === true || record.valuation?.stale === true) {
     chips.push({ label: "Price stale", tone: "attention" });
+  }
+  if (record.mark_due === true) {
+    chips.push({ label: "Mark due", tone: "attention" });
   }
   if (record.counts_toward_value === false) {
     chips.push({ label: "Not counted", tone: "neutral" });
@@ -160,10 +232,12 @@ function recordView(
   index: number,
 ): SecurityRecordView {
   const recordId = verbatim(record.record_id);
+  const title = `Record #${recordId} · ${verbatim(record.protection)}`;
+  const seed = revalueSeed(record, title);
   return {
     key: `${recordId}-${index}`,
     recordId,
-    title: `Record #${recordId} · ${verbatim(record.protection)}`,
+    title,
     status: verbatim(record.status),
     chips: recordChips(record),
     rows: [
@@ -179,6 +253,7 @@ function recordView(
       { label: "Value", value: formatFullUsd(record.valuation?.value) },
       { label: "Price", value: formatPrice(record) },
       { label: "Price updated", value: formatUnixDate(record.mark?.at) },
+      ...(seed == null ? [] : revalueRows(record).slice(1)),
       { label: "Attested", value: formatUnixDate(record.attested_at) },
     ],
     attestedBy:
@@ -188,6 +263,8 @@ function recordView(
     inspections: (record.inspections ?? []).map((inspection) =>
       inspectionRow(inspection ?? {}, record.unit),
     ),
+    revalue: seed,
+    revalueRows: seed == null ? [] : revalueRows(record),
   };
 }
 
