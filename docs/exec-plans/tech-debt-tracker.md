@@ -1001,7 +1001,7 @@ line, whichever section it lands in.
   `POST /v1/auth/verify`), but scoped to proving ownership of `stellar_address` specifically rather than
   issuing a session JWT.
 
-### TD-58: `ConnectWalletModal` still carries its own copy of the two-pane modal shell
+### TD-58: `ConnectWalletModal` still carries its own copy of the two-pane modal shell [RESOLVED-BY-DECISION 2026-11-18 / #1342]
 
 - **Date:** 2026-09-17
 - **Location:** `packages/frontend/src/components/ConnectWalletModal.tsx` lines 9–39
@@ -1018,6 +1018,9 @@ line, whichever section it lands in.
   applied twice, and the two modals can silently drift apart visually.
 - **Suggested fix:** Refactor `ConnectWalletModal` to render through `AuthModalShell` once the
   KYB modals (#1248–#1253) have shipped and stabilized, then delete the duplicated block.
+- **Resolution (2026-11-18, #1342):** closed by decision, superseded by #1349 (the LP copy of
+  `ConnectWalletModal` goes away when the app re-points at `@pipeline/wallet-connect`). The two
+  stacking caveats stay documented in `docs/frontend/auth-components.md`.
 
 ### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative` [RESOLVED 2026-10-28 / #1677]
 
