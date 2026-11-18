@@ -17,6 +17,27 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-39: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack)
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/` — `new Horizon.Server(horizonUrl)` in `useStellarToken.ts`, `useStellarXlmBalance.ts`, `useStellarSacToken.ts`, `useStellarDepositManager.ts`, `useStellarStakedPlusd.ts`, `useStellarWithdrawalQueue.ts`. Found in the #1971 browser pass.
+- **Symptom:** On the e2e stack (`VITE_STELLAR_HORIZON_URL=http://localhost:58000`) the connected test wallet's USDC balance shows `—` and the deposit input stays disabled, although Horizon serves 1000 USDC for the account. The Stellar deposit and withdrawal walk of the e2e skill cannot run.
+- **Root cause:** `Horizon.Server` throws `Cannot connect to insecure horizon server` for an `http` URL unless constructed with `{ allowHttp: true }`; the Soroban RPC client already passes `allowHttp: sorobanRpcUrl.startsWith("http://")`. Production (https) is unaffected.
+- **Workaround:** None in the browser; `run.ts` covers the Stellar LP flow without the app.
+
+### BUG-40: The LP app hides the Claim step of a pending deposit when the remaining USDC is below the minimum deposit
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/routes/deposit.tsx` (`low-balance-banner` branch on `flow.hasBalance === false`) and `useDepositFlow.ts` (`evmHasBalance` compares the balance with `minDeposit`). Found in the #1971 browser pass on EVM.
+- **Symptom:** After `requestDeposit` of the whole balance (the anvil minimum is 1000 USDC and the test wallet holds 1000), the deposit page replaces the steps card with "Add funds to your USDC balance", so the Claim button of the `PendingClaim` request is unreachable; Activity lists it as Pending with no action.
+- **Root cause:** The banner is chosen on the wallet balance alone, not on whether a deposit request is waiting for its claim.
+- **Workaround:** Bring the balance back above the minimum (on the stack: `anvil_dealERC20`); the steps card and Claim return.
+
+### BUG-41: An EVM withdrawal claim reverted for an unfunded queue reports "That request could not be found"
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/utils/userError.ts` (`matchHttp`). Found in the #1971 browser pass.
+- **Symptom:** `claimWithdrawal` reverted with `ERC20InsufficientAllowance(queue, 0, 400e6)` (the custodian had not approved the queue for USDC); the toast says "That request could not be found. It may have already been processed."
+- **Root cause:** The custom error `0xfb8f41b2` is not in the app's ABI, so viem's message reads `Unable to decode signature … was not found on the provided ABI`, which the HTTP rule `/not found/i` matches.
+- **Workaround:** None needed for funds; the claim succeeds once the custodian approves the queue.
+
 ### BUG-37: `GET /v1/lps` OpenAPI documents `payment_details` as a required path parameter
 - **Date:** 2026-11-13
 - **Location:** `packages/api/src/routes/lps.rs` (`LpsQuery`). Found while planning #1887.
