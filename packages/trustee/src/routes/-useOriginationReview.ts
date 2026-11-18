@@ -29,8 +29,8 @@ export interface UseOriginationReviewResult {
    */
   approve: () => void;
   /**
-   * Why Approve is unavailable for this submission (#1536: the on-chain draw
-   * runs on Stellar only), or `null` when it can proceed.
+   * Why Approve is unavailable for this submission (#1536/#1573: the on-chain
+   * draw runs on Stellar and the configured EVM chain), or `null` when it can proceed.
    */
   approveBlockedReason: string | null;
   /**
