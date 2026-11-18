@@ -118,6 +118,8 @@ Driven with the Playwright MCP (headless Chromium 158), against the stack above,
 
 ### LP app on Stellar — ❌ blocked after Connect (BUG-39)
 
+Rerun after the fix: ✅, see [#2014 rerun](#2014-rerun-lp-app-on-stellar) below.
+
 | Step | Result |
 |------|--------|
 | Session | ✅ signed in; "Finish account setup" dialog shown and closed |
@@ -154,3 +156,48 @@ Signed in through the Connect modal → Stellar → **E2E test wallet** as `GBMW
 | 375 px | the console is desktop-only by decision #786-5 ([trustee-flows.md](../frontend/trustee-flows.md)): the sidebar fills the viewport and the page scrolls to 680 px; `/loans` figures equal desktop |
 
 No percentage outside 0–200 % was shown. Observations, not ❌ (the figures equal the API): the closed Stellar loan still shows an open margin call, because the security registry keeps `margin_call_at` after `close_loan`; the first margin-call event in `/security` carries `ltv_bps` 4294967295 (`u32::MAX`, no valuation at that moment).
+
+## #2014 rerun: LP app on Stellar
+
+The Stellar LP browser pass, rerun after the BUG-39 fix (#2014) on a fresh stack.
+
+```
+E2E 2014-b — commit b7c1a42d, contracts stellar 7646cef, exit 0
+
+Passed: 13 required, 0 optional
+❌ stellar.known-bugs.lps-openapi-query — payment_details is in "path" (issue #1990, BUG-37)
+❌ stellar.known-bugs.assay-decimal-bound — HTTP 404: validation accepted it and the request reached the loan lookup (issue #1991, BUG-32)
+Seen in the browser: the LP app on Stellar, desktop and 375 px, every step ✅ (below)
+Not checked: EVM, the loan journeys and the Operations Console (not part of this rerun; see the run above)
+```
+
+| Phase | Command | Duration |
+|-------|---------|----------|
+| up | `scripts/e2e/up.sh --tag 2014-b --chains stellar` | 382 s |
+| run | `npx tsx scripts/e2e/run.ts --tag 2014-b --chains stellar --journeys lp` | 28 s (35 s wall) |
+| check | `npx tsx scripts/e2e/check.ts --tag 2014-b --json` | 0 s (exit `0`, `ok: true`, `canBeRequired` empty) |
+
+`scripts/e2e/down.sh --tag 2014-b` ran after the pass: `stack 2014-b down`.
+
+Driven with the Playwright MCP (headless Chromium) after `run.ts`, at 1440×900 and then 375×812. The session came from the API as the skill describes (`captcha_token: "e2e"`, the passcode from `logs/api.log`, a fresh email), put in `localStorage`; the address was not linked through the API. Test wallet `GCNLMB…XALB`, which is `stackKey("2014-b", "lp-browser")`. Chain amounts are raw 7-decimal SAC balances; `/v1/requests` amounts are raw as well. Console errors: only the Reown / WalletConnect `403`/`400` for the placeholder project id `e2e`, and `403` on `/v1/deposits/1/voucher` while the deposit waited for KYC.
+
+| Step | Result |
+|------|--------|
+| Session | ✅ signed in; "Finish account setup" dialog shown and closed |
+| Connect | ✅ terms gate first, then Stellar tab → **E2E test wallet** (first row); account page wallet `GCNLMB…XALB`, **USDC balance $1,000.00** (the Horizon read BUG-39 broke). The header shows only the Account button, as in the run above |
+| Link settlement address | ✅ SEP-53 challenge signed by the test wallet; "Linked to your connected wallet."; API `/v1/lps/me` `stellar_address` = the `lp-browser` key |
+| Deposit | ✅ `/deposit` shows USDC 1,000.00 and the input is enabled; Enable PLUSD (the Horizon trustline write) ✅; `request_deposit` of 100 USDC ✅; Claim waited "awaiting authorization" |
+| KYC | ✅ applicant through `POST /v1/kyc/applicants`, `GREEN` webhook (`sumsubGreen`); KYC status 2/2/2, PLUSD `authorized` true |
+| Claim | ✅ Claim enabled after authorization; chain PLUSD 1000000000 (100), USDC 9000000000 (900); API Deposit `request_id` 1 `Completed` |
+| Stake | ✅ 60 PLUSD on `/stake` → chain sPLUSD 600000000, PLUSD 400000000; API Stake 600000000 / shares 600000000 `Completed` |
+| Withdraw | ✅ `/deposit?direction=withdraw`: burn of 40 PLUSD, then Claim (the queue allowed it at once) → chain USDC 9400000000 (940), PLUSD 0; API Withdraw `request_id` 1 `Completed`; `/v1/withdrawal-queue` item 40.000000 `Completed` |
+| Activity | ✅ Sell +40.00 USDC, Stake −60.00 PLUSD / +60.00 sPLUSD, Buy +100.00 PLUSD = API `/v1/requests` (Withdraw 400000000, Stake 600000000, Deposit 1000000000, all `Completed`) |
+| Home | ✅ Total Balance $60.00 = sPLUSD position (`/v1/pnl` shares 600000000 at price 1), $0.00 unrealized (`total_unrealized_pnl` 0), Staked PLUSD 60.00 sPLUSD · $60.00, TVL $100.00 (`tvl` 100.000000: this LP's 60 plus `run.ts`'s 40) |
+| Dashboard | ✅ TVL $100.00, outstanding in loans $0, cumulative yield $0 (= `/v1/dashboard/summary`); withdrawal queue In Queue $0, Requests 0, rows `GCNLMB…XALB` $40.00 Completed and the `run.ts` LP $60.00 Completed (= `/v1/withdrawal-queue`); cash (USDC custody, a chain read) $100.00 |
+| 375 px | ✅ hamburger menu; Home, Activity and Dashboard figures equal desktop; `scrollWidth` 375 on each (card rows scroll inside their own wrappers). A second deposit of 100 USDC: request → API `PendingClaim` (`request_id` 2) → Claim → chain PLUSD 1000000000, USDC 8400000000, API `Completed`; Activity lists the new Buy +100.00 PLUSD; TVL $200.00 = `tvl` 200.000000 |
+
+Observations, not ❌ (each follows its current spec or is outside this pass):
+
+- The Total Balance headline stays the sPLUSD position ($60.00 after the 375 px deposit), while `/v1/positions/history` serves `plusd_balance` 100.000000 and `total_balance` 160.000000. The composite total is #1282's scope ([dashboard-components.md](../frontend/dashboard-components.md)).
+- The dashboard's PLUSD outstanding reads $0 while the sPLUSD vault holds 100 PLUSD: `useStellarPlusdTotalSupply` takes only Horizon `/assets` `balances.authorized` (0.0000000) and leaves out `contracts_amount` (100.0000000), which `run.ts`'s `plusdSupply()` counts.
+- The output side of the conversion card always shows the balance `0.00` (PLUSD on deposit, USDC on withdraw, with 940 USDC in the wallet): `deposit.tsx` passes a literal `balanceLabel: "0.00"`.
