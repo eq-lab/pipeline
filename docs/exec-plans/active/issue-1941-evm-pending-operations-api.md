@@ -197,18 +197,20 @@ test layout and docs structure.
 - **Unrelated local changes.** The main checkout carries uncommitted #1786 Phase 2 work in `loan_book.rs`. This
   worktree is based on `main` `99b36f41`, and the coder must not pull those changes in.
 
+## Decisions (human, 2026-11-18)
+
+1. **EVM Minter key: shared map, as on Stellar.** This overrides the plan's recommended separate map. `CHAIN_<id>_EVM_API_MINTER_ADDRESS` goes into the existing `minter_addresses`; there is no new `evm_minter_addresses` field. Every existing reader of `minter_addresses` whose logic is Stellar-shaped gets an explicit Stellar-only gate (`ChainKind::Stellar`), so EVM behaviour there is unchanged:
+   - the cash book;
+   - the analytics Minter series;
+   - the attention-count Minter reads, including the ramp count;
+   - any other reader found by `grep minter_addresses`.
+
+   Each gate gets a test proving that an EVM chain with the Minter key set behaves exactly as before. Implementation steps, tests and docs follow this decision, not the separate-map text below.
+2. **`function` naming:** served as stored, per chain. The Trustee maps names using the spec's name table. No chain-neutral `action` field.
+
 ## Open Questions
 
-1. **EVM Minter address map.** Should `CHAIN_<id>_EVM_API_MINTER_ADDRESS` go into a new map,
-   `AppState.evm_minter_addresses`, read only by the pending-operations scope? The alternative is the existing
-   `minter_addresses`, with new Stellar-only gates in `cash_book.rs`, `analytics.rs` and `attention_counts.rs`.
-   **Recommended default:** a separate map (Decision 3). It changes no existing EVM behaviour, at the cost of one
-   `AppState` field and one line in each of the 15 test `AppState` literals.
-2. **Per-chain `function` naming.** Should the API serve `function` verbatim (native name) and let the Trustee map
-   it (`setDefault` ↔ `set_default`) from the spec's name table? The alternative is a chain-neutral `action` field
-   (snake_case key) next to `function`. **Recommended default:** verbatim, with the mapping in the Trustee
-   (Decision 2). The Trustee must decode the per-chain `args` and build per-chain execute calls anyway, and a
-   server-side name alone would not make the chains uniform.
+_None_ (resolved 2026-11-18, see Decisions).
 
 ## Implementation Steps
 
