@@ -11,6 +11,7 @@ import { english, generateMnemonic, generatePrivateKey, mnemonicToAccount, priva
 import { EVM_CONTRACTS, generateEnv, PORTS, SPACES, type Accounts, type Addresses, type EvmDeployment } from "./lib/env";
 import { EVM_CHAIN_ID, guard, STANDALONE_PASSPHRASE } from "./lib/guard";
 import { e2eHome, errorMessage, readJson, stackDir } from "./lib/stack";
+import { stackKey } from "./lib/stellar";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../..");
@@ -461,7 +462,9 @@ export async function up(tag: string, reclaim: boolean, chains: readonly Chain[]
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
   const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));
   const wallet = Object.entries(env).filter(([k]) => k === "E2E_WALLET_SECRET" || k === "E2E_EVM_WALLET_KEY");
-  const envFiles = { frontend: [...vite, ...wallet], trustee: vite };
+  // The console's test wallet signs as the stack's `trustee` key, the operator run.ts puts in auth_users.
+  const operator = stellar ? [["E2E_WALLET_SECRET", stackKey(tag, "trustee").secret()]] : [];
+  const envFiles = { frontend: [...vite, ...wallet], trustee: [...vite, ...operator] };
   for (const [app, vars] of Object.entries(envFiles)) fs.writeFileSync(join(dir, `.env.e2e-${app}`), vars.map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
   fs.mkdirSync(join(dir, "ipfs"), { recursive: true });
 

@@ -70,6 +70,7 @@ export {
 
 // ── Stellar namespace ─────────────────────────────────────────────────────────
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
+export { registerStellarE2EWallet } from "./stellar/config";
 export {
   useStellarWallet,
   useStellarConnectors,

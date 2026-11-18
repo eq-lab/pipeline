@@ -57,7 +57,15 @@ Report as in the Stellar pass.
 
 ## Browser pass: Operations Console
 
-<!-- filled by a later child -->
+The operators' view of the loan book at `http://localhost:55174`, read-only, after the Stellar loan journey (`run.ts` with `--journeys lp,loan`; #765's 5000 % yield and 194411 % LTV were seen here). Trustee actions (approve, Mint PLUSD, record repayment) are the journey's, not the walk's; EVM is out of this pass. Desktop (1440×900), then 375 px.
+
+1. **Sign in.** The overlay's sign-in opens the Connect modal → Soroban tab → **E2E test wallet** (first row). It signs the `/v1/auth/challenge` message as the stack's `trustee` key, the operator `run.ts` put in `auth_users` ([E2E test wallet](../../../packages/frontend/src/wallet/README.md#e2e-test-wallet)); the shell shows that address (`stellar keys address trustee` with `STELLAR_CONFIG_HOME=$E2E_HOME/stacks/<tag>/stellar`). For the API reads below, take the session token from the page (`localStorage`), or sign in as `signIn` in `scripts/e2e/lib/stellar-world.ts` does.
+2. **Loan book** (`/loans`, chain filter Stellar, then each status tab): the summary cards (deployed senior, at-risk, weighted rate and tenor, top concentration), the tab counts and each row (senior outstanding, LTV when shown, stage) against `GET /v1/loan-book?chain_id=99000001`. The journey's loan is `Closed`; if an earlier step failed and it stayed active, its LTV and rate are the #765 figures to look at.
+3. **Loan detail** (`/loans/<id>` from the row): principal, tranches, rate, repaid to date, collateral, LTV, margin call and the security records against `/v1/loan-book` (the loan's entry), `/v1/loan-book/<id>/financials?chain_id=99000001` and `/v1/loan-book/<id>/security?chain_id=99000001`, and the chain reads `run.json` recorded for the loan (`stellar.loan-book.*` details).
+4. **Attention counts**: the sidebar badges and the dashboard's Needs attention (`/`) against `GET /v1/attention-counts` (`origination`, `loans`, `cash_management`, per chain).
+5. **375 px.** Resize to 375×812 and repeat steps 2–4: nothing clipped or overlapping, figures equal to desktop.
+
+A percentage outside 0–200 % or a figure that differs from the API is a ❌; an API figure that differs from the chain is the run's check, not the walk's. Report under "Seen in the browser" as in the LP pass; never paste the session token.
 
 ## New findings
 
