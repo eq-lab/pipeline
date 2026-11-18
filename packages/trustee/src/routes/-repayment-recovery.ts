@@ -14,6 +14,7 @@ import {
   evmErrorName,
   formatDelayHours,
   formatReadyAt,
+  LOAN_REGISTRY_PAUSED_COPY,
   stageLabel,
   type AccessAction,
 } from "@/lib/accessManagerAction";
@@ -229,6 +230,7 @@ const EVM_RECOVERY_ERROR_COPY: Record<string, string> = {
   LoanRegistryRepaymentAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
   MinterAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
   AccessManagerAlreadyScheduled: RECOVERY_ERROR_COPY["schedule:9"]!,
+  EnforcedPause: LOAN_REGISTRY_PAUSED_COPY,
 };
 
 export function evmRecoveryErrorCopy(details: string): string | null {

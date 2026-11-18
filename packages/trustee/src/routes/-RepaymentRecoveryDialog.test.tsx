@@ -678,14 +678,16 @@ describe("RepaymentRecoveryDialog on EVM", () => {
     ).toHaveTextContent(/bank cash/);
   });
 
-  it("keeps step 2 on the Stellar-only reason after the reversal", () => {
+  it("keeps step 2 blocked with the EVM not-available-yet copy after the reversal", () => {
     setEvmRows(true);
     setAccess({ immediate: true, delay: 0 }, null);
     renderDialog(vi.fn(), EVM);
     expect(screen.getByTestId("repayment-recovery-record")).toBeDisabled();
     expect(
       screen.getByTestId("repayment-recovery-step2-blocked"),
-    ).toHaveTextContent(/On-chain actions run on Stellar only/);
+    ).toHaveTextContent(
+      /Recording the corrected repayment on EVM is not available yet/,
+    );
     expect(rec().mutateAsync).not.toHaveBeenCalled();
   });
 });

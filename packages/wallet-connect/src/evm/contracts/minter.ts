@@ -23,7 +23,7 @@ import { sha256Hex } from "../../stellar/contracts/hash";
 import type { RepaymentInput } from "../../stellar/contracts/loanRegistry";
 import type { MinterRepayment } from "../../stellar/contracts/minter";
 import { readEvmOperationSchedule, relayEvm } from "./accessManager";
-import { loanIdTopic, scanEvmLogs } from "./logs";
+import { loanIdTopic, readEvmHeadBlock, scanEvmLogs } from "./logs";
 import { evmRiskCouncilErrorAbi, readEvmMutableLoanData } from "./riskCouncil";
 import { readEvmContract } from "./write";
 
@@ -283,6 +283,7 @@ export function readEvmReverseRepaySchedule({
 export async function readEvmNextRepaymentId(params: {
   registry: string;
   loanId: number;
+  blockNumber?: bigint;
 }): Promise<number> {
   const data = await readEvmMutableLoanData("readEvmNextRepaymentId", params);
   return Number(data.nextRepaymentId);
@@ -328,10 +329,12 @@ export async function readEvmMinterRepayment({
   minter,
   loanId,
   repaymentId,
+  blockNumber,
 }: {
   minter: string;
   loanId: number;
   repaymentId: number;
+  blockNumber?: bigint;
 }): Promise<EvmMinterRepaymentRecord> {
   if (!minter)
     throw new Error("readEvmMinterRepayment: minter must not be empty");
@@ -345,6 +348,7 @@ export async function readEvmMinterRepayment({
       address: minter as Address,
       functionName: "extsload",
       args: [toHex(base + offset, { size: 32 })],
+      blockNumber,
     });
   const [released, flags] = await Promise.all([word(2n), word(3n)]);
   return {
@@ -431,13 +435,24 @@ export async function readEvmRecoveryRepayments({
   fromBlock,
   chainId,
 }: ReadEvmRecoveryRepaymentsParams): Promise<EvmRecoveryRepayment[]> {
-  const next = await readEvmNextRepaymentId({ registry, loanId });
+  if (!isAddress(minter)) {
+    throw new Error(
+      `VITE_EVM_MINTER_ADDRESS is not a valid EVM address: "${minter}".`,
+    );
+  }
+  const head = await readEvmHeadBlock(chainId);
+  const next = await readEvmNextRepaymentId({
+    registry,
+    loanId,
+    blockNumber: head,
+  });
   if (next === 0) return [];
   const logs = await scanEvmLogs({
     address: [registry as Address, minter as Address],
     topics: [[...EVM_RECOVERY_EVENT_TOPICS], loanIdTopic(loanId)],
     fromBlock,
     chainId,
+    head,
   });
   const events = parseEventLogs({ abi: recoveryEventsAbi, logs });
   const loan = BigInt(loanId);
@@ -467,6 +482,7 @@ export async function readEvmRecoveryRepayments({
         minter,
         loanId,
         repaymentId,
+        blockNumber: head,
       });
       const data = payment.args.repayment;
       const reversed = unrecorded.has(repaymentId);

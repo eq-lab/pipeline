@@ -124,7 +124,8 @@ export function useRecoveryCandidates(
   return useQuery<RecoveryCandidates, Error>({
     queryKey: ["repayment-recovery", chainId, loanId],
     enabled,
-    staleTime: 15_000,
+    staleTime: isStellarTarget(chainId) ? 15_000 : 60_000,
+    refetchOnWindowFocus: isStellarTarget(chainId),
     retry: false,
     queryFn: async () => {
       const cfg = recoveryConfig(chainId);

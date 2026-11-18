@@ -82,6 +82,12 @@ vi.mock("@/lib/env", () => ({ ENV: envMock }));
 const STELLAR = 99_000_001;
 const EVM = 560_048;
 const REF = "cd".repeat(32);
+interface RefetchOptions {
+  refetchOnWindowFocus?: boolean;
+  refetchInterval?: unknown;
+  staleTime?: number;
+}
+
 let queryClient: QueryClient;
 
 function makeWrapper() {
@@ -384,6 +390,31 @@ describe("useRecoveryCandidates", () => {
       chainId: EVM,
     });
     expect(mocks.readNextRepaymentId).not.toHaveBeenCalled();
+  });
+
+  it("does not refetch the EVM scan on window focus, and keeps the Stellar behaviour", async () => {
+    mocks.readEvmRecoveryRepayments.mockResolvedValue([]);
+    const evm = renderHook(() => useRecoveryCandidates(EVM, "7", "Default"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(evm.result.current.data).toBeDefined());
+    const evmOptions = queryClient.getQueryCache().find({
+      queryKey: ["repayment-recovery", EVM, "7"],
+    })!.options as RefetchOptions;
+    expect(evmOptions.refetchOnWindowFocus).toBe(false);
+    expect(evmOptions.refetchInterval).toBeUndefined();
+    expect(evmOptions.staleTime).toBe(60_000);
+
+    const stellar = renderHook(
+      () => useRecoveryCandidates(STELLAR, "7", "Default"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(stellar.result.current.data).toBeDefined());
+    const stellarOptions = queryClient.getQueryCache().find({
+      queryKey: ["repayment-recovery", STELLAR, "7"],
+    })!.options as RefetchOptions;
+    expect(stellarOptions.refetchOnWindowFocus).toBe(true);
+    expect(stellarOptions.staleTime).toBe(15_000);
   });
 
   it("is not latestReversed when the newest EVM repayment is live", async () => {

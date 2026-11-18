@@ -70,6 +70,9 @@ export function securityRegistryErrorCopy(details: string): string | null {
 export const REGISTRY_PAUSED_COPY =
   "The SecurityRegistry is paused. Executing is blocked until it resumes.";
 
+export const LOAN_REGISTRY_PAUSED_COPY =
+  "The LoanRegistry is paused. Executing is blocked until it resumes.";
+
 export const EVM_AM_ERROR_COPY: Record<string, string> = {
   AccessManagerNotScheduled: RISK_COUNCIL_AM_ERROR_COPY["execute:6"]!,
   AccessManagerNotReady: RISK_COUNCIL_AM_ERROR_COPY["execute:7"]!,
@@ -103,6 +106,9 @@ export function evmCouncilErrorCopy(
     EVM_AM_ERROR_COPY[name] ??
     (kind === "security_registry"
       ? EVM_SECURITY_ERROR_COPY[name]
+      : undefined) ??
+    ((kind === "loan_registry" || kind === "minter") && name === "EnforcedPause"
+      ? LOAN_REGISTRY_PAUSED_COPY
       : undefined) ??
     null
   );

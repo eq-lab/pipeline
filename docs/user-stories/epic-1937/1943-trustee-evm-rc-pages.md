@@ -8,7 +8,7 @@
 
 ## Overview
 
-The Risk Council hub (`/risk-council`), Escalate to Default, Amend economics, Default resolution and the repayment-recovery card and dialog on `/loans/$id` work for EVM loans, one-to-one with the Stellar flows (#1761, #1924, #1711). The wallet-connect package gains the LoanRegistry Risk Council bindings, the Minter recovery bindings and a chunked log scan. The Trustee hooks pick the arm by chain and the chain gate opens every Risk Council function and pending row on the configured EVM chain. Recovery step 2 (the corrected `Minter.repay`) stays Stellar-only until #1574. Spec: `docs/frontend/trustee-flows.md#risk-council-actions` (section "EVM"), `#risk-council-pending-operations` and `#repayment-recovery-1711`, `docs/product-specs/loan-repayment-recovery.md`, client: `docs/frontend/wallet-flows.md#trustee-evm-contract-client`.
+The Risk Council hub (`/risk-council`), Escalate to Default, Amend economics, Default resolution and the repayment-recovery card and dialog on `/loans/$id` work for EVM loans, one-to-one with the Stellar flows (#1761, #1924, #1711). The wallet-connect package gains the LoanRegistry Risk Council bindings, the Minter recovery bindings and a chunked log scan. The Trustee hooks pick the arm by chain and the chain gate opens every Risk Council function and pending row on the configured EVM chain. Recovery step 2 (the corrected `Minter.repay`) stays unavailable on EVM until #1574 and says so. Spec: `docs/frontend/trustee-flows.md#risk-council-actions` (section "EVM"), `#risk-council-pending-operations` and `#repayment-recovery-1711`, `docs/product-specs/loan-repayment-recovery.md`, client: `docs/frontend/wallet-flows.md#trustee-evm-contract-client`.
 
 Persona: Risk Council member on the Trustee console, signed in on the EVM chain, with an EVM wallet. The stories need the EVM role delays and roles from #1944, the stage env with `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS` and `VITE_EVM_START_BLOCK` (the LoanRegistry deploy block), and a Minter with `extsload` (contracts PR #54). They run in the epic QA pass #1945. Stage chain `99000001` (Stellar) is the regression reference: its pages must not change.
 
@@ -120,6 +120,9 @@ Persona: Risk Council member on the Trustee console, signed in on the EVM chain,
 - The effects show the cash removed, the fee shares burned and, for a carved-out loan, the Pocket unrelease from the Minter's record
 - "Reverse repayment" executes `reverseRepay` through the AccessManager (or "Schedule reversal" then "Execute reversal" after the ready time)
 - After a reload the reversed repayment is preselected
+- A transient RPC failure (429, 5xx, network) on a log chunk is retried with backoff; the scan reads one pinned head block, so a lagging node does not produce a false "missing repayment"
+- A malformed `VITE_EVM_START_BLOCK` or `VITE_EVM_MINTER_ADDRESS` shows a clear config error, not a raw RPC error
+- Refocusing the tab does not re-scan
 - If the start block is set too late, the dialog shows "Failed to load the repayments." and the details name the missing repayment and `VITE_EVM_START_BLOCK`
 
 ---
@@ -136,7 +139,7 @@ Persona: Risk Council member on the Trustee console, signed in on the EVM chain,
 
 ---
 
-## Story 10 — Step 2 on EVM shows the Stellar-only reason until #1574
+## Story 10 — Step 2 on EVM shows a not-available-yet reason until #1574
 
 **Given** a repayment is reversed on an EVM loan
 
@@ -144,7 +147,19 @@ Persona: Risk Council member on the Trustee console, signed in on the EVM chain,
 
 **Then:**
 
-- The record button is disabled and the reason reads "On-chain actions run on Stellar only — …"; nothing is signed
+- The record button is disabled and the reason reads "Recording the corrected repayment on EVM is not available yet. It arrives with the EVM record-repayment flow."; nothing is signed
+
+---
+
+## Story 10b — A paused LoanRegistry shows a clear message
+
+**Given** the LoanRegistry is paused
+
+**When** the member executes a LoanRegistry Risk Council action or `reverseRepay`
+
+**Then:**
+
+- The error reads "The LoanRegistry is paused. Executing is blocked until it resumes."
 
 ---
 

@@ -18,7 +18,7 @@ import {
   isStellarTarget,
   riskCouncilChainReason,
   riskCouncilTargetId,
-  stellarOnlyActionReason,
+  recordRepaymentChainReason,
 } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import {
@@ -164,7 +164,7 @@ export function useRepaymentRecoveryDialog(
   const indexed = hasServedPositive(financials.data?.offtaker_outstanding);
   const canRepay = access?.canRepay.immediate === true;
 
-  const recordChainReason = stellarOnlyActionReason(chainId);
+  const recordChainReason = recordRepaymentChainReason(chainId);
   let blockedReason: string | null = null;
   if (!reversed) blockedReason = "Reverse the repayment first.";
   else if (recordChainReason !== null) blockedReason = recordChainReason;

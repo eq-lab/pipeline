@@ -43,6 +43,16 @@ function readNumber(key: string, defaultValue?: number): number {
   throw new Error(`Missing required env variable "${key}".`);
 }
 
+function readBlockNumber(key: string, defaultValue: number): number {
+  const n = readNumber(key, defaultValue);
+  if (!Number.isSafeInteger(n) || n < 0) {
+    throw new Error(
+      `Env variable "${key}" must be a non-negative integer block number: "${n}"`,
+    );
+  }
+  return n;
+}
+
 export const ENV = Object.freeze({
   /** Base URL for the Pipeline Relayer REST API. Defaults to the API crate's default port. */
   API_BASE_URL: readString("VITE_API_BASE_URL", "http://localhost:8080"),
@@ -157,7 +167,7 @@ export const ENV = Object.freeze({
 
   EVM_ACCESS_MANAGER_ADDRESS: readString("VITE_EVM_ACCESS_MANAGER_ADDRESS", ""),
 
-  EVM_START_BLOCK: readNumber("VITE_EVM_START_BLOCK", 0),
+  EVM_START_BLOCK: readBlockNumber("VITE_EVM_START_BLOCK", 0),
 
   EVM_SECURITY_REGISTRY_ADDRESS: readString(
     "VITE_EVM_SECURITY_REGISTRY_ADDRESS",

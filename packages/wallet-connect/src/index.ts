@@ -468,7 +468,12 @@ export type {
   ReadEvmRecoveryRepaymentsParams,
 } from "./evm/contracts/minter";
 
-export { EVM_LOG_CHUNK_BLOCKS, scanEvmLogs } from "./evm/contracts/logs";
+export {
+  EVM_LOG_CHUNK_BLOCKS,
+  isTransientRpcError,
+  readEvmHeadBlock,
+  scanEvmLogs,
+} from "./evm/contracts/logs";
 export type { ScanEvmLogsParams } from "./evm/contracts/logs";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────

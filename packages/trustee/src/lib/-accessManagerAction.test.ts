@@ -6,6 +6,7 @@ import {
   evmCouncilErrorCopy,
   evmErrorName,
   EVM_SECURITY_ERROR_COPY,
+  LOAN_REGISTRY_PAUSED_COPY,
   otherWalletCopy,
   riskCouncilErrorCopy,
   riskCouncilRoleLine,
@@ -155,12 +156,18 @@ describe("EVM council error copy (#1942)", () => {
     }
   });
 
-  it("maps EnforcedPause and the security names only for security_registry", () => {
+  it("keys the EnforcedPause copy by target kind", () => {
     expect(evmCouncilErrorCopy("EnforcedPause()", "security_registry")).toBe(
       EVM_SECURITY_ERROR_COPY.EnforcedPause,
     );
-    expect(evmCouncilErrorCopy("EnforcedPause()", "loan_registry")).toBeNull();
-    expect(evmCouncilErrorCopy("EnforcedPause()", "minter")).toBeNull();
+    expect(evmCouncilErrorCopy("EnforcedPause()", "loan_registry")).toBe(
+      LOAN_REGISTRY_PAUSED_COPY,
+    );
+    expect(evmCouncilErrorCopy("EnforcedPause()", "minter")).toBe(
+      LOAN_REGISTRY_PAUSED_COPY,
+    );
+    expect(LOAN_REGISTRY_PAUSED_COPY).toMatch(/LoanRegistry is paused/);
+    expect(evmCouncilErrorCopy("EnforcedPause()", "other")).toBeNull();
     expect(
       evmCouncilErrorCopy("SecurityRegistryNoTerms()", "loan_registry"),
     ).toBeNull();

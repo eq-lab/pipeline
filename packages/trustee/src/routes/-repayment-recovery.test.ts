@@ -350,6 +350,12 @@ describe("evmRecoveryErrorCopy", () => {
     );
   });
 
+  it("maps EnforcedPause to the LoanRegistry paused copy", () => {
+    expect(evmRecoveryErrorCopy("execution reverted: EnforcedPause()")).toMatch(
+      /LoanRegistry is paused/,
+    );
+  });
+
   it("returns null for an unmapped name", () => {
     expect(evmRecoveryErrorCopy("MinterRefHashSeen()")).toBeNull();
     expect(evmRecoveryErrorCopy("boom")).toBeNull();

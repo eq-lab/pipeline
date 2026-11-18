@@ -15,12 +15,15 @@ import {
 } from "viem";
 import { createHash } from "node:crypto";
 
-const { mockRead, mockScan, mockRelay, mockSchedule } = vi.hoisted(() => ({
-  mockRead: vi.fn(),
-  mockScan: vi.fn(),
-  mockRelay: vi.fn(),
-  mockSchedule: vi.fn(),
-}));
+const { mockRead, mockScan, mockHead, mockRelay, mockSchedule } = vi.hoisted(
+  () => ({
+    mockRead: vi.fn(),
+    mockScan: vi.fn(),
+    mockHead: vi.fn(),
+    mockRelay: vi.fn(),
+    mockSchedule: vi.fn(),
+  }),
+);
 
 vi.mock("./write", () => ({
   readEvmContract: mockRead,
@@ -32,7 +35,7 @@ vi.mock("./accessManager", () => ({
 }));
 vi.mock("./logs", async () => {
   const actual = await vi.importActual<typeof import("./logs")>("./logs");
-  return { ...actual, scanEvmLogs: mockScan };
+  return { ...actual, scanEvmLogs: mockScan, readEvmHeadBlock: mockHead };
 });
 
 import {
@@ -174,6 +177,7 @@ const CALLER = "0x00000000000000000000000000000000000000c1";
 beforeEach(() => {
   mockRead.mockReset();
   mockScan.mockReset();
+  mockHead.mockReset();
   mockRelay.mockReset();
   mockSchedule.mockReset();
 });
@@ -407,6 +411,18 @@ describe("readEvmNextRepaymentId", () => {
   });
 });
 
+describe("readEvmNextRepaymentId at a pinned block", () => {
+  it("forwards the block number to the contract read", async () => {
+    mockRead.mockResolvedValue({ nextRepaymentId: 1n });
+    await readEvmNextRepaymentId({
+      registry: REGISTRY,
+      loanId: 7,
+      blockNumber: 123n,
+    });
+    expect(mockRead.mock.calls[0]![0].blockNumber).toBe(123n);
+  });
+});
+
 describe("readEvmRecoveryRepayments", () => {
   const REPAYMENT_ABI = [
     {
@@ -534,6 +550,7 @@ describe("readEvmRecoveryRepayments", () => {
 
   function arrange(logs: unknown[], next = 1n, released = 900n, flags = 1n) {
     mockScan.mockResolvedValue(logs);
+    mockHead.mockResolvedValue(4_500_000n);
     mockRead.mockImplementation(
       async ({ functionName, args }: { functionName: string; args: [Hex] }) => {
         if (functionName === "mutableLoanData") {
@@ -584,7 +601,28 @@ describe("readEvmRecoveryRepayments", () => {
       topics: [[...EVM_RECOVERY_EVENT_TOPICS], pad(toHex(7n), { size: 32 })],
       fromBlock: 4_000_000n,
       chainId: 560048,
+      head: 4_500_000n,
     });
+  });
+
+  it("pins nextRepaymentId and the extsload reads to the same head as the scan", async () => {
+    arrange([recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)]);
+    await readEvmRecoveryRepayments(params);
+    expect(mockHead).toHaveBeenCalledTimes(1);
+    expect(mockHead).toHaveBeenCalledWith(560048);
+    const reads = mockRead.mock.calls.map(([call]) => call);
+    expect(reads.length).toBeGreaterThan(1);
+    for (const call of reads) expect(call.blockNumber).toBe(4_500_000n);
+  });
+
+  it("rejects an invalid Minter address before any RPC call", async () => {
+    arrange([]);
+    await expect(
+      readEvmRecoveryRepayments({ ...params, minter: "0xnope" }),
+    ).rejects.toThrow(/VITE_EVM_MINTER_ADDRESS is not a valid EVM address/);
+    expect(mockHead).not.toHaveBeenCalled();
+    expect(mockRead).not.toHaveBeenCalled();
+    expect(mockScan).not.toHaveBeenCalled();
   });
 
   it("marks a repayment with a PaymentUnrecorded as reversed on both shapes", async () => {

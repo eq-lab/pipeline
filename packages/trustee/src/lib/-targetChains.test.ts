@@ -11,6 +11,8 @@ import {
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
+  EVM_RECORD_REPAYMENT_PENDING_COPY,
+  recordRepaymentChainReason,
   riskCouncilChainReason,
   riskCouncilTargetId,
   sameChainAddress,
@@ -113,6 +115,24 @@ describe("riskCouncilChainReason (#1943)", () => {
   it("keeps the Stellar-only copy for any other EVM chain id", () => {
     expect(riskCouncilChainReason(1)).toBe(stellarOnlyActionReason(1));
     expect(riskCouncilChainReason(1)).toContain("Stellar only");
+  });
+});
+
+describe("recordRepaymentChainReason (#1943)", () => {
+  it("never blocks Stellar", () => {
+    expect(recordRepaymentChainReason(99_000_001)).toBeNull();
+    expect(recordRepaymentChainReason(null)).toBeNull();
+  });
+
+  it("explains that the corrected EVM repayment is not available yet", () => {
+    expect(recordRepaymentChainReason(560048)).toBe(
+      EVM_RECORD_REPAYMENT_PENDING_COPY,
+    );
+    expect(EVM_RECORD_REPAYMENT_PENDING_COPY).not.toMatch(/Stellar only|#\d/);
+  });
+
+  it("keeps the Stellar-only copy for any other chain id", () => {
+    expect(recordRepaymentChainReason(1)).toBe(stellarOnlyActionReason(1));
   });
 });
 

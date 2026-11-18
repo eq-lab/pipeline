@@ -380,6 +380,7 @@ export function readEvmRiskCouncilSchedule({
 export interface ReadEvmLoanParams {
   registry: string;
   loanId: number;
+  blockNumber?: bigint;
 }
 
 interface MutableLoanData {
@@ -422,7 +423,7 @@ export function requireEvmRegistry(registry: string, who: string): Address {
 
 export function readEvmMutableLoanData(
   who: string,
-  { registry, loanId }: ReadEvmLoanParams,
+  { registry, loanId, blockNumber }: ReadEvmLoanParams,
 ): Promise<MutableLoanData> {
   const address = requireEvmRegistry(registry, who);
   return readEvmContract<MutableLoanData>({
@@ -430,6 +431,7 @@ export function readEvmMutableLoanData(
     address,
     functionName: "mutableLoanData",
     args: [readLoanId(who, loanId)],
+    blockNumber,
   });
 }
 
