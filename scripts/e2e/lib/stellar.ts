@@ -1,6 +1,7 @@
 // Chain access of the e2e journeys on the local Stellar stack: classic payments, Soroban invoke and read; see docs/e2e.md.
 
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import {
   Asset,
   BASE_FEE,
@@ -29,9 +30,13 @@ export const u128 = (n: bigint) => nativeToScVal(n, { type: "u128" });
 export const u64 = (n: bigint) => nativeToScVal(n, { type: "u64" });
 export const bytes = (hex: string) => nativeToScVal(Buffer.from(hex.replace(/^0x/, ""), "hex"));
 
-/** Env for a `stellar` or `just` call on a stack: the CLI keeps its keys under stacks/<tag>/stellar, not ~/.config/stellar. XDG_CONFIG_HOME is the variable `stellar --help` documents. */
+/**
+ * Env for a `stellar` or `just` call on a stack: the CLI keeps its keys under stacks/<tag>/stellar, not ~/.config/stellar.
+ * XDG_CONFIG_HOME is the variable `stellar --help` documents; STELLAR_CONFIG_HOME (undocumented in 30.0.1) wins over it,
+ * so it is pinned to the same place or a developer's exported one would receive the stack's `keys generate --overwrite`.
+ */
 export function stackStellarEnv(tag: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return { ...base, XDG_CONFIG_HOME: stackDir(tag) };
+  return { ...base, XDG_CONFIG_HOME: stackDir(tag), STELLAR_CONFIG_HOME: join(stackDir(tag), "stellar") };
 }
 
 export function stackKey(tag: string, name: string): Keypair {

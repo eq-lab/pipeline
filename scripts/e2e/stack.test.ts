@@ -403,11 +403,14 @@ describe("stack stellar keys", { timeout: TIMEOUT, skip: hasStellar ? false : "s
   it("generates and reads keys under stacks/<tag>/stellar, never under the developer config", () => {
     const fakeHome = mkdtempSync(join(home, "stellar-home-"));
     const devConfig = join(fakeHome, ".config");
-    const env = stackStellarEnv("keys", { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: devConfig });
+    // A developer may export either variable; STELLAR_CONFIG_HOME wins over XDG_CONFIG_HOME in stellar 30.
+    const devStellar = join(fakeHome, "stellar-config");
+    const env = stackStellarEnv("keys", { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: devConfig, STELLAR_CONFIG_HOME: devStellar });
     const cli = (...args: string[]) => execFileSync("stellar", args, { env, encoding: "utf8" }).trim();
     cli("keys", "generate", "e2e-isolation-1981", "--overwrite");
     assert.ok(existsSync(join(stackDir("keys"), "stellar", "identity", "e2e-isolation-1981.toml")));
     assert.ok(!existsSync(join(devConfig, "stellar")), "the key went to the developer config");
+    assert.ok(!existsSync(devStellar), "the key went to the developer's STELLAR_CONFIG_HOME");
     assert.equal(stackKey("keys", "e2e-isolation-1981").publicKey(), cli("keys", "address", "e2e-isolation-1981"));
   });
 });
