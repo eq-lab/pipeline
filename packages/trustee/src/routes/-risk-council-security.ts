@@ -25,8 +25,7 @@ import {
   SECONDS_PER_HOUR,
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
-import { ENV } from "@/lib/env";
-import { isStellarTarget } from "@/lib/targetChains";
+import { isStellarTarget, riskCouncilTargetId } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import {
@@ -647,9 +646,7 @@ export function useRiskCouncilSecurity(
         : null,
     flagged: flaggedRows(served?.records),
     pending,
-    expectedTarget: isStellarTarget(chainId)
-      ? ENV.STELLAR_SECURITY_REGISTRY_ID
-      : ENV.EVM_SECURITY_REGISTRY_ADDRESS,
+    expectedTarget: riskCouncilTargetId(chainId, "security_registry"),
     setTerms: {
       values,
       setField: (key, value) =>

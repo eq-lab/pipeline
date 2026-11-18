@@ -4,6 +4,9 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   DELAYED,
+  EVM,
+  EVM_LOAN_REGISTRY,
+  EVM_SCHEDULER,
   IMMEDIATE,
   NO_ROLE,
   OTHER_CHAIN,
@@ -11,6 +14,7 @@ import {
   SCHEDULER,
   STELLAR,
   accessResult,
+  evmLoanRegistryOp,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
@@ -56,18 +60,29 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  const { LOAN_REGISTRY } = await import("./-riskCouncilFixtures");
+  const { LOAN_REGISTRY, EVM_LOAN_REGISTRY } =
+    await import("./-riskCouncilFixtures");
   return {
     ...actual,
-    ENV: { ...actual.ENV, STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY },
+    ENV: {
+      ...actual.ENV,
+      STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY,
+      EVM_LOAN_REGISTRY_ADDRESS: EVM_LOAN_REGISTRY,
+    },
   };
 });
-const walletState = vi.hoisted(() => ({ address: null as string | null }));
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
 vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
-  useEvmWallet: () => ({ address: undefined, isConnected: false }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
@@ -159,6 +174,7 @@ beforeEach(() => {
   relay = relayResult();
   pendingExecute = pendingExecuteResult();
   walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
   _resetRiskCouncilOpsForTests();
 });
 
@@ -617,5 +633,87 @@ describe("Escalate to Default — scheduled operations", () => {
     const card = screen.getByTestId(PENDING);
     expect(within(card).queryAllByRole("button")).toHaveLength(0);
     expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Escalate to Default — EVM loan", () => {
+  const SET_DEFAULT = evmLoanRegistryOp("setDefault", { args: ["4471"] });
+  const AMEND = evmLoanRegistryOp("amendEconomics", {
+    args: ["4471", 145_000, "1816128000"],
+  });
+
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER;
+  });
+
+  it("shows the chain state from the EVM read at 6 dp and an enabled Declare default", () => {
+    setup({
+      access: IMMEDIATE,
+      entryChain: EVM,
+      state: loanState({
+        outstanding: "1840000000000",
+        repaid: "10000000",
+      }),
+    });
+    renderRoute();
+    const rows = screen.getByTestId("risk-council-escalate-chain-state");
+    expect(rows).toHaveTextContent("Status (on chain)WatchList");
+    expect(rows).toHaveTextContent("Outstanding principal$1,840,000.00");
+    expect(
+      screen.getByTestId("risk-council-escalate-repaid"),
+    ).toHaveTextContent("Principal repaid$10.00");
+    expect(screen.getByTestId("risk-council-escalate-role")).toHaveTextContent(
+      "Risk Council: this executes at once, with one signature.",
+    );
+    const button = screen.getByTestId("risk-council-escalate-button");
+    expect(button).toBeEnabled();
+    expect(mockAccess).toHaveBeenCalledWith(
+      EVM,
+      expect.anything(),
+      "set_default",
+    );
+  });
+
+  it("confirms before the mutation and relays on the EVM chain", () => {
+    setup({ access: IMMEDIATE, entryChain: EVM });
+    renderRoute();
+    fireEvent.click(screen.getByTestId("risk-council-escalate-button"));
+    expect(relay.mutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByTestId(/confirm$/));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "execute",
+      call: { fn: "set_default", loanId: 4471 },
+      chainId: EVM,
+    });
+  });
+
+  it("lists the EVM setDefault row with an enabled Execute that sends the served calldata", () => {
+    setup({ entryChain: EVM, pending: [SET_DEFAULT, AMEND] });
+    renderRoute();
+    const row = `risk-council-escalate-pending-${SET_DEFAULT.operation_id}`;
+    fireEvent.click(screen.getByTestId(`${row}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByTestId(/confirm$/));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: EVM,
+      operationId: SET_DEFAULT.operation_id,
+      caller: EVM_SCHEDULER,
+      target: EVM_LOAN_REGISTRY,
+      expectedTarget: EVM_LOAN_REGISTRY,
+      paused: false,
+      fn: "set_default",
+      argsXdr: null,
+      calldata: SET_DEFAULT.calldata,
+      targetKind: "loan_registry",
+    });
+  });
+
+  it("disables the row for another wallet with the other-wallet copy", () => {
+    walletState.evmAddress = "0x0000000000000000000000000000000000000001";
+    setup({ entryChain: EVM, pending: [SET_DEFAULT] });
+    renderRoute();
+    const row = `risk-council-escalate-pending-${SET_DEFAULT.operation_id}`;
+    expect(screen.getByTestId(`${row}-button`)).toBeDisabled();
   });
 });

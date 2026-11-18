@@ -3,8 +3,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { RepaymentRecoveryDialog } from "./-RepaymentRecoveryDialog";
 import {
+  EVM,
+  EVM_MINTER,
+  EVM_SCHEDULER,
   MINTER as MINTER_ADDRESS,
   SCHEDULER,
+  evmMinterOp,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
@@ -62,6 +66,7 @@ const state = vi.hoisted(() => ({
   audit: { data: undefined as unknown },
   loanBook: { data: undefined as unknown },
   walletAddress: null as string | null,
+  evmAddress: undefined as string | undefined,
   pendingExecute: undefined as unknown,
 }));
 
@@ -117,14 +122,21 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: state.walletAddress }),
-  useEvmWallet: () => ({ address: undefined, isConnected: false }),
+  useEvmWallet: () => ({
+    address: state.evmAddress,
+    isConnected: state.evmAddress !== undefined,
+  }),
 }));
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  const { MINTER } = await import("./-riskCouncilFixtures");
+  const { MINTER, EVM_MINTER } = await import("./-riskCouncilFixtures");
   return {
     ...actual,
-    ENV: { ...actual.ENV, STELLAR_YIELD_MINTER_ID: MINTER },
+    ENV: {
+      ...actual.ENV,
+      STELLAR_YIELD_MINTER_ID: MINTER,
+      EVM_MINTER_ADDRESS: EVM_MINTER,
+    },
   };
 });
 vi.mock("@/api/useRiskCouncil", async () => {
@@ -171,11 +183,11 @@ function setAccess(
   };
 }
 
-function renderDialog(onClose: () => void = vi.fn()) {
+function renderDialog(onClose: () => void = vi.fn(), chainId: number = CHAIN) {
   return render(
     <RepaymentRecoveryDialog
       open
-      chainId={CHAIN}
+      chainId={chainId}
       loanId="7"
       loanName="Helios Metals"
       onchainStatus="Performing"
@@ -188,6 +200,7 @@ beforeEach(() => {
   _resetRiskCouncilOpsForTests();
   state.loanBook = { data: undefined };
   state.walletAddress = SCHEDULER;
+  state.evmAddress = undefined;
   state.pendingExecute = pendingExecuteResult();
   state.schedule = mutation();
   state.execute = mutation();
@@ -548,5 +561,133 @@ describe("RepaymentRecoveryDialog scheduled operations", () => {
       screen.getByTestId("repayment-recovery-reverse"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("repayment-recovery-radio-1")).toBeChecked();
+  });
+});
+
+describe("RepaymentRecoveryDialog on EVM", () => {
+  const PENDING = "repayment-recovery-pending";
+  const EVM_REPAYMENT = {
+    offtaker_received: "1500000000",
+    senior_principal_repaid: "0",
+    senior_interest: "1155000000",
+    equity_distributed: "345000000",
+    mgmt_fee: "0",
+    perf_fee: "0",
+    oet_alloc: "0",
+  };
+  const EVM_EFFECTS = {
+    cash: "1155000000",
+    principal: "345000000",
+    interestMinted: "1155000000",
+    feeShares: "345",
+    carvedOut: true,
+    saleId: 0,
+    reversed: false,
+  };
+
+  function setEvmRows(reversed: boolean) {
+    state.candidates = {
+      data: {
+        rows: [
+          {
+            repaymentId: 1,
+            repayment: EVM_REPAYMENT,
+            minter: { ...EVM_EFFECTS, reversed },
+            reversed,
+          },
+        ],
+        latestReversed: reversed,
+      },
+      isLoading: false,
+      error: null,
+    };
+  }
+
+  beforeEach(() => {
+    state.evmAddress = EVM_SCHEDULER;
+    setEvmRows(false);
+    state.audit = { data: { items: [] } };
+    state.financials = { data: { offtaker_outstanding: "0.000000" } };
+  });
+
+  it("lists the candidates at 6 dp, preselects the mis-split one and shows the Pocket unrelease from released", () => {
+    setAccess({ immediate: true, delay: 0 }, null);
+    renderDialog(vi.fn(), EVM);
+    expect(screen.getByTestId("repayment-recovery-radio-1")).toBeChecked();
+    expect(screen.getByTestId("repayment-recovery-split")).toHaveTextContent(
+      "Equity distributed$345.00",
+    );
+    expect(screen.getByTestId("repayment-recovery-effects")).toHaveTextContent(
+      "Pocket unrelease: principal / interest$345.00 / $1,155.00",
+    );
+  });
+
+  it("reverses through the EVM mutation with the chain id", () => {
+    setAccess({ immediate: true, delay: 0 }, null);
+    renderDialog(vi.fn(), EVM);
+    fireEvent.click(screen.getByTestId("repayment-recovery-reverse"));
+    expect(exec().mutateAsync).toHaveBeenCalledWith({
+      loanId: 7,
+      repaymentId: 1,
+      chainId: EVM,
+    });
+    expect(sched().mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("executes a reverseRepay pending row with the served calldata against the configured Minter", () => {
+    const row = evmMinterOp({ args: ["7", "2", "cd".repeat(32)] });
+    state.loanBook = loanBookResult([
+      loanEntry({ loan_id: "7", chain_id: EVM, pending_operations: [row] }),
+    ]);
+    setAccess({ immediate: false, delay: 0 }, null);
+    renderDialog(vi.fn(), EVM);
+    const testId = `${PENDING}-${row.operation_id}`;
+    expect(screen.getByTestId(`${testId}-args`)).toHaveTextContent(
+      "Repayment#2",
+    );
+    expect(screen.getByTestId(`${testId}-button`)).toBeEnabled();
+    fireEvent.click(screen.getByTestId(`${testId}-button`));
+    expect(
+      (state.pendingExecute as ReturnType<typeof pendingExecuteResult>)
+        .mutateAsync,
+    ).toHaveBeenCalledWith({
+      chainId: EVM,
+      operationId: row.operation_id,
+      caller: EVM_SCHEDULER,
+      target: EVM_MINTER,
+      expectedTarget: EVM_MINTER,
+      paused: false,
+      fn: "reverse_repay",
+      argsXdr: null,
+      calldata: row.calldata,
+      targetKind: "minter",
+    });
+  });
+
+  it("maps a Minter revert to the recovery copy", () => {
+    setAccess(
+      { immediate: false, delay: 86400 },
+      { operationId: "ab", readyAt: 1_800_000_000 },
+    );
+    exec().error = new Error(
+      "reverted: MinterInsufficientBankCash(uint256,uint256)",
+    );
+    renderDialog(vi.fn(), EVM);
+    expect(
+      screen.getByTestId("repayment-recovery-reverse-error"),
+    ).toHaveTextContent(/bank cash/);
+  });
+
+  it("keeps step 2 blocked with the EVM not-available-yet copy after the reversal", () => {
+    setEvmRows(true);
+    setAccess({ immediate: true, delay: 0 }, null);
+    renderDialog(vi.fn(), EVM);
+    expect(screen.getByTestId("repayment-recovery-record")).toBeDisabled();
+    expect(
+      screen.getByTestId("repayment-recovery-step2-blocked"),
+    ).toHaveTextContent(
+      /Recording the corrected repayment on EVM is not available yet/,
+    );
+    expect(rec().mutateAsync).not.toHaveBeenCalled();
   });
 });

@@ -504,7 +504,7 @@ at the first failure, surfacing it on the hook's `error`.
 
 ### Trustee EVM contract client
 
-`@pipeline/wallet-connect` carries a plain-async EVM write client (`src/evm/contracts/write.ts`, #1942), the EVM counterpart of the Stellar `relay`. It has no React and runs on the memoised wagmi `Config` from `initEvmWalletConnect()`; the LP hooks above keep their own pipeline and are not migrated. Reusers: the Trustee Risk Council (#1942), then #1573, #1574, #1755 and #1943.
+`@pipeline/wallet-connect` carries a plain-async EVM write client (`src/evm/contracts/write.ts`, #1942), the EVM counterpart of the Stellar `relay`. It has no React and runs on the memoised wagmi `Config` from `initEvmWalletConnect()`; the LP hooks above keep their own pipeline and are not migrated. Reusers: the Trustee Risk Council (#1942), the Risk Council hub and pages and the repayment-recovery step 1 (#1943: `riskCouncil.ts`, the recovery part of `minter.ts`, `logs.ts`), then #1573 and #1574.
 
 - `readEvmContract({ abi, address, functionName, args })` is `readContract` on that config.
 - `sendEvmContractCall({ abi, address, functionName, args, account, chainId, value?, onStageChange })` returns `{ hash }` after the receipt. Pipeline, stopping at the first failure:
@@ -515,7 +515,8 @@ at the first failure, surfacing it on the hook's `error`.
   5. `estimateContractGas` plus 20 % (`gas * 12 / 10`), clamped to `EVM_TX_GAS_CAP = 16_777_215`.
   6. `writeContract` with the capped `gas`, then `waitForTransactionReceipt`; a receipt that is not `success` throws "transaction reverted: {hash}".
 - Stages (`RelayStage`, shared with Stellar): `awaiting-signature` before the wallet prompt, then `confirming` once the hash returns. There is no `submitting` stage: an EVM wallet signs and broadcasts in one `eth_sendTransaction`.
-- The Trustee AccessManager, SecurityRegistry and RecordNft bindings built on it are in [trustee-flows.md](trustee-flows.md#risk-council-security-actions).
+- `scanEvmLogs({ address, topics, fromBlock, chainId, concurrency = 4, head?, retries = 3, retryDelayMs = 400 })` (`src/evm/contracts/logs.ts`, #1943) reads `eth_getLogs` through the wagmi public client in inclusive chunks of `EVM_LOG_CHUNK_BLOCKS = 50_000` blocks from `fromBlock` to the head (the default publicnode RPC rejects wider ranges), with raw `topics` so an OR of topic0 values and a padded loan id fit one call (`loanIdTopic`). Results come back in block order, a chunk that still fails after its retries rejects, and a start past the head yields `[]`. `head` pins the upper bound (else the block number is read once); each `eth_getLogs` call and the head read retry up to `retries` times with exponential backoff on a transient failure only (`isTransientRpcError`: HTTP 429 or 5xx, code -32005, timeouts, network errors; a block-range or parameter error fails at once), so one rate-limited chunk does not fail the list. `readEvmHeadBlock(chainId)` reads the head with the same retry, and `readEvmContract` takes an optional `blockNumber` so views can be read at that pinned head (`readEvmRecoveryRepayments` reads `nextRepaymentId`, the logs and the `extsload` words at one head).
+- The Trustee AccessManager, SecurityRegistry, RecordNft, LoanRegistry Risk Council and Minter recovery bindings built on it are in [trustee-flows.md](trustee-flows.md#risk-council-security-actions) and [trustee-flows.md](trustee-flows.md#risk-council-actions).
 
 ### Network fee estimate
 

@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-189.**
+**Next free number: TD-191.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2169,12 +2169,13 @@ line, whichever section it lands in.
 
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
-- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carry the same gate: every action card is disabled with `stellarOnlyActionReason`, the chain-state card shows `—`, and the hub shows only the reason for a non-Stellar session.
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carried the same gate until #1943, which opened them (and recovery step 1) on the configured EVM chain.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 - **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
-- **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
-- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573, #1574, #1755 and #1943 reuse it; the LP app's `wallet/evm` hooks keep their own pipeline.
+- **Repayment recovery (#1711):** step 1 (`MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` through the EVM AccessManager, `MINTER_OPS_ROLE`) runs on EVM since #1943, with the candidates read as described in TD-190. Step 2, the corrected `Minter.repay` (`MINT_CALLER_ROLE`), stays gated with `recordRepaymentChainReason` ("not available yet") until the EVM arm of `useRecordPayment` lands (#1574).
+- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573 and #1574 reuse it; the LP app's `wallet/evm` hooks keep their own pipeline.
+- **Status (#1943):** the Risk Council hub, Escalate, Amend economics, Default resolution and the recovery card and dialog (step 1) run on the configured EVM chain (`packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts`). What remains for EVM is rollover, Update lifecycle, Record coupon / Record repayment (including recovery step 2) and Close loan (#1574), the EVM draw (#1573), and the cash reporter bookings above.
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
@@ -2483,3 +2484,11 @@ line, whichever section it lands in.
 - **Gap:** `GET /v1/loan-book/{id}/security` serves `default_breach` for EVM loans (#1940), an EVM-only concept (`defaultBreachAt` in the 15-field `Terms`), and nothing in the Trustee renders it. The Trustee pages mirror Stellar, which has no breach.
 - **Impact:** An EVM loan past its default breach threshold shows no signal on the security page or the loan-detail Security card.
 - **Suggested fix:** Add a "Default breach" row and notes mirroring the margin-call row on the Security card and the security page.
+
+### TD-190: EVM repayment recovery reads repayments by scanning logs in the browser
+
+- **Date:** 2026-11-18
+- **Location:** `packages/wallet-connect/src/evm/contracts/{minter,logs}.ts` (`readEvmRecoveryRepayments`, `readEvmMinterRepayment`, `scanEvmLogs`), `packages/trustee/src/api/useRepaymentRecovery.ts` (`useRecoveryCandidates`) — Issue #1943.
+- **Gap:** No EVM view returns a recorded repayment's full `RepaymentData` or its reversed flag (`LoanRegistryStorage.repayments` and `reversedRepayments` are private). The Trustee therefore scans `eth_getLogs` for `PaymentRecorded`, `PaymentUnrecorded` and `CashRepaid` of the loan from `VITE_EVM_START_BLOCK` in 50 000-block chunks (the default publicnode RPC rejects wider ranges), and reads the Minter's stored record through `extsload` at the ERC-7201 slot of `pipeline.storage.Minter` (field 19, `repayments`).
+- **Impact:** The cost grows with chain age (about 7 200 blocks a day on Hoodi, so one more call about every week; about 81 calls from block 0, hence `VITE_EVM_START_BLOCK` must be the LoanRegistry deploy block). It depends on the RPC provider's `eth_getLogs` limits, and it is coupled to the Minter storage layout (a layout change breaks the read; the Minter must expose `extsload`, contracts PR #54). It runs for every EVM loan in `Performing..Default` that opens the loan detail page.
+- **Suggested fix:** Serve per-repayment rows from the indexed logs on an existing per-loan endpoint (the data is already in `contract_logs`), and read from the API instead of the chain.

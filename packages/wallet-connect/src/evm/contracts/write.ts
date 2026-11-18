@@ -22,6 +22,7 @@ export interface ReadEvmContractParams {
   address: Address;
   functionName: string;
   args?: readonly unknown[];
+  blockNumber?: bigint;
 }
 
 export interface SendEvmContractCallParams extends ReadEvmContractParams {
@@ -46,12 +47,14 @@ export function readEvmContract<T = unknown>({
   address,
   functionName,
   args = [],
+  blockNumber,
 }: ReadEvmContractParams): Promise<T> {
   return readContract(initEvmWalletConnect(), {
     abi,
     address,
     functionName,
     args,
+    ...(blockNumber === undefined ? {} : { blockNumber }),
   } as never) as Promise<T>;
 }
 

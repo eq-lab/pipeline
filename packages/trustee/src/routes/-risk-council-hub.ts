@@ -1,6 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { useMemo } from "react";
-import { useStellarWallet } from "@pipeline/wallet-connect";
 import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
 import { useRiskCouncilAccess } from "@/api/useRiskCouncil";
 import { useSessionState } from "@/auth/sessionStore";
@@ -9,16 +8,14 @@ import {
   formatReadyAt,
   riskCouncilRoleLine,
 } from "@/lib/accessManagerAction";
+import { useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
 import {
   useExecutedOperations,
   useScheduledOps,
   useServedOperationIds,
 } from "@/lib/riskCouncilOps";
-import {
-  riskCouncilBlockedReason,
-  stellarOnlyActionReason,
-} from "@/lib/targetChains";
+import { riskCouncilChainReason } from "@/lib/targetChains";
 import { formatLoanLabel } from "./-risk-council-shared";
 import { DEFAULT_NO_ROLE } from "./-risk-council-escalate";
 import {
@@ -120,7 +117,7 @@ function loanLabelFor(
 export function useRiskCouncilHub(): RiskCouncilHubView {
   const session = useSessionState();
   const chainId = session.chainId ?? ENV.STELLAR_CHAIN_ID;
-  const blockedReason = stellarOnlyActionReason(chainId);
+  const blockedReason = riskCouncilChainReason(chainId);
   const loanBook = useLoanBook(chainId);
   const loans = useMemo(
     () => (blockedReason ? [] : (loanBook.data?.loans ?? [])),
@@ -130,7 +127,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
   const sessionOps = useScheduledOps(chainId);
   const executed = useExecutedOperations(chainId);
   const everServed = useServedOperationIds(chainId);
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
 
   const servedOps = useMemo(
     () => loans.flatMap((loan) => loan.pending_operations ?? []),
@@ -195,9 +192,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
   return {
     chainId,
     blockedReason,
-    showInspectorsLink:
-      blockedReason === null ||
-      riskCouncilBlockedReason(chainId, "set_inspectors") === null,
+    showInspectorsLink: blockedReason === null,
     intro: HUB_INTRO,
     roleLine,
     rows,

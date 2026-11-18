@@ -4,7 +4,7 @@ import type {
   RiskCouncilCall,
   RiskCouncilClosureReason,
 } from "@/api/useRiskCouncil";
-import { ENV } from "@/lib/env";
+import { chainAmountDecimals, riskCouncilTargetId } from "@/lib/targetChains";
 import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
 import { formatChainAmount } from "./-repayment-recovery";
 import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
@@ -61,8 +61,12 @@ export function writeDownPrefill(
 export function buildWriteDownCall(
   loanId: number | null,
   amountInput: string,
+  chainId: number,
 ): RiskCouncilCall | null {
-  const amount = usdInputToSacBaseUnits(amountInput);
+  const amount = usdInputToSacBaseUnits(
+    amountInput,
+    chainAmountDecimals(chainId),
+  );
   if (loanId === null || amount === null) return null;
   return { fn: "write_down", loanId, amount };
 }
@@ -115,7 +119,7 @@ export function useRiskCouncilWritedown(
 
   const writeDown = useRiskCouncilActionView({
     chainId,
-    call: buildWriteDownCall(base.loanId, amountInput),
+    call: buildWriteDownCall(base.loanId, amountInput, chainId),
     fn: "write_down",
     noRoleCopy: RESOLUTION_NO_ROLE,
     labels: {
@@ -174,7 +178,7 @@ export function useRiskCouncilWritedown(
     close: { reason, setReason, action: close },
     cure: { effects: CURE_EFFECTS, action: cure },
     pending,
-    expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
     pendingGateFor: (item) =>
       notInDefault
         ? NOT_IN_DEFAULT

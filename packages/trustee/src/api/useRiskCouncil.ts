@@ -7,7 +7,11 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  encodeEvmRiskCouncilCalldata,
   encodeEvmSecurityRegistryCalldata,
+  evmRecoveryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  evmRiskCouncilSelector,
   evmSecurityErrorAbi,
   evmSecuritySelector,
   evmSecurityTarget,
@@ -15,6 +19,9 @@ import {
   executeScheduledOperation,
   readCanCall,
   readEvmCanCall,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+  readEvmRiskCouncilSchedule,
   readEvmScheduledOperation,
   readEvmSecurityInspectors,
   readEvmSecurityRegistrySchedule,
@@ -25,6 +32,7 @@ import {
   readScheduledOperation,
   readSecurityRegistrySchedule,
   relayRiskCouncil,
+  relayEvmRiskCouncil,
   relayEvmSecurityRegistry,
   relaySecurityRegistry,
   riskCouncilArgsXdr,
@@ -47,10 +55,8 @@ import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
 import {
   isStellarTarget,
-  pendingRowBlockedReason,
-  riskCouncilBlockedReason,
+  riskCouncilChainReason,
   sameChainAddress,
-  stellarOnlyActionReason,
 } from "@/lib/targetChains";
 import {
   councilTarget,
@@ -161,8 +167,27 @@ function riskCouncilConfig(target: CouncilTarget = "loan_registry") {
   return { accessManagerId, registryId, ...chainConfig() };
 }
 
-function evmCouncilConfig(fn: SecurityRegistryCall["fn"]) {
+interface EvmCouncilConfig {
+  accessManager: string;
+  registry: string;
+  recordNft: string;
+  target: string;
+  chainId: number;
+}
+
+function evmCouncilConfig(fn: CouncilCall["fn"]): EvmCouncilConfig | null {
   const accessManager = ENV.EVM_ACCESS_MANAGER_ADDRESS;
+  if (councilTarget(fn) === "loan_registry") {
+    const registry = ENV.EVM_LOAN_REGISTRY_ADDRESS;
+    if (!accessManager || !registry) return null;
+    return {
+      accessManager,
+      registry,
+      recordNft: "",
+      target: registry,
+      chainId: ENV.EVM_CHAIN_ID,
+    };
+  }
   const registry = ENV.EVM_SECURITY_REGISTRY_ADDRESS;
   const recordNft = ENV.EVM_SECURITY_RECORD_NFT_ADDRESS;
   if (!accessManager || !registry || !recordNft) return null;
@@ -170,15 +195,88 @@ function evmCouncilConfig(fn: SecurityRegistryCall["fn"]) {
     accessManager,
     registry,
     recordNft,
-    target: evmSecurityTarget(fn, { registry, recordNft }),
+    target: evmSecurityTarget(fn as SecurityRegistryCall["fn"], {
+      registry,
+      recordNft,
+    }),
     chainId: ENV.EVM_CHAIN_ID,
   };
+}
+
+function evmSelectorFor(
+  fn: CouncilCall["fn"],
+): ReturnType<typeof evmSecuritySelector> {
+  return councilTarget(fn) === "security_registry"
+    ? evmSecuritySelector(fn as SecurityRegistryCall["fn"])
+    : evmRiskCouncilSelector(fn as RiskCouncilCall["fn"]);
+}
+
+function evmCalldataFor(call: CouncilCall): string {
+  return councilTarget(call) === "security_registry"
+    ? encodeEvmSecurityRegistryCalldata(call as SecurityRegistryCall)
+    : encodeEvmRiskCouncilCalldata(call as RiskCouncilCall);
+}
+
+function readEvmScheduleFor(
+  evm: EvmCouncilConfig,
+  call: CouncilCall,
+  caller: string,
+): Promise<OperationSchedule> {
+  const base = {
+    accessManager: evm.accessManager,
+    registry: evm.registry,
+    caller,
+  };
+  return councilTarget(call) === "security_registry"
+    ? readEvmSecurityRegistrySchedule({
+        ...base,
+        call: call as SecurityRegistryCall,
+        recordNft: evm.recordNft,
+      })
+    : readEvmRiskCouncilSchedule({ ...base, call: call as RiskCouncilCall });
+}
+
+function relayEvmFor(
+  evm: EvmCouncilConfig,
+  call: CouncilCall,
+  caller: string,
+  mode: RelayMode,
+  onStageChange: (stage: RelayStage) => void,
+) {
+  const base = {
+    mode,
+    accessManager: evm.accessManager,
+    registry: evm.registry,
+    caller,
+    chainId: evm.chainId,
+    onStageChange,
+  };
+  return councilTarget(call) === "security_registry"
+    ? relayEvmSecurityRegistry({
+        ...base,
+        call: call as SecurityRegistryCall,
+        recordNft: evm.recordNft,
+      })
+    : relayEvmRiskCouncil({ ...base, call: call as RiskCouncilCall });
 }
 
 function notConfiguredFor(target: CouncilTarget): string {
   return target === "security_registry"
     ? SECURITY_NOT_CONFIGURED
     : NOT_CONFIGURED;
+}
+
+function evmErrorAbiFor(kind: PendingTargetKind) {
+  switch (kind) {
+    case "security_registry":
+      return evmSecurityErrorAbi;
+    case "loan_registry":
+      return evmRiskCouncilErrorAbi;
+    case "minter":
+      return evmRecoveryErrorAbi;
+    default:
+      return [];
+  }
 }
 
 function readScheduleFor(
@@ -210,30 +308,23 @@ export function useRiskCouncilAccess(
 
   return useQuery<RiskCouncilAccess, Error>({
     queryKey: ["risk-council-access", chainId, address, target, fn, callKey],
-    enabled: riskCouncilBlockedReason(chainId, fn) === null && !!address,
+    enabled: riskCouncilChainReason(chainId) === null && !!address,
     staleTime: 5_000,
     retry: false,
     queryFn: async () => {
       if (!isStellarTarget(chainId)) {
-        const evmFn = fn as SecurityRegistryCall["fn"];
-        const evm = evmCouncilConfig(evmFn);
-        if (!evm) throw new Error(SECURITY_NOT_CONFIGURED);
+        const evm = evmCouncilConfig(fn);
+        if (!evm) throw new Error(notConfiguredFor(target));
         if (!address) throw new Error("EVM wallet not connected.");
         const canCall = await readEvmCanCall({
           accessManager: evm.accessManager,
           caller: address,
           target: evm.target,
-          selector: evmSecuritySelector(evmFn),
+          selector: evmSelectorFor(fn),
         });
         let schedule: OperationSchedule | null = null;
         if (!canCall.immediate && canCall.delay > 0 && call !== null) {
-          schedule = await readEvmSecurityRegistrySchedule({
-            call: call as SecurityRegistryCall,
-            accessManager: evm.accessManager,
-            registry: evm.registry,
-            recordNft: evm.recordNft,
-            caller: address,
-          });
+          schedule = await readEvmScheduleFor(evm, call, address);
         }
         return { canCall, schedule };
       }
@@ -272,12 +363,22 @@ export function useRiskCouncilLoanState(
   return useQuery<RiskCouncilLoanState, Error>({
     queryKey: ["risk-council-loan", chainId, loanId],
     enabled:
-      stellarOnlyActionReason(chainId) === null &&
+      riskCouncilChainReason(chainId) === null &&
       loanId !== null &&
       Number.isInteger(loanId),
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {
+      if (!isStellarTarget(chainId)) {
+        const registry = ENV.EVM_LOAN_REGISTRY_ADDRESS;
+        if (!registry) throw new Error(NOT_CONFIGURED);
+        const params = { registry, loanId: loanId as number };
+        const [chain, money] = await Promise.all([
+          readEvmLoanChainState(params),
+          readEvmLoanMoney(params),
+        ]);
+        return { chain, money };
+      }
       const cfg = riskCouncilConfig();
       if (!cfg) throw new Error(NOT_CONFIGURED);
       const params = {
@@ -335,43 +436,30 @@ export function useRiskCouncilRelay() {
   const mutation = useMutation<RelayOutcome, Error, RiskCouncilRelayInput>({
     mutationFn: async ({ mode, call, chainId }) => {
       setStage(null);
-      const blocked = riskCouncilBlockedReason(chainId, call.fn);
+      const blocked = riskCouncilChainReason(chainId);
       if (blocked) throw new Error(blocked);
       const wallet = pickChainWallet(chainId, stellarWallet, evmWallet);
       const { address, isConnected } = wallet;
       const target = councilTarget(call);
       if (wallet.kind === "evm") {
-        const securityCall = call as SecurityRegistryCall;
-        const evm = evmCouncilConfig(securityCall.fn);
-        if (!evm) throw new Error(SECURITY_NOT_CONFIGURED);
+        const evm = evmCouncilConfig(call.fn);
+        if (!evm) throw new Error(notConfiguredFor(target));
         if (!isConnected || !address) {
           throw new Error("EVM wallet not connected.");
         }
-        const scheduleParams = {
-          call: securityCall,
-          accessManager: evm.accessManager,
-          registry: evm.registry,
-          recordNft: evm.recordNft,
-          caller: address,
-        };
         let executing: OperationSchedule | undefined;
         if (mode === "execute") {
           try {
-            executing = await readEvmSecurityRegistrySchedule(scheduleParams);
+            executing = await readEvmScheduleFor(evm, call, address);
           } catch {
             executing = undefined;
           }
         }
-        const { hash } = await relayEvmSecurityRegistry({
-          ...scheduleParams,
-          mode,
-          chainId: evm.chainId,
-          onStageChange: setStage,
-        });
+        const { hash } = await relayEvmFor(evm, call, address, mode, setStage);
         if (mode !== "schedule") return { hash, schedule: executing };
         let schedule: OperationSchedule | undefined;
         try {
-          schedule = await readEvmSecurityRegistrySchedule(scheduleParams);
+          schedule = await readEvmScheduleFor(evm, call, address);
         } catch {
           schedule = undefined;
         }
@@ -380,7 +468,7 @@ export function useRiskCouncilRelay() {
           schedule,
           caller: address,
           target: evm.target,
-          calldata: encodeEvmSecurityRegistryCalldata(securityCall),
+          calldata: evmCalldataFor(call),
         };
       }
       const cfg = riskCouncilConfig(target);
@@ -513,7 +601,7 @@ export function usePendingOperationExecute() {
       targetKind,
     }) => {
       setStage(null);
-      const blocked = pendingRowBlockedReason(chainId, targetKind);
+      const blocked = riskCouncilChainReason(chainId);
       if (blocked) throw new Error(blocked);
       if (!sameChainAddress(chainId, target, expectedTarget)) {
         throw new PendingTargetMismatchError(target);
@@ -540,7 +628,7 @@ export function usePendingOperationExecute() {
         const { hash } = await executeEvmScheduledOperation({
           ...evmBase,
           chainId: ENV.EVM_CHAIN_ID,
-          errorAbi: evmSecurityErrorAbi,
+          errorAbi: evmErrorAbiFor(targetKind),
           onStageChange: setStage,
         });
         return { hash, readyAt: schedule.readyAt };
@@ -604,7 +692,7 @@ export function usePendingOperationExecute() {
 export function useSecurityInspectors(chainId: number | null | undefined) {
   return useQuery<string[], Error>({
     queryKey: ["risk-council-inspectors", chainId],
-    enabled: riskCouncilBlockedReason(chainId, "set_inspectors") === null,
+    enabled: riskCouncilChainReason(chainId) === null,
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {

@@ -182,5 +182,21 @@ describe("readEvmContract", () => {
       functionName: "ping",
       args: [],
     });
+    expect(wagmi.readContract.mock.calls[0]![1]).not.toHaveProperty(
+      "blockNumber",
+    );
+  });
+
+  it("pins the read to a block when asked", async () => {
+    wagmi.readContract.mockResolvedValue(true);
+    await readEvmContract({
+      abi,
+      address: TARGET as `0x${string}`,
+      functionName: "ping",
+      blockNumber: 99n,
+    });
+    expect(wagmi.readContract.mock.calls.at(-1)![1]).toMatchObject({
+      blockNumber: 99n,
+    });
   });
 });

@@ -21,11 +21,7 @@ import {
 } from "@/lib/accessManagerAction";
 import { findLoanEntry } from "@/lib/loanRoute";
 import { councilTarget, useScheduledOp } from "@/lib/riskCouncilOps";
-import {
-  isStellarTarget,
-  riskCouncilBlockedReason,
-  stellarOnlyActionReason,
-} from "@/lib/targetChains";
+import { isStellarTarget, riskCouncilChainReason } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { formatChainAmount } from "./-repayment-recovery";
 
@@ -165,7 +161,7 @@ export function useRiskCouncilLoanBase(
     errorDetails: loanBookError?.details ?? null,
     entry,
     loanId,
-    blockedReason: stellarOnlyActionReason(chainId),
+    blockedReason: riskCouncilChainReason(chainId),
     chainState: chainStateQuery.data,
     chainStatus: chainStateQuery.data?.chain.status || null,
   };
@@ -209,7 +205,7 @@ export function useRiskCouncilActionView({
   loanId?: number;
   onExecuted?: () => void;
 }): ActionView {
-  const blockedReason = riskCouncilBlockedReason(chainId, fn);
+  const blockedReason = riskCouncilChainReason(chainId);
   const access = useRiskCouncilAccess(chainId, call, fn);
   const relay = useRiskCouncilRelay();
   const op = useScheduledOp(chainId, call);
@@ -303,7 +299,7 @@ export function mapRelayError(
       (councilTarget(fn) === "security_registry"
         ? securityRegistryErrorCopy(mapped.details)
         : null))
-    : evmCouncilErrorCopy(mapped.details);
+    : evmCouncilErrorCopy(mapped.details, councilTarget(fn));
   return copy ? { ...mapped, message: copy, isSpecific: true } : mapped;
 }
 
