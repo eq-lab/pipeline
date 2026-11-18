@@ -6,7 +6,7 @@ The EVM chains serve `GET /v1/loan-book/{loan_id}/security` and the loan-book LT
 
 ## Differences
 
-Identical on both chains: the route, the 400 / 404 / 500 rules, every Stellar key and its meaning, `refresh_pending` and the staleness rules.
+Identical on both chains: the route, the 400 / 404 / 500 rules, every Stellar key and its meaning, the `refresh_pending` rule and the staleness rules. The log-address sets differ: the loan's own rows are checked against `[registry, nft]` on EVM and `[registry]` on Stellar, and the valuation check adds the loan registry (`[registry, nft, loan_registry]` on EVM, `[registry, loan_registry]` on Stellar).
 
 | Area | Stellar | EVM |
 |---|---|---|
@@ -34,6 +34,10 @@ Identical on both chains: the route, the 400 / 404 / 500 rules, every Stellar ke
 | `events[]` | list | `security_margin_call_events` rows of kind `default_breach`, `default_breach_price_stale`, `default_breach_cleared`, each `{kind, ltv_bps, default_ratio_bps, at, block_number, tx_hash}`, in order |
 
 The loan book and the attention counts do not carry the default breach.
+
+## Audit log
+
+The EVM `Security*` rows render in `GET /v1/audit-log` with 6 dp amounts, and the three `SecurityDefaultBreach*` names are EVM only. Renderings: [audit-logging.md](./audit-logging.md).
 
 ## Contract references
 

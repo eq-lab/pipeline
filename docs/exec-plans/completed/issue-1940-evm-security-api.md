@@ -136,7 +136,8 @@ pub fn security_params(kind: ChainKind) -> &'static SecurityChainParams
 - `counted_value_excluding(terms, exclude, unit: i128)` and `record_term_value(t, unit: i128)` take the unit; `term_numerator` uses it for non-goods records.
 - `agent_release(status, protection, outstanding: u128, debt: Option<u128>, terms, record_id, advance_ratio_bps, unit: i128)`.
   - The caller supplies the debt.
-  - `debt == None` (overflow or unreadable) → `NeedsConsent`, which keeps today's overflow behaviour.
+  - `debt == None` (overflow) → `NeedsConsent`, which keeps today's overflow behaviour.
+  - The caller (`agent_release_of`) serves `null` when the facility `debt` is undecodable, the same rule as Stellar for an undecodable `accrued_interest`.
   - `release_unconditional` is unchanged.
 
 ### 3. Scale-aware mark suggestions — `packages/shared/src/security_marks.rs`

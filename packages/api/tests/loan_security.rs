@@ -1783,11 +1783,11 @@ fn evm_agent_release_uses_the_facility_debt_not_outstanding_plus_accrued() {
 }
 
 #[test]
-fn evm_agent_release_with_an_unreadable_facility_debt_needs_consent() {
+fn evm_agent_release_with_an_unreadable_facility_debt_is_null() {
     let mut rows = facility_rows(700 * U6, 0, 700 * U6);
     rows.valuation.as_mut().unwrap().0.debt = sqlx_dec(1, -99_999);
     let v = build_evm(&rows, None);
-    assert_eq!(v["records"][0]["agent_release"], "needs_consent");
+    assert_eq!(v["records"][0]["agent_release"], Value::Null);
 }
 
 #[test]

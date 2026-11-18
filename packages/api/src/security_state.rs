@@ -698,7 +698,7 @@ fn agent_release_of(ctx: &Ctx<'_>, r: &RecordRow) -> Option<String> {
         ReleaseDebt::OutstandingPlusAccrued => {
             outstanding.checked_add(dec_to_u128(&valuation.accrued_interest)?)
         }
-        ReleaseDebt::FacilityDebt => dec_to_u128(&valuation.debt),
+        ReleaseDebt::FacilityDebt => Some(dec_to_u128(&valuation.debt)?),
     };
     Some(
         agent_release(
