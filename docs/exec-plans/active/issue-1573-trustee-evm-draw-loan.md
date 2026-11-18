@@ -134,11 +134,17 @@ Identical on both chains:
 - **Safe wallets.** `waitForTransactionReceipt` stalls for Safe multisigs (#1942 review finding 5). Unchanged and out of scope.
 - **Test mocks.** Every Trustee test that mocks `@pipeline/wallet-connect` for `useDrawLoan` must add `drawEvmLoan` and `useEvmWallet` (mechanical). The `#1536` tests that pin "EVM blocked" flip.
 
+## Decisions (human, 2026-11-18)
+
+All open questions were resolved with the recommended defaults:
+
+1. The API part stays in #1573 as Part A, in the same PR.
+2. The EVM draw money scale is a constant 6 (`EVM_LOAN_MONEY_DECIMALS`), mirroring Stellar's 7.
+3. No `canCall` pre-check before drawing, as on Stellar. A missing role shows as a failed simulate, with the decoded error name in the details.
+
 ## Open Questions
 
-1. **Backend part inside #1573, or a separate backend issue?** Serving the EVM `draw_loan` block is a Rust change in `packages/api/src/routes/loan_book.rs` (`draw_loan_for` → 6-dp money), its tests and the API spec, roughly 30 lines. The API spec already defers "the EVM shape" to #1573. #1573 is on the frontend flow, which skips the backend plan-review gate, so a human should confirm. **Recommended default:** keep it in #1573 as Implementation Part A, in the same PR (the frontend cannot work without it). Alternative: split it into a new `backend` issue that blocks #1573.
-2. **Money scale source for the EVM block.** **Recommended default:** a constant `EVM_LOAN_MONEY_DECIMALS = 6`, mirroring `STELLAR_LOAN_MONEY_DECIMALS = 7` (the LoanRegistry/PLUSD unit is hard-coded to 6 in the contract). Alternative: the per-chain `asset_decimals` config (`CHAIN_<id>_EVM_API_ASSET_DECIMALS`, default 6). That is the tracked custody asset, not the registry unit, so it could diverge.
-3. **Role pre-check before the draw?** Stellar has none: a missing role surfaces as a failed simulate ("Could not verify the loan on-chain… safe to retry"). On EVM a `readEvmCanCall(wallet, AM, registry, drawLoan selector)` read could block Approve up front with role copy (for example "Only the LoanRegistry manager (Trustee) role can draw loans."). **Recommended default:** no pre-check and no extra copy, for parity with Stellar. The decoded error name is in the details.
+_None_ (resolved 2026-11-18, see Decisions).
 
 ## Implementation Steps
 
