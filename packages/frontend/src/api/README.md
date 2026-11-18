@@ -133,8 +133,8 @@ const { data, isLoading, error, refetch } = useRequests();
 Disabled when the wallet is disconnected. Automatically refetches when any
 `pipeline.mock.*` key changes (same-tab DevTools writes).
 
-**Chain-aware (issues #552, #1567).** The hook follows `useWalletView().kind` the
-same way `usePnl` does: the EVM view sends `wallet=<0x…>&chain_id=<ENV.EVM_CHAIN_ID>`,
+**Chain-aware (issues #552, #1567).** The hook follows `useWalletView().kind`
+(through `useActiveChainConnection()`) the same way `usePnl` does: the EVM view sends `wallet=<0x…>&chain_id=<ENV.EVM_CHAIN_ID>`,
 the Stellar view sends `wallet=<G…>&chain_id=<ENV.STELLAR_CHAIN_ID>`. The backend
 filters by `chain_id` (omitted = every chain, #1565), so with several EVM chains
 configured the same `0x…` address only sees the active chain's requests. The query
@@ -286,7 +286,8 @@ const { data, isLoading, error } = usePnl();
 ```
 
 The hook follows `useWalletView().kind`, uses the active wallet address, and
-passes the matching `chain_id` (`ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`).
+passes the matching `chain_id` (`ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`);
+that wallet scope comes from `useActiveChainConnection()`.
 It is disabled until the active wallet is connected.
 
 ---

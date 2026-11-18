@@ -3,12 +3,7 @@ import React from "react";
 import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
-import {
-  useEvmStakeDecimals,
-  useEvmWallet,
-  useStellarWallet,
-  useWalletView,
-} from "@/wallet";
+import { useActiveChainConnection, useEvmStakeDecimals } from "@/wallet";
 import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
@@ -32,11 +27,8 @@ export const RecentActivityCard = React.forwardRef<
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-  const { kind } = useWalletView();
   const evmStakeDecimals = useEvmStakeDecimals();
-  const { isConnected: isEvmConnected } = useEvmWallet();
-  const { isConnected: isStellarConnected } = useStellarWallet();
-  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
+  const { kind, isConnected } = useActiveChainConnection();
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];
   const showList = isConnected && !isLoading && !error && requests.length > 0;

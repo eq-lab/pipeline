@@ -15,13 +15,22 @@ vi.mock("./client", () => ({
   apiFetch: mockApiFetch,
 }));
 
-vi.mock("@/wallet", () => ({
+vi.mock("@/wallet/WalletViewContext", () => ({
   useWalletView: () => ({ kind: "evm" }),
+}));
+vi.mock("@/wallet/evm/useEvmWallet", () => ({
   useEvmWallet: () => ({
     address: "0x8493000000000000000000000000000000003b92",
     isConnected: true,
   }),
+}));
+vi.mock("@/wallet/stellar/useStellarWallet", () => ({
   useStellarWallet: () => ({ address: undefined, isConnected: false }),
+}));
+
+vi.mock("@/wallet", async () => ({
+  useActiveChainConnection: (await import("@/wallet/useActiveChainConnection"))
+    .useActiveChainConnection,
   subscribeMock: () => () => {},
 }));
 

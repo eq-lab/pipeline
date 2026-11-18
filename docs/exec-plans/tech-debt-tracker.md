@@ -236,13 +236,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Delete `ConnectChooserModal.tsx` and `ConnectChooserModal.test.tsx` after confirming via `grep -rn ConnectChooserModal` that no production import exists. Update the `ConnectWalletModal.tsx` JSDoc comment that still references it.
 - **Resolution (2026-10-19, #1579):** `ConnectChooserModal` and its test no longer exist under `packages/frontend/src/components/`.
 
-### TD-22: Active-chain `isConnected` derivation is duplicated across three files
+### TD-22: Active-chain `isConnected` derivation is duplicated across three files [RESOLVED 2026-11-18 / #1333]
 
 - **Date:** 2026-06-19
 - **Location:** `packages/frontend/src/api/useRequests.ts`, `packages/frontend/src/routes/transactions.tsx`, `packages/frontend/src/components/RecentActivityCard.tsx`
 - **Gap:** The three-line active-chain `isConnected` derivation (`kind === "stellar" ? isStellarConnected : isEvmConnected`) was intentionally inlined at the two render sites (Issue #644 Option A) to keep the bug fix minimal and low-risk. It now exists in three places.
 - **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
+- **Resolution (2026-11-18, #1333):** `useActiveChainConnection()` exists in `packages/frontend/src/wallet/` and returns `{ kind, address, isConnected, chainId }` for `useWalletView().kind`. Its consumers are `useRequests`, `useActionConfirmedRefresh`, `usePnl`, `usePositionsHistory`, `RecentActivityCard`, `/transactions` and `/` (home); `useActiveRequestsScope` was removed. `useActiveWalletAccount` keeps its own derivation (masked address).
 
 ### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23] [RESOLVED 2026-11-03 / #1793]
 

@@ -1,8 +1,7 @@
 // spec: docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
-import { ENV } from "@/lib/env";
+import { useActiveChainConnection } from "@/wallet";
 import type { RequestItem, RequestType, RequestsResponse } from "./useRequests";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -121,19 +120,6 @@ export function settleExpectations(
   return anyMet;
 }
 
-// ── Active wallet scope ───────────────────────────────────────────────────────
-
-export function useActiveRequestsScope() {
-  const { kind } = useWalletView();
-  const { address: evmAddress, isConnected: isEvmConnected } = useEvmWallet();
-  const { address: stellarAddress, isConnected: isStellarConnected } =
-    useStellarWallet();
-  const address = kind === "stellar" ? stellarAddress : evmAddress;
-  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
-  const chainId = kind === "stellar" ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
-  return { kind, address, isConnected, chainId };
-}
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export interface ActionConfirmed {
@@ -150,7 +136,7 @@ function isBalanceOfRead(queryKey: readonly unknown[]): boolean {
 
 export function useActionConfirmedRefresh(): (a: ActionConfirmed) => void {
   const queryClient = useQueryClient();
-  const { kind, address, chainId } = useActiveRequestsScope();
+  const { kind, address, chainId } = useActiveChainConnection();
 
   return useCallback(
     ({ type, requestId, claimed }: ActionConfirmed) => {

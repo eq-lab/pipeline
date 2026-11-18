@@ -11,13 +11,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { ENV } from "@/lib/env";
-import {
-  subscribeMock,
-  useEvmWallet,
-  useStellarWallet,
-  useWalletView,
-} from "@/wallet";
+import { subscribeMock, useActiveChainConnection } from "@/wallet";
 import { apiFetch } from "./client";
 
 export interface VaultPnl {
@@ -60,15 +54,7 @@ function subscribeMockVersion(listener: () => void) {
 }
 
 export function usePnl(): UsePnlResult {
-  const { kind } = useWalletView();
-  const { address: evmAddress, isConnected: isEvmConnected } = useEvmWallet();
-  const { address: stellarAddress, isConnected: isStellarConnected } =
-    useStellarWallet();
-
-  const isStellar = kind === "stellar";
-  const address = isStellar ? stellarAddress : evmAddress;
-  const isConnected = isStellar ? isStellarConnected : isEvmConnected;
-  const chainId = isStellar ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
+  const { kind, address, isConnected, chainId } = useActiveChainConnection();
 
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,

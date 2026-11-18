@@ -185,6 +185,8 @@ export type {
 // ── Active chain for protocol reads (issue #1498) ─────────────────────────────
 export { useActiveChain } from "./useActiveChain";
 export type { UseActiveChainResult } from "./useActiveChain";
+export { useActiveChainConnection } from "./useActiveChainConnection";
+export type { UseActiveChainConnectionResult } from "./useActiveChainConnection";
 
 // ── Active-namespace wallet derivation (issue #1284) ──────────────────────────
 export { useActiveWalletAccount } from "./useActiveWalletAccount";
