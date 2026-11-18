@@ -247,15 +247,19 @@ static Vite output served on container port 80, SPA fallback to `index.html`). I
 surface is intentionally smaller — only the Relayer API base URL is needed at scaffold time (#777);
 it grows as Trustee flow sub-issues of epic #775 land.
 
-| Key                              | Default when unset      |
-| -------------------------------- | ----------------------- |
-| `VITE_API_BASE_URL`              | `http://localhost:8080` |
-| `VITE_EVM_LOAN_REGISTRY_ADDRESS` | empty (unconfigured)    |
-| `VITE_EVM_MINTER_ADDRESS`        | empty (unconfigured)    |
+| Key                                    | Default when unset      |
+| -------------------------------------- | ----------------------- |
+| `VITE_API_BASE_URL`                    | `http://localhost:8080` |
+| `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)    |
+| `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)    |
+| `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)    |
+| `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)    |
+| `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)    |
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
 Empty means unconfigured; EVM flows that need them short-circuit with a "not configured" error.
+The Risk Council security page and inspector panel on EVM (#1942) also need the AccessManager, SecurityRegistry and RecordNft addresses; the registry and RecordNft must equal the backend's `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` / `_SECURITY_RECORD_NFT_ADDRESS`.
 
 ```bash
 docker run --rm -p 8082:80 \

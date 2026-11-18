@@ -346,6 +346,32 @@ describe("useNeedsAttention", () => {
     );
   });
 
+  it("lists an EVM margin-call loan with its chain label (#1942)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useLoanBook).mockReturnValue(
+      bookResult([
+        makeLoanEntry({
+          loan_id: "9",
+          chain_id: 560048,
+          status: "Performing",
+          margin_call_open: true,
+        }),
+      ]),
+    );
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.loanRows).toHaveLength(1);
+    expect(result.current.loanRows[0]).toMatchObject({
+      loanId: "9",
+      chainId: 560048,
+      subtitle: "Margin call open · loan #9 · Hoodi",
+    });
+  });
+
   it("fetches submissions UNFILTERED — no server-side status option (#1046)", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
       data: [],

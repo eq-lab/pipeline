@@ -8,6 +8,7 @@ import {
 } from "@/lib/riskCouncilOps";
 import {
   DELAYED,
+  EVM,
   HASH_A,
   LOAN_REGISTRY,
   NO_ROLE,
@@ -35,13 +36,18 @@ vi.mock("@tanstack/react-router", async () => {
       to,
       params,
       search,
+      "data-testid": testId,
     }: {
       children: React.ReactNode;
       to: string;
       params?: Record<string, string>;
       search?: { chain: number };
+      "data-testid"?: string;
     }) => (
-      <a href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}>
+      <a
+        data-testid={testId}
+        href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}
+      >
         {children}
       </a>
     ),
@@ -53,6 +59,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
@@ -153,6 +160,30 @@ describe("Risk Council hub", () => {
     );
     expect(screen.queryByTestId("risk-council-scheduled")).toBeNull();
     expect(screen.queryByTestId("risk-council-loans")).toBeNull();
+    expect(screen.queryByTestId("risk-council-inspectors-link")).toBeNull();
+  });
+
+  it("keeps the LoanRegistry hub blocked on an EVM session but links the Inspector panel", () => {
+    setup({ chainId: EVM, pending: { "1": [pendingOp()] } });
+    renderRoute();
+    expect(screen.getByTestId("risk-council-blocked")).toHaveTextContent(
+      /On-chain actions run on Stellar only/,
+    );
+    expect(
+      screen.getByTestId("risk-council-inspectors-link"),
+    ).toHaveTextContent("Inspector panel");
+    expect(screen.queryByTestId("risk-council-intro")).toBeNull();
+    expect(screen.queryByTestId("risk-council-scheduled")).toBeNull();
+    expect(screen.queryByTestId("risk-council-loans")).toBeNull();
+  });
+
+  it("links the Inspector panel on a Stellar session", () => {
+    setup();
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-inspectors-link"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("risk-council-blocked")).toBeNull();
   });
 
   it("lists the served rows of two loans sorted by ready time with every column", () => {

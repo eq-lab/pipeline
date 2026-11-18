@@ -117,6 +117,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: state.walletAddress }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
@@ -494,6 +495,8 @@ describe("RepaymentRecoveryDialog scheduled operations", () => {
       paused: false,
       fn: "reverse_repay",
       argsXdr: "REVERSEXDR",
+      calldata: null,
+      targetKind: "minter",
     });
   });
 

@@ -13,7 +13,6 @@ import {
   OUTCOME_EFFECTS,
   PAYMENT_TERM_LABELS,
   RELEASE_WARNING,
-  TERMS_FIELDS,
   useResolveFlagForm,
   pendingConfirmText,
   useRiskCouncilSecurity,
@@ -81,7 +80,7 @@ function CurrentTermsCard({ view }: { view: RiskCouncilSecurityView }) {
 function SetTermsCard({ form }: { form: SetTermsFormView }) {
   return (
     <Card testId="risk-council-security-set-terms" title="Set terms">
-      {TERMS_FIELDS.map(({ key, label, placeholder }) => {
+      {form.termsFields.map(({ key, label, placeholder }) => {
         const state = form.echoes[key];
         return (
           <Field key={key} label={label}>

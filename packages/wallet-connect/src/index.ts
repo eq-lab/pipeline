@@ -374,6 +374,53 @@ export type {
   ReadSecurityInspectorsParams,
 } from "./stellar/contracts/securityRegistry";
 
+// ── EVM Risk Council ──────────────────────────────────────────────────────────
+export {
+  EVM_TX_GAS_CAP,
+  readEvmContract,
+  sendEvmContractCall,
+} from "./evm/contracts/write";
+export type {
+  ReadEvmContractParams,
+  SendEvmContractCallParams,
+  SendEvmContractCallResult,
+} from "./evm/contracts/write";
+export {
+  accessManagerAbi,
+  readEvmCanCall,
+  readEvmOperationSchedule,
+  relayEvm,
+  readEvmScheduledOperation,
+  executeEvmScheduledOperation,
+} from "./evm/contracts/accessManager";
+export type {
+  EvmAccessManagerCallParams,
+  ReadEvmCanCallParams,
+  ReadEvmOperationScheduleParams,
+  RelayEvmParams,
+  ReadEvmScheduledOperationParams,
+  ExecuteEvmScheduledOperationParams,
+} from "./evm/contracts/accessManager";
+export {
+  evmSecurityRegistryAbi,
+  evmSecurityRecordNftAbi,
+  evmSecurityErrorAbi,
+  EVM_SECURITY_FUNCTION_NAMES,
+  evmSecuritySelector,
+  encodeEvmSecurityRegistryCalldata,
+  evmSecurityTarget,
+  relayEvmSecurityRegistry,
+  readEvmSecurityRegistrySchedule,
+  readEvmSecurityInspectors,
+  isEvmInspectorAddress,
+  normalizeEvmAddress,
+} from "./evm/contracts/securityRegistry";
+export type {
+  EvmSecurityAddresses,
+  EvmSecurityCallParams,
+  RelayEvmSecurityRegistryParams,
+} from "./evm/contracts/securityRegistry";
+
 export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,

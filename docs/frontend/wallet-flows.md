@@ -502,6 +502,21 @@ at the first failure, surfacing it on the hook's `error`.
 3. **Receipt.** `isPending` runs from broadcast until the receipt is mined; `isSuccess` is true only
    for receipt status `success`.
 
+### Trustee EVM contract client
+
+`@pipeline/wallet-connect` carries a plain-async EVM write client (`src/evm/contracts/write.ts`, #1942), the EVM counterpart of the Stellar `relay`. It has no React and runs on the memoised wagmi `Config` from `initEvmWalletConnect()`; the LP hooks above keep their own pipeline and are not migrated. Reusers: the Trustee Risk Council (#1942), then #1573, #1574, #1755 and #1943.
+
+- `readEvmContract({ abi, address, functionName, args })` is `readContract` on that config.
+- `sendEvmContractCall({ abi, address, functionName, args, account, chainId, value?, onStageChange })` returns `{ hash }` after the receipt. Pipeline, stopping at the first failure:
+  1. A set `pipeline.mock.wallet.address` throws "[wallet mock] EVM writes are not mockable; connect a real wallet" before any RPC call, like `signMessage`.
+  2. The connected account (`getConnection`) must exist ("EVM wallet not connected.") and equal `account` case-insensitively ("The connected EVM wallet changed. Reconnect {short}.").
+  3. A wallet on another chain than `chainId` gets `switchChain({ chainId })`; a rejection surfaces through the caller's `toUserError`. `chainId` is also passed to every call as a backstop.
+  4. `simulateContract`: a revert surfaces with the decoded custom-error name when the ABI passed in holds the `error` entries.
+  5. `estimateContractGas` plus 20 % (`gas * 12 / 10`), clamped to `EVM_TX_GAS_CAP = 16_777_215`.
+  6. `writeContract` with the capped `gas`, then `waitForTransactionReceipt`; a receipt that is not `success` throws "transaction reverted: {hash}".
+- Stages (`RelayStage`, shared with Stellar): `awaiting-signature` before the wallet prompt, then `confirming` once the hash returns. There is no `submitting` stage: an EVM wallet signs and broadcasts in one `eth_sendTransaction`.
+- The Trustee AccessManager, SecurityRegistry and RecordNft bindings built on it are in [trustee-flows.md](trustee-flows.md#risk-council-security-actions).
+
 ### Network fee estimate
 
 `useNetworkFeeEstimate(direction)` returns a `~0.00053 ETH`-style string (5 decimals, ETH only) for

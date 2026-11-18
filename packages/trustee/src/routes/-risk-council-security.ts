@@ -26,6 +26,7 @@ import {
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
 import { ENV } from "@/lib/env";
+import { isStellarTarget } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import {
@@ -89,10 +90,12 @@ export function pendingConfirmText(item: PendingOpItem): string | undefined {
 export type TermsFieldKey =
   | "advanceRatio"
   | "marginCallRatio"
+  | "defaultRatio"
   | "curePeriod"
   | "priceStaleAfter"
   | "gracePeriod"
   | "defaultRate"
+  | "originatorFeeRate"
   | "attestationInterval"
   | "inspectionInterval"
   | "tolerance"
@@ -108,7 +111,7 @@ export interface TermsFieldSpec {
   placeholder: string;
 }
 
-export const TERMS_FIELDS: ReadonlyArray<TermsFieldSpec> = [
+const STELLAR_TERMS_FIELDS: ReadonlyArray<TermsFieldSpec> = [
   { key: "advanceRatio", label: "Advance ratio (%)", placeholder: "e.g. 70" },
   {
     key: "marginCallRatio",
@@ -149,13 +152,40 @@ export const TERMS_FIELDS: ReadonlyArray<TermsFieldSpec> = [
   },
 ];
 
+const DEFAULT_RATIO_FIELD: TermsFieldSpec = {
+  key: "defaultRatio",
+  label: "Default ratio (%)",
+  placeholder: "e.g. 90",
+};
+
+const ORIGINATOR_FEE_FIELD: TermsFieldSpec = {
+  key: "originatorFeeRate",
+  label: "Originator fee rate (%)",
+  placeholder: "e.g. 1",
+};
+
+export function termsFieldsFor(
+  chainId: number | null | undefined,
+): ReadonlyArray<TermsFieldSpec> {
+  if (isStellarTarget(chainId)) return STELLAR_TERMS_FIELDS;
+  return STELLAR_TERMS_FIELDS.flatMap((field) =>
+    field.key === "marginCallRatio"
+      ? [field, DEFAULT_RATIO_FIELD]
+      : field.key === "defaultRate"
+        ? [field, ORIGINATOR_FEE_FIELD]
+        : [field],
+  );
+}
+
 const EMPTY_TERMS_FORM: TermsFormValues = {
   advanceRatio: "",
   marginCallRatio: "",
+  defaultRatio: "",
   curePeriod: "",
   priceStaleAfter: "",
   gracePeriod: "",
   defaultRate: "",
+  originatorFeeRate: "",
   attestationInterval: "",
   inspectionInterval: "",
   tolerance: "",
@@ -180,6 +210,7 @@ export function prefillTermsForm(
   return {
     advanceRatio: bps(terms.advance_ratio_bps),
     marginCallRatio: bps(terms.margin_call_ratio_bps),
+    defaultRatio: bps(terms.default_ratio_bps ?? undefined),
     curePeriod: durationPrefill(terms.cure_period, SECONDS_PER_DAY),
     priceStaleAfter: durationPrefill(terms.price_stale_after, SECONDS_PER_HOUR),
     gracePeriod: durationPrefill(terms.grace_period, SECONDS_PER_DAY),
@@ -187,6 +218,10 @@ export function prefillTermsForm(
       terms.default_rate == null
         ? ""
         : defaultRateToPercentText(terms.default_rate),
+    originatorFeeRate:
+      terms.originator_fee_rate == null
+        ? ""
+        : defaultRateToPercentText(terms.originator_fee_rate),
     attestationInterval: durationPrefill(
       terms.attestation_interval,
       SECONDS_PER_DAY,
@@ -204,10 +239,12 @@ export function prefillTermsForm(
 interface ParsedTerms {
   advanceRatioBps: number | null;
   marginCallRatioBps: number | null;
+  defaultRatioBps: number | null;
   curePeriod: string | null;
   priceStaleAfter: string | null;
   gracePeriod: string | null;
   defaultRate: number | null;
+  originatorFeeRate: number | null;
   attestationInterval: string | null;
   inspectionInterval: string | null;
   toleranceBps: number | null;
@@ -218,6 +255,7 @@ export function parseTermsForm(values: TermsFormValues): ParsedTerms {
   return {
     advanceRatioBps: percentToBpsStrict(values.advanceRatio),
     marginCallRatioBps: percentToBpsStrict(values.marginCallRatio),
+    defaultRatioBps: percentToBpsStrict(values.defaultRatio),
     curePeriod: durationToSeconds(values.curePeriod, SECONDS_PER_DAY),
     priceStaleAfter: durationToSeconds(
       values.priceStaleAfter,
@@ -225,6 +263,7 @@ export function parseTermsForm(values: TermsFormValues): ParsedTerms {
     ),
     gracePeriod: durationToSeconds(values.gracePeriod, SECONDS_PER_DAY),
     defaultRate: percentToDefaultRate(values.defaultRate),
+    originatorFeeRate: percentToDefaultRate(values.originatorFeeRate),
     attestationInterval: durationToSeconds(
       values.attestationInterval,
       SECONDS_PER_DAY,
@@ -249,11 +288,42 @@ export function ratioOrderInvalid(parsed: ParsedTerms): boolean {
   );
 }
 
+export const DEFAULT_RATIO_ORDER_ERROR =
+  "The default ratio must be at least the margin call ratio.";
+
+export function defaultRatioOrderInvalid(parsed: ParsedTerms): boolean {
+  return (
+    parsed.defaultRatioBps !== null &&
+    parsed.marginCallRatioBps !== null &&
+    parsed.defaultRatioBps < parsed.marginCallRatioBps
+  );
+}
+
+export function ratioOrderErrorFor(
+  parsed: ParsedTerms,
+  chainId: number | null | undefined,
+): string | null {
+  if (ratioOrderInvalid(parsed)) return RATIO_ORDER_ERROR;
+  return !isStellarTarget(chainId) && defaultRatioOrderInvalid(parsed)
+    ? DEFAULT_RATIO_ORDER_ERROR
+    : null;
+}
+
 export function buildSetTermsCall(
   loanId: number | null,
   values: TermsFormValues,
+  chainId: number | null | undefined,
 ): SecurityRegistryCall | null {
   const p = parseTermsForm(values);
+  const evm = !isStellarTarget(chainId);
+  if (
+    evm &&
+    (p.defaultRatioBps === null ||
+      p.originatorFeeRate === null ||
+      defaultRatioOrderInvalid(p))
+  ) {
+    return null;
+  }
   if (
     loanId === null ||
     values.paymentTerm === "" ||
@@ -283,6 +353,12 @@ export function buildSetTermsCall(
     inspectionInterval: p.inspectionInterval,
     toleranceBps: p.toleranceBps,
     gradeToleranceBps: p.gradeToleranceBps,
+    ...(evm
+      ? {
+          defaultRatioBps: p.defaultRatioBps ?? undefined,
+          originatorFeeRate: p.originatorFeeRate ?? undefined,
+        }
+      : {}),
   };
   return { fn: "set_terms", loanId, terms };
 }
@@ -297,6 +373,7 @@ export function termsFieldEcho(
   const bps: Partial<Record<TermsFieldKey, number | null>> = {
     advanceRatio: p.advanceRatioBps,
     marginCallRatio: p.marginCallRatioBps,
+    defaultRatio: p.defaultRatioBps,
     tolerance: p.toleranceBps,
     gradeTolerance: p.gradeToleranceBps,
   };
@@ -314,10 +391,11 @@ export function termsFieldEcho(
       invalid: value === null,
     };
   }
-  if (key === "defaultRate") {
+  if (key === "defaultRate" || key === "originatorFeeRate") {
+    const rate = key === "defaultRate" ? p.defaultRate : p.originatorFeeRate;
     return {
-      echo: p.defaultRate === null ? null : `= ${p.defaultRate} (1e6 scale)`,
-      invalid: p.defaultRate === null,
+      echo: rate === null ? null : `= ${rate} (1e6 scale)`,
+      invalid: rate === null,
     };
   }
   const value = seconds[key] ?? null;
@@ -435,6 +513,7 @@ export interface SetTermsFormView {
   setField: (key: TermsFieldKey, value: string) => void;
   setPaymentTerm: (value: SecurityPaymentTerm | "") => void;
   echoes: Record<TermsFieldKey, { echo: string | null; invalid: boolean }>;
+  termsFields: ReadonlyArray<TermsFieldSpec>;
   ratioOrderError: string | null;
   pendingNotice: string | null;
   action: ActionView;
@@ -501,7 +580,8 @@ export function useRiskCouncilSecurity(
   const [overrides, setOverrides] = useState<Partial<TermsFormValues>>({});
   const prefill = prefillTermsForm(served?.terms);
   const values: TermsFormValues = { ...prefill, ...overrides };
-  const termsCall = buildSetTermsCall(base.loanId, values);
+  const termsCall = buildSetTermsCall(base.loanId, values, chainId);
+  const termsFields = termsFieldsFor(chainId);
   const parsed = parseTermsForm(values);
 
   const termsAction = useRiskCouncilActionView({
@@ -545,7 +625,7 @@ export function useRiskCouncilSecurity(
   });
 
   const echoes = Object.fromEntries(
-    TERMS_FIELDS.map(({ key }) => [key, termsFieldEcho(key, values)]),
+    termsFields.map(({ key }) => [key, termsFieldEcho(key, values)]),
   ) as SetTermsFormView["echoes"];
 
   return {
@@ -567,7 +647,9 @@ export function useRiskCouncilSecurity(
         : null,
     flagged: flaggedRows(served?.records),
     pending,
-    expectedTarget: ENV.STELLAR_SECURITY_REGISTRY_ID,
+    expectedTarget: isStellarTarget(chainId)
+      ? ENV.STELLAR_SECURITY_REGISTRY_ID
+      : ENV.EVM_SECURITY_REGISTRY_ADDRESS,
     setTerms: {
       values,
       setField: (key, value) =>
@@ -575,7 +657,8 @@ export function useRiskCouncilSecurity(
       setPaymentTerm: (value) =>
         setOverrides((prev) => ({ ...prev, paymentTerm: value })),
       echoes,
-      ratioOrderError: ratioOrderInvalid(parsed) ? RATIO_ORDER_ERROR : null,
+      termsFields,
+      ratioOrderError: ratioOrderErrorFor(parsed, chainId),
       pendingNotice: termsPending ? SET_TERMS_PENDING_NOTICE : null,
       action: termsAction,
     },

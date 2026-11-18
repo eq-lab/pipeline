@@ -39,6 +39,7 @@ export interface ScheduledOp {
   caller?: string;
   target?: string;
   argsXdr?: string;
+  calldata?: string;
 }
 
 export interface ScheduledOpChain {
@@ -47,6 +48,7 @@ export interface ScheduledOpChain {
   caller?: string;
   target?: string;
   argsXdr?: string;
+  calldata?: string;
 }
 
 const ops = new Map<string, ScheduledOp>();
@@ -96,6 +98,7 @@ export function recordScheduledOp({
   caller,
   target,
   argsXdr,
+  calldata,
 }: {
   chainId: number;
   call: CouncilCall;
@@ -107,6 +110,7 @@ export function recordScheduledOp({
     caller,
     target,
     argsXdr,
+    calldata,
   };
   ops.set(opKey(chainId, call), {
     chainId,

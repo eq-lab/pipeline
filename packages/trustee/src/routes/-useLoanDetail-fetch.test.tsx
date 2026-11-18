@@ -70,15 +70,16 @@ describe("useLoanDetail network surface", () => {
     expect(urls.some((u) => u.includes("/ccr-history"))).toBe(false);
   });
 
-  it("does not request /security for an EVM loan", async () => {
+  it("requests /security for an EVM loan", async () => {
     const { result } = renderHook(() => useLoanDetail(560048, "4471"), {
       wrapper,
     });
     await waitFor(() => {
-      expect(result.current.state).not.toBe("loading");
+      expect(result.current.security.state).toBe("ready");
     });
     const urls = fetchMock.mock.calls.map((c) => String(c[0]));
-    expect(urls.some((u) => u.includes("/security"))).toBe(false);
-    expect(result.current.security.state).toBe("hidden");
+    expect(urls.some((u) => u.includes("/security?chain_id=560048"))).toBe(
+      true,
+    );
   });
 });

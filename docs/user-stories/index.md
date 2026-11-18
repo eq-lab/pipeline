@@ -440,6 +440,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1939 EVM AccessManager indexer: scheduled / canceled / executed operations with calldata](https://github.com/eq-lab/pipeline/issues/1939) | [1939-evm-access-manager-indexer.md](./epic-1937/1939-evm-access-manager-indexer.md) | Initial |
 | [#1940 API: /security and loan-book LTV fields for EVM chains](https://github.com/eq-lab/pipeline/issues/1940) | [1940-evm-security-api.md](./epic-1937/1940-evm-security-api.md) | Initial |
 | [#1941 API: pending_operations for EVM chains (calldata args)](https://github.com/eq-lab/pipeline/issues/1941) | [1941-evm-pending-operations-api.md](./epic-1937/1941-evm-pending-operations-api.md) | Initial |
+| [#1942 Trustee: Risk Council security page and inspectors on EVM loans](https://github.com/eq-lab/pipeline/issues/1942) | [1942-trustee-evm-security-page.md](./epic-1937/1942-trustee-evm-security-page.md) | Initial |
 
 
 ## Epic #2029 — Frontend tech debt

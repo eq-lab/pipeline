@@ -15,7 +15,10 @@ import {
   useScheduledOps,
   useServedOperationIds,
 } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  riskCouncilBlockedReason,
+  stellarOnlyActionReason,
+} from "@/lib/targetChains";
 import { formatLoanLabel } from "./-risk-council-shared";
 import { DEFAULT_NO_ROLE } from "./-risk-council-escalate";
 import {
@@ -65,6 +68,7 @@ export interface LoanIndexRow {
 export interface RiskCouncilHubView {
   chainId: number;
   blockedReason: string | null;
+  showInspectorsLink: boolean;
   intro: string;
   roleLine: string | null;
   rows: ScheduledRow[];
@@ -178,7 +182,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
       loanLabel: item.loanId === null ? "—" : loanLabelFor(loans, item.loanId),
       action: pendingActionLabel(item),
       args: formatPendingArgs(item, chainId),
-      scheduledBy: callerText(item, address),
+      scheduledBy: callerText(item, address, chainId),
       executableFrom: formatReadyAt(item.readyAt),
       state: PENDING_STATE_LABELS[item.state],
       link:
@@ -191,6 +195,9 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
   return {
     chainId,
     blockedReason,
+    showInspectorsLink:
+      blockedReason === null ||
+      riskCouncilBlockedReason(chainId, "set_inspectors") === null,
     intro: HUB_INTRO,
     roleLine,
     rows,
