@@ -125,7 +125,7 @@ Persona: Risk Council member on the Trustee console, signed in on the EVM chain,
 
 **Given** the session is on the EVM chain
 
-**When** the member opens `/risk-council/inspectors`
+**When** the member clicks "Inspector panel" on the Risk Council hub (`/risk-council`, which on EVM shows only the Stellar-only reason line and this link) and arrives at `/risk-council/inspectors`
 
 **Then:**
 
