@@ -430,3 +430,11 @@ fn positive_outstanding_computes_ccr_without_missing_inputs() {
     assert_eq!(resp.ccr.unwrap().ccr_bps, 16_000);
     assert!(resp.missing_inputs.is_empty());
 }
+
+#[test]
+fn unbounded_exponent_grade_is_rejected() {
+    let mut r = valid_assay();
+    r.assays[0].grade_g_per_t = "1e1000".to_owned();
+    let err = validate_assay(&r).unwrap_err();
+    assert!(err.contains("grade_g_per_t"), "unexpected error: {err}");
+}

@@ -613,7 +613,8 @@ fn unix_to_datetime(unix_secs: u64) -> Result<DateTime<Utc>, ApiError> {
 }
 
 fn parse_dec(label: &str, s: &str) -> Result<BigDecimal, String> {
-    BigDecimal::from_str(s).map_err(|_| format!("`{label}` is not a valid decimal: {s}"))
+    shared::security_marks::bounded_dec_str(s)
+        .ok_or_else(|| format!("`{label}` is not a valid bounded decimal: {s}"))
 }
 
 /// Pure validation for [`SubmitAssayRequest`] — no I/O, unit-tested directly.
