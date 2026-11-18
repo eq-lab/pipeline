@@ -83,7 +83,8 @@ pub struct ConfiguredChain {
 /// # Minter cash book (optional, Stellar chains only; see docs/product-specs/minter-cash-book.md):
 /// CHAIN_<id>_STELLAR_API_MINTER_ADDRESS=C...                      # must equal the indexer's minter
 /// CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=false     # true/false; needs the minter address
-/// CHAIN_<id>_EVM_API_MINTER_ADDRESS=0x...                         # optional; must equal the indexer's minter; pending_operations scope only
+/// # Minter target of the shared `minter_addresses` map on EVM chains (no cash book; scopes `pending_operations` only):
+/// CHAIN_<id>_EVM_API_MINTER_ADDRESS=0x...                         # optional; must equal the indexer's minter
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
@@ -115,7 +116,7 @@ pub struct ChainsConfig {
     /// Every configured chain has an entry (startup fails otherwise).
     pub loan_registry_addresses: HashMap<i64, String>,
     /// Minter address keyed by chain_id. Stellar: cash-book scope. EVM: `pending_operations`
-    /// scope only; every Stellar-shaped reader gates on `ChainKind::Stellar`.
+    /// scope only; every Stellar-shaped reader reads it through `routes::common::stellar_minter`.
     pub minter_addresses: HashMap<i64, String>,
     pub capital_allocation_from_minter: HashSet<i64>,
     pub withdrawal_queue_addresses: HashMap<i64, String>,

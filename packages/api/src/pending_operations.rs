@@ -102,6 +102,12 @@ pub fn pending_operation(
     now: i64,
 ) -> Option<PendingOperation> {
     if row.args_xdr.is_some() == row.calldata.is_some() {
+        tracing::warn!(
+            loan_id = row.loan_id,
+            operation_id = %row.operation_id,
+            nonce = row.nonce,
+            "pending operation dropped: args_xdr and calldata must be set exclusively"
+        );
         return None;
     }
     Some(PendingOperation {

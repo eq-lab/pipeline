@@ -10,7 +10,7 @@ use pipeline_api::routes::analytics::{
     self, degrade_minter_list, lp_wire_in_items, minter_chains_in_scope, AnalyticsDoc,
     RequestsResponse,
 };
-use pipeline_api::routes::common::ChainScope;
+use pipeline_api::routes::common::{stellar_minter, ChainScope};
 use pipeline_api::routes::pnl::{self, PnlDoc};
 use pipeline_api::AppState;
 use shared::chains::ChainKind;
@@ -491,4 +491,17 @@ fn openapi_exposes_wire_ins_as_optional() {
         .iter()
         .any(|v| v == "wire_ins"));
     assert!(doc["components"]["schemas"]["LpWireInItem"].is_object());
+}
+
+#[test]
+fn pnl_wire_out_minter_is_stellar_only_even_with_an_evm_minter_key_set() {
+    let minters = HashMap::from([
+        (1_i64, "0xEvmMinter".to_owned()),
+        (2_i64, "CMINTER".to_owned()),
+    ]);
+    assert_eq!(stellar_minter(ChainKind::Evm, &minters, 1), None);
+    assert_eq!(
+        stellar_minter(ChainKind::Stellar, &minters, 2).map(String::as_str),
+        Some("CMINTER")
+    );
 }
