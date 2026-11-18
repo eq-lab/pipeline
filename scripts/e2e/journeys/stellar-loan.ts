@@ -199,10 +199,9 @@ const journey: Journey = {
       name: "collateral and margin call",
       run: async ({ recorded }) => {
         const { security } = ids();
-        const deployer = w.deployer;
         const docs = (recorded["loan.submission"] as Entry).documents as Entry[];
         const receipt = docs.find((d) => d.name === "Warehouse Receipt")!;
-        await execute(deployer, security, "set_terms", encodeSecurityRegistryArgs({
+        await execute(trustee, security, "set_terms", encodeSecurityRegistryArgs({
           fn: "set_terms",
           loanId,
           terms: { ...TERMS, curePeriod: 604_800, priceStaleAfter: 0, paymentTerm: "Lc", gracePeriod: 0, defaultRate: 0, attestationInterval: 0, inspectionInterval: 0, toleranceBps: 200, gradeToleranceBps: 100 },
@@ -220,9 +219,9 @@ const journey: Journey = {
           ["release_condition", hash32(sha256("e2e release on repayment"))],
           ["docs", xdr.ScVal.scvVec([scMap([["kind", variant("WarehouseReceipt")], ["sha256", hash32(receipt.sha256)]])])],
         ]);
-        // shortcut: register and perfect are not mapped to a role by the pinned contracts' setup-access, so they fall back to ADMIN (the deployer); switch to the trustee when the mapping names them.
-        const recordId = Number(await invoke(deployer, security, "register", [addr(deployer.publicKey()), u32(loanId), u32(0), record]));
-        await invoke(deployer, security, "perfect", [addr(deployer.publicKey()), u32(recordId), hash32(sha256(`perfected ${recordId}`))]);
+        // The trustee holds SECURITY_AGENT (register, perfect) and RISK_COUNCIL (set_terms) on the stack.
+        const recordId = Number(await invoke(trustee, security, "register", [addr(me()), u32(loanId), u32(0), record]));
+        await invoke(trustee, security, "perfect", [addr(me()), u32(recordId), hash32(sha256(`perfected ${recordId}`))]);
         const revalue = (perUnit: bigint) => execute(trustee, security, "revalue", [u32(recordId), i128(perUnit), sym("XAU"), hash32(sha256(`mark ${perUnit}`))]);
         await revalue(units(PRICE, 7));
         const marked = await chainMoney();

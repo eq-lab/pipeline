@@ -25,7 +25,7 @@ scripts/e2e/up.sh --tag <tag> --reclaim         # first tear down the stack of a
 scripts/e2e/down.sh --tag <tag>                 # remove containers (anvil too), volumes, processes and stacks/<tag>/
 ```
 
-- `E2E_STELLAR_CONTRACTS_REF` (default `7646cef`) and `E2E_CONTRACTS_REF` (default `3b74e98`, `eq-lab/pipeline-contracts`) pick the contracts refs; `E2E_HEALTH_TIMEOUT_MS` (default 180000) the health timeout.
+- `E2E_STELLAR_CONTRACTS_REF` (default `e9881ac`) and `E2E_CONTRACTS_REF` (default `3b74e98`, `eq-lab/pipeline-contracts`) pick the contracts refs; `E2E_HEALTH_TIMEOUT_MS` (default 180000) the health timeout.
 - The EVM chain: anvil runs with a mnemonic generated per run (never anvil's default one); its ten accounts are unlocked, and custody is plain EOAs among them. `up.sh` deploys the contracts' `test/mocks/USDCMock` as USDC, then runs `script/Deploy.s.sol`, `script/RoleSetup.s.sol` and `script/Configure.s.sol` (deployment tag `e2e`) with `forge script --unlocked` in a copy of the cached build under `stacks/<tag>/evm-contracts/`. The pinned scripts hard-code anvil's default-mnemonic accounts and mainnet USDC for chain `31337` (`script/base/ChainValues.sol`); the cache build rewrites each of those addresses to `vm.envAddress("E2E_EVM_<name>")` and stops if the ref's names differ from the expected set (`EVM_ROLES` in `scripts/e2e/stack.ts`: account 0 the admin, whitelist manager and relayer signer, 1 treasury, 2 custodian, 3 verifier and API voucher signer, 4 capital wallet, 5 loan registry manager, 6 mint caller, 7 minter ops, 8 collateral trustee, 9 collateral valuer). forge runs with only `PATH`, `HOME` and those variables. The indexer reads chain `31337` from block 0 with `CHAIN_31337_EVM_INDEXER_LOG_CONFIRMATIONS_DELAY=0`, the price poller from the last deploy block; the apps get `VITE_EVM_CHAIN_ID=31337`, `VITE_EVM_RPC_URL` and the deployed addresses.
 - `up.sh` also generates `lp-browser`, the key of the LP app's [E2E test wallet](../packages/frontend/src/wallet/README.md#e2e-test-wallet): funded by friendbot, a USDC trustline and 1000 USDC from the mock issuer (the app opens the PLUSD trustline itself). Its secret is `E2E_WALLET_SECRET` in `.env.e2e-frontend` only, next to the flag `VITE_E2E_WALLET=1`; `scripts/e2e/assert-prod-wallet.ts` (CI) proves a production build carries neither the module nor the secret. The Operations Console gets the same module with the stack's `trustee` key as its `E2E_WALLET_SECRET` (`.env.e2e-trustee`): the operator `run.ts` puts in `auth_users` signs in by wallet signature. With the EVM chain, `up.sh` likewise generates the EVM test wallet's key (`E2E_EVM_WALLET_KEY`, 100 ETH and 1000 USDC by `anvil_setBalance` / `anvil_dealERC20`), written to `.env.e2e-frontend` only.
 - `up.sh` deploys every contract with the contracts repository's own `just deploy-all` (network `e2e`, USDC a local SAC, every role granted, including `MINTER` on PLUSD to the deposit manager and the minter), builds `api` and `worker` from the working tree and starts every service. Before `deploy-all` it opens the capital wallet's USDC and PLUSD trustlines (the Minter refuses a custodian without them); after it, the custodian approves the withdrawal queue to spend its USDC (`deploy-all`'s own `approve-usdc` passes `--expiration_ledger`, but the SAC's `approve` takes `live_until_ledger`).
@@ -41,7 +41,7 @@ All state lives outside the repository under `$E2E_HOME` (default `~/.cache/pipe
 - `stacks/<tag>/`: `env.json` (the generated env), `.env.e2e-<app>` (the Vite variables), `pids/`, `logs/`, `stellar/` (the CLI config with the stack's keys), `contracts/` (the Stellar deployment and `addresses.json`), `evm-contracts/` (the EVM deployment, `deployments/anvil-e2e.json`) and `state.json`:
 
 ```json
-{ "tag": "x", "chains": ["stellar", "evm"], "contracts": { "stellar": "7646cef", "evm": "3b74e98" }, "durations": { "up": 0 }, "startedAt": "…", "ports": { "postgres": 54329 } }
+{ "tag": "x", "chains": ["stellar", "evm"], "contracts": { "stellar": "e9881ac", "evm": "3b74e98" }, "durations": { "up": 0 }, "startedAt": "…", "ports": { "postgres": 54329 } }
 ```
 
 ### Clean environment
@@ -135,7 +135,7 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 7. **Repay** through the minter (`repay`, as Cash reporter): the outstanding principal and the interest accrued so far; the interest is minted to sPLUSD.
 8. **Close** (`close_loan`, `EarlyRepayment`) and the **loan book after close**.
 
-The pinned contracts' `setup-access` maps no role to the security registry's `register` and `perfect`, so they fall back to `ADMIN` and the journey signs them with the `deployer`. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
+The stack grants the `trustee` `SECURITY_AGENT` (`register`, `perfect`) and `RISK_COUNCIL` (`set_terms`), so the journey signs every security registry call with it. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
 
 | Check | What it compares |
 |-------|------------------|
@@ -151,7 +151,7 @@ The pinned contracts' `setup-access` maps no role to the security registry's `re
 | `stellar.loan-book.collateral` | `spot_price` and `collateral` against the static price × quantity, less the haircut |
 | `stellar.loan-book.ltv-range` | optional, #765: `ltv` within 0–200 % and equal to `principal / collateral`; `details` always carry the LTV |
 | `stellar.loan-book.margin-call` | `margin_call_open` against the security registry's `margin_call_at` |
-| `stellar.loan-book.ltv-bps` | optional, #1998: `ltv_bps` against `ceil(debt × 10000 / value)` from the security registry; the worker reads `coverage_detail`, which the pinned contracts lack, so it stays `null` |
+| `stellar.loan-book.ltv-bps` | `ltv_bps` against `ceil(debt × 10000 / value)` from the security registry (the worker reads `coverage_detail`) |
 | `stellar.loan-book.summary` | while the loan is active: `weighted_rate` and `/v1/dashboard/summary` `loan_book_yield` against the loan's rate; `deployed_senior` against `outstanding_total`; `/v1/financial-position` secured loans and `outstanding_in_loans` against Σ facility of the registry's active loans (the spec's senior + equity, [dashboards.md](./product-specs/dashboards.md)) |
 | `stellar.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against the cumulative offtaker receipts, `deployed_senior` and secured loans as above |
 | `stellar.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `interest_minted` of the minter's repayments |
@@ -229,7 +229,7 @@ The same as on Stellar: play it once per stack, after the EVM LP journey, whose 
   "schemaVersion": 1,
   "tag": "2026-11-17-a",
   "commit": "<pipeline sha>",
-  "contracts": { "stellar": "7646cef", "evm": "3b74e98" },
+  "contracts": { "stellar": "e9881ac", "evm": "3b74e98" },
   "startedAt": "…", "finishedAt": "…",
   "durations": { "up": 0, "run": 0, "check": 0 },
   "ok": true,

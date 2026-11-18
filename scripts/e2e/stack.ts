@@ -146,7 +146,7 @@ export interface ContractsSource {
 export const STELLAR_CONTRACTS: ContractsSource = {
   name: "pipeline-stellar-contracts",
   repo: process.env.E2E_STELLAR_CONTRACTS_REPO || "https://github.com/eq-lab/pipeline-stellar-contracts.git",
-  ref: process.env.E2E_STELLAR_CONTRACTS_REF || "7646cef",
+  ref: process.env.E2E_STELLAR_CONTRACTS_REF || "e9881ac",
   build: (dir, log) => logged(log, "stellar", ["contract", "build"], { cwd: dir }),
 };
 
@@ -383,6 +383,7 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
       whitelist_admin: [...now(addr.deployer), ...now(addr.relayer)],
       trustee: now(addr.trustee),
       risk_council: now(addr.trustee),
+      security_agent: now(addr.trustee),
       cash_reporter: now(addr.trustee),
       guardian: now(addr.deployer),
       pauser: now(addr.deployer),
