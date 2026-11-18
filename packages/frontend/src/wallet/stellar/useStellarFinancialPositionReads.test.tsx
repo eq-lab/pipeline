@@ -11,7 +11,7 @@
  * Scenarios:
  *   useStellarPlusdTotalSupply:
  *     1. Returns `undefined` immediately when `plusdIssuerId` is empty — no fetch.
- *     2. Fetches Horizon /assets and returns `balances.authorized` as a string.
+ *     2. Fetches Horizon /assets and returns balances + contract/claimable/pool amounts.
  *     3. Surfaces error when Horizon fetch fails (non-2xx).
  *     4. Returns data without a connected wallet (no wallet gate).
  *
