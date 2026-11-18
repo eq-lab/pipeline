@@ -122,7 +122,7 @@ pub const RECORD_LOAN_SQL: &str = "SELECT loan_id FROM security_records
      LIMIT 1";
 
 pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o.nonce, o.caller,
-            o.target, o.function, o.args_xdr, o.args_json, o.ready_at, o.expires_at
+            o.target, o.function, o.args_xdr, o.calldata, o.args_json, o.ready_at, o.expires_at
      FROM access_manager_operations o
      CROSS JOIN LATERAL (
          SELECT COALESCE(o.loan_id, (
@@ -151,7 +151,7 @@ pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o
      WHERE o.chain_id = $1
        AND o.status = 'pending'
        AND o.target = ANY($2)
-       AND o.args_xdr IS NOT NULL
+       AND (o.args_xdr IS NOT NULL OR o.calldata IS NOT NULL)
        AND o.args_json IS NOT NULL
        AND r.loan_id IS NOT NULL
        AND ($4::bigint IS NULL OR r.loan_id = $4)
@@ -210,7 +210,8 @@ pub struct PendingOpRow {
     pub caller: String,
     pub target: String,
     pub function: String,
-    pub args_xdr: String,
+    pub args_xdr: Option<String>,
+    pub calldata: Option<String>,
     pub args_json: Value,
     pub ready_at: i64,
     pub expires_at: i64,

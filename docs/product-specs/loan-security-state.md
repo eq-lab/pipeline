@@ -114,7 +114,7 @@ The EVM mirrors are listed in [loan-security-state-evm.md](./loan-security-state
     "repayments": [{ "repayment_id": "3", "cash": "...", "interest_minted": "...", "fee_shares": "...",
       "value_date": "...", "ref_hash": "hex", "tx_hash": "...", "at": "...", "reversed_at": null }] }],
   "pending_operations": [{ "operation_id": "hex64", "nonce": 1, "caller": "G...", "target": "C...",
-    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64",
+    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64", "calldata": null,
     "args": [7, 8000, "86400"], "ready_at": "2025-11-16T00:00:00Z", "expires_at": "2025-11-23T00:00:00Z",
     "state": "waiting|ready|expired" }] }
 ```
@@ -131,38 +131,38 @@ The EVM mirrors are listed in [loan-security-state-evm.md](./loan-security-state
 | `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
 | `price_stale` | `bool` or `null` | `security_loan_valuations.price_stale`, the contract flag, same as `/security` `valuation.price_stale` | no valuation snapshot yet |
 
-A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay`) and SecurityRegistry, see [Pending operations](#pending-operations).
+A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay` / `reverseRepay`) and SecurityRegistry, on Stellar and EVM, see [Pending operations](#pending-operations).
 
 The three LTV keys are `null` on chains without their API SecurityRegistry key (`CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS` or the two EVM keys). The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
 
 ## Pending operations
 
-Operations the Risk Council scheduled on the Stellar AccessManager and that have not been executed or canceled (#1922, epic #1920), read from `access_manager_operations` ([access-manager-events.md](../references/access-manager-events.md#api-read)). They are served on `GET /v1/loan-book/{loan_id}/security` (SecurityRegistry operations of the loan: `set_terms`, `resolve_flag`, `release_with_consent`) and on every `loans[]` entry of `GET /v1/loan-book` (every loan-scoped operation of the loan on the configured LoanRegistry, Minter and SecurityRegistry).
+Operations the Risk Council scheduled on the Stellar or EVM AccessManager and that have not been executed or canceled (#1922, epic #1920; EVM #1941, epic #1937), read from `access_manager_operations` ([access-manager-events.md](../references/access-manager-events.md#api-read)). They are served on `GET /v1/loan-book/{loan_id}/security` (SecurityRegistry operations of the loan: `set_terms`, `resolve_flag`, `release_with_consent`) and on every `loans[]` entry of `GET /v1/loan-book` (every loan-scoped operation of the loan on the configured LoanRegistry, Minter and SecurityRegistry). Both chains share one DTO and one read.
 
 | Field | Type | Source |
 |---|---|---|
-| `operation_id` | string | 64 lowercase hex, as stored |
+| `operation_id` | string | 64 lowercase hex, as stored; on EVM the contract's `bytes32` is `0x` + these 64 hex |
 | `nonce` | number | contract nonce (`u32`) |
-| `caller`, `target`, `function` | string | as stored |
+| `caller`, `target` | string | as stored: a Strkey on Stellar, EIP-55 on EVM |
+| `function` | string | the contract's native name, as stored: snake_case on Stellar, Solidity camelCase on EVM; see [Function names per chain](../references/access-manager-events.md#function-names-per-chain) |
 | `target_kind` | `loan_registry`, `minter`, `security_registry`, `other` | `target` compared with the chain's API LoanRegistry, Minter and SecurityRegistry addresses; `other` is reserved and not emitted here |
-| `args_xdr` | string | base64 of the arguments, verbatim |
-| `args` | JSON array | `args_json` verbatim, display only |
+| `args_xdr` | string or `null` | Stellar: base64 of the arguments, verbatim; `null` on EVM |
+| `calldata` | string or `null` | EVM: `0x` + lowercase hex of the whole call data, selector included, verbatim: the `data` of `execute(target, data)` / `cancel(caller, target, data)`; `null` on Stellar. Exactly one of `args_xdr` and `calldata` is non-null |
+| `args` | JSON array | `args_json` verbatim, display only, in the chain's native shape ([EVM](../references/access-manager-events.md#evm-args-and-operation-id): `uint256` ids as decimal strings, tuples as objects keyed by the Solidity names, enums as ordinals) |
 | `ready_at`, `expires_at` | ISO-8601 UTC | `ready_at` and `ready_at + 604800` |
 | `state` | `waiting`, `ready`, `expired` | derived at the API clock `now`: `waiting` while `now < ready_at`, `expired` once `now >= expires_at`, else `ready` |
 
-**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response.
-
-**Sort.** By `ready_at`, then `operation_id`, then `nonce`.
+**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response. **Sort.** By `ready_at`, then `operation_id`, then `nonce`.
 
 **Selection.**
 
 - Only `pending` rows. Executed and canceled rows are never served. An expired schedule stays `pending` in the table and is served as `expired`, with no time window, until a later schedule of the same operation id supersedes it.
-- Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address. A loan id of a retired contract never attaches to the same id on the current one.
+- Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address, compared as canonical strings (a Strkey, or EIP-55 on EVM, exactly). A loan id of a retired contract never attaches to the same id on the current one.
 - The loan is the row's `loan_id`. For a `resolve_flag` or `release_with_consent` row projected before its record was known (`loan_id` `NULL`, `record_id` set), the read resolves the loan from `security_records`, the `SecurityRecordRegistered` rows of `contract_logs` and `security_view_snapshots`. Rows with no loan are not served.
-- Rows without `args_xdr` and `args_json` (transaction out of retention) are not served: they cannot be executed from the console.
+- Rows without native args (`args_xdr` or `calldata`) or without `args_json` are not served: they cannot be executed from the console. Stellar: the transaction was out of retention. EVM: the operation id did not verify, the selector is unknown, or the arguments are undecodable.
 - A row is dropped when a later schedule (greater `(schedule_ledger, source_log_id)`) of the same contract and operation id exists, whatever its status. On chain a new schedule of an id is accepted only after the previous one stopped being live. The contract nonce restarts at 1 once the temporary entry lapses, so the rule does not compare nonces.
 
-**Empty array.** EVM chains (until #1941), a chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. `other`, `set_inspectors` and any non-loan operation are out of scope.
+**Empty array.** A chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. The EVM keys are `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (optional, must equal the indexer's Minter; it does not enable the cash book, analytics or attention-count Minter reads) and `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` (#1940). `other`, `set_inspectors` / `setInspectors` (a RecordNft operation on EVM, never a target) and any non-loan operation are out of scope.
 
 **Freshness.** Up to one `access-manager-sync` interval (15 s) after the indexer passes the ledger. A database error is a `500` for the whole response. Reconciliation against the contract's `get_schedule` is TD-187.
 

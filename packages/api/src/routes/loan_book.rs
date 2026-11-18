@@ -43,7 +43,7 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::pending_operations::{
-    group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
+    chain_scope, group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind,
 };
 use crate::routes::common::{
     chain_kind, loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
@@ -1516,20 +1516,12 @@ async fn pending_ops_by_loan(
     let repo = AccessManagerRepo::new(state.pool.clone());
     let mut out = HashMap::new();
     for &chain_id in chain_ids {
-        if chain_kind(state, chain_id) != Some(ChainKind::Stellar) {
-            continue;
-        }
-        let scope = TargetScope {
-            loan_registry: state
-                .loan_registry_addresses
-                .get(&chain_id)
-                .map(String::as_str),
-            minter: state.minter_addresses.get(&chain_id).map(String::as_str),
-            security_registry: state
-                .security_registry_addresses
-                .get(&chain_id)
-                .map(String::as_str),
-        };
+        let scope = chain_scope(
+            chain_id,
+            &state.loan_registry_addresses,
+            &state.minter_addresses,
+            &state.security_registry_addresses,
+        );
         let targets = scope.targets();
         if targets.is_empty() {
             continue;

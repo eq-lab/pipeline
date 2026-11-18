@@ -11,8 +11,7 @@ use chrono::{TimeZone, Utc};
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::loan_security::{
-    self, parse_loan_id, pending_operations_served, resolve_security_registry,
-    security_log_contracts, LoanSecurityDoc,
+    self, parse_loan_id, resolve_security_registry, security_log_contracts, LoanSecurityDoc,
 };
 use pipeline_api::security_state::{
     build_security_response, mark_price_pairs, needs_concentrate_inputs, MarkInputs,
@@ -375,12 +374,6 @@ fn the_log_contracts_are_the_registry_plus_the_chains_record_nft() {
         security_log_contracts(EVM, EVM_REGISTRY, &HashMap::new()),
         [EVM_REGISTRY]
     );
-}
-
-#[test]
-fn pending_operations_are_served_on_stellar_only_until_1941() {
-    assert!(pending_operations_served(ChainKind::Stellar));
-    assert!(!pending_operations_served(ChainKind::Evm));
 }
 
 #[test]

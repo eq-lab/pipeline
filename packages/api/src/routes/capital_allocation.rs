@@ -80,7 +80,7 @@ use crate::config::{TransferAddressSets, CANONICAL_AMOUNT_DECIMALS};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::minter_cash_book::{fold_cash, normalized_base6};
-use crate::routes::common::LenientChainFilter;
+use crate::routes::common::{stellar_minter, LenientChainFilter};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -232,8 +232,13 @@ async fn get_capital_allocation(
                     .map_err(ApiError::from)
             },
             async {
-                match state.minter_addresses.get(&chain_id) {
-                    Some(minter) if state.capital_allocation_from_minter.contains(&chain_id) => {
+                match capital_allocation_minter(
+                    c.kind,
+                    &state.minter_addresses,
+                    &state.capital_allocation_from_minter,
+                    chain_id,
+                ) {
+                    Some(minter) => {
                         let rows = state
                             .contract_logs_repo
                             .list_minter_fold_events(chain_id, minter)
@@ -298,6 +303,15 @@ async fn get_capital_allocation(
 }
 
 static INCOMPLETE_FOLD_WARNED: OnceLock<Mutex<HashSet<i64>>> = OnceLock::new();
+
+pub fn capital_allocation_minter<'a, S: std::hash::BuildHasher, T: std::hash::BuildHasher>(
+    kind: shared::chains::ChainKind,
+    minter_addresses: &'a std::collections::HashMap<i64, String, S>,
+    from_minter: &HashSet<i64, T>,
+    chain_id: i64,
+) -> Option<&'a String> {
+    stellar_minter(kind, minter_addresses, chain_id).filter(|_| from_minter.contains(&chain_id))
+}
 
 fn log_incomplete_fold(chain_id: i64) {
     let first = INCOMPLETE_FOLD_WARNED

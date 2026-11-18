@@ -83,6 +83,8 @@ pub struct ConfiguredChain {
 /// # Minter cash book (optional, Stellar chains only; see docs/product-specs/minter-cash-book.md):
 /// CHAIN_<id>_STELLAR_API_MINTER_ADDRESS=C...                      # must equal the indexer's minter
 /// CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=false     # true/false; needs the minter address
+/// # Minter target of the shared `minter_addresses` map on EVM chains (no cash book; scopes `pending_operations` only):
+/// CHAIN_<id>_EVM_API_MINTER_ADDRESS=0x...                         # optional; must equal the indexer's minter
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
@@ -113,6 +115,8 @@ pub struct ChainsConfig {
     /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
     /// Every configured chain has an entry (startup fails otherwise).
     pub loan_registry_addresses: HashMap<i64, String>,
+    /// Minter address keyed by chain_id. Stellar: cash-book scope. EVM: `pending_operations`
+    /// scope only; every Stellar-shaped reader reads it through `routes::common::stellar_minter`.
     pub minter_addresses: HashMap<i64, String>,
     pub capital_allocation_from_minter: HashSet<i64>,
     pub withdrawal_queue_addresses: HashMap<i64, String>,
@@ -204,6 +208,7 @@ impl ChainsConfig {
                 &mut minter_addresses,
                 &mut capital_allocation_from_minter,
             )?;
+            load_evm_minter_address(chain_id, chain_kind, &mut minter_addresses)?;
             load_withdrawal_queue_scope(chain_id, chain_kind, &mut withdrawal_queue_addresses);
             load_pocket_address(chain_id, chain_kind, &mut pocket_addresses)?;
             load_security_registry_address(
@@ -271,6 +276,18 @@ impl ChainsConfig {
             plusd_addresses,
         })
     }
+}
+
+fn load_evm_minter_address(
+    chain_id: i64,
+    kind: ChainKind,
+    out: &mut HashMap<i64, String>,
+) -> Result<()> {
+    if kind != ChainKind::Evm {
+        return Ok(());
+    }
+    let key = format!("CHAIN_{chain_id}_EVM_API_MINTER_ADDRESS");
+    load_optional_contract(chain_id, kind, &key, "EVM Minter (pending operations)", out)
 }
 
 fn load_minter_cash_book(

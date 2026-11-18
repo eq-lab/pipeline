@@ -1259,3 +1259,80 @@ fn a_stellar_chain_never_gets_a_record_nft_entry() {
         },
     );
 }
+
+const EVM_MINTER: &str = "0x621BaAb0ced6b11f88019582183b081A118755f4";
+
+#[test]
+fn evm_minter_address_is_normalised_into_the_shared_map_without_the_cash_book_switch() {
+    let lower = EVM_MINTER.to_lowercase();
+    with_env(
+        &[
+            ("CHAINS", "7201"),
+            ("DEFAULT_CHAIN_ID", "7201"),
+            ("CHAIN_7201_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7201_EVM_API_MINTER_ADDRESS", &format!(" {lower} ")),
+        ],
+        &["CHAIN_7201_TYPE"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("config");
+            assert_eq!(cfg.minter_addresses[&7201], EVM_MINTER);
+            assert!(cfg.capital_allocation_from_minter.is_empty());
+        },
+    );
+}
+
+#[test]
+fn evm_minter_address_unset_or_blank_gives_no_entry() {
+    for (chain, value) in [(7202_i64, None), (7203_i64, Some("   "))] {
+        let key = format!("CHAIN_{chain}_EVM_API_MINTER_ADDRESS");
+        let registry_key = format!("CHAIN_{chain}_EVM_API_LOAN_REGISTRY_ADDRESS");
+        let chains = chain.to_string();
+        let mut set = vec![
+            ("CHAINS", chains.as_str()),
+            ("DEFAULT_CHAIN_ID", chains.as_str()),
+            (registry_key.as_str(), EVM_REGISTRY),
+        ];
+        let mut clear = vec![format!("CHAIN_{chain}_TYPE")];
+        match value {
+            Some(v) => set.push((key.as_str(), v)),
+            None => clear.push(key.clone()),
+        }
+        let clear: Vec<&str> = clear.iter().map(String::as_str).collect();
+        with_env(&set, &clear, || {
+            let cfg = ChainsConfig::from_env().expect("config");
+            assert!(cfg.minter_addresses.is_empty());
+        });
+    }
+}
+
+#[test]
+fn invalid_evm_minter_address_is_error_naming_the_key() {
+    with_env(
+        &[
+            ("CHAINS", "7204"),
+            ("DEFAULT_CHAIN_ID", "7204"),
+            ("CHAIN_7204_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7204_EVM_API_MINTER_ADDRESS", "0xnothex"),
+        ],
+        &["CHAIN_7204_TYPE"],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(msg.contains("CHAIN_7204_EVM_API_MINTER_ADDRESS"), "{msg}");
+        },
+    );
+}
+
+#[test]
+fn evm_minter_key_on_a_stellar_chain_is_rejected_as_a_stray_key() {
+    with_stellar_minter_env(
+        &[("CHAIN_99000021_EVM_API_MINTER_ADDRESS", EVM_MINTER)],
+        &[MINTER_ADDR_KEY, MINTER_FLAG_KEY],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_99000021_EVM_API_MINTER_ADDRESS"),
+                "{msg}"
+            );
+        },
+    );
+}

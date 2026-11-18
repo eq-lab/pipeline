@@ -17,7 +17,9 @@ Identical on both chains: the route, the 400 / 404 / 500 rules, every Stellar ke
 | `terms.default_ratio_bps`, `terms.originator_fee_rate` | `null` | served (`originator_fee_rate` is on the 1e6 economics scale, like `default_rate`) |
 | `default_breach` | `null` | served when terms exist |
 | Address text | Strkey | EIP-55 |
-| `pending_operations` | served (#1922) | `[]` until #1941 |
+| `pending_operations` | served (#1922), `args_xdr` | served (#1941), `calldata` |
+
+On EVM an expired pending operation can still be canceled (OpenZeppelin `cancel` checks only that the schedule exists), which closes the row and removes it from `pending_operations`.
 
 `loan_id` stays a `u32` on both chains: an EVM id above `u32::MAX` answers `400`.
 

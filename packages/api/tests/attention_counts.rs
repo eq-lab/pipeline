@@ -12,7 +12,7 @@ use pipeline_api::routes::attention_counts::{
     self, authorize, build_response, cash_management_counts, loan_counts, origination_counts,
     AttentionCountsDoc, ChainAttentionCounts,
 };
-use pipeline_api::routes::common::ChainScope;
+use pipeline_api::routes::common::{stellar_minter, ChainScope};
 use pipeline_api::routes::ramp::{filter_pending_ramp_events, RampEvent};
 use pipeline_api::{config::TransferAddressSets, AppState};
 use serde_json::json;
@@ -783,4 +783,21 @@ fn the_response_schemas_are_registered() {
             "missing {name}"
         );
     }
+}
+
+#[test]
+fn an_evm_chain_with_the_minter_key_set_reads_no_stellar_minter() {
+    let minters = HashMap::from([
+        (
+            EVM.chain_id,
+            "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+        ),
+        (STELLAR.chain_id, "CMINTER".to_owned()),
+    ]);
+    assert_eq!(stellar_minter(EVM.kind, &minters, EVM.chain_id), None);
+    assert_eq!(
+        stellar_minter(STELLAR.kind, &minters, STELLAR.chain_id).map(String::as_str),
+        Some("CMINTER")
+    );
+    assert_eq!(stellar_minter(STELLAR.kind, &minters, 5), None);
 }
