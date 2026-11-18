@@ -3,7 +3,7 @@
  *
  * - `useStellarPlusdTotalSupply()` — total PLUSD in circulation (LIABILITY).
  *   Source: Horizon REST `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
- *   → `_embedded.records[0].balances.authorized` (human-decimal string).
+ *   → `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`.
  *   Rationale: a SAC exposes no Soroban `total_supply` view for a classic asset;
  *   Horizon `/assets` is the only reliable source for issued supply.
  *
@@ -95,7 +95,6 @@ async function fetchHorizonAssetSupply(
       `${label} asset not found or balances.authorized missing in Horizon response`,
     );
   }
-  // Horizon amounts are fixed 7-decimal strings: sum as integers (no float drift).
   const total = [
     ...Object.values(rec.balances),
     rec.contracts_amount,

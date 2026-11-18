@@ -171,7 +171,7 @@ export const ENV = Object.freeze({
    * Stellar G-address of the account that issued the PLUSD classic asset.
    * Used by `useStellarPlusdTotalSupply` to read total PLUSD supply via Horizon:
    *   `GET /assets?asset_code=PLUSD&asset_issuer={STELLAR_PLUSD_ISSUER_ID}`
-   * → `balances.authorized` gives the total PLUSD in circulation.
+   * → `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`.
    *
    * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
    *

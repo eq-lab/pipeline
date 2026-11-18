@@ -116,7 +116,7 @@ describe("useStellarPlusdTotalSupply", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("fetches Horizon /assets and returns balances.authorized as a string", async () => {
+  it("fetches Horizon /assets and returns balances plus contract, claimable and pool amounts", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
