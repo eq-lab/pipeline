@@ -820,7 +820,7 @@ line, whichever section it lands in.
   contract source (contracts repo / `stellar contract info`), then correct or confirm the
   table entry — a one-line change.
 
-### TD-50: Trustee Loan detail's Documents card is a stand-in for the v3 §S5 tab strip
+### TD-50: Trustee Loan detail's Documents card is a stand-in for the v3 §S5 tab strip [RESOLVED-BY-DECISION 2026-11-18 / #1686]
 
 - **Date:** 2026-08-07 (#1039)
 - **Location:** `packages/trustee/src/routes/loans.$id.tsx` (`DocumentsCard`);
@@ -834,6 +834,11 @@ line, whichever section it lands in.
   migration will need to relocate this card's content rather than build it fresh.
 - **Suggested fix:** Scope the §S5 tab-strip migration as its own issue once prioritized; move the
   Documents card's list markup into the new Documents tab body unchanged.
+- **Resolution (2026-11-18, #1686):** #1686 closed as not planned. The v3 §S5 tab strip was a
+  design assignment whose Figma file was never delivered, and its S5 content is stale (CCR retired
+  by #1786, proposals replaced by AccessManager scheduled operations #1920, MPC retired by the user
+  docs #1747). The Documents card is the loan-detail documents surface; any restructure comes as a
+  fresh issue with real frames.
 
 ### TD-51: `packages/trustee` has the same pre-existing Prettier formatting drift as TD-47/TD-12 (`packages/frontend`) [RESOLVED 2026-08-07 / #1037]
 
