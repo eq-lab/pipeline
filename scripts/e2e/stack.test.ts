@@ -360,14 +360,22 @@ describe("contracts cache", { timeout: TIMEOUT }, () => {
   });
 });
 
-describe("passcode", () => {
+describe("passcode", { timeout: TIMEOUT }, () => {
   const line = (email: string, code: string) => `\x1b[2m INFO\x1b[0m email to=${email} body=Your verification code is ${code}\n`;
+  const notice = (email: string) => `\x1b[2m INFO\x1b[0m email to=${email} body=An account already exists for this address\n`;
   const log = line("a@x.io", "111111") + line("b@x.io", "222222") + line("a@x.io", "333333");
 
   it("finds the latest code of the email, none for an unknown one", () => {
     assert.equal(findPasscode(log, "b@x.io"), "222222");
     assert.equal(findPasscode(log, "a@x.io"), "333333");
     assert.equal(findPasscode(log, "c@x.io"), undefined);
+  });
+
+  it("never returns another address's code", () => {
+    assert.equal(findPasscode(log + notice("a@x.io") + line("b@x.io", "444444"), "a@x.io"), "333333");
+    assert.equal(findPasscode(notice("c@x.io") + line("b@x.io", "444444"), "c@x.io"), undefined);
+    assert.equal(findPasscode(line("aa@x.io", "555555"), "a@x.io"), undefined);
+    assert.equal(findPasscode(line("a@x.io.uk", "555555"), "a@x.io"), undefined);
   });
 
   it("prints only the code, and exits 1 without one", () => {

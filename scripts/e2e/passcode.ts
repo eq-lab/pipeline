@@ -7,11 +7,19 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { stackDir } from "./lib/stack";
 
-/** The passcode of the last "to=<email>" entry of an API log (EMAIL_DEV_LOG=true), if any. */
+/**
+ * The passcode of the last verification email to `email` in an API log (EMAIL_DEV_LOG=true), if any.
+ * The code is on the same line as its `to=` field; other mail to the address (duplicate-signup notice,
+ * password reset) and codes of other addresses are skipped.
+ */
 export function findPasscode(log: string, email: string): string | undefined {
-  const text = log.replace(/\x1b\[[0-9;]*m/g, "");
-  const at = text.lastIndexOf(`to=${email}`);
-  return at < 0 ? undefined : /verification code is (\d{6})/.exec(text.slice(at))?.[1];
+  const lines = log.replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const to = /\bto=(\S+)/.exec(lines[i])?.[1];
+    const code = /verification code is (\d{6})/.exec(lines[i])?.[1];
+    if (to === email && code) return code;
+  }
+  return undefined;
 }
 
 export function passcodeFor(tag: string, email: string): string | undefined {
