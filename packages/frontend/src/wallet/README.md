@@ -1074,7 +1074,8 @@ const { data, isLoading, error } = useStellarPlusdTotalSupply();
 
 Protocol-level read (no wallet gate). Reads PLUSD total supply in circulation
 from Horizon: `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` →
-`balances.authorized`. Returns a Horizon human-decimal string (e.g.
+all `balances` + `contracts_amount` + `claimable_balances_amount` +
+`liquidity_pools_amount` (vault-held PLUSD counts). Returns a 7-decimal string (e.g.
 `"10000711.9961018"`) — pass directly to `parseFloat()`. No SAC bigint scaling.
 Short-circuits to `undefined` when `VITE_STELLAR_PLUSD_ISSUER_ID` is not
 configured. Polls every 30 s.
