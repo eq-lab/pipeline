@@ -76,6 +76,10 @@ pub struct ConfiguredChain {
 /// # indexer's CHAIN_<id>_{EVM,STELLAR}_INDEXER_LOAN_REGISTRY_ADDRESS):
 /// CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS=0x...                  # EVM chains
 /// CHAIN_<id>_STELLAR_API_LOAN_REGISTRY_ADDRESS=C...               # Stellar chains
+/// # SecurityRegistry (optional; both EVM keys are set together, must equal the indexer's):
+/// CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS=0x...              # EVM chains
+/// CHAIN_<id>_EVM_API_SECURITY_RECORD_NFT_ADDRESS=0x...            # EVM chains
+/// CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS=C...           # Stellar chains
 /// # Minter cash book (optional, Stellar chains only; see docs/product-specs/minter-cash-book.md):
 /// CHAIN_<id>_STELLAR_API_MINTER_ADDRESS=C...                      # must equal the indexer's minter
 /// CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=false     # true/false; needs the minter address
@@ -114,6 +118,7 @@ pub struct ChainsConfig {
     pub withdrawal_queue_addresses: HashMap<i64, String>,
     pub pocket_addresses: HashMap<i64, String>,
     pub security_registry_addresses: HashMap<i64, String>,
+    pub security_record_nft_addresses: HashMap<i64, String>,
     pub plusd_addresses: HashMap<i64, String>,
 }
 
@@ -179,6 +184,7 @@ impl ChainsConfig {
         let mut withdrawal_queue_addresses = HashMap::new();
         let mut pocket_addresses = HashMap::new();
         let mut security_registry_addresses = HashMap::new();
+        let mut security_record_nft_addresses = HashMap::new();
         let mut plusd_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
@@ -200,7 +206,12 @@ impl ChainsConfig {
             )?;
             load_withdrawal_queue_scope(chain_id, chain_kind, &mut withdrawal_queue_addresses);
             load_pocket_address(chain_id, chain_kind, &mut pocket_addresses)?;
-            load_security_registry_address(chain_id, chain_kind, &mut security_registry_addresses)?;
+            load_security_registry_address(
+                chain_id,
+                chain_kind,
+                &mut security_registry_addresses,
+                &mut security_record_nft_addresses,
+            )?;
             load_plusd_address(chain_id, chain_kind, &mut plusd_addresses)?;
             let decimals = load_asset_decimals(chain_id, chain_kind)?;
             load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
@@ -256,6 +267,7 @@ impl ChainsConfig {
             withdrawal_queue_addresses,
             pocket_addresses,
             security_registry_addresses,
+            security_record_nft_addresses,
             plusd_addresses,
         })
     }
@@ -417,13 +429,29 @@ fn load_plusd_address(
 fn load_security_registry_address(
     chain_id: i64,
     kind: ChainKind,
-    out: &mut HashMap<i64, String>,
+    registries: &mut HashMap<i64, String>,
+    nfts: &mut HashMap<i64, String>,
 ) -> Result<()> {
-    if kind != ChainKind::Stellar {
-        return Ok(());
+    if kind == ChainKind::Stellar {
+        let key = format!("CHAIN_{chain_id}_STELLAR_API_SECURITY_REGISTRY_ADDRESS");
+        return load_optional_contract(chain_id, kind, &key, "SecurityRegistry", registries);
     }
-    let key = format!("CHAIN_{chain_id}_STELLAR_API_SECURITY_REGISTRY_ADDRESS");
-    load_optional_contract(chain_id, kind, &key, "SecurityRegistry", out)
+    let registry_key = format!("CHAIN_{chain_id}_EVM_API_SECURITY_REGISTRY_ADDRESS");
+    let nft_key = format!("CHAIN_{chain_id}_EVM_API_SECURITY_RECORD_NFT_ADDRESS");
+    let is_set = |key: &str| env::var(key).is_ok_and(|v| !v.trim().is_empty());
+    match (is_set(&registry_key), is_set(&nft_key)) {
+        (false, false) => Ok(()),
+        (true, false) => anyhow::bail!(
+            "{nft_key} must be set when {registry_key} is set; the SecurityRegistry and RecordNft keys are set together"
+        ),
+        (false, true) => anyhow::bail!(
+            "{registry_key} must be set when {nft_key} is set; the SecurityRegistry and RecordNft keys are set together"
+        ),
+        (true, true) => {
+            load_optional_contract(chain_id, kind, &registry_key, "SecurityRegistry", registries)?;
+            load_optional_contract(chain_id, kind, &nft_key, "SecurityRecordNft", nfts)
+        }
+    }
 }
 
 /// API env key for one capital-allocation source on a chain: the legacy

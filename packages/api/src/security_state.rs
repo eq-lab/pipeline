@@ -14,13 +14,13 @@ use shared::security_marks::{
 };
 use shared::security_registry::{
     is_goods, p_dec, p_i64, p_str, ConsentRow, CountedRecordView, DocRow, InspectionRow, LotRow,
-    MarginCallEventRow, RecordRow, TermsRow, ValuationRow,
+    MarginCallEventRow, RecordRow, ReleaseDebt, SecurityChainParams, TermsRow, ValuationRow,
 };
 use shared::security_registry_repo::{LoanBookSecurityRow, LoanSecurityRows, SaleRepaymentRow};
 use shared::security_state::{
     agent_release, attestation_stale, counts_toward_value, cure_by, dec_to_i128, dec_to_u128,
-    dec_to_u64, format_7dp, format_7dp_i128, inspection_stale, integer_string, is_open_status,
-    mark_age, mark_stale, price_stale, record_term_value, release_unconditional, CountedTerm,
+    dec_to_u64, format_dp, format_dp_i128, inspection_stale, integer_string, is_open_status,
+    mark_age, mark_stale, price_stale, record_term_value, release_unconditional, unit, CountedTerm,
 };
 use utoipa::ToSchema;
 
@@ -42,6 +42,10 @@ pub struct SecurityTermsDto {
     pub grade_tolerance_bps: u32,
     pub set_ledger: Option<i64>,
     pub complete: bool,
+    /// EVM only; `null` on Stellar.
+    pub default_ratio_bps: Option<u32>,
+    /// EVM only, on the 1e6 economics scale; `null` on Stellar.
+    pub originator_fee_rate: Option<u32>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -53,7 +57,7 @@ pub struct ValuationAsOfDto {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SecurityValuationDto {
-    /// Exact 7-dp decimal string of the contract's `coverage_detail.value`.
+    /// Exact decimal string at the chain's decimals of the contract's `coverage_detail.value`.
     pub value: Option<String>,
     pub stale_value: Option<String>,
     pub flagged_value: Option<String>,
@@ -101,6 +105,29 @@ pub struct MarginCallDto {
     pub ltv_above_ratio_no_onchain_call: Option<bool>,
     pub open_call_curable: Option<bool>,
     pub events: Vec<MarginEventDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DefaultBreachEventDto {
+    /// `default_breach`, `default_breach_price_stale` or `default_breach_cleared`.
+    pub kind: String,
+    pub ltv_bps: u32,
+    pub default_ratio_bps: Option<u32>,
+    pub at: String,
+    pub block_number: i64,
+    pub tx_hash: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DefaultBreachDto {
+    /// `null` when the stored `default_breach_at` is missing or cannot be decoded.
+    pub open: Option<bool>,
+    pub opened_at: Option<String>,
+    pub last_default_breach_ltv_bps: Option<u32>,
+    pub last_price_stale: Option<LastPriceStaleDto>,
+    pub ltv_above_ratio_no_onchain_breach: Option<bool>,
+    pub open_breach_clearable: Option<bool>,
+    pub events: Vec<DefaultBreachEventDto>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -282,6 +309,8 @@ pub struct LoanSecurityResponse {
     pub terms: Option<SecurityTermsDto>,
     pub valuation: Option<SecurityValuationDto>,
     pub margin_call: Option<MarginCallDto>,
+    /// EVM only; `null` on Stellar.
+    pub default_breach: Option<DefaultBreachDto>,
     pub prices: Option<PricesDto>,
     pub extension_consents: Vec<ConsentDto>,
     pub records: Vec<SecurityRecordDto>,
@@ -361,8 +390,8 @@ fn int_opt(d: Option<&BigDecimal>) -> Option<String> {
     d.and_then(integer_string)
 }
 
-fn qty_opt(d: Option<&BigDecimal>) -> Option<String> {
-    d.and_then(format_7dp)
+fn qty_opt(d: Option<&BigDecimal>, decimals: u32) -> Option<String> {
+    d.and_then(|d| format_dp(d, decimals))
 }
 
 fn parse_counted(value: &Value) -> Option<(HashMap<u32, CountedEntry>, bool)> {
@@ -403,14 +432,14 @@ fn parse_counted(value: &Value) -> Option<(HashMap<u32, CountedEntry>, bool)> {
     Some((out, complete))
 }
 
-fn repayment_dto(r: &SaleRepaymentRow) -> Option<SaleRepaymentDto> {
+fn repayment_dto(r: &SaleRepaymentRow, decimals: u32) -> Option<SaleRepaymentDto> {
     let p = &r.params;
     let dto = (|| {
         Some(SaleRepaymentDto {
             repayment_id: p_i64(p, "repayment_id")?.to_string(),
-            cash: format_7dp(&p_dec(p, "cash")?)?,
-            interest_minted: format_7dp(&p_dec(p, "interest_minted")?)?,
-            fee_shares: format_7dp(&p_dec(p, "fee_shares")?)?,
+            cash: format_dp(&p_dec(p, "cash")?, decimals)?,
+            interest_minted: format_dp(&p_dec(p, "interest_minted")?, decimals)?,
+            fee_shares: format_dp(&p_dec(p, "fee_shares")?, decimals)?,
             value_date: p_i64(p, "value_date")?.to_string(),
             ref_hash: p_str(p, "ref_hash"),
             tx_hash: r.tx_hash.clone(),
@@ -439,20 +468,23 @@ fn terms_dto(t: &TermsRow) -> SecurityTermsDto {
         grade_tolerance_bps: clamp_u32(t.grade_tolerance_bps),
         set_ledger: t.set_ledger,
         complete: t.complete,
+        default_ratio_bps: t.default_ratio_bps.map(clamp_u32),
+        originator_fee_rate: t.originator_fee_rate.map(clamp_u32),
     }
 }
 
 fn valuation_dto(
     v: &ValuationRow,
     fetched_at: &chrono::DateTime<chrono::Utc>,
+    decimals: u32,
 ) -> SecurityValuationDto {
     SecurityValuationDto {
-        value: format_7dp(&v.value),
-        stale_value: format_7dp(&v.stale_value),
-        flagged_value: format_7dp(&v.flagged_value),
-        debt: format_7dp(&v.debt),
-        outstanding: format_7dp(&v.outstanding),
-        accrued_interest: format_7dp(&v.accrued_interest),
+        value: format_dp(&v.value, decimals),
+        stale_value: format_dp(&v.stale_value, decimals),
+        flagged_value: format_dp(&v.flagged_value, decimals),
+        debt: format_dp(&v.debt, decimals),
+        outstanding: format_dp(&v.outstanding, decimals),
+        accrued_interest: format_dp(&v.accrued_interest, decimals),
         ltv_bps: clamp_u32(v.ltv_bps),
         coverage_bps: clamp_u32(v.coverage_bps),
         price_stale: v.price_stale,
@@ -470,6 +502,17 @@ fn margin_event_dto(e: &MarginCallEventRow) -> MarginEventDto {
         ltv_bps: clamp_u32(e.ltv_bps),
         margin_call_ratio_bps: e.margin_call_ratio_bps.map(clamp_u32),
         cure_by: int_opt(e.cure_by.as_ref()),
+        at: e.block_timestamp.to_string(),
+        block_number: e.block_number,
+        tx_hash: e.tx_hash.clone(),
+    }
+}
+
+fn default_breach_event_dto(e: &MarginCallEventRow) -> DefaultBreachEventDto {
+    DefaultBreachEventDto {
+        kind: e.kind.clone(),
+        ltv_bps: clamp_u32(e.ltv_bps),
+        default_ratio_bps: e.default_ratio_bps.map(clamp_u32),
         at: e.block_timestamp.to_string(),
         block_number: e.block_number,
         tx_hash: e.tx_hash.clone(),
@@ -496,16 +539,16 @@ fn doc_dto(d: &DocRow) -> RecordDocDto {
     }
 }
 
-fn lot_dto(l: &LotRow) -> LotDto {
+fn lot_dto(l: &LotRow, decimals: u32) -> LotDto {
     LotDto {
         latest_inspection_id: l.latest_inspection_id.map(|i| i.to_string()),
         latest_inspected_at: int_opt(l.latest_inspected_at.as_ref()),
-        latest_quantity: qty_opt(l.latest_quantity.as_ref()),
+        latest_quantity: qty_opt(l.latest_quantity.as_ref(), decimals),
         complete: l.complete,
     }
 }
 
-fn inspection_dto(i: &InspectionRow, lot_latest: Option<i64>) -> InspectionDto {
+fn inspection_dto(i: &InspectionRow, lot_latest: Option<i64>, decimals: u32) -> InspectionDto {
     InspectionDto {
         inspection_id: i.inspection_id.to_string(),
         inspector: i.inspector.clone(),
@@ -513,8 +556,8 @@ fn inspection_dto(i: &InspectionRow, lot_latest: Option<i64>) -> InspectionDto {
         inspected_at: int_opt(i.inspected_at.as_ref()),
         region: i.region.clone(),
         site_hash: i.site_hash.clone(),
-        quantity: qty_opt(i.quantity.as_ref()),
-        grade: qty_opt(i.grade.as_ref()),
+        quantity: qty_opt(i.quantity.as_ref(), decimals),
+        grade: qty_opt(i.grade.as_ref(), decimals),
         certificate_hash: i.certificate_hash.clone(),
         certificate_no: i.certificate_no.clone(),
         entered_by: i.entered_by.clone(),
@@ -580,6 +623,7 @@ pub fn mark_price_pairs(
 
 struct Ctx<'a> {
     chain_id: i64,
+    params: &'a SecurityChainParams,
     contract: &'a str,
     marks: &'a MarkInputs<'a>,
     now: u64,
@@ -623,11 +667,12 @@ fn record_valuation(ctx: &Ctx<'_>, r: &RecordRow) -> Option<RecordValuationDto> 
     let id = u32::try_from(r.record_id).ok()?;
     let entry = ctx.counted?.get(&id)?;
     let term = term_of(entry, id, r);
+    let decimals = ctx.params.decimals;
     Some(RecordValuationDto {
-        counted_quantity: format_7dp_i128(entry.counted_quantity),
-        value_per_unit: format_7dp_i128(entry.value_per_unit),
+        counted_quantity: format_dp_i128(entry.counted_quantity, decimals),
+        value_per_unit: format_dp_i128(entry.value_per_unit, decimals),
         mark_at: entry.mark_at.clone(),
-        value: format_7dp_i128(record_term_value(&term)?),
+        value: format_dp_i128(record_term_value(&term, unit(decimals))?, decimals),
         stale: entry.stale,
         flagged: entry.flagged,
     })
@@ -648,15 +693,23 @@ fn agent_release_of(ctx: &Ctx<'_>, r: &RecordRow) -> Option<String> {
         return None;
     }
     let record_id = u32::try_from(r.record_id).ok()?;
+    let outstanding = outstanding?;
+    let debt = match ctx.params.release_debt {
+        ReleaseDebt::OutstandingPlusAccrued => {
+            outstanding.checked_add(dec_to_u128(&valuation.accrued_interest)?)
+        }
+        ReleaseDebt::FacilityDebt => Some(dec_to_u128(&valuation.debt)?),
+    };
     Some(
         agent_release(
             &r.status,
             &r.protection,
-            outstanding?,
-            dec_to_u128(&valuation.accrued_interest)?,
+            outstanding,
+            debt,
             &ctx.resolved_terms,
             record_id,
             clamp_u32(terms.advance_ratio_bps),
+            unit(ctx.params.decimals),
         )
         .as_str()
         .to_owned(),
@@ -706,9 +759,9 @@ fn mark_flag(ctx: &Ctx<'_>, r: &RecordRow, t: &TermsRow) -> Option<bool> {
     Some(mark_stale(ctx.now, is_goods(&r.protection), mark_at, psa))
 }
 
-fn suggested_mark_dto(s: &Suggestion) -> SuggestedMarkDto {
+fn suggested_mark_dto(s: &Suggestion, decimals: u32) -> SuggestedMarkDto {
     SuggestedMarkDto {
-        value_per_unit: format_7dp_i128(s.value_per_unit),
+        value_per_unit: format_dp_i128(s.value_per_unit, decimals),
         benchmark: s.benchmark.clone(),
         source_price: s.source_price.clone(),
         source_at: s.source_at.to_string(),
@@ -744,6 +797,7 @@ fn suggestion_of(
         chain_id: ctx.chain_id,
         security_registry: ctx.contract,
         record_id,
+        decimals: ctx.params.decimals,
         map: &ctx.marks.settings.map,
         prices: &ctx.marks.prices,
         concentrate: ctx.marks.concentrate.as_ref().map(|(a, o)| (a, o)),
@@ -806,11 +860,12 @@ fn record_dto(
     inspections: &[&InspectionRow],
     repayments: Vec<SaleRepaymentDto>,
 ) -> SecurityRecordDto {
+    let decimals = ctx.params.decimals;
     let counts = counts_toward_value(&r.status, &r.protection);
     let active = r.status == "Active";
     let mark = match (&r.mark_value_per_unit, &r.mark_at) {
         (Some(vpu), Some(at)) => Some(RecordMarkDto {
-            value_per_unit: format_7dp(vpu),
+            value_per_unit: format_dp(vpu, decimals),
             at: integer_string(at),
             benchmark: r.mark_benchmark.clone(),
             report_hash: r.mark_report_hash.clone(),
@@ -844,8 +899,8 @@ fn record_dto(
         protection: r.protection.clone(),
         commodity: r.commodity.clone(),
         unit: r.unit.clone(),
-        reference_quantity: qty_opt(r.reference_quantity.as_ref()),
-        reference_grade: qty_opt(r.reference_grade.as_ref()),
+        reference_quantity: qty_opt(r.reference_quantity.as_ref(), decimals),
+        reference_grade: qty_opt(r.reference_grade.as_ref(), decimals),
         region: r.region.clone(),
         site_hash: r.site_hash.clone(),
         control_kind: r.control_kind.clone(),
@@ -866,13 +921,13 @@ fn record_dto(
         needs_view: r.needs_view,
         docs: docs.iter().map(|d| doc_dto(d)).collect(),
         mark,
-        suggested_mark: suggestion.as_ref().map(suggested_mark_dto),
+        suggested_mark: suggestion.as_ref().map(|s| suggested_mark_dto(s, decimals)),
         suggestion_status: status.map(|s| s.as_str().to_owned()),
         move_bps: move_bps_value,
         mark_due: due,
         mark_due_reasons: due_reasons,
         mark_due_at: due_at,
-        lot: lot.map(lot_dto),
+        lot: lot.map(|l| lot_dto(l, decimals)),
         counts_toward_value: counts,
         attestation_stale: attestation,
         inspection_stale: inspection,
@@ -885,7 +940,7 @@ fn record_dto(
         agent_release: agent_release_of(ctx, r),
         inspections: inspections
             .iter()
-            .map(|i| inspection_dto(i, lot_latest_id))
+            .map(|i| inspection_dto(i, lot_latest_id, decimals))
             .collect(),
         repayments,
     }
@@ -942,6 +997,13 @@ fn prices_dto(
     }
 }
 
+const MARGIN_KINDS: [&str; 3] = ["open", "price_stale", "cured"];
+const DEFAULT_BREACH_KINDS: [&str; 3] = [
+    "default_breach",
+    "default_breach_price_stale",
+    "default_breach_cleared",
+];
+
 fn margin_call_dto(
     now: u64,
     closed: bool,
@@ -981,7 +1043,49 @@ fn margin_call_dto(
         ltv_above_ratio_no_onchain_call: open
             .map(|o| !o && !closed && ltv.is_some_and(|l| l > terms.margin_call_ratio_bps)),
         open_call_curable: open.map(|o| o && ltv.is_some_and(|l| l <= terms.advance_ratio_bps)),
-        events: events.iter().map(margin_event_dto).collect(),
+        events: events
+            .iter()
+            .filter(|e| MARGIN_KINDS.contains(&e.kind.as_str()))
+            .map(margin_event_dto)
+            .collect(),
+    }
+}
+
+fn default_breach_dto(
+    closed: bool,
+    terms: &TermsRow,
+    valuation: Option<&ValuationRow>,
+    events: &[MarginCallEventRow],
+    un: &Unreadable,
+) -> DefaultBreachDto {
+    let breach_at = terms.default_breach_at.as_ref().and_then(|d| un.u64(d));
+    let open = breach_at.map(|b| b != 0);
+    let ratio = terms.default_ratio_bps;
+    let ltv = valuation.map(|v| v.ltv_bps);
+    let last_breach = events.iter().rev().find(|e| e.kind == "default_breach");
+    let last_stale = events
+        .iter()
+        .rev()
+        .find(|e| e.kind == "default_breach_price_stale");
+    DefaultBreachDto {
+        open,
+        opened_at: breach_at.filter(|b| *b != 0).map(|b| b.to_string()),
+        last_default_breach_ltv_bps: last_breach.map(|e| clamp_u32(e.ltv_bps)),
+        last_price_stale: last_stale.map(|e| LastPriceStaleDto {
+            ltv_bps: clamp_u32(e.ltv_bps),
+            at: e.block_timestamp.to_string(),
+        }),
+        ltv_above_ratio_no_onchain_breach: open
+            .zip(ratio)
+            .map(|(o, d)| !o && !closed && ltv.is_some_and(|l| l > d)),
+        open_breach_clearable: open
+            .zip(ratio)
+            .map(|(o, d)| o && ltv.is_some_and(|l| l <= d)),
+        events: events
+            .iter()
+            .filter(|e| DEFAULT_BREACH_KINDS.contains(&e.kind.as_str()))
+            .map(default_breach_event_dto)
+            .collect(),
     }
 }
 
@@ -996,6 +1100,7 @@ fn inspectors_of(v: Option<&Value>) -> Vec<String> {
 
 pub fn build_security_response(
     chain_id: i64,
+    params: &SecurityChainParams,
     contract: &str,
     loan_id: &str,
     rows: &LoanSecurityRows,
@@ -1020,6 +1125,7 @@ pub fn build_security_response(
     let un = Unreadable(Cell::new(false));
     let ctx = Ctx {
         chain_id,
+        params,
         contract,
         marks,
         now,
@@ -1033,7 +1139,10 @@ pub fn build_security_response(
 
     let mut repayments_by_sale: HashMap<i64, Vec<SaleRepaymentDto>> = HashMap::new();
     for r in &rows.repayments {
-        let (Some(sale), Some(dto)) = (p_i64(&r.params, "sale_id"), repayment_dto(r)) else {
+        let (Some(sale), Some(dto)) = (
+            p_i64(&r.params, "sale_id"),
+            repayment_dto(r, params.decimals),
+        ) else {
             continue;
         };
         repayments_by_sale.entry(sale).or_default().push(dto);
@@ -1071,6 +1180,9 @@ pub fn build_security_response(
 
     let margin_call =
         terms.map(|t| margin_call_dto(now, closed, t, valuation, &rows.margin_events, &un));
+    let default_breach = terms
+        .filter(|_| params.has_default_breach)
+        .map(|t| default_breach_dto(closed, t, valuation, &rows.margin_events, &un));
     let marks_due = marks_due_count(&records);
     let prices = terms.map(|t| prices_dto(now, t, rows, &marks.settings.policy, marks_due, &un));
     if un.0.get() {
@@ -1102,8 +1214,12 @@ pub fn build_security_response(
         ),
         refresh_pending,
         terms: terms.map(terms_dto),
-        valuation: rows.valuation.as_ref().map(|(v, at)| valuation_dto(v, at)),
+        valuation: rows
+            .valuation
+            .as_ref()
+            .map(|(v, at)| valuation_dto(v, at, params.decimals)),
         margin_call,
+        default_breach,
         prices,
         extension_consents: rows.consents.iter().map(consent_dto).collect(),
         records,

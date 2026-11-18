@@ -9,6 +9,8 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::chains::ChainKind;
+
 pub const SECURITY_PROJECTION_VERSION: i32 = 1;
 
 pub const SECURITY_LOAN_EVENT_NAMES: [&str; 21] = [
@@ -68,17 +70,39 @@ pub const SECURITY_OPAQUE_RECORD_EVENT_NAMES: [&str; 2] =
 pub const PAR_VALUE_PER_UNIT: &str = "10000000";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReleaseDebt {
+    OutstandingPlusAccrued,
+    FacilityDebt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SecurityChainParams {
     pub par_value_per_unit: &'static str,
+    pub decimals: u32,
+    pub release_debt: ReleaseDebt,
+    pub has_default_breach: bool,
 }
 
 pub const STELLAR_SECURITY_PARAMS: SecurityChainParams = SecurityChainParams {
     par_value_per_unit: PAR_VALUE_PER_UNIT,
+    decimals: 7,
+    release_debt: ReleaseDebt::OutstandingPlusAccrued,
+    has_default_breach: false,
 };
 
 pub const EVM_SECURITY_PARAMS: SecurityChainParams = SecurityChainParams {
     par_value_per_unit: "1000000",
+    decimals: 6,
+    release_debt: ReleaseDebt::FacilityDebt,
+    has_default_breach: true,
 };
+
+pub fn security_params(kind: ChainKind) -> &'static SecurityChainParams {
+    match kind {
+        ChainKind::Stellar => &STELLAR_SECURITY_PARAMS,
+        ChainKind::Evm => &EVM_SECURITY_PARAMS,
+    }
+}
 
 pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 

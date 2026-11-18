@@ -67,6 +67,7 @@ fn make_test_state() -> AppState {
         pocket_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
@@ -596,6 +597,44 @@ fn the_union_sums_chains_and_adds_bank_deposits_once() {
     assert_eq!(resp.cash_management.count, 1 + 1 + 3);
     assert_eq!(resp.chains[0].cash_management.count, 4);
     assert_eq!(resp.chains[1].cash_management.count, 4);
+}
+
+#[test]
+fn an_evm_chain_with_margin_calls_sums_with_the_stellar_chain() {
+    let stellar = chain_entry(
+        STELLAR.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(2),
+        0,
+    );
+    let evm = chain_entry(
+        EVM.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(3),
+        0,
+    );
+    let resp = build_response(vec![stellar, evm]);
+    assert_eq!(resp.loans.margin_call_open, Some(5));
+    assert_eq!(resp.chains[1].loans.margin_call_open, Some(3));
+}
+
+#[test]
+fn an_evm_chain_with_margin_calls_alone_is_not_null() {
+    let stellar = chain_entry(
+        STELLAR.chain_id,
+        cash_management_counts(None, None, 0),
+        None,
+        0,
+    );
+    let evm = chain_entry(
+        EVM.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(3),
+        0,
+    );
+    let resp = build_response(vec![stellar, evm]);
+    assert_eq!(resp.loans.margin_call_open, Some(3));
+    assert_eq!(resp.chains[0].loans.margin_call_open, None);
 }
 
 #[test]
