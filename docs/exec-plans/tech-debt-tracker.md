@@ -138,7 +138,7 @@ line, whichever section it lands in.
 - **Impact:** New readers will trust the spec, look for `getImmutable`, find nothing, and either implement against a fictional ABI or get blocked. Issue #363 deliberately left the spec untouched (scope creep) and added the correct design in this tracker plus the active exec plan.
 - **Suggested fix:** Rewrite the "ImmutableLoanData" section of `loans-data.md` to describe (1) the off-chain JSON schema fetched via `tokenURI(loanId)`, (2) the indexer's `loan_details` table materialisation, (3) ops query for failed fetches: `contract_logs LEFT JOIN loan_details WHERE event_name='LoanMinted' AND loan_details.loan_id IS NULL`. File a separate `documentation,backlog` Issue and link it here.
 
-### TD-10: Extract Modal + Switch UI primitives into `@pipeline/ui`
+### TD-10: Extract Modal + Switch UI primitives into `@pipeline/ui` [RESOLVED-BY-DECISION 2026-11-18 / #1330]
 
 - **Date:** 2026-05-25
 - **Partially resolved 2026-08-25 (#1158):** `Switch` now lives in `@pipeline/ui` (design-exact library switcher) and `FirstConnectionModal` consumes it. The Modal/ModalOverlay half of this entry remains open.
@@ -146,6 +146,10 @@ line, whichever section it lands in.
 - **Gap:** The inline `Toggle` (Switch) component and the portal overlay pattern used by `FirstConnectionModal` are implemented inline with no reusable primitive in `@pipeline/ui`. If a second consumer needs a modal or toggle, it will duplicate the styles.
 - **Impact:** Style drift risk if the design token values change (`#208000`, `rgba(56,55,53,0.18)`, scrim opacity) — two places must be updated. Low severity until a second consumer appears.
 - **Suggested fix:** When a second modal or toggle consumer appears in the codebase, extract `Switch` (role="switch", off/on colour tokens) and `Modal` / `ModalOverlay` (portal + focus trap + scrim + `role="dialog"`) into `@pipeline/ui` and update all consumers.
+- **Resolution (2026-11-18, #1330):** `Switch` landed via #1158. The Modal/ModalOverlay half is
+  closed by decision: the LP app standardised on `AuthModalShell` for every auth screen and the two
+  standalone modals have not drifted, so the extraction would touch nine modals for no user-visible
+  gain. #1342 proceeds on its own.
 
 ### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk) [RESOLVED 2026-10-28 / #1671]
 
