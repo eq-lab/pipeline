@@ -119,7 +119,7 @@ export function useStellarToken(): UseStellarTokenResult {
 
     let balances: Horizon.HorizonApi.BalanceLine[];
     try {
-      const server = new Horizon.Server(horizonUrl);
+      const server = new Horizon.Server(horizonUrl, { allowHttp: horizonUrl.startsWith("http://") });
       const account = await server.loadAccount(address);
       balances = account.balances;
     } catch (err) {
