@@ -1,10 +1,23 @@
 // @vitest-environment node
 // spec: packages/frontend/src/wallet/README.md "E2E test wallet"
 
-import { describe, expect, it } from "vitest";
-import { createConfig, http } from "@wagmi/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  connect,
+  createConfig,
+  http,
+  sendTransaction,
+  writeContract,
+} from "@wagmi/core";
 import { foundry, mainnet, sepolia } from "viem/chains";
-import { recoverMessageAddress } from "viem";
+import {
+  erc20Abi,
+  type Hex,
+  parseTransaction,
+  recoverMessageAddress,
+  recoverTransactionAddress,
+  toFunctionSelector,
+} from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { E2E_EVM_WALLET_ID, e2eEvmConnector } from "./e2eConnector";
 
@@ -62,5 +75,81 @@ describe("e2eEvmConnector", () => {
     );
     for (const chain of [mainnet, sepolia])
       await expect(c.switchChain!({ chainId: chain.id })).rejects.toThrow();
+  });
+});
+
+describe("e2eEvmConnector transactions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A JSON-RPC node that answers what viem asks before sending and records every raw transaction.
+  function stubNode(): Hex[] {
+    const raw: Hex[] = [];
+    const answers: Record<string, unknown> = {
+      eth_chainId: "0x7a69",
+      eth_getTransactionCount: "0x0",
+      eth_estimateGas: "0x5208",
+      eth_gasPrice: "0x1",
+      eth_maxPriorityFeePerGas: "0x1",
+      eth_getBlockByNumber: {
+        number: "0x1",
+        timestamp: "0x0",
+        baseFeePerGas: "0x1",
+        transactions: [],
+      },
+    };
+    vi.stubGlobal("fetch", async (_url: unknown, init: { body: string }) => {
+      const { id, method, params } = JSON.parse(init.body) as {
+        id: number;
+        method: string;
+        params: unknown[];
+      };
+      if (method === "eth_sendRawTransaction") raw.push(params[0] as Hex);
+      const result =
+        method === "eth_sendRawTransaction"
+          ? `0x${"ab".repeat(32)}`
+          : answers[method];
+      const body =
+        result === undefined
+          ? { error: { code: -32601, message: `${method} not found` } }
+          : { result };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id, ...body }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    return raw;
+  }
+
+  it("signs sendTransaction and writeContract with the run's key and sends them raw on 31337", async () => {
+    const raw = stubNode();
+    const config = createConfig({
+      chains: [foundry],
+      transports: { [foundry.id]: http() },
+      connectors: [e2eEvmConnector(on, 31337)!],
+    });
+    const address = privateKeyToAccount(key).address;
+    const to = "0x00000000000000000000000000000000000000E2";
+    await connect(config, { connector: config.connectors[0]! });
+
+    await sendTransaction(config, { to, value: 7n, gas: 21_000n });
+    await writeContract(config, {
+      address: to,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [address, 5n],
+      gas: 60_000n,
+    });
+
+    expect(raw).toHaveLength(2);
+    const [send, approve] = raw.map((r) => parseTransaction(r));
+    expect(send).toMatchObject({ chainId: 31337, value: 7n, gas: 21_000n });
+    expect(send!.to?.toLowerCase()).toBe(to.toLowerCase());
+    expect(approve).toMatchObject({ chainId: 31337, gas: 60_000n });
+    expect(approve!.data?.slice(0, 10)).toBe(
+      toFunctionSelector("approve(address,uint256)"),
+    );
+    for (const serializedTransaction of raw)
+      expect(await recoverTransactionAddress({ serializedTransaction })).toBe(
+        address,
+      );
   });
 });
