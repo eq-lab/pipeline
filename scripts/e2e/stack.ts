@@ -338,10 +338,13 @@ async function deployEvmContracts(tag: string, contracts: string, mnemonic: stri
   };
 }
 
+/** Only PATH and HOME of the caller: the contracts' lib.sh `cfg` lets any uppercased variable (USDC, ACCOUNT, RPC_URL, ...) override config.json, and the stellar CLI reads STELLAR_*. */
+export const deployEnv = (tag: string) => ({ ...stackStellarEnv(tag, cleanEnv({})), NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" });
+
 async function deployContracts(tag: string, contracts: string, startLedger: number): Promise<{ addresses: Addresses; accounts: Accounts }> {
   const dir = stackDir(tag);
   const log = join(dir, "logs", "deploy.log");
-  const env = { ...stackStellarEnv(tag), NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" };
+  const env = deployEnv(tag);
   const stellar = (...args: string[]) => sh("stellar", args, { env });
   stellar("network", "add", "e2e", "--rpc-url", `http://localhost:${PORTS.stellar}/rpc`, "--network-passphrase", STANDALONE_PASSPHRASE);
   const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital", "lp-browser"] as const;
