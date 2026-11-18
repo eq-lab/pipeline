@@ -2,7 +2,7 @@
 import type { TopConcentration } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
-import { ENV } from "@/lib/env";
+import { riskCouncilTargetId } from "@/lib/targetChains";
 import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -218,7 +218,7 @@ export function useRiskCouncilEscalate(
     effects: DEFAULT_EFFECTS,
     action,
     pending,
-    expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
     pendingGate:
       eligibility.kind === "default"
         ? ESCALATE_IN_DEFAULT

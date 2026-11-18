@@ -1,16 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/env", () => ({
   ENV: { EVM_CHAIN_ID: 560048, STELLAR_CHAIN_ID: 99_000_001 },
 }));
+
+import { ENV } from "@/lib/env";
 
 import {
   chainAmountDecimals,
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
-  pendingRowBlockedReason,
-  riskCouncilBlockedReason,
+  riskCouncilChainReason,
+  riskCouncilTargetId,
   sameChainAddress,
   servedTargetChains,
   stellarOnlyActionReason,
@@ -97,53 +99,52 @@ describe("servedTargetChains (#1667)", () => {
   });
 });
 
-describe("riskCouncilBlockedReason (#1942)", () => {
+describe("riskCouncilChainReason (#1943)", () => {
   it("never blocks Stellar", () => {
-    expect(riskCouncilBlockedReason(99_000_001, "set_default")).toBeNull();
-    expect(riskCouncilBlockedReason(99_000_001, "set_terms")).toBeNull();
-    expect(riskCouncilBlockedReason(null, "set_inspectors")).toBeNull();
+    expect(riskCouncilChainReason(99_000_001)).toBeNull();
+    expect(riskCouncilChainReason(null)).toBeNull();
+    expect(riskCouncilChainReason(undefined)).toBeNull();
   });
 
-  it("opens the four SecurityRegistry functions on the configured EVM chain", () => {
-    for (const fn of [
-      "set_terms",
-      "resolve_flag",
-      "release_with_consent",
-      "set_inspectors",
-    ] as const) {
-      expect(riskCouncilBlockedReason(560048, fn)).toBeNull();
-    }
+  it("opens the configured EVM chain for every Risk Council function and row", () => {
+    expect(riskCouncilChainReason(560048)).toBeNull();
   });
 
-  it("keeps LoanRegistry functions Stellar-only on EVM", () => {
-    expect(riskCouncilBlockedReason(560048, "set_default")).toBe(
-      stellarOnlyActionReason(560048),
-    );
-    expect(riskCouncilBlockedReason(560048, "write_down")).toContain(
-      "Stellar only",
-    );
-  });
-
-  it("blocks another EVM chain id even for SecurityRegistry functions", () => {
-    expect(riskCouncilBlockedReason(1, "set_terms")).toBe(
-      stellarOnlyActionReason(1),
-    );
+  it("keeps the Stellar-only copy for any other EVM chain id", () => {
+    expect(riskCouncilChainReason(1)).toBe(stellarOnlyActionReason(1));
+    expect(riskCouncilChainReason(1)).toContain("Stellar only");
   });
 });
 
-describe("pendingRowBlockedReason (#1942)", () => {
-  it("allows only security_registry rows on the configured EVM chain", () => {
-    expect(pendingRowBlockedReason(560048, "security_registry")).toBeNull();
-    expect(pendingRowBlockedReason(560048, "loan_registry")).toBe(
-      stellarOnlyActionReason(560048),
-    );
-    expect(pendingRowBlockedReason(560048, "minter")).not.toBeNull();
-    expect(pendingRowBlockedReason(1, "security_registry")).not.toBeNull();
+describe("riskCouncilTargetId (#1943)", () => {
+  const env = ENV as Record<string, unknown>;
+
+  beforeEach(() => {
+    Object.assign(env, {
+      STELLAR_LOAN_REGISTRY_ID: "CLOAN",
+      STELLAR_YIELD_MINTER_ID: "CMINT",
+      STELLAR_SECURITY_REGISTRY_ID: "CSEC",
+      EVM_LOAN_REGISTRY_ADDRESS: "0xloan",
+      EVM_MINTER_ADDRESS: "0xmint",
+      EVM_SECURITY_REGISTRY_ADDRESS: "0xsec",
+    });
   });
 
-  it("never blocks Stellar rows", () => {
-    expect(pendingRowBlockedReason(99_000_001, "minter")).toBeNull();
-    expect(pendingRowBlockedReason(99_000_001, "loan_registry")).toBeNull();
+  it("resolves the Stellar ids", () => {
+    expect(riskCouncilTargetId(99_000_001, "loan_registry")).toBe("CLOAN");
+    expect(riskCouncilTargetId(99_000_001, "minter")).toBe("CMINT");
+    expect(riskCouncilTargetId(99_000_001, "security_registry")).toBe("CSEC");
+  });
+
+  it("resolves the EVM addresses", () => {
+    expect(riskCouncilTargetId(560048, "loan_registry")).toBe("0xloan");
+    expect(riskCouncilTargetId(560048, "minter")).toBe("0xmint");
+    expect(riskCouncilTargetId(560048, "security_registry")).toBe("0xsec");
+  });
+
+  it("is empty for an unknown kind", () => {
+    expect(riskCouncilTargetId(99_000_001, "other")).toBe("");
+    expect(riskCouncilTargetId(560048, "other")).toBe("");
   });
 });
 

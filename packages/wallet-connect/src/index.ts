@@ -422,11 +422,54 @@ export type {
 } from "./evm/contracts/securityRegistry";
 
 export {
+  evmLoanRegistryRiskCouncilAbi,
+  evmRiskCouncilErrorAbi,
+  EVM_RISK_COUNCIL_FUNCTION_NAMES,
+  EVM_LOAN_STATUSES,
+  EVM_CLOSURE_REASONS,
+  evmRiskCouncilSelector,
+  encodeEvmRiskCouncilCalldata,
+  relayEvmRiskCouncil,
+  readEvmRiskCouncilSchedule,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+} from "./evm/contracts/riskCouncil";
+export type {
+  EvmRiskCouncilCallParams,
+  RelayEvmRiskCouncilParams,
+  ReadEvmLoanParams,
+} from "./evm/contracts/riskCouncil";
+
+export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
+  evmMinterErrorAbi,
+  evmRecoveryErrorAbi,
+  evmReverseRepaySelector,
+  evmRepaySelector,
+  evmReverseRepayRefHash,
+  relayEvmReverseRepay,
+  scheduleEvmReverseRepay,
+  executeEvmReverseRepay,
+  readEvmReverseRepaySchedule,
+  readEvmNextRepaymentId,
+  readEvmMinterRepayment,
+  readEvmRecoveryRepayments,
 } from "./evm/contracts/minter";
-export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
+export type {
+  EvmReverseRepayArgs,
+  EvmRepayArgs,
+  EvmReverseRepayCallParams,
+  RelayEvmReverseRepayParams,
+  ScheduleEvmReverseRepayParams,
+  EvmMinterRepaymentRecord,
+  EvmRecoveryRepayment,
+  ReadEvmRecoveryRepaymentsParams,
+} from "./evm/contracts/minter";
+
+export { EVM_LOG_CHUNK_BLOCKS, scanEvmLogs } from "./evm/contracts/logs";
+export type { ScanEvmLogsParams } from "./evm/contracts/logs";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

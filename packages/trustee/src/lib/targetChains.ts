@@ -1,7 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100 (Target chain).
 import type { PendingTargetKind } from "@/api/pendingOperations";
 import { ENV } from "@/lib/env";
-import { councilTarget, type CouncilCall } from "@/lib/riskCouncilOps";
 import { SAC_DECIMALS } from "@/utils/stellarSacUnits";
 
 export interface TargetChainOption {
@@ -43,31 +42,32 @@ export function stellarOnlyActionReason(
   return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
 }
 
-function evmSecurityAllowed(
+export function riskCouncilChainReason(
   chainId: number | null | undefined,
-  securityRegistry: boolean,
-): boolean {
-  return securityRegistry && chainId === ENV.EVM_CHAIN_ID;
-}
-
-export function riskCouncilBlockedReason(
-  chainId: number | null | undefined,
-  fn: CouncilCall["fn"],
 ): string | null {
-  if (evmSecurityAllowed(chainId, councilTarget(fn) === "security_registry")) {
-    return null;
-  }
+  if (chainId === ENV.EVM_CHAIN_ID) return null;
   return stellarOnlyActionReason(chainId);
 }
 
-export function pendingRowBlockedReason(
+export function riskCouncilTargetId(
   chainId: number | null | undefined,
-  targetKind: PendingTargetKind,
-): string | null {
-  if (evmSecurityAllowed(chainId, targetKind === "security_registry")) {
-    return null;
+  kind: PendingTargetKind,
+): string {
+  const stellar = isStellarTarget(chainId);
+  switch (kind) {
+    case "loan_registry":
+      return stellar
+        ? ENV.STELLAR_LOAN_REGISTRY_ID
+        : ENV.EVM_LOAN_REGISTRY_ADDRESS;
+    case "minter":
+      return stellar ? ENV.STELLAR_YIELD_MINTER_ID : ENV.EVM_MINTER_ADDRESS;
+    case "security_registry":
+      return stellar
+        ? ENV.STELLAR_SECURITY_REGISTRY_ID
+        : ENV.EVM_SECURITY_REGISTRY_ADDRESS;
+    default:
+      return "";
   }
-  return stellarOnlyActionReason(chainId);
 }
 
 export function sameChainAddress(

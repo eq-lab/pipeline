@@ -3,11 +3,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import {
   DELAYED,
+  EVM,
+  EVM_LOAN_REGISTRY,
+  EVM_SCHEDULER,
   IMMEDIATE,
   NO_ROLE,
+  OTHER_CHAIN,
   SCHEDULED,
   STELLAR,
   accessResult,
+  evmLoanRegistryOp,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
@@ -55,18 +60,29 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  const { LOAN_REGISTRY } = await import("./-riskCouncilFixtures");
+  const { LOAN_REGISTRY, EVM_LOAN_REGISTRY } =
+    await import("./-riskCouncilFixtures");
   return {
     ...actual,
-    ENV: { ...actual.ENV, STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY },
+    ENV: {
+      ...actual.ENV,
+      STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY,
+      EVM_LOAN_REGISTRY_ADDRESS: EVM_LOAN_REGISTRY,
+    },
   };
 });
-const walletState = vi.hoisted(() => ({ address: null as string | null }));
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
 vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
-  useEvmWallet: () => ({ address: undefined, isConnected: false }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
 }));
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
@@ -142,7 +158,8 @@ function setup({
   mockAccess.mockImplementation(((_c: number, _call: unknown, fn: string) =>
     accessResult(perFn[fn] ?? access)) as never);
   mockLoanState.mockReturnValue({
-    data: chain === STELLAR ? loanState({ status, outstanding }) : undefined,
+    data:
+      chain === OTHER_CHAIN ? undefined : loanState({ status, outstanding }),
   } as never);
   mockRelay.mockReturnValue(relay as never);
 }
@@ -153,6 +170,7 @@ beforeEach(() => {
   relay = relayResult();
   pendingExecute = pendingExecuteResult();
   walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
   _resetRiskCouncilOpsForTests();
 });
 
@@ -364,7 +382,7 @@ describe("Default resolution — roles and states", () => {
   });
 
   it("stays read-only on another chain with the Stellar-only reason", () => {
-    chain = 1;
+    chain = OTHER_CHAIN;
     setup({ access: undefined });
     renderRoute();
     expect(
@@ -565,5 +583,98 @@ describe("Default resolution — scheduled operations", () => {
       within(screen.getByTestId(PENDING)).queryAllByRole("button"),
     ).toHaveLength(0);
     expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Default resolution — EVM loan", () => {
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER;
+  });
+
+  it("prefills the write-down at 6 dp and sends the call on the EVM chain", () => {
+    setup({ outstanding: "1840000000000" });
+    renderRoute();
+    expect(screen.getByTestId("risk-council-writedown-amount")).toHaveValue(
+      "$1,840,000.00",
+    );
+    fireEvent.click(
+      screen.getByTestId("risk-council-writedown-writedown-button"),
+    );
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "write_down", loanId: 4471, amount: "1840000000000" },
+      chainId: EVM,
+    });
+  });
+
+  it("converts an edited amount at 6 decimals", () => {
+    setup({ perFn: { write_down: SCHEDULED }, outstanding: "1840000000000" });
+    renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-writedown-amount"), {
+      target: { value: "$1,000.000001" },
+    });
+    fireEvent.click(
+      screen.getByTestId("risk-council-writedown-writedown-button"),
+    );
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "execute",
+      call: { fn: "write_down", loanId: 4471, amount: "1000000001" },
+      chainId: EVM,
+    });
+  });
+
+  it("gates the close-defaulted execute on an outstanding of 0", () => {
+    setup({ perFn: { close_defaulted: SCHEDULED }, outstanding: "1" });
+    const { unmount } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-button"),
+    ).toBeDisabled();
+    unmount();
+    setup({ perFn: { close_defaulted: SCHEDULED }, outstanding: "0" });
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-button"),
+    ).toBeEnabled();
+  });
+
+  it("sends Default and OtherWriteDown as logical reasons", () => {
+    setup();
+    renderRoute();
+    fireEvent.click(
+      screen.getByTestId("risk-council-writedown-reason-OtherWriteDown"),
+    );
+    fireEvent.click(screen.getByTestId("risk-council-writedown-close-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "close_defaulted", loanId: 4471, reason: "OtherWriteDown" },
+      chainId: EVM,
+    });
+  });
+
+  it("schedules the cure and executes an EVM writeDown row against the configured LoanRegistry", () => {
+    const row = evmLoanRegistryOp("writeDown", { args: ["4471", "5000000"] });
+    setup({ pending: [row] });
+    renderRoute();
+    fireEvent.click(screen.getByTestId("risk-council-writedown-cure-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "cure", loanId: 4471 },
+      chainId: EVM,
+    });
+    fireEvent.click(
+      screen.getByTestId(
+        `risk-council-writedown-pending-${row.operation_id}-button`,
+      ),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chainId: EVM,
+        target: EVM_LOAN_REGISTRY,
+        expectedTarget: EVM_LOAN_REGISTRY,
+        fn: "write_down",
+        calldata: row.calldata,
+      }),
+    );
   });
 });

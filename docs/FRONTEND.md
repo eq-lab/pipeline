@@ -255,11 +255,13 @@ it grows as Trustee flow sub-issues of epic #775 land.
 | `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)    |
 | `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)    |
 | `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)    |
+| `VITE_EVM_START_BLOCK`                 | `0`                     |
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
 Empty means unconfigured; EVM flows that need them short-circuit with a "not configured" error.
 The Risk Council security page and inspector panel on EVM (#1942) also need the AccessManager, SecurityRegistry and RecordNft addresses; the registry and RecordNft must equal the backend's `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` / `_SECURITY_RECORD_NFT_ADDRESS`.
+The Risk Council hub, escalate, reterm and writedown pages and the repayment-recovery dialog on EVM (#1943) use the LoanRegistry, Minter and AccessManager addresses. The recovery list scans `eth_getLogs` from `VITE_EVM_START_BLOCK` in 50 000-block calls, so set it to the LoanRegistry deploy block (the worker's `CHAIN_<id>_EVM_START_BLOCK`); the default `0` scans from genesis (TD-190).
 
 ```bash
 docker run --rm -p 8082:80 \

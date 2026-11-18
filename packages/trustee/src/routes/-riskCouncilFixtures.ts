@@ -326,3 +326,48 @@ export function evmPendingOp(
     ...overrides,
   });
 }
+
+export const EVM_LOAN_REGISTRY = "0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231";
+export const EVM_MINTER = "0x621BaAb0ced6b11f88019582183b081A118755f4";
+export const EVM_LOAN_CALLDATA = `0xe0da6b66${"00".repeat(32)}`;
+
+export const EVM_LOAN_REGISTRY_ARGS = {
+  setDefault: ["7"],
+  cure: ["7"],
+  amendEconomics: ["7", 145_000, "1767225600"],
+  adjustInterest: ["7", "-5000000", "ab".repeat(32)],
+  writeDown: ["7", "1000000"],
+  closeDefaulted: ["7", 4],
+} as const;
+
+export function evmLoanRegistryOp(
+  fn: keyof typeof EVM_LOAN_REGISTRY_ARGS,
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id:
+      `${(0x60 + Object.keys(EVM_LOAN_REGISTRY_ARGS).indexOf(fn)).toString(16)}`.repeat(
+        32,
+      ),
+    target: EVM_LOAN_REGISTRY,
+    target_kind: "loan_registry",
+    function: fn,
+    calldata: EVM_LOAN_CALLDATA,
+    args: EVM_LOAN_REGISTRY_ARGS[fn],
+    ...overrides,
+  });
+}
+
+export function evmMinterOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id: "7f".repeat(32),
+    target: EVM_MINTER,
+    target_kind: "minter",
+    function: "reverseRepay",
+    calldata: `0x0cff7536${"00".repeat(96)}`,
+    args: ["7", "2", "cd".repeat(32)],
+    ...overrides,
+  });
+}

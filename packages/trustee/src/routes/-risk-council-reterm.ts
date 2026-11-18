@@ -1,7 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { useState } from "react";
 import { riskCouncilReasonHash } from "@pipeline/wallet-connect";
-import { ENV } from "@/lib/env";
+import { chainAmountDecimals, riskCouncilTargetId } from "@/lib/targetChains";
 import { dateInputToUnixUtc, formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { percentToBps } from "@/utils/rateUnits";
@@ -26,10 +26,16 @@ import {
 export const AMEND_NO_ROLE =
   "Changing loan economics belongs to the Risk Council.";
 
-export function parseSignedUsdDelta(input: string): string | null {
+export function parseSignedUsdDelta(
+  input: string,
+  chainId: number,
+): string | null {
   const trimmed = input.trim();
   const negative = trimmed.startsWith("-");
-  const base = usdInputToSacBaseUnits(negative ? trimmed.slice(1) : trimmed);
+  const base = usdInputToSacBaseUnits(
+    negative ? trimmed.slice(1) : trimmed,
+    chainAmountDecimals(chainId),
+  );
   if (base == null) return null;
   return negative ? `-${base}` : base;
 }
@@ -49,8 +55,9 @@ export function buildAdjustCall(
   loanId: number | null,
   deltaUsd: string,
   reasonHash: string | null,
+  chainId: number,
 ): RiskCouncilCall | null {
-  const delta = parseSignedUsdDelta(deltaUsd);
+  const delta = parseSignedUsdDelta(deltaUsd, chainId);
   if (loanId === null || delta === null || reasonHash === null) return null;
   return { fn: "adjust_interest", loanId, delta, reasonHash };
 }
@@ -117,7 +124,12 @@ export function useRiskCouncilReterm(
   const bps = percentToBps(ratePercent);
   const eligible = amendEligibility(base.chainStatus);
   const amendCall = buildAmendCall(base.loanId, ratePercent, maturityDate);
-  const adjustCall = buildAdjustCall(base.loanId, deltaUsd, reasonHash);
+  const adjustCall = buildAdjustCall(
+    base.loanId,
+    deltaUsd,
+    reasonHash,
+    chainId,
+  );
 
   const amend = useRiskCouncilActionView({
     chainId,
@@ -184,14 +196,15 @@ export function useRiskCouncilReterm(
       deltaUsd,
       setDeltaUsd,
       deltaInvalid:
-        deltaUsd.trim() !== "" && parseSignedUsdDelta(deltaUsd) === null,
+        deltaUsd.trim() !== "" &&
+        parseSignedUsdDelta(deltaUsd, chainId) === null,
       reason,
       setReason,
       reasonHash,
       action: adjust,
     },
     pending,
-    expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
     pendingGate: notAvailableNote(base.chainStatus),
   };
 }

@@ -203,7 +203,7 @@ _None_ (resolved 2026-11-18, see Decisions).
 
 Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hub-pages`; yarn is `node .yarn/releases/yarn-4.13.0.cjs`. Every new file carries one `// spec:` header line and no other comments (`AGENTS.md`). The steps assume the Open Question defaults. Under 1(B), skip steps 3 and the reader parts of 4, and keep the recovery card gated in step 12.
 
-1. [ ] **wallet-connect, LoanRegistry Risk Council** `packages/wallet-connect/src/evm/contracts/riskCouncil.ts` (spec `docs/frontend/trustee-flows.md#risk-council-actions`):
+1. [x] **wallet-connect, LoanRegistry Risk Council** `packages/wallet-connect/src/evm/contracts/riskCouncil.ts` (spec `docs/frontend/trustee-flows.md#risk-council-actions`):
    - `evmLoanRegistryRiskCouncilAbi`:
      - functions `setDefault`, `cure`, `amendEconomics(uint256,uint32,uint64)`, `adjustInterest(uint256,int256,bytes32)`, `writeDown(uint256,uint256)`, `closeDefaulted(uint256,uint8)`;
      - views `mutableLoanData(uint256)` (the 12-component tuple named exactly as `ILoanRegistry.MutableLoanData`) and `loanMoney(uint256)`;
@@ -215,7 +215,7 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
    - `relayEvmRiskCouncil({ mode, call, accessManager, registry, caller, chainId, onStageChange })`: `relayEvm` with `target = registry`, `data = encodeEvmRiskCouncilCalldata(call)` and `errorAbi = evmRiskCouncilErrorAbi`.
    - `readEvmRiskCouncilSchedule({ call, accessManager, registry, caller })`: `readEvmOperationSchedule` with the same data.
    - `readEvmLoanChainState({ registry, loanId }): LoanChainState` and `readEvmLoanMoney({ registry, loanId }): LoanMoney` (Decision 7). Both validate the address with `isAddress`, throw `"<fn>: registry must not be empty"` like `requireRegistry`, and read through `readEvmContract`. An out-of-range ordinal throws.
-2. [ ] **wallet-connect, Minter recovery** `src/evm/contracts/minter.ts` (spec unchanged: `docs/product-specs/loan-repayment-recovery.md`):
+2. [x] **wallet-connect, Minter recovery** `src/evm/contracts/minter.ts` (spec unchanged: `docs/product-specs/loan-repayment-recovery.md`):
    - Add the Minter error entries (`Minter*` with inputs) to a new `evmMinterErrorAbi`. `evmRecoveryErrorAbi` is `[...evmMinterErrorAbi, ...evmRiskCouncilErrorAbi]`, because `reverseRepay` bubbles the LoanRegistry `unrecordPayment` errors.
    - `evmReverseRepaySelector()` and `evmRepaySelector()` from `minterRecoveryAbi`.
    - `evmReverseRepayRefHash({ minter, loanId, repaymentId }): Promise<Hex>` (Decision 8; reuse `sha256Hex` from `stellar/contracts/hash.ts`).
@@ -234,7 +234,7 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
      - read `readEvmMinterRepayment` per id (`Promise.all`);
      - return `{ repaymentId, repayment: RepaymentInput, minter: MinterRepayment, reversed }` with the Stellar `MinterRepayment` field names (`principal` = `released`; `reversed` = registry flag).
    - Export everything and the param types from `src/index.ts` in the "EVM Risk Council" block.
-3. [ ] **wallet-connect, log scan** `src/evm/contracts/logs.ts` (spec `docs/frontend/wallet-flows.md#trustee-evm-contract-client`):
+3. [x] **wallet-connect, log scan** `src/evm/contracts/logs.ts` (spec `docs/frontend/wallet-flows.md#trustee-evm-contract-client`):
    - `EVM_LOG_CHUNK_BLOCKS = 50_000n`.
    - `scanEvmLogs({ address: Address[], topics, fromBlock: bigint, chainId, concurrency = 4 })`:
      - `getPublicClient(initEvmWalletConnect(), { chainId })` (throw "RPC not ready" like `write.ts`);
@@ -244,18 +244,18 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
      - concatenate in block order;
      - reject on the first failed chunk.
    - `loanIdTopic(loanId)`: `pad(toHex(BigInt(loanId)), { size: 32 })`.
-4. [ ] **Trustee env** `packages/trustee/src/lib/env.ts`:
+4. [x] **Trustee env** `packages/trustee/src/lib/env.ts`:
    - `EVM_START_BLOCK: readNumber("VITE_EVM_START_BLOCK", 0)`, with a short doc comment like the neighbours: "Must equal the worker's `CHAIN_<id>_EVM_START_BLOCK`; the LoanRegistry deploy block".
    - Add it to `docker/trustee/entrypoint.sh` (`--arg` and the JSON object).
    - Add it to `.env.example`, with the Hoodi LoanRegistry / Minter proxies from `pipeline-contracts/deployments/hoodi-v5.json` as comments (`0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`, `0x621BaAb0ced6b11f88019582183b081A118755f4`).
-5. [ ] **Chain helpers** `packages/trustee/src/lib/targetChains.ts`:
+5. [x] **Chain helpers** `packages/trustee/src/lib/targetChains.ts`:
    - `riskCouncilChainReason(chainId)` (Decision 2). Delete `riskCouncilBlockedReason`, `pendingRowBlockedReason` and `evmSecurityAllowed`, and drop the `councilTarget` / `PendingTargetKind` imports.
    - Add `riskCouncilTargetId(chainId, kind: PendingTargetKind): string`:
      - Stellar: `loan_registry` gives `STELLAR_LOAN_REGISTRY_ID`, `minter` gives `STELLAR_YIELD_MINTER_ID`, `security_registry` gives `STELLAR_SECURITY_REGISTRY_ID`;
      - EVM: `EVM_LOAN_REGISTRY_ADDRESS`, `EVM_MINTER_ADDRESS`, `EVM_SECURITY_REGISTRY_ADDRESS`;
      - `other` gives `""`.
    - Update every caller: `api/useRiskCouncil.ts`, `routes/-risk-council-shared.ts`, `routes/-risk-council-hub.ts`, `routes/-risk-council-pending.ts`.
-6. [ ] **Error copy** `lib/accessManagerAction.ts` (Decision 9):
+6. [x] **Error copy** `lib/accessManagerAction.ts` (Decision 9):
    - `EVM_ERROR_NAME` adds `LoanRegistry[A-Za-z]+|Minter[A-Za-z]+`.
    - `EVM_COUNCIL_ERROR_COPY` is split into `EVM_AM_ERROR_COPY` (four AccessManager names) and `EVM_SECURITY_ERROR_COPY` (SecurityRegistry names and `EnforcedPause`).
    - `evmCouncilErrorCopy(details, kind: PendingTargetKind | CouncilTarget = "security_registry")`.
@@ -264,7 +264,7 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
      - `-risk-council-shared.ts` `mapRelayError` passes `councilTarget(fn)`;
      - `-risk-council-pending.ts` `executeErrorCopy` on EVM uses `evmRecoveryErrorCopy(details) ?? evmCouncilErrorCopy(details, "minter")` for `minter` rows and `evmCouncilErrorCopy(details, kind)` otherwise;
      - `-useRepaymentRecoveryDialog.ts` `mapError` picks `evmRecoveryErrorCopy` on EVM.
-7. [ ] **Hooks** `api/useRiskCouncil.ts`:
+7. [x] **Hooks** `api/useRiskCouncil.ts`:
    - `evmCouncilConfig(fn)` gains the LoanRegistry arm:
      - for `councilTarget(fn) === "loan_registry"`: `{ accessManager, target: ENV.EVM_LOAN_REGISTRY_ADDRESS, chainId }`, `null` when either is empty;
      - the security arm is unchanged.
@@ -285,7 +285,7 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
      - everything else is unchanged.
    - `useSecurityInspectors`: gate `riskCouncilChainReason`.
    - Drop the `stellarOnlyActionReason` import.
-8. [ ] **Recovery hooks** `api/useRepaymentRecovery.ts`:
+8. [x] **Recovery hooks** `api/useRepaymentRecovery.ts`:
    - `recoveryConfig(chainId)` returns `{ kind: "stellar", … }` as today, or `{ kind: "evm", accessManager, minter, registry, fromBlock: BigInt(ENV.EVM_START_BLOCK), chainId: ENV.EVM_CHAIN_ID }`, or `null`.
    - `useRecoveryCandidates`: `enabled` uses `riskCouncilChainReason(chainId) === null`. The EVM arm calls `readEvmRecoveryRepayments`, and `latestReversed` is computed as before.
    - `useReverseRepayAccess(chainId, loanId, repaymentId, enabled)`:
@@ -297,19 +297,19 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
      - pick the wallet with `pickChainWallet`;
      - the EVM arm mirrors the Stellar one: refHash, then schedule, or pre-read the schedule and execute, through `relayEvmReverseRepay`;
      - `onSuccess` is unchanged.
-9. [ ] **Shared presenter** `routes/-risk-council-shared.ts`: `useRiskCouncilLoanBase.blockedReason` and `useRiskCouncilActionView.blockedReason` use `riskCouncilChainReason(chainId)`.
-10. [ ] **Pages:**
+9. [x] **Shared presenter** `routes/-risk-council-shared.ts`: `useRiskCouncilLoanBase.blockedReason` and `useRiskCouncilActionView.blockedReason` use `riskCouncilChainReason(chainId)`.
+10. [x] **Pages:**
     - `-risk-council-escalate.ts`, `-risk-council-reterm.ts` and `-risk-council-writedown.ts`: `expectedTarget = riskCouncilTargetId(chainId, "loan_registry")`.
     - `-risk-council-security.ts` uses `riskCouncilTargetId(chainId, "security_registry")` in place of its inline ternary.
     - Reterm: `parseSignedUsdDelta(input, chainId)` and `buildAdjustCall(loanId, deltaUsd, reasonHash, chainId)`, with decimals from `chainAmountDecimals(chainId)`; `deltaInvalid` passes `chainId`.
     - Writedown: `buildWriteDownCall(loanId, amountInput, chainId)` (Decision 6).
     - No `.tsx` change.
-11. [ ] **Hub** `routes/-risk-council-hub.ts`:
+11. [x] **Hub** `routes/-risk-council-hub.ts`:
     - `blockedReason = riskCouncilChainReason(chainId)`;
     - `const { address } = useChainWallet(chainId)` in place of `useStellarWallet`;
     - `showInspectorsLink = blockedReason === null`.
     - The rest is unchanged. An EVM session now shows the intro, role line, scheduled table and loan index.
-12. [ ] **Pending presenter** `routes/-risk-council-pending.ts`:
+12. [x] **Pending presenter** `routes/-risk-council-pending.ts`:
     - `decodeEvmLoanRegistryCall(fn, args)`, strict, using the existing `evmId`:
       - `set_default` / `cure`: `[id]`;
       - `amend_economics`: `[id, rate, maturity]`, where `rate` is an integer number that is a multiple of 100 and between 1 and 10 000 bps, and `maturity` is a positive decimal string within safe integers;
@@ -320,16 +320,16 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1943-trustee-evm-rc-hu
     - `decodeEvmPendingCall = decodeEvmSecurityCall ?? decodeEvmLoanRegistryCall ?? decodeEvmReverseRepayCall` (replaces the alias).
     - `recordNumberOf` / `repaymentNumberOf` raw fallbacks also accept a decimal-string id (`evmId`) when `item.calldata !== null`.
     - `usePendingOperationView` uses `riskCouncilChainReason(chainId)`.
-13. [ ] **Recovery presenter and dialog:**
+13. [x] **Recovery presenter and dialog:**
     - `routes/-useRepaymentRecoveryDialog.ts`:
       - `pendingTarget = riskCouncilTargetId(chainId, "minter")`;
       - `useReverseRepayAccess(chainId, …)`;
       - the step-2 `blockedReason` order becomes: "Reverse the repayment first.", then `stellarOnlyActionReason(chainId)` (Open Question 3; the record mutation is never called on EVM), then the existing checks;
       - `useRecoveryCard.blockedReason = entry ? riskCouncilChainReason(entry.chain_id) : null`.
     - `-repayment-recovery.ts`: `recoveryCardState` keeps the `evmBlocked` input (now true only for an unknown EVM chain id); there is no rename, to keep the diff small.
-14. [ ] **Lint and comments:** `npx tsx scripts/lint-comments.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file listed there.
-15. [ ] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`.
-16. [ ] **Verify:**
+14. [x] **Lint and comments:** `npx tsx scripts/lint-comments.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file listed there.
+15. [x] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`.
+16. [x] **Verify:**
     - `… workspace @pipeline/wallet-connect test` and `… lint`;
     - `… workspace @pipeline/trustee test`, `… lint` and `… build` (`tsc -b`);
     - `… workspace @pipeline/frontend build` (the barrel changed).

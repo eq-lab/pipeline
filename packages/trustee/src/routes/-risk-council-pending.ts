@@ -48,14 +48,18 @@ import {
 import { useChainWallet } from "@/lib/chainWallet";
 import {
   isStellarTarget,
-  pendingRowBlockedReason,
+  riskCouncilChainReason,
   sameChainAddress,
 } from "@/lib/targetChains";
 import { truncateAddress } from "@/lib/truncateAddress";
 import { formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { toUserError, type UserFacingError } from "@/utils/userError";
-import { formatChainAmount, recoveryErrorCopy } from "./-repayment-recovery";
+import {
+  evmRecoveryErrorCopy,
+  formatChainAmount,
+  recoveryErrorCopy,
+} from "./-repayment-recovery";
 import {
   formatSignedChainAmount,
   type ActionView,
@@ -423,7 +427,93 @@ export function decodeEvmSecurityCall(
   }
 }
 
-export const decodeEvmPendingCall = decodeEvmSecurityCall;
+const EVM_CLOSURE_ORDINALS: Readonly<Record<number, RiskCouncilClosureReason>> =
+  { 4: "Default", 5: "OtherWriteDown" };
+
+export function decodeEvmLoanRegistryCall(
+  fn: string,
+  args: unknown,
+): RiskCouncilCall | null {
+  if (!Array.isArray(args)) return null;
+  const loanId = evmId(args[0]);
+  if (loanId === null) return null;
+  switch (fn) {
+    case "set_default":
+      return args.length === 1 ? { fn: "set_default", loanId } : null;
+    case "cure":
+      return args.length === 1 ? { fn: "cure", loanId } : null;
+    case "amend_economics": {
+      const rate = args[1];
+      const maturity = Number(args[2]);
+      if (
+        args.length !== 3 ||
+        !isU32(rate) ||
+        rate % RATE_SCALE !== 0 ||
+        rate / RATE_SCALE < 1 ||
+        rate / RATE_SCALE > MAX_RATE_BPS ||
+        !isU64(args[2]) ||
+        !Number.isSafeInteger(maturity) ||
+        maturity <= 0
+      ) {
+        return null;
+      }
+      return {
+        fn: "amend_economics",
+        loanId,
+        rateBps: rate / RATE_SCALE,
+        maturity,
+      };
+    }
+    case "adjust_interest": {
+      const delta = args[1];
+      return args.length === 3 &&
+        typeof delta === "string" &&
+        SIGNED_DECIMAL.test(delta) &&
+        isHash(args[2])
+        ? { fn: "adjust_interest", loanId, delta, reasonHash: args[2] }
+        : null;
+    }
+    case "write_down":
+      return args.length === 2 && isU64(args[1])
+        ? { fn: "write_down", loanId, amount: args[1] }
+        : null;
+    case "close_defaulted": {
+      const reason =
+        typeof args[1] === "number" ? EVM_CLOSURE_ORDINALS[args[1]] : undefined;
+      return args.length === 2 && reason !== undefined
+        ? { fn: "close_defaulted", loanId, reason }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+export function decodeEvmReverseRepayCall(
+  fn: string,
+  args: unknown,
+): ReverseRepayCall | null {
+  if (fn !== "reverse_repay" || !Array.isArray(args)) return null;
+  const loanId = evmId(args[0]);
+  const repaymentId = evmId(args[1]);
+  return args.length === 3 &&
+    loanId !== null &&
+    repaymentId !== null &&
+    isHash(args[2])
+    ? { fn: "reverse_repay", loanId, repaymentId, refHash: args[2] }
+    : null;
+}
+
+export function decodeEvmPendingCall(
+  fn: string,
+  args: unknown,
+): PendingCall | null {
+  return (
+    decodeEvmSecurityCall(fn, args) ??
+    decodeEvmLoanRegistryCall(fn, args) ??
+    decodeEvmReverseRepayCall(fn, args)
+  );
+}
 
 export function decodeLoanRegistryCall(
   fn: string,
@@ -731,16 +821,21 @@ function isExecutedHere(
   );
 }
 
+function rawIdOf(item: PendingOpItem, value: unknown): number | null {
+  if (isU32(value)) return value;
+  return item.calldata !== null ? evmId(value) : null;
+}
+
 export function recordNumberOf(item: PendingOpItem): number | null {
   if (item.call != null && "recordId" in item.call) return item.call.recordId;
   const first = Array.isArray(item.rawArgs) ? item.rawArgs[0] : null;
-  return isU32(first) ? first : null;
+  return rawIdOf(item, first);
 }
 
 export function repaymentNumberOf(item: PendingOpItem): number | null {
   if (item.call?.fn === "reverse_repay") return item.call.repaymentId;
   const second = Array.isArray(item.rawArgs) ? item.rawArgs[1] : null;
-  return isU32(second) ? second : null;
+  return rawIdOf(item, second);
 }
 
 export function pendingActionLabel(item: PendingOpItem): string {
@@ -885,7 +980,11 @@ function executeErrorCopy(
   details: string,
   chainId: number,
 ): string | null {
-  if (!isStellarTarget(chainId)) return evmCouncilErrorCopy(details);
+  if (!isStellarTarget(chainId)) {
+    return kind === "minter"
+      ? (evmRecoveryErrorCopy(details) ?? evmCouncilErrorCopy(details, kind))
+      : evmCouncilErrorCopy(details, kind);
+  }
   switch (kind) {
     case "minter":
       return (
@@ -916,7 +1015,7 @@ export function usePendingOperationView({
   const { address } = useChainWallet(chainId);
   const execute = usePendingOperationExecute();
 
-  const blocked = pendingRowBlockedReason(chainId, item.targetKind);
+  const blocked = riskCouncilChainReason(chainId);
   const isCaller =
     address != null && sameChainAddress(chainId, address, item.caller);
   const wrongTarget = !sameChainAddress(chainId, item.target, expectedTarget);

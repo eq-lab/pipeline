@@ -19,6 +19,10 @@ import {
   EVM_SECURITY_REGISTRY,
   EVM_SET_TERMS_ARGS,
   evmPendingOp,
+  evmLoanRegistryOp,
+  evmMinterOp,
+  EVM_LOAN_REGISTRY,
+  EVM_MINTER,
   OTHER_CHAIN,
   LOAN_REGISTRY,
   LOAN_REGISTRY_ARGS,
@@ -58,6 +62,8 @@ import {
 } from "@/api/useRiskCouncil";
 import {
   callerText,
+  decodeEvmLoanRegistryCall,
+  decodeEvmReverseRepayCall,
   decodeEvmSecurityCall,
   decodeLoanRegistryCall,
   decodePendingCall,
@@ -867,9 +873,9 @@ describe("usePendingOperationView", () => {
     );
   });
 
-  it("blocks a LoanRegistry row on the EVM chain and any row on another chain", () => {
+  it("blocks any row on another chain id", () => {
     const loan = view({
-      chainId: EVM,
+      chainId: OTHER_CHAIN,
       item: fromServed(evmPendingOp({ target_kind: "loan_registry" })),
     });
     expect(loan.disabled).toBe(true);
@@ -1156,19 +1162,67 @@ describe("EVM served rows", () => {
     expect(pendingOwner(item.fn)).toBe("security");
   });
 
-  it("keeps the escalate owner and a null call for setDefault", () => {
-    const item = fromServed(
-      evmPendingOp({
-        function: "setDefault",
-        target_kind: "loan_registry",
-        args: ["7"],
-      }),
-      7,
-    );
+  it("keeps the escalate owner and decodes setDefault", () => {
+    const item = fromServed(evmLoanRegistryOp("setDefault"), 7);
     expect(item.fn).toBe("set_default");
-    expect(item.call).toBeNull();
+    expect(item.call).toEqual({ fn: "set_default", loanId: 7 });
     expect(pendingOwner(item.fn)).toBe("escalate");
     expect(item.loanId).toBe(7);
+  });
+
+  it("canonicalises amendEconomics and decodes it from the calldata row", () => {
+    const item = fromServed(evmLoanRegistryOp("amendEconomics"));
+    expect(item.fn).toBe("amend_economics");
+    expect(item.targetKind).toBe("loan_registry");
+    expect(item.call).toEqual({
+      fn: "amend_economics",
+      loanId: 7,
+      rateBps: 1450,
+      maturity: 1_767_225_600,
+    });
+    expect(pendingOwner(item.fn)).toBe("reterm");
+  });
+
+  it("canonicalises reverseRepay to the recovery owner", () => {
+    const item = fromServed(evmMinterOp());
+    expect(item.fn).toBe("reverse_repay");
+    expect(item.call).toEqual({
+      fn: "reverse_repay",
+      loanId: 7,
+      repaymentId: 2,
+      refHash: "cd".repeat(32),
+    });
+    expect(pendingOwner(item.fn)).toBe("recovery");
+    expect(pendingActionLabel(item)).toBe("Reverse repayment · repayment #2");
+  });
+
+  it("reads the repayment number of an undecodable EVM row from its decimal string", () => {
+    const item = fromServed(evmMinterOp({ args: ["7", "5", "bad"] }));
+    expect(item.call).toBeNull();
+    expect(pendingActionLabel(item)).toBe("Reverse repayment · repayment #5");
+  });
+
+  it("shows the EVM rate and the 6 dp amounts", () => {
+    const rows = (op: ReturnType<typeof evmLoanRegistryOp>) =>
+      pendingArgRows(fromServed(op), EVM).map((r) => [r.label, r.value]);
+    expect(rows(evmLoanRegistryOp("amendEconomics"))).toEqual([
+      ["New rate", "14.5% (1450 bps)"],
+      ["New maturity", "1 Jan 2026"],
+    ]);
+    expect(
+      rows(evmLoanRegistryOp("writeDown", { args: ["7", "1500001"] })),
+    ).toEqual([["Amount", "$1.500001"]]);
+    expect(rows(evmLoanRegistryOp("adjustInterest"))).toEqual([
+      ["Delta", "-$5.00"],
+      ["Reason hash", "ababababab…"],
+    ]);
+    expect(rows(evmLoanRegistryOp("closeDefaulted"))).toEqual([
+      ["Closure reason", "Default"],
+    ]);
+    expect(rows(evmMinterOp())).toEqual([
+      ["Repayment", "#2"],
+      ["Reference hash", "cdcdcdcdcd…"],
+    ]);
   });
 
   it("falls back to raw JSON for an undecodable row", () => {
@@ -1278,13 +1332,68 @@ describe("usePendingOperationView on EVM", () => {
     expect(v.notice).toContain("another SecurityRegistry");
   });
 
-  it("blocks a LoanRegistry row", () => {
+  it("enables a ready LoanRegistry row for its caller", () => {
     mocks.evmWallet.address = EVM_SCHEDULER;
     const v = evmView({
+      item: fromServed(evmLoanRegistryOp("setDefault")),
+      expectedTarget: EVM_LOAN_REGISTRY,
+    });
+    expect(v.disabled).toBe(false);
+    expect(v.notice).toBeNull();
+  });
+
+  it("enables a ready Minter row and names the Minter in the target-mismatch copy", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const item = fromServed(evmMinterOp());
+    expect(evmView({ item, expectedTarget: EVM_MINTER }).disabled).toBe(false);
+    const wrong = evmView({ item, expectedTarget: EVM_LOAN_REGISTRY });
+    expect(wrong.disabled).toBe(true);
+    expect(wrong.notice).toContain("another Minter");
+  });
+
+  it("blocks a row on another EVM chain id", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const v = evmView({
+      chainId: OTHER_CHAIN,
       item: evmItem({ target_kind: "loan_registry", function: "setDefault" }),
     });
     expect(v.disabled).toBe(true);
     expect(v.notice).toContain("Stellar only");
+  });
+
+  it("maps Minter and LoanRegistry custom errors by target kind", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const withErr = (message: string) =>
+      mocks.execute.mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+        error: new Error(message),
+        hash: null,
+        stage: null,
+        reset: vi.fn(),
+      });
+    const item = fromServed(evmMinterOp());
+    withErr("reverted: MinterInsufficientBankCash(uint256,uint256)");
+    expect(
+      evmView({ item, expectedTarget: EVM_MINTER }).error?.message,
+    ).toMatch(/bank cash/);
+    withErr("reverted: MinterAlreadyReversed()");
+    expect(evmView({ item, expectedTarget: EVM_MINTER }).error?.message).toBe(
+      "This repayment is already reversed.",
+    );
+    withErr("reverted: AccessManagerNotReady(bytes32)");
+    expect(
+      evmView({ item, expectedTarget: EVM_MINTER }).error?.message,
+    ).toMatch(/not ready yet/);
+    const loan = fromServed(evmLoanRegistryOp("cure"));
+    withErr("reverted: EnforcedPause()");
+    expect(
+      evmView({ item: loan, expectedTarget: EVM_LOAN_REGISTRY }).error?.message,
+    ).not.toMatch(/SecurityRegistry is paused/);
+    withErr("reverted: AccessManagerNotReady(bytes32)");
+    expect(
+      evmView({ item: loan, expectedTarget: EVM_LOAN_REGISTRY }).error?.message,
+    ).toMatch(/not ready yet/);
   });
 
   it("maps a decoded EVM custom error", () => {
@@ -1324,5 +1433,94 @@ describe("usePendingOperationView on EVM", () => {
       calldata: EVM_CALLDATA,
       targetKind: "security_registry",
     });
+  });
+});
+
+describe("decodeEvmLoanRegistryCall", () => {
+  it("decodes the reference shapes", () => {
+    expect(decodeEvmLoanRegistryCall("set_default", ["7"])).toEqual({
+      fn: "set_default",
+      loanId: 7,
+    });
+    expect(decodeEvmLoanRegistryCall("cure", ["7"])).toEqual({
+      fn: "cure",
+      loanId: 7,
+    });
+    expect(
+      decodeEvmLoanRegistryCall("amend_economics", ["7", 145000, "1767225600"]),
+    ).toEqual({
+      fn: "amend_economics",
+      loanId: 7,
+      rateBps: 1450,
+      maturity: 1_767_225_600,
+    });
+    expect(
+      decodeEvmLoanRegistryCall("adjust_interest", ["7", "-5000000", HASH_A]),
+    ).toEqual({
+      fn: "adjust_interest",
+      loanId: 7,
+      delta: "-5000000",
+      reasonHash: HASH_A,
+    });
+    expect(decodeEvmLoanRegistryCall("write_down", ["7", "1000000"])).toEqual({
+      fn: "write_down",
+      loanId: 7,
+      amount: "1000000",
+    });
+    expect(decodeEvmLoanRegistryCall("close_defaulted", ["7", 4])).toEqual({
+      fn: "close_defaulted",
+      loanId: 7,
+      reason: "Default",
+    });
+    expect(decodeEvmLoanRegistryCall("close_defaulted", ["7", 5])).toEqual({
+      fn: "close_defaulted",
+      loanId: 7,
+      reason: "OtherWriteDown",
+    });
+  });
+
+  it.each([
+    ["numeric id", "set_default", [7]],
+    ["rate not a multiple of 100", "amend_economics", ["7", 145001, "100"]],
+    ["rate zero", "amend_economics", ["7", 0, "100"]],
+    ["numeric maturity", "amend_economics", ["7", 145000, 100]],
+    ["zero maturity", "amend_economics", ["7", 145000, "0"]],
+    ["ordinal 3 (Cancelled)", "close_defaulted", ["7", 3]],
+    ["string ordinal", "close_defaulted", ["7", "4"]],
+    ["0x hash", "adjust_interest", ["7", "5", `0x${HASH_A}`]],
+    ["numeric amount", "write_down", ["7", 5]],
+    ["negative amount", "write_down", ["7", "-5"]],
+    ["wrong length", "cure", ["7", "1"]],
+    ["id beyond u32", "cure", ["4294967296"]],
+    ["not an array", "cure", {}],
+    ["unknown function", "pause", ["7"]],
+  ])("returns null for %s", (_name, fn, args) => {
+    expect(decodeEvmLoanRegistryCall(fn, args)).toBeNull();
+  });
+});
+
+describe("decodeEvmReverseRepayCall", () => {
+  it("decodes reverseRepay with decimal-string ids", () => {
+    expect(
+      decodeEvmReverseRepayCall("reverse_repay", ["7", "2", HASH_B]),
+    ).toEqual({
+      fn: "reverse_repay",
+      loanId: 7,
+      repaymentId: 2,
+      refHash: HASH_B,
+    });
+  });
+
+  it.each([
+    ["numeric ids", [7, 2, HASH_B]],
+    ["0x hash", ["7", "2", `0x${HASH_B}`]],
+    ["wrong length", ["7", "2"]],
+    ["repayment beyond u32", ["7", "4294967296", HASH_B]],
+  ])("returns null for %s", (_name, args) => {
+    expect(decodeEvmReverseRepayCall("reverse_repay", args)).toBeNull();
+  });
+
+  it("returns null for another function", () => {
+    expect(decodeEvmReverseRepayCall("cure", ["7", "2", HASH_B])).toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import {
 import {
   DELAYED,
   EVM,
+  EVM_SCHEDULER,
   HASH_A,
   LOAN_REGISTRY,
   NO_ROLE,
@@ -19,6 +20,7 @@ import {
   STELLAR,
   accessResult,
   loanBookResult,
+  evmLoanRegistryOp,
   loanEntry,
   loanRegistryOp,
   minterOp,
@@ -54,12 +56,18 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-const walletState = vi.hoisted(() => ({ address: null as string | null }));
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
 vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
-  useEvmWallet: () => ({ address: undefined, isConnected: false }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
@@ -115,13 +123,16 @@ function setup({
   access = DELAYED,
   pending,
   address = SCHEDULER,
+  evmAddress,
 }: {
   chainId?: number;
   access?: Parameters<typeof accessResult>[0];
   pending?: Record<string, ReturnType<typeof pendingOp>[]>;
   address?: string | null;
+  evmAddress?: string;
 } = {}) {
   walletState.address = address;
+  walletState.evmAddress = evmAddress;
   mockSession.mockReturnValue({ chainId } as never);
   mockLoanBook.mockReturnValue(loanBookResult(loans(pending)) as never);
   mockAccess.mockReturnValue(accessResult(access) as never);
@@ -163,18 +174,58 @@ describe("Risk Council hub", () => {
     expect(screen.queryByTestId("risk-council-inspectors-link")).toBeNull();
   });
 
-  it("keeps the LoanRegistry hub blocked on an EVM session but links the Inspector panel", () => {
-    setup({ chainId: EVM, pending: { "1": [pendingOp()] } });
+  it("renders the full hub on an EVM session with a decoded EVM row and its link", () => {
+    setup({
+      chainId: EVM,
+      evmAddress: EVM_SCHEDULER.toLowerCase(),
+      pending: {
+        "1": [
+          evmLoanRegistryOp("amendEconomics", {
+            args: ["1", 145_000, "1816128000"],
+            state: "waiting",
+            ready_at: isoAt(READY_AT + 100),
+          }),
+        ],
+      },
+    });
     renderRoute();
-    expect(screen.getByTestId("risk-council-blocked")).toHaveTextContent(
-      /On-chain actions run on Stellar only/,
-    );
+    expect(screen.queryByTestId("risk-council-blocked")).toBeNull();
+    expect(screen.getByTestId("risk-council-intro")).toBeInTheDocument();
     expect(
       screen.getByTestId("risk-council-inspectors-link"),
-    ).toHaveTextContent("Inspector panel");
-    expect(screen.queryByTestId("risk-council-intro")).toBeNull();
-    expect(screen.queryByTestId("risk-council-scheduled")).toBeNull();
-    expect(screen.queryByTestId("risk-council-loans")).toBeNull();
+    ).toBeInTheDocument();
+    const row = screen.getAllByTestId("risk-council-scheduled-row")[0]!;
+    expect(row).toHaveTextContent("Amend economics");
+    expect(row).toHaveTextContent("New maturity: 21 Jul 2027");
+    expect(row).toHaveTextContent("0xAbCd…Ef01 · this wallet");
+    expect(row).toHaveTextContent("Waiting");
+    expect(within(row).getByRole("link", { name: "Open" })).toHaveAttribute(
+      "href",
+      `/risk-council/reterm/1?chain=${EVM}`,
+    );
+    expect(screen.getByTestId("risk-council-loans")).toBeInTheDocument();
+    expect(screen.getAllByTestId("risk-council-loan-row")).toHaveLength(3);
+  });
+
+  it("shows the role line from the EVM access read", () => {
+    setup({ chainId: EVM, evmAddress: EVM_SCHEDULER });
+    renderRoute();
+    expect(mockAccess).toHaveBeenCalledWith(EVM, null, "set_default");
+    expect(screen.getByTestId("risk-council-role")).toHaveTextContent(
+      /Risk Council: this deployment applies a 24 h delay/,
+    );
+  });
+
+  it("does not mark another EVM wallet as this wallet", () => {
+    setup({
+      chainId: EVM,
+      evmAddress: "0x0000000000000000000000000000000000000001",
+      pending: { "1": [evmLoanRegistryOp("setDefault")] },
+    });
+    renderRoute();
+    const [row] = screen.getAllByTestId("risk-council-scheduled-row");
+    expect(row).toHaveTextContent("0xAbCd…Ef01");
+    expect(row).not.toHaveTextContent("this wallet");
   });
 
   it("links the Inspector panel on a Stellar session", () => {

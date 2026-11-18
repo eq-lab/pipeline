@@ -1244,7 +1244,7 @@ describe("Loan detail route — Repayment recovery card (#1711)", () => {
     expect(screen.getByTestId("loan-detail-open-recovery")).toBeEnabled();
   });
 
-  it("is disabled with the Stellar-only reason on an EVM loan", () => {
+  it("is disabled with the Stellar-only reason on an unknown EVM chain", () => {
     mockRecoveryCard.state = "blocked-evm";
     mockRecoveryCard.blockedReason = "On-chain actions run on Stellar only.";
     mockUseLoanDetail.mockReturnValue(makeResult());
