@@ -9,12 +9,12 @@ This spec is the source of truth for the risk/watchlist behavior below. Figma go
 ## What the loans table and loan card show
 
 1. **Status** — the loan's lifecycle status.
-2. **LTV** (Stellar loans only) — the served loan-to-value from the SecurityRegistry and its margin-call state (below). EVM loans show none.
+2. **LTV** — the served loan-to-value from the SecurityRegistry and its margin-call state (below). The backend serves it for Stellar and EVM loans; the Trustee shows it on EVM loans once #1942 ships.
 3. **Nearest payment** — the next payment's date, or, when overdue, how many days late. Served by the backend as `next_payment_timestamp` (the next scheduled payment — the current rollover-adjusted maturity for today's bullet loans) and `days_overdue` (whole days past it; `null` until then) on `GET /v1/loan-book` and `.../financials` — the frontend renders these directly and never derives the day count client-side. `days_overdue` here is pure date math off `next_payment_timestamp`; the cross-rollover *"a coupon was missed while maturity has not yet passed"* case below is tracked separately in #961.
 
 ## LTV and margin-call state
 
-The Trustee reads the loan's LTV, margin-call state and price staleness from the Stellar SecurityRegistry (served by the backend, see [loan-security-state.md](./loan-security-state.md)); it does not compute them and no CCR is shown. There are no fixed percentage bands: the thresholds are the loan's own terms.
+The Trustee reads the loan's LTV, margin-call state and price staleness from the chain's SecurityRegistry (served by the backend, see [loan-security-state.md](./loan-security-state.md)); it does not compute them and no CCR is shown. There are no fixed percentage bands: the thresholds are the loan's own terms.
 
 - **LTV above the loan's advance ratio** — attention (amber). A reason to place the loan on Watchlist and surface it in Needs Attention.
 - **Margin call open, or LTV above the loan's margin-call ratio with no on-chain call yet** — **red**. Margin call to the borrower, issued via the originator.

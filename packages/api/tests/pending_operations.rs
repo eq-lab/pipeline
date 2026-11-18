@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use shared::access_manager_repo::PendingOpRow;
 use shared::contract_logs_repo::LoanSnapshotRow;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
+use shared::security_registry::STELLAR_SECURITY_PARAMS;
 use shared::security_registry_repo::LoanSecurityRows;
 use utoipa::OpenApi;
 
@@ -290,6 +291,7 @@ fn an_unattached_entry_serializes_an_empty_array() {
 fn the_security_response_starts_with_an_empty_array() {
     let response = build_security_response(
         STELLAR,
+        &STELLAR_SECURITY_PARAMS,
         SECURITY,
         "7",
         &LoanSecurityRows::default(),

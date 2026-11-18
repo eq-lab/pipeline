@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 use serde_json::{json, Value};
+use shared::chains::ChainKind;
 use shared::security_registry::*;
 
 fn bd(s: &str) -> BigDecimal {
@@ -501,6 +502,32 @@ fn loan_snapshot(terms_ledger: i64, default_breach_at: Option<&str>) -> Snapshot
             consents_ledger: terms_ledger,
         },
     }
+}
+
+#[test]
+fn the_chain_parameters_carry_decimals_release_debt_and_breach() {
+    assert_eq!(STELLAR_SECURITY_PARAMS.decimals, 7);
+    assert_eq!(EVM_SECURITY_PARAMS.decimals, 6);
+    assert_eq!(
+        STELLAR_SECURITY_PARAMS.release_debt,
+        ReleaseDebt::OutstandingPlusAccrued
+    );
+    assert_eq!(EVM_SECURITY_PARAMS.release_debt, ReleaseDebt::FacilityDebt);
+    assert_eq!(
+        [
+            STELLAR_SECURITY_PARAMS.has_default_breach,
+            EVM_SECURITY_PARAMS.has_default_breach
+        ],
+        [false, true]
+    );
+    for p in [STELLAR_SECURITY_PARAMS, EVM_SECURITY_PARAMS] {
+        assert_eq!(p.par_value_per_unit, 10u64.pow(p.decimals).to_string());
+    }
+    assert_eq!(
+        security_params(ChainKind::Stellar),
+        &STELLAR_SECURITY_PARAMS
+    );
+    assert_eq!(security_params(ChainKind::Evm), &EVM_SECURITY_PARAMS);
 }
 
 #[test]

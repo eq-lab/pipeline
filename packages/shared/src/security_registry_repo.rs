@@ -411,7 +411,7 @@ pub const LIST_LOAN_BOOK_SECURITY_SQL: &str = "SELECT COALESCE(t.loan_id, v.loan
            WHERE chain_id = $1 AND contract_address = $2) v ON v.loan_id = t.loan_id";
 
 pub const LOAN_LOG_WATERMARKS_SQL: &str = "SELECT
-            COALESCE(MAX(id) FILTER (WHERE contract_address = $2), 0) AS sr_log_id,
+            COALESCE(MAX(id) FILTER (WHERE contract_address = ANY($2)), 0) AS sr_log_id,
             COALESCE(MAX(id), 0) AS valuation_log_id
      FROM contract_logs
      WHERE chain_id = $1
@@ -1150,6 +1150,7 @@ impl SecurityRegistryRepo {
         &self,
         chain_id: i64,
         contract: &str,
+        log_contracts: &[String],
         loan_id: u32,
         configured_loan_registry: &str,
     ) -> anyhow::Result<LoanSecurityRows> {
@@ -1212,15 +1213,15 @@ impl SecurityRegistryRepo {
             .fetch_optional(&mut *tx)
             .await?
             .map(|v| (v.valuation, v.fetched_at));
-        let mut log_contracts = vec![contract.to_owned()];
+        let mut valuation_contracts = log_contracts.to_vec();
         if let Some((v, _)) = &valuation {
-            log_contracts.push(v.loan_registry.clone());
+            valuation_contracts.push(v.loan_registry.clone());
         }
         let (sr_log_id, valuation_log_id): (i64, i64) = sqlx::query_as(LOAN_LOG_WATERMARKS_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .bind(loan_id.to_string())
-            .bind(&log_contracts)
+            .bind(&valuation_contracts)
             .fetch_one(&mut *tx)
             .await?;
         let loan_registry = valuation

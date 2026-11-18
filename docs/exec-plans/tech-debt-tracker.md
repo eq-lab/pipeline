@@ -2460,10 +2460,10 @@ line, whichever section it lands in.
 - **Known limitation (sub-call execute):** An `AM.execute` of a delayed operation made by a contract as a sub-call without an auth entry yields no candidate, so the row stays `pending` until it reads as expired.
 - **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state. This also resolves both limitations above.
 
-### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp
+### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp [RESOLVED 2026-11-18 / #1940]
 
 - **Date:** 2026-11-17
 - **Location:** `packages/shared/src/security_marks.rs` and the API's `/security` response builder — Issue #1938.
-- **Gap:** The SecurityRegistry indexer now stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assume the Stellar 7 dp scale.
-- **Impact:** None until the API serves EVM security data. Then a mark suggestion or an amount formatted at 7 dp would be off by a factor of 10 on EVM.
-- **Suggested fix:** Hand-off to #1940 (the `/security` route and loan-book fields) and #1942 (Trustee): take the decimals from the chain kind instead of a constant. Documented in `docs/references/security-registry-events.md#known-limitations`.
+- **Gap:** The SecurityRegistry indexer stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assumed the Stellar 7 dp scale.
+- **Resolution (shared and API scope):** `SecurityChainParams.decimals` (7 Stellar, 6 EVM) now drives the amount strings, the per-record value, `agent_release`, the mark suggestions and the report `value_per_unit=` line; Stellar output is unchanged. See `docs/product-specs/loan-security-state-evm.md`.
+- **Remaining (#1942):** the Trustee reads the `/security` strings as 7 dp; its EVM writes (`revalue`, inspections) must parse them at the chain's decimals.

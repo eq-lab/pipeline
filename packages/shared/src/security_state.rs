@@ -3,6 +3,10 @@ use bigdecimal::num_bigint::{BigInt, Sign};
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive};
 
 pub const UNIT: i128 = 10_000_000;
+
+pub fn unit(decimals: u32) -> i128 {
+    10i128.pow(decimals)
+}
 pub const BPS_ONE: u128 = 10_000;
 pub const U32_MAX_BPS: u32 = u32::MAX;
 
@@ -93,24 +97,24 @@ pub struct CountedTerm {
     pub value_per_unit: i128,
 }
 
-fn term_numerator(t: &CountedTerm) -> Option<i128> {
+fn term_numerator(t: &CountedTerm, unit: i128) -> Option<i128> {
     if t.goods {
         t.counted_quantity.checked_mul(t.value_per_unit)
     } else {
-        t.counted_quantity.checked_mul(UNIT)
+        t.counted_quantity.checked_mul(unit)
     }
 }
 
-pub fn counted_value_excluding(terms: &[CountedTerm], exclude: u32) -> Option<i128> {
+pub fn counted_value_excluding(terms: &[CountedTerm], exclude: u32, unit: i128) -> Option<i128> {
     let mut sum: i128 = 0;
     for t in terms.iter().filter(|t| t.record_id != exclude) {
-        sum = sum.checked_add(term_numerator(t)?)?;
+        sum = sum.checked_add(term_numerator(t, unit)?)?;
     }
-    Some(sum / UNIT)
+    Some(sum / unit)
 }
 
-pub fn record_term_value(t: &CountedTerm) -> Option<i128> {
-    term_numerator(t).map(|n| n / UNIT)
+pub fn record_term_value(t: &CountedTerm, unit: i128) -> Option<i128> {
+    term_numerator(t, unit).map(|n| n / unit)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,22 +136,21 @@ pub fn release_unconditional(status: &str, protection: &str, outstanding: Option
     status == "PendingPerfection" || protection == "InsuranceLossPayee" || outstanding == Some(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn agent_release(
     status: &str,
     protection: &str,
     outstanding: u128,
-    accrued: u128,
+    debt: Option<u128>,
     terms: &[CountedTerm],
     record_id: u32,
     advance_ratio_bps: u32,
+    unit: i128,
 ) -> AgentRelease {
     if release_unconditional(status, protection, Some(outstanding)) {
         return AgentRelease::Allowed;
     }
-    let (Some(debt), Some(value)) = (
-        outstanding.checked_add(accrued),
-        counted_value_excluding(terms, record_id),
-    ) else {
+    let (Some(debt), Some(value)) = (debt, counted_value_excluding(terms, record_id, unit)) else {
         return AgentRelease::NeedsConsent;
     };
     if ltv_bps(debt, value) <= advance_ratio_bps {
@@ -211,19 +214,33 @@ pub fn integer_string(d: &BigDecimal) -> Option<String> {
     dec_to_integer(d).map(|i| i.to_string())
 }
 
-pub fn format_7dp_i128(raw: i128) -> String {
+pub fn format_dp_i128(raw: i128, decimals: u32) -> String {
     let abs = raw.unsigned_abs();
-    let unit = UNIT.unsigned_abs();
+    let unit = unit(decimals).unsigned_abs();
     let sign = if raw < 0 { "-" } else { "" };
-    format!("{sign}{}.{:07}", abs / unit, abs % unit)
+    format!(
+        "{sign}{}.{:0width$}",
+        abs / unit,
+        abs % unit,
+        width = decimals as usize
+    )
 }
 
-pub fn format_7dp(raw: &BigDecimal) -> Option<String> {
+pub fn format_dp(raw: &BigDecimal, decimals: u32) -> Option<String> {
     let int = dec_to_integer(raw)?;
     let negative = int.sign() == Sign::Minus;
     let digits = int.magnitude().to_string();
-    let padded = format!("{digits:0>8}");
-    let split = padded.len() - 7;
+    let decimals = decimals as usize;
+    let padded = format!("{digits:0>width$}", width = decimals + 1);
+    let split = padded.len() - decimals;
     let sign = if negative { "-" } else { "" };
     Some(format!("{sign}{}.{}", &padded[..split], &padded[split..]))
+}
+
+pub fn format_7dp_i128(raw: i128) -> String {
+    format_dp_i128(raw, 7)
+}
+
+pub fn format_7dp(raw: &BigDecimal) -> Option<String> {
+    format_dp(raw, 7)
 }
