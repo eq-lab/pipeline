@@ -2,7 +2,6 @@
   "stellar.known-bugs.lps-openapi-query": { "issue": 1990 },
   "stellar.known-bugs.assay-decimal-bound": { "issue": 1991 },
   "stellar.loan-book.ltv-range": { "issue": 765 },
-  "stellar.loan-book.ltv-bps": { "issue": 1998 },
   "evm.lp.voucher-deadline": { "issue": 1798 },
   "evm.loan-book.ltv-range": { "issue": 765 }
 }
