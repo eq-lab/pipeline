@@ -1,17 +1,18 @@
 // spec: docs/frontend/trustee-flows.md#security-card
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
-import { isStellarTarget } from "@/lib/targetChains";
 import type { PendingOperation } from "./pendingOperations";
 
 export interface LoanSecurityTerms {
   advance_ratio_bps?: number;
   margin_call_ratio_bps?: number;
+  default_ratio_bps?: number | null;
   cure_period?: string;
   price_stale_after?: string;
   payment_term?: string;
   grace_period?: string;
   default_rate?: number;
+  originator_fee_rate?: number | null;
   attestation_interval?: string;
   inspection_interval?: string;
   tolerance_bps?: number;
@@ -139,7 +140,7 @@ export function useLoanSecurity(
   chainId: number,
   loanId: string,
 ): UseLoanSecurityResult {
-  const enabled = isStellarTarget(chainId) && /^\d+$/.test(loanId);
+  const enabled = /^\d+$/.test(loanId);
   const query = useQuery<LoanSecurityResponse, Error>({
     queryKey: ["loan-security", chainId, loanId],
     queryFn: () =>

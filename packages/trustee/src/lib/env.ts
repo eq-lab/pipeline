@@ -155,6 +155,18 @@ export const ENV = Object.freeze({
 
   EVM_CAPITAL_WALLET_ADDRESS: readString("VITE_EVM_CAPITAL_WALLET_ADDRESS", ""),
 
+  EVM_ACCESS_MANAGER_ADDRESS: readString("VITE_EVM_ACCESS_MANAGER_ADDRESS", ""),
+
+  EVM_SECURITY_REGISTRY_ADDRESS: readString(
+    "VITE_EVM_SECURITY_REGISTRY_ADDRESS",
+    "",
+  ),
+
+  EVM_SECURITY_RECORD_NFT_ADDRESS: readString(
+    "VITE_EVM_SECURITY_RECORD_NFT_ADDRESS",
+    "",
+  ),
+
   /**
    * Sibling-deployment URLs for the cross-deployment network switcher
    * (issue #1032), e.g. `"mainnet=https://dashboard.pipeline.one,testnet=https://dashboard.pipeline.stage.eqlab.net"`.

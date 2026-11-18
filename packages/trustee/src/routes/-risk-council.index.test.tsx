@@ -53,6 +53,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));

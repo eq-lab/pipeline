@@ -178,7 +178,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
       loanLabel: item.loanId === null ? "—" : loanLabelFor(loans, item.loanId),
       action: pendingActionLabel(item),
       args: formatPendingArgs(item, chainId),
-      scheduledBy: callerText(item, address),
+      scheduledBy: callerText(item, address, chainId),
       executableFrom: formatReadyAt(item.readyAt),
       state: PENDING_STATE_LABELS[item.state],
       link:

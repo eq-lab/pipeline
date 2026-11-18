@@ -67,6 +67,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
@@ -563,6 +564,8 @@ describe("Escalate to Default — scheduled operations", () => {
       paused: false,
       fn: "set_default",
       argsXdr: "SERVEDXDR",
+      calldata: null,
+      targetKind: "loan_registry",
     });
   });
 

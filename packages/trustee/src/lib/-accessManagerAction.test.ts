@@ -3,6 +3,9 @@ import { describe, it, expect } from "vitest";
 import {
   accessAction,
   amErrorCode,
+  evmCouncilErrorCopy,
+  evmErrorName,
+  EVM_COUNCIL_ERROR_COPY,
   otherWalletCopy,
   riskCouncilErrorCopy,
   riskCouncilRoleLine,
@@ -83,5 +86,56 @@ describe("AM error copy", () => {
     expect(otherWalletCopy("GSCHEDULERADDRESS1234567890ABCD")).toBe(
       "Only the scheduling wallet (GSCHED…ABCD) can execute this.",
     );
+  });
+});
+
+describe("EVM council error copy (#1942)", () => {
+  it("finds the custom-error name in a viem message", () => {
+    expect(
+      evmErrorName(
+        'The contract function "execute" reverted with the following reason:\nAccessManagerNotReady(bytes32 operationId)',
+      ),
+    ).toBe("AccessManagerNotReady");
+    expect(evmErrorName("execution reverted: EnforcedPause()")).toBe(
+      "EnforcedPause",
+    );
+    expect(evmErrorName("insufficient funds")).toBeNull();
+  });
+
+  it("maps each name to the shared copy", () => {
+    expect(evmCouncilErrorCopy("AccessManagerNotReady(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:7"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerNotScheduled(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:6"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerExpired(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:8"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerAlreadyScheduled(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["schedule:9"],
+    );
+    expect(evmCouncilErrorCopy("SecurityRegistryNoTerms()")).toContain(
+      "no security terms",
+    );
+    expect(evmCouncilErrorCopy("SecurityRegistryNotFlagged()")).toContain(
+      "no flag",
+    );
+    expect(
+      evmCouncilErrorCopy("SecurityRegistryWrongRecordStatus()"),
+    ).toContain("status");
+    expect(evmCouncilErrorCopy("SecurityRegistryInvalidRatio()")).toBe(
+      "The ratios must be in order: advance ≤ margin call ≤ default.",
+    );
+    expect(evmCouncilErrorCopy("EnforcedPause()")).toBe(
+      EVM_COUNCIL_ERROR_COPY.EnforcedPause,
+    );
+  });
+
+  it("returns null for an unmapped name", () => {
+    expect(
+      evmCouncilErrorCopy("AccessManagerUnauthorizedCall(a,b,c)"),
+    ).toBeNull();
+    expect(evmCouncilErrorCopy("plain failure")).toBeNull();
   });
 });

@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { InlineError } from "@pipeline/ui";
-import { useStellarWallet } from "@pipeline/wallet-connect";
+import { useChainWallet } from "@/lib/chainWallet";
 import {
   callerText,
   pendingActionLabel,
@@ -513,7 +513,7 @@ export function PendingOperationItem({
   locked?: boolean;
   onBusyChange?: (key: string, busy: boolean) => void;
 }) {
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
   const rows = pendingArgRows(item, chainId);
   const owned =
     pendingOwner(item.fn) === owner &&
@@ -533,7 +533,7 @@ export function PendingOperationItem({
         ))}
         <Row
           label="Scheduled by"
-          value={callerText(item, address)}
+          value={callerText(item, address, chainId)}
           testId={`${prefix}-caller`}
           isLast
         />

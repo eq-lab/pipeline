@@ -35,7 +35,19 @@ const mocks = vi.hoisted(() => ({
   readLoanChainState: vi.fn(),
   readLoanMoney: vi.fn(),
   sign: vi.fn(),
+  readEvmCanCall: vi.fn(),
+  readEvmSecurityRegistrySchedule: vi.fn(),
+  relayEvmSecurityRegistry: vi.fn(),
+  readEvmScheduledOperation: vi.fn(),
+  executeEvmScheduledOperation: vi.fn(),
+  readEvmSecurityInspectors: vi.fn(),
+  encodeEvmSecurityRegistryCalldata: vi.fn(),
+  evmSecuritySelector: vi.fn(),
   wallet: { address: "GRC" as string | null, isConnected: true },
+  evmWallet: {
+    address: "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01" as string | undefined,
+    isConnected: true,
+  },
 }));
 
 vi.mock("@pipeline/wallet-connect", () => ({
@@ -51,10 +63,27 @@ vi.mock("@pipeline/wallet-connect", () => ({
   readRiskCouncilSchedule: mocks.readRiskCouncilSchedule,
   readLoanChainState: mocks.readLoanChainState,
   readLoanMoney: mocks.readLoanMoney,
+  readEvmCanCall: mocks.readEvmCanCall,
+  readEvmSecurityRegistrySchedule: mocks.readEvmSecurityRegistrySchedule,
+  relayEvmSecurityRegistry: mocks.relayEvmSecurityRegistry,
+  readEvmScheduledOperation: mocks.readEvmScheduledOperation,
+  executeEvmScheduledOperation: mocks.executeEvmScheduledOperation,
+  readEvmSecurityInspectors: mocks.readEvmSecurityInspectors,
+  encodeEvmSecurityRegistryCalldata: mocks.encodeEvmSecurityRegistryCalldata,
+  evmSecuritySelector: mocks.evmSecuritySelector,
+  evmSecurityTarget: (
+    fn: string,
+    { registry, recordNft }: { registry: string; recordNft: string },
+  ) => (fn === "set_inspectors" ? recordNft : registry),
+  evmSecurityErrorAbi: ["ERROR_ABI"],
   useStellarWallet: () => ({
     address: mocks.wallet.address,
     isConnected: mocks.wallet.isConnected,
     signTransaction: mocks.sign,
+  }),
+  useEvmWallet: () => ({
+    address: mocks.evmWallet.address,
+    isConnected: mocks.evmWallet.isConnected,
   }),
 }));
 
@@ -66,11 +95,18 @@ const envMock = vi.hoisted(() => ({
   STELLAR_LOAN_REGISTRY_ID: "CREGISTRY",
   STELLAR_LOAN_REGISTRY_EXECUTOR_ID: "CAM",
   STELLAR_SECURITY_REGISTRY_ID: "CSECURITY",
+  EVM_ACCESS_MANAGER_ADDRESS: "0x00000000000000000000000000000000000000a1",
+  EVM_SECURITY_REGISTRY_ADDRESS: "0x00000000000000000000000000000000000000b1",
+  EVM_SECURITY_RECORD_NFT_ADDRESS: "0x00000000000000000000000000000000000000b2",
 }));
 vi.mock("@/lib/env", () => ({ ENV: envMock }));
 
 const STELLAR = 99_000_001;
 const EVM = 560_048;
+const EVM_AM = "0x00000000000000000000000000000000000000a1";
+const EVM_REGISTRY = "0x00000000000000000000000000000000000000b1";
+const EVM_NFT = "0x00000000000000000000000000000000000000b2";
+const EVM_CALLER = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
 const SET_DEFAULT = { fn: "set_default", loanId: 4 } as const;
 let queryClient: QueryClient;
 
@@ -97,6 +133,13 @@ beforeEach(() => {
   });
   mocks.wallet.address = "GRC";
   mocks.wallet.isConnected = true;
+  mocks.evmWallet.address = EVM_CALLER;
+  mocks.evmWallet.isConnected = true;
+  envMock.EVM_ACCESS_MANAGER_ADDRESS = EVM_AM;
+  envMock.EVM_SECURITY_REGISTRY_ADDRESS = EVM_REGISTRY;
+  envMock.EVM_SECURITY_RECORD_NFT_ADDRESS = EVM_NFT;
+  mocks.evmSecuritySelector.mockReturnValue("0xdeadbeef");
+  mocks.encodeEvmSecurityRegistryCalldata.mockReturnValue("0xcafebabe00");
   mocks.relayRiskCouncil.mockResolvedValue({ hash: "H" });
   envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "CAM";
   envMock.STELLAR_LOAN_REGISTRY_ID = "CREGISTRY";
@@ -166,7 +209,7 @@ describe("useRiskCouncilAccess", () => {
     expect(mocks.readRiskCouncilSchedule).not.toHaveBeenCalled();
   });
 
-  it("is disabled for an EVM chain or without an address", () => {
+  it("is disabled on EVM for a LoanRegistry function or without an address", () => {
     renderHook(() => useRiskCouncilAccess(EVM, SET_DEFAULT, "set_default"), {
       wrapper: makeWrapper(),
     });
@@ -301,14 +344,15 @@ describe("useSecurityInspectors", () => {
     );
   });
 
-  it("errors when not configured and is disabled on EVM", async () => {
+  it("errors when not configured and is disabled on another chain", async () => {
     envMock.STELLAR_SECURITY_REGISTRY_ID = "";
     const a = renderHook(() => useSecurityInspectors(STELLAR), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(a.result.current.error).not.toBeNull());
-    renderHook(() => useSecurityInspectors(EVM), { wrapper: makeWrapper() });
+    renderHook(() => useSecurityInspectors(1), { wrapper: makeWrapper() });
     expect(mocks.readSecurityInspectors).not.toHaveBeenCalled();
+    expect(mocks.readEvmSecurityInspectors).not.toHaveBeenCalled();
   });
 });
 
@@ -443,7 +487,7 @@ describe("useRiskCouncilRelay", () => {
     expect(executed.result.current.get("OPX")).toMatchObject({ readyAt: 7 });
   });
 
-  it("rejects when not configured, not connected or on EVM", async () => {
+  it("rejects when not configured, not connected or a LoanRegistry call on EVM", async () => {
     envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "";
     const a = renderHook(() => useRiskCouncilRelay(), {
       wrapper: makeWrapper(),
@@ -691,6 +735,8 @@ describe("usePendingOperationExecute", () => {
     paused: false,
     fn: "set_terms",
     argsXdr: "AAAA",
+    calldata: null,
+    targetKind: "security_registry" as const,
   };
 
   beforeEach(() => {
@@ -737,7 +783,7 @@ describe("usePendingOperationExecute", () => {
     expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
   });
 
-  it("rejects a disconnected wallet, a missing AccessManager id and an EVM chain", async () => {
+  it("rejects a disconnected wallet, a missing AccessManager id and a LoanRegistry row on EVM", async () => {
     mocks.wallet.isConnected = false;
     const a = renderHook(() => usePendingOperationExecute(), {
       wrapper: makeWrapper(),
@@ -758,8 +804,12 @@ describe("usePendingOperationExecute", () => {
       wrapper: makeWrapper(),
     });
     await expect(
-      c.result.current.mutateAsync({ ...INPUT, chainId: EVM }),
-    ).rejects.toThrow();
+      c.result.current.mutateAsync({
+        ...INPUT,
+        chainId: EVM,
+        targetKind: "loan_registry",
+      }),
+    ).rejects.toThrow(/Stellar only/);
     expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
   });
 
@@ -869,5 +919,403 @@ describe("usePendingOperationExecute", () => {
       await result.current.mutateAsync(INPUT);
     });
     expect(ops.result.current[0]!.executedHere).toBe(true);
+  });
+});
+
+describe("EVM Risk Council", () => {
+  const SET_TERMS = {
+    fn: "set_terms",
+    loanId: 4,
+    terms: {} as never,
+  } as const;
+  const INSPECTORS = {
+    fn: "set_inspectors" as const,
+    inspectors: [] as string[],
+  };
+
+  describe("useRiskCouncilAccess", () => {
+    it("reads canCall with the security selector against the registry", async () => {
+      mocks.readEvmCanCall.mockResolvedValue({ immediate: true, delay: 0 });
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, null, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(mocks.evmSecuritySelector).toHaveBeenCalledWith("set_terms");
+      expect(mocks.readEvmCanCall).toHaveBeenCalledWith({
+        accessManager: EVM_AM,
+        caller: EVM_CALLER,
+        target: EVM_REGISTRY,
+        selector: "0xdeadbeef",
+      });
+      expect(mocks.readCanCall).not.toHaveBeenCalled();
+    });
+
+    it("targets the RecordNft for set_inspectors", async () => {
+      mocks.readEvmCanCall.mockResolvedValue({ immediate: true, delay: 0 });
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, INSPECTORS, "set_inspectors"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(mocks.readEvmCanCall).toHaveBeenCalledWith(
+        expect.objectContaining({ target: EVM_NFT }),
+      );
+    });
+
+    it("reads the schedule when delayed and the call is set", async () => {
+      mocks.readEvmCanCall.mockResolvedValue({ immediate: false, delay: 3600 });
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "x",
+        readyAt: 0,
+      });
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, SET_TERMS, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.data?.schedule).not.toBeNull());
+      expect(mocks.readEvmSecurityRegistrySchedule).toHaveBeenCalledWith({
+        call: SET_TERMS,
+        accessManager: EVM_AM,
+        registry: EVM_REGISTRY,
+        recordNft: EVM_NFT,
+        caller: EVM_CALLER,
+      });
+    });
+
+    it("is still disabled on EVM for a LoanRegistry function", () => {
+      renderHook(() => useRiskCouncilAccess(EVM, SET_DEFAULT, "set_default"), {
+        wrapper: makeWrapper(),
+      });
+      expect(mocks.readEvmCanCall).not.toHaveBeenCalled();
+      expect(mocks.readCanCall).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the not-configured copy when an EVM address is empty", async () => {
+      envMock.EVM_SECURITY_RECORD_NFT_ADDRESS = "";
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, null, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      expect(result.current.error?.message).toMatch(
+        /SecurityRegistry actions are not configured/,
+      );
+    });
+  });
+
+  describe("useRiskCouncilRelay", () => {
+    beforeEach(() => {
+      mocks.relayEvmSecurityRegistry.mockResolvedValue({ hash: "EVMH" });
+    });
+
+    it("records operationId, readyAt and calldata after a schedule", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "ab".repeat(32),
+        readyAt: 1_800_000_000,
+      });
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      const ops = renderHook(() => useScheduledOps(EVM));
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "schedule",
+          call: SET_TERMS,
+          chainId: EVM,
+          loanId: 4,
+        });
+      });
+      expect(mocks.relayEvmSecurityRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "schedule",
+          call: SET_TERMS,
+          accessManager: EVM_AM,
+          registry: EVM_REGISTRY,
+          recordNft: EVM_NFT,
+          caller: EVM_CALLER,
+          chainId: EVM,
+        }),
+      );
+      expect(mocks.relaySecurityRegistry).not.toHaveBeenCalled();
+      expect(ops.result.current).toHaveLength(1);
+      expect(ops.result.current[0]).toMatchObject({
+        operationId: "ab".repeat(32),
+        readyAt: 1_800_000_000,
+        calldata: "0xcafebabe00",
+        caller: EVM_CALLER,
+        target: EVM_REGISTRY,
+        loanId: 4,
+      });
+      expect(ops.result.current[0]!.argsXdr).toBeUndefined();
+    });
+
+    it("pre-reads the schedule on execute and marks the operation executed", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "cd".repeat(32),
+        readyAt: 77,
+      });
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      const executed = renderHook(() => useExecutedOperations(EVM));
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        });
+      });
+      expect(mocks.readEvmSecurityRegistrySchedule).toHaveBeenCalledTimes(1);
+      expect(executed.result.current.get("cd".repeat(32))).toMatchObject({
+        hash: "EVMH",
+        readyAt: 77,
+      });
+    });
+
+    it("still executes when the pre-read fails", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockRejectedValue(new Error("rpc"));
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        });
+      });
+      expect(mocks.relayEvmSecurityRegistry).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects with the not-configured copy when an EVM address is empty", async () => {
+      envMock.EVM_ACCESS_MANAGER_ADDRESS = "";
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(
+        relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        }),
+      ).rejects.toThrow(/SecurityRegistry actions are not configured/);
+      expect(mocks.relayEvmSecurityRegistry).not.toHaveBeenCalled();
+    });
+
+    it("rejects a disconnected EVM wallet", async () => {
+      mocks.evmWallet.isConnected = false;
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(
+        relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        }),
+      ).rejects.toThrow(/EVM wallet not connected/);
+    });
+  });
+
+  describe("usePendingOperationExecute", () => {
+    const OP_ID = "cd".repeat(32);
+    const CALLDATA = "0x45f225f5aabbccdd";
+    const INPUT = {
+      chainId: EVM,
+      operationId: OP_ID,
+      caller: EVM_CALLER,
+      target: EVM_REGISTRY,
+      expectedTarget: EVM_REGISTRY,
+      paused: false,
+      fn: "set_terms",
+      argsXdr: null,
+      calldata: CALLDATA,
+      targetKind: "security_registry" as const,
+    };
+
+    beforeEach(() => {
+      mocks.readEvmScheduledOperation.mockResolvedValue({
+        operationId: OP_ID,
+        readyAt: 1_800_000_000,
+      });
+      mocks.executeEvmScheduledOperation.mockResolvedValue({ hash: "EEH" });
+    });
+
+    it("rejects another wallet without touching the network", async () => {
+      mocks.evmWallet.address = "0x0000000000000000000000000000000000000001";
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(result.current.mutateAsync(INPUT)).rejects.toThrow(
+        /Only the scheduling wallet/,
+      );
+      expect(mocks.readEvmScheduledOperation).not.toHaveBeenCalled();
+      expect(mocks.executeEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("accepts a wallet that differs only in address case", async () => {
+      fakeRelayTimers();
+      mocks.evmWallet.address = EVM_CALLER.toLowerCase();
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await result.current.mutateAsync(INPUT);
+      });
+      expect(mocks.executeEvmScheduledOperation).toHaveBeenCalledTimes(1);
+    });
+
+    it("never executes when the recomputed operation id differs", async () => {
+      mocks.readEvmScheduledOperation.mockResolvedValue({
+        operationId: "00".repeat(32),
+        readyAt: 1_800_000_000,
+      });
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(result.current.mutateAsync(INPUT)).rejects.toBeInstanceOf(
+        PendingArgsMismatchError,
+      );
+      expect(mocks.executeEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("compares the served id case-insensitively", async () => {
+      fakeRelayTimers();
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await result.current.mutateAsync({
+          ...INPUT,
+          operationId: OP_ID.toUpperCase(),
+        });
+      });
+      expect(mocks.executeEvmScheduledOperation).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws NoLongerScheduledError when readyAt is 0", async () => {
+      mocks.readEvmScheduledOperation.mockResolvedValue({
+        operationId: OP_ID,
+        readyAt: 0,
+      });
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(result.current.mutateAsync(INPUT)).rejects.toBeInstanceOf(
+        NoLongerScheduledError,
+      );
+      expect(mocks.executeEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("requires the served calldata", async () => {
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(
+        result.current.mutateAsync({ ...INPUT, calldata: null }),
+      ).rejects.toBeInstanceOf(PendingArgsMismatchError);
+      expect(mocks.readEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("executes with the calldata unchanged and the AccessManager from env", async () => {
+      fakeRelayTimers();
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      const executed = renderHook(() => useExecutedOperations(EVM));
+      await act(async () => {
+        await result.current.mutateAsync(INPUT);
+      });
+      expect(mocks.readEvmScheduledOperation).toHaveBeenCalledWith({
+        accessManager: EVM_AM,
+        caller: EVM_CALLER,
+        target: EVM_REGISTRY,
+        calldata: CALLDATA,
+      });
+      expect(mocks.executeEvmScheduledOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessManager: EVM_AM,
+          caller: EVM_CALLER,
+          target: EVM_REGISTRY,
+          calldata: CALLDATA,
+          chainId: EVM,
+          errorAbi: ["ERROR_ABI"],
+        }),
+      );
+      expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+      expect(executed.result.current.get(OP_ID)).toMatchObject({
+        hash: "EEH",
+        readyAt: 1_800_000_000,
+      });
+    });
+
+    it("refuses another registry and a paused registry before any RPC call", async () => {
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      const mismatch = await result.current
+        .mutateAsync({ ...INPUT, expectedTarget: "0xother" })
+        .catch((e: unknown) => e);
+      expect(mismatch).toBeInstanceOf(PendingTargetMismatchError);
+      await expect(
+        result.current.mutateAsync({ ...INPUT, paused: true }),
+      ).rejects.toBeInstanceOf(RegistryPausedError);
+      expect(mocks.readEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("rejects a LoanRegistry row with the Stellar-only reason", async () => {
+      const { result } = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(
+        result.current.mutateAsync({ ...INPUT, targetKind: "loan_registry" }),
+      ).rejects.toThrow(/Stellar only/);
+      expect(mocks.readEvmScheduledOperation).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing AccessManager and a disconnected wallet", async () => {
+      envMock.EVM_ACCESS_MANAGER_ADDRESS = "";
+      const a = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(a.result.current.mutateAsync(INPUT)).rejects.toThrow(
+        /not configured for this environment/,
+      );
+      envMock.EVM_ACCESS_MANAGER_ADDRESS = EVM_AM;
+      mocks.evmWallet.isConnected = false;
+      const b = renderHook(() => usePendingOperationExecute(), {
+        wrapper: makeWrapper(),
+      });
+      await expect(b.result.current.mutateAsync(INPUT)).rejects.toThrow(
+        /EVM wallet not connected/,
+      );
+    });
+  });
+
+  describe("useSecurityInspectors", () => {
+    it("reads the RecordNft", async () => {
+      mocks.readEvmSecurityInspectors.mockResolvedValue(["0xA", "0xB"]);
+      const { result } = renderHook(() => useSecurityInspectors(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.data).toEqual(["0xA", "0xB"]));
+      expect(mocks.readEvmSecurityInspectors).toHaveBeenCalledWith({
+        recordNft: EVM_NFT,
+      });
+      expect(mocks.readSecurityInspectors).not.toHaveBeenCalled();
+    });
+
+    it("errors with the not-configured copy when the RecordNft is empty", async () => {
+      envMock.EVM_SECURITY_RECORD_NFT_ADDRESS = "";
+      const { result } = renderHook(() => useSecurityInspectors(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      expect(result.current.error?.message).toMatch(/not configured/);
+    });
   });
 });

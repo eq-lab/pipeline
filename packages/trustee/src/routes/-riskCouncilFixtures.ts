@@ -9,6 +9,7 @@ import type {
 } from "@/api/useRiskCouncil";
 
 export const STELLAR = 99_000_001;
+export const EVM = 560048;
 export const OTHER_CHAIN = 1;
 export const READY_AT = 1_800_000_000;
 
@@ -280,4 +281,48 @@ const OPERATION_FNS = [
 function fnOperationId(fn: string): string {
   const index = OPERATION_FNS.indexOf(fn as (typeof OPERATION_FNS)[number]);
   return (0x50 + index).toString(16).repeat(32);
+}
+
+export const EVM_SECURITY_REGISTRY =
+  "0xB51E7f13420D106946376A67Fe5921C63B09BE15";
+export const EVM_SCHEDULER = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
+export const EVM_ACCESS_MANAGER = "0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992";
+export const EVM_RECORD_NFT = "0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09";
+export const EVM_OPERATION_ID = "cd".repeat(32);
+export const EVM_CALLDATA = `0x45f225f5${"00".repeat(60)}`;
+
+export const EVM_SET_TERMS_ARGS = [
+  "7",
+  {
+    advanceRatioBps: 7000,
+    marginCallRatioBps: 8250,
+    defaultRatioBps: 9000,
+    curePeriod: "604800",
+    priceStaleAfter: "86400",
+    paymentTerm: 0,
+    gracePeriod: "259200",
+    defaultRate: 20000,
+    originatorFeeRate: 10000,
+    attestationInterval: "2592000",
+    inspectionInterval: "0",
+    toleranceBps: 50,
+    gradeToleranceBps: 25,
+    marginCallAt: "0",
+    defaultBreachAt: "0",
+  },
+];
+
+export function evmPendingOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: EVM_OPERATION_ID,
+    caller: EVM_SCHEDULER,
+    target: EVM_SECURITY_REGISTRY,
+    function: "setTerms",
+    args_xdr: null,
+    calldata: EVM_CALLDATA,
+    args: EVM_SET_TERMS_ARGS,
+    ...overrides,
+  });
 }

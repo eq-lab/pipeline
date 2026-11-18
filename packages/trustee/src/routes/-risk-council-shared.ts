@@ -10,6 +10,7 @@ import {
 } from "@/api/useRiskCouncil";
 import {
   accessAction,
+  evmCouncilErrorCopy,
   formatDelayHours,
   NO_LONGER_SCHEDULED,
   riskCouncilErrorCopy,
@@ -20,7 +21,11 @@ import {
 } from "@/lib/accessManagerAction";
 import { findLoanEntry } from "@/lib/loanRoute";
 import { councilTarget, useScheduledOp } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  isStellarTarget,
+  riskCouncilBlockedReason,
+  stellarOnlyActionReason,
+} from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { formatChainAmount } from "./-repayment-recovery";
 
@@ -204,7 +209,7 @@ export function useRiskCouncilActionView({
   loanId?: number;
   onExecuted?: () => void;
 }): ActionView {
-  const blockedReason = stellarOnlyActionReason(chainId);
+  const blockedReason = riskCouncilBlockedReason(chainId, fn);
   const access = useRiskCouncilAccess(chainId, call, fn);
   const relay = useRiskCouncilRelay();
   const op = useScheduledOp(chainId, call);
@@ -244,7 +249,7 @@ export function useRiskCouncilActionView({
     ? toUserError(access.error, "Failed to read this wallet's permissions.")
     : null;
   const relayError = relay.error
-    ? mapRelayError(lastMode, relay.error, fn)
+    ? mapRelayError(lastMode, relay.error, fn, chainId)
     : null;
 
   const noLonger =
@@ -286,17 +291,19 @@ export function useRiskCouncilActionView({
   };
 }
 
-function mapRelayError(
+export function mapRelayError(
   mode: "schedule" | "execute",
   error: Error,
   fn: CouncilCall["fn"],
+  chainId: number,
 ): UserFacingError {
   const mapped = toUserError(error, "The Risk Council action failed.");
-  const copy =
-    riskCouncilErrorCopy(mode, mapped.details) ??
-    (councilTarget(fn) === "security_registry"
-      ? securityRegistryErrorCopy(mapped.details)
-      : null);
+  const copy = isStellarTarget(chainId)
+    ? (riskCouncilErrorCopy(mode, mapped.details) ??
+      (councilTarget(fn) === "security_registry"
+        ? securityRegistryErrorCopy(mapped.details)
+        : null))
+    : evmCouncilErrorCopy(mapped.details);
   return copy ? { ...mapped, message: copy, isSpecific: true } : mapped;
 }
 

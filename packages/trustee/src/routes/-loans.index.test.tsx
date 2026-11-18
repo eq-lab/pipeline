@@ -337,7 +337,7 @@ describe("Loans list route (ready)", () => {
     expect(screen.queryByTestId("loans-footnote")).not.toBeInTheDocument();
   });
 
-  it("shows the LTV column with per-row values, flags and a blank EVM cell", () => {
+  it("shows the LTV column with per-row values, flags and an EVM cell", () => {
     ready(
       withLtvKeys([
         {
@@ -380,7 +380,7 @@ describe("Loans list route (ready)", () => {
     expect(within(rows[1]!).queryByText("Margin call")).toBeNull();
     expect(within(rows[2]!).getByTestId("loans-ltv")).toHaveTextContent("—");
     expect(within(rows[2]!).getByText("Margin call")).toBeInTheDocument();
-    expect(within(rows[3]!).queryByTestId("loans-ltv")).toBeNull();
+    expect(within(rows[3]!).getByTestId("loans-ltv")).toHaveTextContent("—");
     expect(screen.getByTestId("loans-footnote")).toHaveTextContent(
       "LTV = amount owed",
     );

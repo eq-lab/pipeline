@@ -71,6 +71,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   riskCouncilReasonHash: vi.fn(async () => "cd".repeat(32)),
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
@@ -495,6 +496,8 @@ describe("Amend economics — scheduled operations", () => {
       paused: false,
       fn: "amend_economics",
       argsXdr: "AMENDXDR",
+      calldata: null,
+      targetKind: "loan_registry",
     });
   });
 

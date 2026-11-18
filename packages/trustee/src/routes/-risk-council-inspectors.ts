@@ -1,12 +1,17 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
 import { useState } from "react";
-import { isInspectorAddress } from "@pipeline/wallet-connect";
+import {
+  isEvmInspectorAddress,
+  isInspectorAddress,
+  normalizeEvmAddress,
+} from "@pipeline/wallet-connect";
 import { useSessionState } from "@/auth/sessionStore";
 import {
   useSecurityInspectors,
   type SecurityRegistryCall,
 } from "@/api/useRiskCouncil";
 import { ENV } from "@/lib/env";
+import { isStellarTarget } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import {
   useRiskCouncilActionView,
@@ -20,6 +25,7 @@ export const EMPTY_PANEL_WARNING =
   "The resulting panel is empty: no inspection company can enter inspections until one is added.";
 export const NO_CHANGES_NOTE = "No changes to the current panel.";
 export const INVALID_ADDRESS = "Enter a valid Stellar address (G… or C…).";
+export const INVALID_EVM_ADDRESS = "Enter a valid EVM address (0x…).";
 export const DUPLICATE_ADDRESS = "This address is already on the panel.";
 
 export interface InspectorRow {
@@ -38,11 +44,31 @@ export function applyInspectorEdits(
 export function validateInspectorDraft(
   draft: string,
   existing: ReadonlyArray<string>,
+  chainId: number | null | undefined,
 ): string | null {
   const value = draft.trim();
   if (value === "") return null;
-  if (!isInspectorAddress(value)) return INVALID_ADDRESS;
-  return existing.includes(value) ? DUPLICATE_ADDRESS : null;
+  if (isStellarTarget(chainId)) {
+    if (!isInspectorAddress(value)) return INVALID_ADDRESS;
+    return existing.includes(value) ? DUPLICATE_ADDRESS : null;
+  }
+  if (!isEvmInspectorAddress(value)) return INVALID_EVM_ADDRESS;
+  const lower = value.toLowerCase();
+  return existing.some((address) => address.toLowerCase() === lower)
+    ? DUPLICATE_ADDRESS
+    : null;
+}
+
+export function inspectorAddressField(chainId: number | null | undefined): {
+  label: string;
+  placeholder: string;
+} {
+  return isStellarTarget(chainId)
+    ? {
+        label: "Add inspector (Stellar address)",
+        placeholder: "G… or C…",
+      }
+    : { label: "Add inspector (EVM address)", placeholder: "0x…" };
 }
 
 export function buildInspectorsCall(
@@ -66,6 +92,7 @@ export interface RiskCouncilInspectorsView {
   draft: string;
   setDraft: (value: string) => void;
   draftError: string | null;
+  addressField: { label: string; placeholder: string };
   canAdd: boolean;
   add: () => void;
   toggleRemoved: (address: string) => void;
@@ -85,10 +112,11 @@ export function useRiskCouncilInspectors(): RiskCouncilInspectorsView {
   const [draft, setDraft] = useState("");
 
   const resulting = applyInspectorEdits(current ?? [], removed, added);
-  const draftError = validateInspectorDraft(draft, [
-    ...(current ?? []),
-    ...added,
-  ]);
+  const draftError = validateInspectorDraft(
+    draft,
+    [...(current ?? []), ...added],
+    chainId,
+  );
   const canAdd = draft.trim() !== "" && draftError === null;
   const call = buildInspectorsCall(current, resulting);
 
@@ -132,10 +160,15 @@ export function useRiskCouncilInspectors(): RiskCouncilInspectorsView {
     draft,
     setDraft,
     draftError,
+    addressField: inspectorAddressField(chainId),
     canAdd,
     add: () => {
       if (!canAdd) return;
-      setAdded((prev) => [...prev, draft.trim()]);
+      const value = draft.trim();
+      setAdded((prev) => [
+        ...prev,
+        isStellarTarget(chainId) ? value : normalizeEvmAddress(value),
+      ]);
       setDraft("");
     },
     toggleRemoved: (address) => {

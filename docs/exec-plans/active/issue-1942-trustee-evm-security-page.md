@@ -103,10 +103,10 @@ _None_ (resolved 2026-11-18, see Decisions).
 
 Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-security-page`; yarn is `node .yarn/releases/yarn-4.13.0.cjs`. Every new file carries one `// spec:` header line and no other comments (`AGENTS.md`).
 
-1. **Trustee types first** (issue comment, #1941 review):
+1. [x] **Trustee types first** (issue comment, #1941 review):
    - `packages/trustee/src/api/pendingOperations.ts`: `args_xdr: string | null`, `calldata?: string | null` (optional: an older API omits it; read as `null`). Add `EVM_PENDING_FUNCTIONS: Record<string, string>` (camelCase to canonical: `setDefault → set_default`, `cure → cure`, `amendEconomics`, `adjustInterest`, `writeDown`, `closeDefaulted`, `reverseRepay`, `setTerms`, `resolveFlag`, `releaseWithConsent`, `setInspectors`) and `canonicalPendingFunction(fn): string` (map hit, else `fn` unchanged).
    - `api/useLoanSecurity.ts`: `LoanSecurityTerms` gains `default_ratio_bps?: number | null`, `originator_fee_rate?: number | null`. Remove the `isStellarTarget` gate: `enabled = /^\d+$/.test(loanId)`; `notConfigured` is only the 404 code.
-2. **wallet-connect, EVM write client** `packages/wallet-connect/src/evm/contracts/write.ts` (spec `docs/frontend/wallet-flows.md#trustee-evm-contract-client`):
+2. [x] **wallet-connect, EVM write client** `packages/wallet-connect/src/evm/contracts/write.ts` (spec `docs/frontend/wallet-flows.md#trustee-evm-contract-client`):
    - `EVM_TX_GAS_CAP = 16_777_215n`.
    - `readEvmContract({ abi, address, functionName, args })` via `readContract(initEvmWalletConnect(), …)`.
    - `sendEvmContractCall({ abi, address, functionName, args, account, chainId, onStageChange }): Promise<{ hash }>`:
@@ -118,14 +118,14 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-secur
      - `onStageChange("awaiting-signature")`, `writeContract({ …, gas, chainId })`, `onStageChange("confirming")`, `waitForTransactionReceipt({ hash, chainId })`;
      - receipt status ≠ `success`: `Error("transaction reverted: {hash}")`.
    - Reuse `RelayStage` from `stellar/contracts/accessManager.ts` as a type-only import, or move the type to a chain-neutral `src/relayStage.ts` and re-export it from both.
-3. **wallet-connect, AccessManager** `src/evm/contracts/accessManager.ts` (spec `docs/frontend/trustee-flows.md#risk-council-pending-operations`):
+3. [x] **wallet-connect, AccessManager** `src/evm/contracts/accessManager.ts` (spec `docs/frontend/trustee-flows.md#risk-council-pending-operations`):
    - `accessManagerAbi`: `canCall`, `getSchedule`, `hashOperation`, `schedule`, `execute` and the eleven `AccessManager*` errors.
    - `readEvmCanCall({ accessManager, caller, target, selector }): CanCall` (`delay` as number).
    - `readEvmOperationSchedule({ accessManager, caller, target, data }): OperationSchedule`: `operationId` is the 64 lowercase hex **without** `0x` (the API form), `readyAt` a number.
    - `relayEvm({ mode, accessManager, caller, target, data, chainId, errorAbi, onStageChange })`: `schedule` is `schedule(target, data, 0)`, `execute` is `execute(target, data)` with `value 0`, both through `sendEvmContractCall` with `abi = [...accessManagerAbi, ...errorAbi]`.
    - `readEvmScheduledOperation({ …, calldata })` and `executeEvmScheduledOperation({ …, calldata })` are thin aliases taking the served calldata verbatim (validate `/^0x([0-9a-f]{2}){4,}$/i`).
    - Validate addresses with `isAddress`; empty ids throw `"<fn>: accessManager must not be empty"` like `requireIds`.
-4. **wallet-connect, SecurityRegistry and RecordNft** `src/evm/contracts/securityRegistry.ts` (spec `docs/frontend/trustee-flows.md#risk-council-security-actions`):
+4. [x] **wallet-connect, SecurityRegistry and RecordNft** `src/evm/contracts/securityRegistry.ts` (spec `docs/frontend/trustee-flows.md#risk-council-security-actions`):
    - `evmSecurityRegistryAbi`: `setTerms` with the 15-component tuple named exactly as `ISecurityRegistry.Terms`, `releaseWithConsent`, `resolveFlag`, views `terms`, `record`, `recordIds`, `paused`, errors `SecurityRegistry*` and `EnforcedPause`. `evmSecurityRecordNftAbi`: `setInspectors`, `inspectors`, errors `SecurityRecordNft*` and `EnforcedPause`. `evmSecurityErrorAbi` is the union of the error entries.
    - `EVM_SECURITY_FUNCTION_NAMES` (Decision 1) and `evmSecuritySelector(fn): Hex` (`toFunctionSelector` of the ABI item).
    - `encodeEvmSecurityRegistryCalldata(call: SecurityRegistryCall): Hex`:
@@ -142,14 +142,14 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-secur
    - `isEvmInspectorAddress(value)` and `normalizeEvmAddress(value)`.
    - In `stellar/contracts/securityRegistry.ts`: add the two optional fields to `SecurityTermsInput`; `encodeTerms` throws `invalid defaultRatioBps (EVM only)` / `originatorFeeRate` when present.
    - Export everything (and the param types) from `src/index.ts` in a new "EVM Risk Council" block.
-5. **Trustee env** `packages/trustee/src/lib/env.ts`: `EVM_ACCESS_MANAGER_ADDRESS`, `EVM_SECURITY_REGISTRY_ADDRESS`, `EVM_SECURITY_RECORD_NFT_ADDRESS` (`readString(…, "")`, short doc comment like the neighbours); `docker/trustee/entrypoint.sh` (`--arg` and the JSON object) and `.env.example` (Hoodi values from `pipeline-contracts/deployments/hoodi-v5.json` as comments, noting the #55 redeploy).
-6. **Chain helpers** `packages/trustee/src/lib/targetChains.ts`:
+5. [x] **Trustee env** `packages/trustee/src/lib/env.ts`: `EVM_ACCESS_MANAGER_ADDRESS`, `EVM_SECURITY_REGISTRY_ADDRESS`, `EVM_SECURITY_RECORD_NFT_ADDRESS` (`readString(…, "")`, short doc comment like the neighbours); `docker/trustee/entrypoint.sh` (`--arg` and the JSON object) and `.env.example` (Hoodi values from `pipeline-contracts/deployments/hoodi-v5.json` as comments, noting the #55 redeploy).
+6. [x] **Chain helpers** `packages/trustee/src/lib/targetChains.ts`:
    - `riskCouncilBlockedReason(chainId, fn)` (Decision 2; imports `councilTarget` from `lib/riskCouncilOps.ts`; check for an import cycle and move `councilTarget` into a small `lib/councilTarget.ts` if one appears);
    - `pendingRowBlockedReason(chainId, targetKind)`;
    - `sameChainAddress(chainId, a, b)` (exact on Stellar, lowercase compare on EVM).
    - New `lib/chainWallet.ts` `useChainWallet(chainId): { kind: "stellar" | "evm"; address: string | undefined; isConnected: boolean }`. It calls both `useStellarWallet` and `useEvmWallet` unconditionally and picks by `isStellarTarget(chainId)`.
-7. **Session store** `lib/riskCouncilOps.ts`: `ScheduledOp` / `ScheduledOpChain` gain `calldata?: string`; `recordScheduledOp` keeps it. No other change.
-8. **Hooks** `api/useRiskCouncil.ts`:
+7. [x] **Session store** `lib/riskCouncilOps.ts`: `ScheduledOp` / `ScheduledOpChain` gain `calldata?: string`; `recordScheduledOp` keeps it. No other change.
+8. [x] **Hooks** `api/useRiskCouncil.ts`:
    - `evmCouncilConfig(fn)`: `{ accessManager, target: evmSecurityTarget(fn, …), registry, recordNft, chainId: ENV.EVM_CHAIN_ID }`, or `null` when an address is empty (gives `SECURITY_NOT_CONFIGURED`).
    - `useRiskCouncilAccess`: `useChainWallet(chainId)`; `enabled = riskCouncilBlockedReason(chainId, fn) === null && !!address`; query key adds `chainId`. The EVM arm runs `readEvmCanCall` with `evmSecuritySelector(fn)` and, when delayed with a call, `readEvmSecurityRegistrySchedule`.
    - `useRiskCouncilRelay`: gate by `riskCouncilBlockedReason(chainId, call.fn)`. The Stellar arm is unchanged. The EVM arm mirrors it line for line:
@@ -159,12 +159,12 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-secur
    - `PendingOperationExecuteInput`: `argsXdr: string | null`, `calldata: string | null`. `usePendingOperationExecute` gates by `pendingRowBlockedReason(chainId, targetKind)` (add `targetKind` to the input). The target and paused guards are unchanged, except that the target uses `sameChainAddress`. The EVM arm follows Decision 4 (`ENV.EVM_ACCESS_MANAGER_ADDRESS`, `readEvmScheduledOperation`, compare `schedule.operationId === operationId.toLowerCase()`, `executeEvmScheduledOperation` with `errorAbi = evmSecurityErrorAbi`). The Stellar arm requires `argsXdr` non-null, and the EVM arm requires `calldata` non-null (else `PendingArgsMismatchError`).
    - `useSecurityInspectors(chainId)`: enabled when `riskCouncilBlockedReason(chainId, "set_inspectors") === null`. The EVM arm runs `readEvmSecurityInspectors` with `ENV.EVM_SECURITY_RECORD_NFT_ADDRESS`. The query key is unchanged.
    - `useRiskCouncilLoanState` stays Stellar-only (`stellarOnlyActionReason`).
-9. **Error copy** `lib/accessManagerAction.ts`:
+9. [x] **Error copy** `lib/accessManagerAction.ts`:
    - `EVM_COUNCIL_ERROR_COPY` (Decision 8) and `evmErrorName(details)`: the first match of `/\b(AccessManager[A-Za-z]+|SecurityRegistry[A-Za-z]+|SecurityRecordNft[A-Za-z]+|EnforcedPause)\b/`.
    - `evmCouncilErrorCopy(details)`.
    - `-risk-council-shared.ts` `mapRelayError(mode, error, fn, chainId)` tries `evmCouncilErrorCopy` first on EVM. `-risk-council-pending.ts` `executeErrorCopy` does the same.
-10. **Shared presenter** `routes/-risk-council-shared.ts`: `useRiskCouncilActionView` uses `riskCouncilBlockedReason(chainId, fn)` for `blockedReason`. `useRiskCouncilLoanBase.blockedReason` keeps `stellarOnlyActionReason` (LoanRegistry pages).
-11. **Pending presenter** `routes/-risk-council-pending.ts`:
+10. [x] **Shared presenter** `routes/-risk-council-shared.ts`: `useRiskCouncilActionView` uses `riskCouncilBlockedReason(chainId, fn)` for `blockedReason`. `useRiskCouncilLoanBase.blockedReason` keeps `stellarOnlyActionReason` (LoanRegistry pages).
+11. [x] **Pending presenter** `routes/-risk-council-pending.ts`:
     - `PendingOpItem.argsXdr: string | null`, new `calldata: string | null`.
     - `fromServed` sets `fn = canonicalPendingFunction(op.function)`, `calldata = op.calldata ?? null`, and decodes with `decodeEvmPendingCall` when `calldata` is set, else `decodePendingCall`.
     - `fromSession` needs `argsXdr` **or** `calldata`.
@@ -184,7 +184,7 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-secur
       - `isCaller` and `wrongTarget` via `sameChainAddress`;
       - `run` passes `argsXdr`, `calldata` and `targetKind`.
     - `callerText(item, address, chainId)` uses `sameChainAddress`.
-12. **Terms form** `routes/-risk-council-terms.ts` and `-risk-council-security.ts`:
+12. [x] **Terms form** `routes/-risk-council-terms.ts` and `-risk-council-security.ts`:
     - `formatTermsRows` adds "Default ratio" after "Margin call ratio" and "Originator fee rate" after "Default rate", only when the value is non-null (Stellar output unchanged).
     - `TermsFieldKey` gains `defaultRatio`, `originatorFeeRate`.
     - `termsFieldsFor(chainId)`: Stellar returns the current 10 fields. EVM adds `{ defaultRatio, "Default ratio (%)", "e.g. 90" }` after the margin call ratio and `{ originatorFeeRate, "Originator fee rate (%)", "e.g. 1" }` after the default rate.
@@ -195,16 +195,16 @@ Run from `/Users/aabliazimov/Documents/work/pipeline-feat-1942-trustee-evm-secur
     - New `DEFAULT_RATIO_ORDER_ERROR = "The default ratio must be at least the margin call ratio."`; the form view exposes `ratioOrderError` as the first failing rule.
     - `RiskCouncilSecurityView` gains `termsFields`, and the view `risk-council.security.$id.tsx` iterates `view.setTerms.fields` instead of the module constant.
     - `expectedTarget` is `ENV.EVM_SECURITY_REGISTRY_ADDRESS` on EVM.
-13. **Shared UI** `routes/-RiskCouncilParts.tsx` `PendingOperationItem`: `useChainWallet(chainId)` instead of `useStellarWallet`, and `callerText(item, address, chainId)`. No markup change.
-14. **Inspector panel** `routes/-risk-council-inspectors.ts`:
+13. [x] **Shared UI** `routes/-RiskCouncilParts.tsx` `PendingOperationItem`: `useChainWallet(chainId)` instead of `useStellarWallet`, and `callerText(item, address, chainId)`. No markup change.
+14. [x] **Inspector panel** `routes/-risk-council-inspectors.ts`:
     - `validateInspectorDraft(draft, existing, chainId)`: on EVM it uses `isEvmInspectorAddress`, the copy `INVALID_EVM_ADDRESS = "Enter a valid EVM address (0x…)."`, and a case-insensitive duplicate check.
     - `add()` stores `normalizeEvmAddress(draft)` on EVM.
     - `buildInspectorsCall` is unchanged (it compares the normalised lists).
     - The page markup is unchanged.
-15. **N2 / loans table** `routes/-useLoansTable.ts`: `mapLtvCell` drops the `isStellarTarget` early return; `showLtvColumn` drops the `isStellarTarget(e.chain_id) &&` term. `components/useNeedsAttention.ts` is unchanged (Decision 6).
-16. **Lint and comments:** `npx tsx scripts/lint-comments.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file listed there.
-17. **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`.
-18. **Verify:** `… workspace @pipeline/wallet-connect test`, `… workspace @pipeline/wallet-connect lint`, `… workspace @pipeline/trustee test`, `… workspace @pipeline/trustee lint`, `… workspace @pipeline/trustee build` (`tsc -b`), and `… workspace @pipeline/frontend build` (the barrel changed). There is no live EVM run (see Assumptions).
+15. [x] **N2 / loans table** `routes/-useLoansTable.ts`: `mapLtvCell` drops the `isStellarTarget` early return; `showLtvColumn` drops the `isStellarTarget(e.chain_id) &&` term. `components/useNeedsAttention.ts` is unchanged (Decision 6).
+16. [x] **Lint and comments:** `npx tsx scripts/lint-comments.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file listed there.
+17. [x] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`.
+18. [x] **Verify:** `… workspace @pipeline/wallet-connect test`, `… workspace @pipeline/wallet-connect lint`, `… workspace @pipeline/trustee test`, `… workspace @pipeline/trustee lint`, `… workspace @pipeline/trustee build` (`tsc -b`), and `… workspace @pipeline/frontend build` (the barrel changed). There is no live EVM run (see Assumptions).
 
 ## Test Strategy
 

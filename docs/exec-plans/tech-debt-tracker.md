@@ -2174,6 +2174,7 @@ line, whichever section it lands in.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 - **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
 - **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
+- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573, #1574, #1755 and #1943 reuse it; the LP app's `wallet/evm` hooks keep their own pipeline.
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
@@ -2455,6 +2456,7 @@ line, whichever section it lands in.
 - **Gap:** The backend serves `inspectors` only inside the per-loan `GET /v1/loan-book/{id}/security`, so `/risk-council/inspectors` (contract-wide, no loan) reads the `inspectors()` view with `simulateRead`. Decided with the user on #1858 over reading it from any loan's `/security` or adding an endpoint.
 - **Impact:** The panel list is read from the chain directly (not the projection), so it can differ from the `inspectors` a loan's `/security` serves for up to one fold (30 s). One extra RPC read per page load.
 - **Suggested fix:** If a contract-wide security-registry state endpoint is ever added, serve `inspectors` and `paused` from `security_registry_state` and drop the RPC read.
+- **EVM (#1942):** the same read exists on the RecordNft: `packages/wallet-connect/src/evm/contracts/securityRegistry.ts` (`readEvmSecurityInspectors`), used by `useSecurityInspectors` on EVM.
 
 ### TD-187: AccessManager operations whose transaction left RPC retention lose their arguments or stay pending
 
@@ -2473,3 +2475,11 @@ line, whichever section it lands in.
 - **Gap:** The SecurityRegistry indexer stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assumed the Stellar 7 dp scale.
 - **Resolution (shared and API scope):** `SecurityChainParams.decimals` (7 Stellar, 6 EVM) now drives the amount strings, the per-record value, `agent_release`, the mark suggestions and the report `value_per_unit=` line; Stellar output is unchanged. See `docs/product-specs/loan-security-state-evm.md`.
 - **Remaining (#1942):** the Trustee reads the `/security` strings as 7 dp; its EVM writes (`revalue`, inspections) must parse them at the chain's decimals.
+
+### TD-189: Trustee does not show the EVM `default_breach`
+
+- **Date:** 2026-11-18
+- **Location:** `packages/trustee/src/routes/-loanSecurity.ts` (Security card) and `-risk-council-security.ts` (security page) — Issue #1942.
+- **Gap:** `GET /v1/loan-book/{id}/security` serves `default_breach` for EVM loans (#1940), an EVM-only concept (`defaultBreachAt` in the 15-field `Terms`), and nothing in the Trustee renders it. The Trustee pages mirror Stellar, which has no breach.
+- **Impact:** An EVM loan past its default breach threshold shows no signal on the security page or the loan-detail Security card.
+- **Suggested fix:** Add a "Default breach" row and notes mirroring the margin-call row on the Security card and the security page.

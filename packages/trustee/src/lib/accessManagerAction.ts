@@ -66,6 +66,34 @@ export function securityRegistryErrorCopy(details: string): string | null {
   return code == null ? null : (SECURITY_REGISTRY_ERROR_COPY[code] ?? null);
 }
 
+export const REGISTRY_PAUSED_COPY =
+  "The SecurityRegistry is paused. Executing is blocked until it resumes.";
+
+export const EVM_COUNCIL_ERROR_COPY: Record<string, string> = {
+  AccessManagerNotScheduled: RISK_COUNCIL_AM_ERROR_COPY["execute:6"]!,
+  AccessManagerNotReady: RISK_COUNCIL_AM_ERROR_COPY["execute:7"]!,
+  AccessManagerExpired: RISK_COUNCIL_AM_ERROR_COPY["execute:8"]!,
+  AccessManagerAlreadyScheduled: RISK_COUNCIL_AM_ERROR_COPY["schedule:9"]!,
+  SecurityRegistryWrongRecordStatus: SECURITY_REGISTRY_ERROR_COPY["12"]!,
+  SecurityRegistryNoTerms: SECURITY_REGISTRY_ERROR_COPY["14"]!,
+  SecurityRegistryNotFlagged: SECURITY_REGISTRY_ERROR_COPY["32"]!,
+  SecurityRegistryInvalidRatio:
+    "The ratios must be in order: advance ≤ margin call ≤ default.",
+  EnforcedPause: REGISTRY_PAUSED_COPY,
+};
+
+const EVM_ERROR_NAME =
+  /\b(AccessManager[A-Za-z]+|SecurityRegistry[A-Za-z]+|SecurityRecordNft[A-Za-z]+|EnforcedPause)\b/;
+
+export function evmErrorName(details: string): string | null {
+  return details.match(EVM_ERROR_NAME)?.[1] ?? null;
+}
+
+export function evmCouncilErrorCopy(details: string): string | null {
+  const name = evmErrorName(details);
+  return name == null ? null : (EVM_COUNCIL_ERROR_COPY[name] ?? null);
+}
+
 export function riskCouncilErrorCopy(
   mode: "schedule" | "execute",
   details: string,

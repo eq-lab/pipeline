@@ -66,6 +66,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
@@ -493,6 +494,8 @@ describe("Default resolution — scheduled operations", () => {
       paused: false,
       fn: "write_down",
       argsXdr: "WDXDR",
+      calldata: null,
+      targetKind: "loan_registry",
     });
   });
 
