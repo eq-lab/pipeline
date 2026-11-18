@@ -2,12 +2,12 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { postSumsubWebhook } from "../fakes";
 import { PORTS, SPACES } from "./env";
 import { STELLAR_CHAIN_ID } from "./guard";
 import type { Recorded } from "./journey";
+import { passcodeFor } from "../passcode";
 import { readJson, stackDir } from "./stack";
 import { addr, Asset, classic, friendbot, Keypair, pay, read, stackKey, trust } from "./stellar";
 
@@ -88,13 +88,6 @@ export function psql(tag: string, sql: string): string {
 /** Stores `body` in the stack's bucket under `key` with mc (alias `l`, set by up.sh). */
 export function minioPut(tag: string, key: string, body: string | Buffer): void {
   execFileSync("docker", ["exec", "-i", container(tag, "minio"), "mc", "pipe", "-q", `l/${SPACES.bucket}/${key}`], { input: body });
-}
-
-/** The latest email passcode the API logged for `email` (EMAIL_DEV_LOG=true); it never leaves this process. */
-function passcodeFor(tag: string, email: string): string | undefined {
-  const log = readFileSync(join(stackDir(tag), "logs", "api.log"), "utf8").replace(/\x1b\[[0-9;]*m/g, "");
-  const at = log.lastIndexOf(`to=${email}`);
-  return at < 0 ? undefined : /verification code is (\d{6})/.exec(log.slice(at))?.[1];
 }
 
 /** The wallet an LP links as its settlement address, with its personal-message signer. */
