@@ -139,6 +139,33 @@ fn an_evm_chain_has_no_minter() {
     assert_eq!(not_found_message(err), "minter_not_configured");
 }
 
+const EVM_MINTER: &str = "0x621BaAb0ced6b11f88019582183b081A118755f4";
+
+fn minters_with_evm() -> HashMap<i64, String> {
+    let mut m = minters();
+    m.insert(EVM.chain_id, EVM_MINTER.to_owned());
+    m
+}
+
+#[test]
+fn an_evm_chain_with_the_minter_key_set_still_has_no_cash_book() {
+    let err = resolve_minter(EVM, &minters_with_evm()).unwrap_err();
+    assert_eq!(not_found_message(err), "minter_not_configured");
+    let chains = [EVM, STELLAR];
+    let err = authorize(
+        &claims(&["trustee"]),
+        &uri("?chain_id=1"),
+        &chains,
+        &minters_with_evm(),
+    )
+    .unwrap_err();
+    assert_eq!(not_found_message(err), "minter_not_configured");
+    assert_eq!(
+        resolve_minter(STELLAR, &minters_with_evm()).unwrap(),
+        MINTER
+    );
+}
+
 #[test]
 fn an_unconfigured_stellar_chain_has_no_minter() {
     let err = resolve_minter(STELLAR_OTHER, &minters()).unwrap_err();

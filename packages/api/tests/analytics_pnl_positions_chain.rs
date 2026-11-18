@@ -318,6 +318,21 @@ fn no_minter_chain_is_in_scope_for_evm_unconfigured_or_minterless_stellar() {
 }
 
 #[test]
+fn an_evm_chain_with_the_minter_key_set_is_still_out_of_the_minter_series() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    let mut with_evm = minters();
+    with_evm.insert(
+        EVM.chain_id,
+        "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+    );
+    assert!(minter_chains_in_scope(ChainScope::One(EVM), &all, &with_evm).is_empty());
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::All, &all, &with_evm),
+        minter_chains_in_scope(ChainScope::All, &all, &minters())
+    );
+}
+
+#[test]
 fn only_minter_chains_are_in_scope_for_all_and_one() {
     let all = [EVM, STELLAR, STELLAR_B];
     let expected = vec![(STELLAR.chain_id, STELLAR_MINTER.to_owned())];

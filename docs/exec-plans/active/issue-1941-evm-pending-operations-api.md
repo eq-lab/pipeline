@@ -81,11 +81,11 @@ chain-level reason.
    `(o.args_xdr IS NOT NULL OR o.calldata IS NOT NULL)`, and the select list gains `o.calldata`. The supersede rule,
    the `COALESCE` record lookup, the status filter and the order stay unchanged.
 4. Target scope on EVM: LoanRegistry from `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` (existing), Minter from a new
-   optional `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (Decision 3), and SecurityRegistry from #1940's
+   optional `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (Decision 3, shared `minter_addresses`), and SecurityRegistry from #1940's
    `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` (Decision 4). The comparison is between canonical EIP-55 strings
    (Decision 5). `setInspectors` (RecordNft) is never served, as Stellar's `set_inspectors`.
 5. The supersede and expiry rules are the same as #1922. No new route, no migration and no new endpoint. One new
-   optional env key, and one new `AppState` map (Decision 3).
+   optional env key into the existing `minter_addresses` map, and no new `AppState` field (Decision 3).
 6. Docs and user stories (see Docs to Update).
 
 ### Out of scope
@@ -95,7 +95,7 @@ chain-level reason.
   and enabling `security_registry_addresses` on EVM.
 - A RecordNft API key. No RecordNft operation is loan-scoped (Decision 4).
 - Any change to the #1939 indexer, the table, or the CHECK. Contract changes.
-- The EVM cash book, analytics and attention counts on the Minter (Decision 3 keeps them off).
+- The EVM cash book, analytics and attention counts on the Minter (the Stellar gates of Decision 3 keep them off).
 - Stage deploy config: epic merge-order step 3 sets the new key there.
 
 ## Decisions (planner; mirror Stellar)
@@ -119,14 +119,13 @@ chain-level reason.
      - A served name stays exactly what the chain executes.
    - The spec publishes the per-chain name table (Docs to Update), so #1942 / #1943 implement the mapping from it.
      See Open Question 2 for the alternative.
-3. **EVM Minter: a new key in its own map.** It is `CHAIN_<id>_EVM_API_MINTER_ADDRESS`, optional, normalized to
-   EIP-55 by `load_optional_contract`, and stored in a new `ChainsConfig.evm_minter_addresses` /
-   `AppState.evm_minter_addresses`. The value must equal `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
-   - It is **not** stored in `minter_addresses`. On Stellar that map also switches on `GET /v1/cash-book`, the
-     analytics Minter series and the attention-count Minter reads. Those reads are Stellar-shaped (Stellar Minter
-     event names, `holders_of_stellar_addresses`). On EVM they would serve wrong data, and they would switch the EVM
-     ramp count away from `transfer_addresses`.
-   - The new map is read only by the pending-operations scope. See Open Question 1.
+3. **EVM Minter: a new key in the shared `minter_addresses` map (human Decision 1, 2026-11-18).** It is
+   `CHAIN_<id>_EVM_API_MINTER_ADDRESS`, optional, normalized to EIP-55 by `load_optional_contract`, and stored in the
+   existing `ChainsConfig.minter_addresses` / `AppState.minter_addresses`. There is no new map and no new `AppState`
+   field. The value must equal `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
+   - The other readers of the map are Stellar-shaped (Stellar Minter event names, `holders_of_stellar_addresses`), so
+     each gets an explicit `ChainKind::Stellar` gate (Step 3b) and EVM behaviour there is unchanged.
+
 4. **SecurityRegistry and RecordNft keys: none added here, so no address has two keys.**
    - #1941 reads `security_registry_addresses`, the map #1940 extends to EVM with
      `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS`.
@@ -160,7 +159,7 @@ test layout and docs structure.
 | 3 | `function` | snake_case `Symbol` (`set_default`) | Solidity camelCase (`setDefault`), served verbatim; the Trustee maps per chain (Decision 2) | Both store the contract's native name (#1939 Decision 2). |
 | 4 | `args` | XDR display shapes (`u32` ids as numbers, `Symbol`-keyed maps, enums as `[Symbol]`) | ABI display shapes (`uint256` ids as decimal strings, tuples keyed by Solidity names, enums as ordinals) | Different type systems; display only on both. |
 | 5 | Address form and comparison | Strkey `C…` / `G…`, exact match | EIP-55, exact match of canonical strings (indexer and API both `to_checksum(None)`) | Per-chain canonical address forms; no code difference. |
-| 6 | Minter target key | `CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` → `minter_addresses` (shared with the cash book, analytics and attention counts) | `CHAIN_<id>_EVM_API_MINTER_ADDRESS` → `evm_minter_addresses` (pending operations only) | The Minter readers behind `minter_addresses` are Stellar-shaped; EVM has no cash book. |
+| 6 | Minter target key | `CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` → `minter_addresses` | `CHAIN_<id>_EVM_API_MINTER_ADDRESS` → the same `minter_addresses`; the Stellar-shaped readers (cash book, analytics Minter series, attention-count Minter reads and ramp count) gate on `ChainKind::Stellar` | One map as on Stellar; EVM has no cash book, so the Stellar-shaped readers stay off on EVM. |
 | 7 | SecurityRegistry target key | `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS` | `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` from #1940, same `security_registry_addresses` map | Per-chain key prefix; one key per address. |
 | 8 | Inspectors | `set_inspectors` on the SecurityRegistry: a configured target, but it has no loan, so not served | `setInspectors` on the RecordNft: not a target, not served; no RecordNft API key | On EVM `setInspectors` lives on a separate contract. |
 | 9 | Expired then canceled | The schedule entry lapses about one day after expiry; after that it can no longer be canceled | `cancel` works on an expired schedule at any time; the cancel closes the row and it leaves the response | OpenZeppelin `cancel` checks only `timepoint != 0`. |
@@ -176,8 +175,6 @@ test layout and docs structure.
   `load_evm_minter_address`), `loan_book.rs` (#1940 `security_by_loan`; #1941 `pending_ops_by_loan`), the spec and
   `backend.md`.
   - Expect trivial rebase conflicts.
-  - #1941 adds an `AppState` field. If #1940 also adds one (for example an EVM RecordNft map), the 15 test
-    `AppState` literals conflict mechanically.
   - If #1940 ends up with a different key name or map for the EVM SecurityRegistry, #1941 changes only the map it
     reads in `chain_scope` (Step 3).
 - **DTO type change for TS consumers.** `args_xdr` changes from `string` to `string | null` in the OpenAPI document.
@@ -185,6 +182,9 @@ test layout and docs structure.
   (`packages/trustee/src/api/pendingOperations.ts`) gains `calldata` and the nullable `args_xdr` in #1942 / #1943.
 - **Function-name mapping lives in the frontend** (Decision 2). If #1942 / #1943 prefer a server-side mapping, that
   is an additive field later (Open Question 2).
+- **Shared-map readers.** A future reader of `minter_addresses` must gate on the chain kind. The readers today are
+  `cash_book` (`resolve_minter`), `analytics` (`minter_chains_in_scope`), `attention_counts` (Minter events and ramp
+  fallback), `capital_allocation` (behind the Stellar-only switch) and `pnl` (inside the Stellar arm).
 - **Config drift.** The pending-operation Minter target is not configured unless `CHAIN_<id>_EVM_API_MINTER_ADDRESS`
   is set: `reverseRepay` operations are then not served on EVM. Stellar has the same behaviour without its key. The
   spec and `.env.example` say the API key must equal the indexer key.
@@ -236,35 +236,44 @@ _None_ (resolved 2026-11-18, see Decisions).
 - `pending_operation`:
   - Return `None` unless exactly one of `row.args_xdr` / `row.calldata` is `Some` (Decision 6).
   - Copy both verbatim. The rest is unchanged.
-- New pure helper. The coder may rename it; the tests pin its behaviour:
+- New pure helper:
 
   ```rust
   pub fn chain_scope<'a, S: BuildHasher>(
       chain_id: i64,
-      kind: ChainKind,
       loan_registry: &'a HashMap<i64, String, S>,
-      stellar_minter: &'a HashMap<i64, String, S>,
-      evm_minter: &'a HashMap<i64, String, S>,
+      minter: &'a HashMap<i64, String, S>,
       security_registry: &'a HashMap<i64, String, S>,
   ) -> TargetScope<'a>
   ```
 
-  - `loan_registry` and `security_registry` are looked up by `chain_id`.
-  - `minter` comes from `stellar_minter` for `ChainKind::Stellar`, and from `evm_minter` for `ChainKind::Evm`.
+  Each target is looked up by `chain_id` in its map; the Minter map is shared by both chains (Decision 3).
 - `TargetScope`, `targets`, `kind`, `pending_state`, `group_by_loan` and `pending_for_loan`: unchanged.
 - The header `// spec: docs/product-specs/loan-security-state.md#pending-operations` stays. No other comments.
 
 ### 3. Loan book: `packages/api/src/routes/loan_book.rs`
 
 - `pending_ops_by_loan`:
-  - Replace `if chain_kind(state, chain_id) != Some(ChainKind::Stellar) { continue; }` with `let Some(kind) =
-    chain_kind(state, chain_id) else { continue; };`.
-  - Build the scope with `chain_scope(chain_id, kind, &state.loan_registry_addresses, &state.minter_addresses,
-    &state.evm_minter_addresses, &state.security_registry_addresses)`.
+  - Remove `if chain_kind(state, chain_id) != Some(ChainKind::Stellar) { continue; }`; an unconfigured chain has no
+    targets and is skipped by the empty-`targets()` check.
+  - Build the scope with `chain_scope(chain_id, &state.loan_registry_addresses, &state.minter_addresses,
+    &state.security_registry_addresses)`.
   - The rest is unchanged: `targets()` empty → `continue`, then `list_pending_loan_ops(chain_id, &targets,
     scope.security_registry, None)` and `group_by_loan`.
 - `attach_pending_operations` and `handle_loan_book`: unchanged.
 - The `LoanBookDoc` components are unchanged; the `PendingOperation` schema itself gains `calldata`.
+
+### 3b. Stellar-only gates on the shared `minter_addresses` readers (Decision 3)
+
+New helper `routes::common::stellar_minter(kind, &minter_addresses, chain_id) -> Option<&String>`: the map entry for
+`ChainKind::Stellar`, `None` for EVM. Used by:
+
+- `cash_book::resolve_minter` (so `GET /v1/cash-book` stays `404 minter_not_configured` on EVM);
+- `analytics::minter_chains_in_scope` (the Minter series and `wire_outs`);
+- `attention_counts::chain_counts`: the Minter events read and the ramp fallback
+  `transfer_addresses.filter(stellar_minter(..).is_none())`;
+- `capital_allocation` and `pnl`: no code change. `capital_allocation_from_minter` is Stellar-only config, and the `pnl`
+  read sits in the Stellar arm; `chains_config.rs` pins that the EVM key leaves the switch empty.
 
 ### 4. Loan security: `packages/api/src/routes/loan_security.rs`
 
@@ -276,18 +285,11 @@ _None_ (resolved 2026-11-18, see Decisions).
 
 - New `fn load_evm_minter_address(chain_id, kind, out) -> Result<()>`:
   - It returns early unless `kind == ChainKind::Evm`.
-  - Key `CHAIN_{chain_id}_EVM_API_MINTER_ADDRESS`, loaded through `load_optional_contract(chain_id, kind, &key,
-    "EVM Minter (pending operations)", out)`. Blank means unset, an invalid value is an error naming the key, and the
-    value is normalized to EIP-55.
+  - Key `CHAIN_{chain_id}_EVM_API_MINTER_ADDRESS`, loaded through `load_optional_contract` into `minter_addresses`.
+    Blank means unset, an invalid value is an error naming the key, and the value is normalized to EIP-55.
   - Call it in the per-chain loop next to `load_minter_cash_book`.
-- `ChainsConfig.evm_minter_addresses: HashMap<i64, String>`, initialized, filled and returned like the other maps.
-- Add the key to the env-key list in the existing `ChainsConfig` doc block (the `# Minter cash book` lines), as one
-  line: `CHAIN_<id>_EVM_API_MINTER_ADDRESS=0x... # optional; must equal the indexer's minter; pending_operations
-  scope only`.
-- `AppState.evm_minter_addresses: HashMap<i64, String>` (`lib.rs`), placed after `minter_addresses`. Wire it in
-  `main.rs`.
-- Add `evm_minter_addresses: HashMap::new(),` to every test `AppState` literal (15 files under `packages/api/tests/`,
-  found by `grep -l "security_registry_addresses:" packages/api/tests`).
+- Add the key to the env-key list in the `ChainsConfig` doc block (the `# Minter cash book` lines).
+- No new `ChainsConfig` or `AppState` field, so no test `AppState` literal changes.
 
 ### 6. Tests (see Test Strategy)
 
@@ -296,7 +298,7 @@ _None_ (resolved 2026-11-18, see Decisions).
 ### 8. Checks
 
 - `cargo fmt --all --check` and `cargo clippy --all -- -D warnings`.
-- `cargo test -p pipeline-api -p shared`.
+- `cargo test --all` and `cargo clippy --all --all-targets -- -D warnings`.
 - `scripts/check-chain-env-names.sh` and `npx tsx scripts/lint-docs.ts`.
 
 ## Test Strategy
@@ -327,10 +329,14 @@ inline `#[cfg(test)]`. Each file keeps its one-line spec header and has no other
   - the lowercase spelling of a configured address gives `other`. This pins exact canonical comparison; the
     normalization happens in config and in the indexer.
 - `chain_scope`:
-  - An EVM chain with the LoanRegistry, the EVM Minter and the SecurityRegistry gives all three, in `targets()` order.
-  - An EVM chain reads its Minter from `evm_minter` and never from `stellar_minter`, even when the same id is present
-    there. A Stellar chain reads it from `stellar_minter` and never from `evm_minter`.
+  - An EVM chain with the LoanRegistry, the Minter and the SecurityRegistry gives all three, in `targets()` order, and
+    so does a Stellar chain.
   - An unset Minter or SecurityRegistry gives `None`, and an unknown chain id gives an empty `targets()`.
+- Stellar-only gates (each proves an EVM chain with the Minter key set behaves as before):
+  - `cash_book.rs`: `resolve_minter` and `authorize` on an EVM chain with the key set are `404 minter_not_configured`.
+  - `analytics_pnl_positions_chain.rs`: `minter_chains_in_scope` is unchanged on `One(EVM)` and `All`.
+  - `attention_counts.rs`: `stellar_minter` returns `None` for EVM with the key set (Minter events read off, ramp
+    fallback stays on `transfer_addresses`) and the entry for Stellar.
 - `group_by_loan` and `attach_pending_operations` with an EVM chain:
   - EVM rows group under `(EVM, "7")`.
   - The same loan id on the Stellar and EVM chains gets its own list.
@@ -350,15 +356,14 @@ inline `#[cfg(test)]`. Each file keeps its one-line spec header and has no other
 
 `packages/api/tests/chains_config.rs` (extended; uses the existing `with_env` / `ENV_LOCK` pattern, with no database):
 
-- On an EVM chain, a lowercase or padded `CHAIN_<id>_EVM_API_MINTER_ADDRESS` is stored EIP-55 in
-  `evm_minter_addresses`, and `minter_addresses` stays empty (the cash book stays off).
+- On an EVM chain, a lowercase or padded `CHAIN_<id>_EVM_API_MINTER_ADDRESS` is stored EIP-55 in `minter_addresses`,
+  and `capital_allocation_from_minter` stays empty.
 - An unset or whitespace-only key gives no entry.
 - An invalid value is an error that names the key.
 - The key on a Stellar chain is rejected by the existing stray-key check (`validate_chain_kind_keys`).
 - The Stellar Minter tests are unchanged.
 
-Existing suites (`loan_book_security.rs`, `loan_security.rs`, `loan_book.rs` and the others that build `AppState`)
-compile with the new field and pass unchanged.
+Existing suites pass unchanged.
 
 Manual check, after #1944, the merge-order step 3 config and #1940 (QA #1945):
 
@@ -379,7 +384,7 @@ Manual check, after #1944, the merge-order step 3 config and #1940 (QA #1945):
       - `function`: the contract's native name.
       - `args`: the chain's native display shape, linking `access-manager-events.md#evm-args-and-operation-id`.
       - `operation_id`: on EVM the `bytes32` is `0x` + the 64 hex.
-    - New sub-heading "Function names per chain": a table of the 10 loan-scoped operations, with the owner contract,
+    - New sub-heading "Function names per chain" (placed in `access-manager-events.md#function-names-per-chain`, because the spec is at the 200-line lint cap, and linked from the DTO table): a table of the 10 loan-scoped operations, with the owner contract,
       the Stellar name and the EVM name. For example `set_default` / `setDefault`, `reverse_repay` /
       `reverseRepay`, `release_with_consent` / `releaseWithConsent`. State that the API serves names verbatim and
       consumers map them per chain.
@@ -407,8 +412,8 @@ Manual check, after #1944, the merge-order step 3 config and #1940 (QA #1945):
 - `docs/references/backend.md`:
   - Line ~441: "`pending_operations` (#1922, EVM #1941) … `args_xdr` on Stellar, `calldata` on EVM".
   - "EVM AccessManager indexing": append "The API serves the pending, loan-scoped rows inline … (#1941)".
-  - Add one sentence on `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (optional, must equal the indexer key, pending-operations
-    scope only, does not enable the cash book).
+  - Add one sentence on `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (optional, must equal the indexer key, shared
+    `minter_addresses` map, Stellar-shaped readers gated on the chain kind, does not enable the cash book).
 - `.env.example`, in the EVM API block after `CHAIN_1_EVM_API_PLUSD_ADDRESS`:
 
   ```
