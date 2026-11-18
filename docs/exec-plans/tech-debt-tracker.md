@@ -270,13 +270,15 @@ line, whichever section it lands in.
 - **Impact:** If the invariant is ever broken, the row sticks in the active set forever, re-logging an error each cycle, never failing out for operator review.
 - **Suggested fix:** Change the branch to `mark_failed(&key, "submitted row missing tx_hash")` so the row leaves the active set and surfaces for operator review instead of looping.
 
-### TD-26: Loan Book table rows missing Figma-specified `border-radius: 4px`
+### TD-26: Loan Book table rows missing Figma-specified `border-radius: 4px` [RESOLVED-BY-DECISION 2026-11-18 / #1334]
 
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/dashboard/LoanBookTable.tsx` (`DesktopTable`)
 - **Gap:** Figma node 3704:1095 (`.row`) specifies `border-radius: var(--radius-radius-l, 4px)` on each row. The HTML table rendering model does not support `border-radius` on `<tr>` elements — browsers ignore it. The value exists in the design system as `--radius-pipeline-card: 4px` but cannot be applied to a semantic `<table>/<tr>` structure.
 - **Impact:** Cosmetic only — row corners are square instead of 4px rounded as in Figma. No functional or accessibility impact.
 - **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
+- **Resolution (2026-11-18, #1334):** closed by decision. The Figma row is a 1px divider with no
+  fill or hover, so the radius has no visible effect; the semantic `<table>` stays.
 
 ### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`) [RESOLVED 2026-11-03 / #1793]
 
