@@ -8,6 +8,7 @@ import { ENV } from "@/lib/env";
 
 import {
   chainAmountDecimals,
+  drawChainReason,
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
@@ -115,6 +116,22 @@ describe("riskCouncilChainReason (#1943)", () => {
   it("keeps the Stellar-only copy for any other EVM chain id", () => {
     expect(riskCouncilChainReason(1)).toBe(stellarOnlyActionReason(1));
     expect(riskCouncilChainReason(1)).toContain("Stellar only");
+  });
+});
+
+describe("drawChainReason (#1573)", () => {
+  it("never blocks Stellar, a missing id or the configured EVM chain", () => {
+    expect(drawChainReason(99_000_001)).toBeNull();
+    expect(drawChainReason(null)).toBeNull();
+    expect(drawChainReason(undefined)).toBeNull();
+    expect(drawChainReason(560048)).toBeNull();
+  });
+
+  it("keeps the Stellar-only Approve copy for any other chain id", () => {
+    expect(drawChainReason(1234)).toBe(
+      "Approve & draw runs on Stellar only — drawing on Chain 1234 from the Trustee app is not supported yet. Reject or request changes instead.",
+    );
+    expect(drawChainReason(1)).toContain("drawing on Chain 1");
   });
 });
 

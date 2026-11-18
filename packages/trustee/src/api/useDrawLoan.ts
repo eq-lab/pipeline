@@ -1,35 +1,27 @@
-/**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `drawLoan`:
- * the trustee-wallet-signed on-chain `draw_loan` mint that runs before the
- * DB review flip on Approve (see `-useOriginationReview.ts`).
- *
- * The Trustee app cannot import `@stellar/stellar-sdk` directly (TD-33, no
- * `src/wallet/**` carve-out) — all Soroban build/simulate/sign/submit/poll
- * machinery lives in the shared package; this hook only wires env values +
- * the connected wallet in, guards the unconfigured/disconnected cases, and
- * surfaces `drawLoan`'s progress stages for the Approve-button UX.
- *
- * spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
- */
+// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831
 import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
+  drawEvmLoan,
   drawLoan,
+  useEvmWallet,
   useStellarWallet,
   type DrawLoanArgs,
   type DrawLoanStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
+import { pickChainWallet } from "@/lib/chainWallet";
+import { drawChainReason } from "@/lib/targetChains";
 
 export type { DrawLoanStage };
 
 export interface UseDrawLoanInput {
   args: DrawLoanArgs;
+  chainId: number | null | undefined;
 }
 
 export interface DrawLoanOutcome {
   hash: string;
-  /** On-chain id of the loan just drawn (#876); `null` if not recoverable. */
   loanId: number | null;
 }
 
@@ -38,30 +30,41 @@ export interface UseDrawLoanResult {
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
-  /** The in-flight progress stage, or `null` before/after a mint attempt. */
   stage: DrawLoanStage | null;
-  /** Id of the loan drawn in this session, or `null` before success / if not recoverable (#876). */
   mintedLoanId: number | null;
   reset: () => void;
 }
 
-/**
- * Mutation hook for the Approve action's on-chain `draw_loan` mint.
- *
- * Guards (both throw BEFORE any RPC call, mirroring `useUsdcCustodyBalance`'s
- * unconfigured convention):
- *   - `ENV.STELLAR_LOAN_REGISTRY_ID` / `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`
- *     unset → "On-chain minting isn't configured for this environment."
- *   - Stellar wallet not connected → "Connect your trustee wallet to approve
- *     on-chain."
- */
 export function useDrawLoan(): UseDrawLoanResult {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellar = useStellarWallet();
+  const evm = useEvmWallet();
   const [stage, setStage] = useState<DrawLoanStage | null>(null);
 
   const mutation = useMutation<DrawLoanOutcome, Error, UseDrawLoanInput>({
-    mutationFn: async ({ args }) => {
+    mutationFn: async ({ args, chainId }) => {
       setStage(null);
+      const wallet = pickChainWallet(chainId, stellar, evm);
+
+      if (wallet.kind === "evm") {
+        const blocked = drawChainReason(chainId);
+        if (blocked) throw new Error(blocked);
+        if (!ENV.EVM_LOAN_REGISTRY_ADDRESS || !ENV.EVM_ACCESS_MANAGER_ADDRESS) {
+          throw new Error(
+            "On-chain minting is not configured for this environment.",
+          );
+        }
+        if (!wallet.isConnected || !wallet.address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        return drawEvmLoan({
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          caller: wallet.address,
+          chainId: ENV.EVM_CHAIN_ID,
+          args,
+          onStageChange: setStage,
+        });
+      }
 
       if (
         !ENV.STELLAR_LOAN_REGISTRY_ID ||
@@ -71,18 +74,18 @@ export function useDrawLoan(): UseDrawLoanResult {
           "On-chain minting is not configured for this environment.",
         );
       }
-      if (!isConnected || !address) {
+      if (!stellar.isConnected || !stellar.address) {
         throw new Error("Stellar wallet not connected.");
       }
 
       return drawLoan({
         executorId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         targetId: ENV.STELLAR_LOAN_REGISTRY_ID,
-        caller: address,
+        caller: stellar.address,
         args,
         rpcUrl: ENV.STELLAR_RPC_URL,
         networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
-        signTransaction,
+        signTransaction: stellar.signTransaction,
         onStageChange: setStage,
       });
     },
@@ -94,8 +97,6 @@ export function useDrawLoan(): UseDrawLoanResult {
   }, [mutation]);
 
   return {
-    // `mutation.mutateAsync` is already referentially stable across renders
-    // (React Query), so no extra `useCallback` wrapper is needed here.
     mutateAsync: mutation.mutateAsync,
     isPending: mutation.isPending,
     isSuccess: mutation.isSuccess,

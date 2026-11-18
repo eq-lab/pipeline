@@ -238,8 +238,8 @@ and the dialog shell of `MintConfirmDialog` (`useLpReviewDialog`).
 Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session), shown
 as a chip (`cash-management-escrow-chain`) and the sub-line "Unmatched incoming wires held by the minter
 on {chain} — assign each to its lender or return it." An EVM session renders "Escrowed wires on {chain}
-are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book and the
-app has no EVM write client, #1573).
+are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book; the
+EVM write client from #1942 has no cash-management bindings yet).
 
 ### Data sourcing
 
@@ -321,7 +321,7 @@ Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` on
 shown as a chip (`cash-management-wireouts-chain`) and the sub-line "Lender bank withdrawals held in
 escrow by the minter on {chain} — settle once the wire is sent, or cancel to return the PLUSD." An EVM
 session renders "Bank wire-outs on {chain} are not available in the Trustee app yet." and fetches nothing
-(no EVM cash book is served and the app has no EVM write client, #1573).
+(no EVM cash book is served; the EVM write client from #1942 has no cash-management bindings yet).
 
 ### Data sourcing
 
@@ -421,8 +421,8 @@ this section. Custody accounts sign their own USDC moves; the console never co-s
 Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session),
 shown as a chip (`cash-management-conversions-chain`). An EVM session renders "Conversions and bank
 charges on {chain} are not available in the Trustee app yet." and sends no `/v1/cash-book` request and
-makes no `pool_state`, `paused` or `ramp` read (no EVM cash book is served and the app has no EVM write
-client, #1573).
+makes no `pool_state`, `paused` or `ramp` read (no EVM cash book is served; the EVM write client from
+#1942 has no cash-management bindings yet).
 
 ### Pool summary
 
@@ -1814,13 +1814,12 @@ render `—`, never fabricated.
 
 **`draw_loan` block (#1805).** The on-chain write does not read `loan_data`. Each `SubmissionView`
 carries `draw_loan` (`DrawLoanArgs | null`, optional on stale router-state copies), the API's
-contract-ready Stellar `draw_loan(metadata_uri, economics)` arguments (`loan_book.rs`
+contract-ready `draw_loan` / `drawLoan(metadata_uri, economics)` arguments (`loan_book.rs`
 `draw_loan_args`): `metadata_uri`, the 8 `ImmutableLoanData` fields (`borrower_ref` = sha256 of the
-trimmed `data_room_id` as 64 lowercase hex, the four amounts as 7-decimal base-unit `u128`
-strings, `senior_interest_rate` as bps × 100 `u32`, two unix-second `u64` dates) and
+trimmed `data_room_id` as 64 lowercase hex, the four amounts as base-unit `u128`
+strings (7 decimals for a Stellar target, 6 for an EVM target), `senior_interest_rate` as bps × 100 `u32`, two unix-second `u64` dates) and
 `missing_inputs`. Each field is `null` when its input is absent or not representable. The block is
-`null` once the loan is drawn, on `Rejected`, for an EVM target and for an unconfigured target
-chain. The browser neither scales nor hashes: `@pipeline/wallet-connect` encodes the served values
+`null` once the loan is drawn, on `Rejected` and for an unconfigured target chain. The browser neither scales nor hashes: `@pipeline/wallet-connect` encodes the served values
 verbatim (see "Chain-first Approve ordering"). The block shape is hand-mirrored in three places
 (API Rust, `useLoanSubmissions.ts`, wallet-connect `DrawLoanArgs`; TD-42).
 
@@ -2080,7 +2079,7 @@ shape, `ValuationDisplay`/`ValuationInputRow`/`WaterfallRow`, `mapValuation`, `m
 ### Approve & mint confirmation dialog (#838, Figma node `4116:13943`)
 
 `transactionPreview` formats the served `draw_loan` block — the values actually signed — as the
-dark code block shown inside the confirmation dialog, under `LoanRegistry.draw_loan(`: `metadata_uri`,
+dark code block shown inside the confirmation dialog, under `LoanRegistry.draw_loan(` (`LoanRegistry.drawLoan(` for an EVM target): `metadata_uri`,
 the shortened `borrower_ref`, and an `economics` summary in base units as served (amounts, raw
 `senior_interest_rate`, formatted dates). Fields are read defensively (never fabricate; `—` when
 `draw_loan` is null or a field is missing). The four green mint-invariant checklist rows the Figma
@@ -2104,7 +2103,7 @@ Approve runs the trustee-wallet-signed on-chain `draw_loan` mint (`useDrawLoan`,
 `@pipeline/wallet-connect`) **before** the DB review call (`useReviewSubmission`, `POST
 .../review {decision:"Approved"}`):
 
-1. `useDrawLoan().mutateAsync({ args })`, with `args` built from the live `submission.draw_loan`
+1. `useDrawLoan().mutateAsync({ args, chainId })`, with `args` built from the live `submission.draw_loan`
    (#1805) — build → simulate (the "verify the loan" step) →
    wallet signature → submit → poll to a terminal status.
 2. Only once that resolves does `useReviewSubmission` fire.
@@ -2115,15 +2114,56 @@ and a mapped, retryable error message renders. **No signature is ever requested 
 step fails.** An already-`Approved` submission's `approve()` is a no-op (defensive — the
 InReview-only footer shouldn't normally allow this call, but guards a stale render/race).
 
-**Target-chain gate (#1536).** The draw above runs on Stellar only. A submission whose
-`target_chain_id` is not `ENV.STELLAR_CHAIN_ID` (`isStellarTarget`, `lib/targetChains.ts`) gets
+**Target-chain gate (#1536, opened for EVM by #1573).** `drawChainReason(target_chain_id)`
+(`lib/targetChains.ts`, built like `riskCouncilChainReason`) is `null` for Stellar, for a missing id
+(the pre-#1529 default) and for `ENV.EVM_CHAIN_ID`. For any other chain id it returns
 `approveBlockedReason` — "Approve & draw runs on Stellar only — drawing on `<chain>` from the
 Trustee app is not supported yet. Reject or request changes instead." — rendered as a muted line
 above the footer buttons (`origination-detail-approve-blocked`); Approve is disabled and both
-`openApprove()` and `approve()` are no-ops, so neither the dialog nor the Stellar draw can run
-against an EVM-targeted submission. Reject and Request changes are unaffected. A missing
-`target_chain_id` is treated as Stellar (the pre-#1529 default). The Deal Details card shows the
-target as its first row ("Target chain"). An EVM draw from the Trustee app is TD-151.
+`openApprove()` and `approve()` are no-ops. `approveBlockedReason = drawChainReason(target) ??
+drawLoanBlockedReason(draw_loan)`, bypassed by the review-only state. Reject and Request changes
+are unaffected. The Deal Details card shows the target as its first row ("Target chain").
+
+**EVM draw (#1573).** The EVM path mirrors the Stellar one; the dialog, footer, banners, copy,
+the draw → review ordering, the idempotency guard (and its accepted reload residual), the
+review-only path, the draw-inputs gate and the `mapMintError` table are identical. The
+differences:
+
+- `useDrawLoan().mutateAsync({ args, chainId })` picks the arm with `pickChainWallet(chainId,
+  useStellarWallet(), useEvmWallet())`; a missing chain id takes the Stellar arm. The EVM arm
+  checks, before any RPC call and in order, `drawChainReason(chainId)` (thrown as the error),
+  `VITE_EVM_LOAN_REGISTRY_ADDRESS` / `VITE_EVM_ACCESS_MANAGER_ADDRESS` ("On-chain minting is not
+  configured for this environment.") and the EVM wallet ("EVM wallet not connected."). The
+  signing chain is `ENV.EVM_CHAIN_ID`; there is no `canCall` pre-read, so a missing role surfaces
+  as a failed simulate with the decoded error name in the details.
+- Call: `drawEvmLoan` (`evm/contracts/loanRegistry.ts`) sends `AccessManager.execute(registry,
+  drawLoan calldata)` with `value 0` through `sendEvmContractCall` (switch chain, simulate, gas
+  estimate, sign, receipt), as every immediate EVM call. The ABI holds the AccessManager and
+  `LoanRegistry*` / `EnforcedPause` errors, so reverts decode by name.
+- Encoding: `drawLoan(string metadataURI, (bytes32 borrowerRef, uint256 originalFacilitySize,
+  uint256 originalSeniorTranche, uint256 originalEquityTranche, uint256 originalOfftakerPrice,
+  uint32 seniorInterestRate, uint64 originationDate, uint64 originalMaturityDate) economics)
+  returns (uint256 loanId)` (selector `0x675ebc7d`, `pipeline-contracts@150631a`). The served
+  values are encoded verbatim: `borrowerRef` = `0x` + the 64 hex, amounts and dates as `BigInt`,
+  the rate as a number. Invalid input throws `drawEvmLoan: invalid draw_loan input <field>` before
+  any RPC call.
+- Simulate wrap: `sendEvmContractCall` simulates and estimates gas before the wallet prompt. A
+  contract revert before the `awaiting-signature` stage is rethrown as `drawEvmLoan: simulation
+  error: <original message>`, so the existing copy "Could not verify the loan on-chain. No
+  signature was requested — safe to retry." applies and the decoded error (e.g.
+  `LoanRegistryInvalidTranches`, `AccessManagerUnauthorizedCall`, `EnforcedPause`) is in the
+  details. Other failures (chain switch rejection, RPC failure, receipt revert) propagate unchanged.
+- Stages: there is no stage during the simulate (the button reads "Registering on-chain…"), then
+  `awaiting-signature` and `confirming`; an EVM wallet signs and broadcasts in one call, so there is
+  no `submitting`.
+- Loan id (#876): read from the receipt's `LoanDrawn(uint256 indexed loanId, string metadataURI)`
+  log emitted by the configured registry (`readEvmDrawnLoanId`). `AccessManager.execute` returns the
+  nonce, not the id. A `uint256` above `Number.MAX_SAFE_INTEGER` gives `null` (the draw succeeded,
+  there is no deep link); `0` is a valid id.
+- Role: the trustee's EVM wallet needs `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` with delay 0 (the role
+  that holds `drawLoan`). A delayed role fails the immediate `execute` at simulate
+  (`AccessManagerNotScheduled`); scheduling a draw is not supported, as on Stellar.
+- Not covered: the Debt token block keeps its Stellar-only reason on EVM until #1892.
 
 #### Draw-inputs gate (#1805)
 
@@ -2131,7 +2171,7 @@ Approve needs a complete served `draw_loan` block
 (`lib/drawLoanArgs.ts`: `readyDrawLoanArgs` is non-null only when the block is present,
 `missing_inputs` is empty and every field is non-null and well-formed: 64-hex `borrower_ref`, digit-only amounts within `u128`,
 `u32` rate, non-negative integer dates, non-blank `metadata_uri` — the same formats
-`encodeDrawLoanArgs` enforces). For a Stellar target, `approveBlockedReason`
+`encodeDrawLoanArgs` enforces). For a Stellar or configured EVM target, `approveBlockedReason`
 (checked after the target-chain gate) is `drawLoanBlockedReason(submission.draw_loan)`: a missing
 or `null` block reads "On-chain draw inputs are not available for this submission. Reject or
 request changes instead."; `data_room_id` in `missing_inputs` reads "Data room ID missing — this
@@ -2319,7 +2359,7 @@ The target is `ENV.EVM_LOAN_REGISTRY_ADDRESS` and the AccessManager `ENV.EVM_ACC
 | 12 | Config | `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_YIELD_MINTER_ID` | `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_START_BLOCK` (`.env.example`, `docker/trustee/entrypoint.sh`) |
 | 13 | Live data | Stage chain 99000001 has Risk Council schedules | none on Hoodi until #1944; there a Trustee wallet holding `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` gets `execute-now` for the Risk Council functions, and the Minter must expose `extsload` (contracts #54) |
 
-Live data: QA runs in #1945 after #1944 and the stage env. Not in this issue: rollover, Update lifecycle, Record coupon / repayment and Close loan on EVM (#1574), the EVM draw (#1573), `default_breach` (TD-189).
+Live data: QA runs in #1945 after #1944 and the stage env. Not in this issue: rollover, Update lifecycle, Record coupon / repayment and Close loan on EVM (#1574), `default_breach` (TD-189).
 
 ### Errors, config and roles
 

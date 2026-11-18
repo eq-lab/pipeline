@@ -211,7 +211,9 @@ export const evmLoanRegistryRiskCouncilAbi = [
   ...loanRegistryErrors,
 ] as const;
 
-export const evmRiskCouncilErrorAbi: Abi = loanRegistryErrors;
+export const evmLoanRegistryErrorAbi: Abi = loanRegistryErrors;
+
+export const evmRiskCouncilErrorAbi: Abi = evmLoanRegistryErrorAbi;
 
 export const EVM_RISK_COUNCIL_FUNCTION_NAMES: Readonly<
   Record<RiskCouncilCall["fn"], string>

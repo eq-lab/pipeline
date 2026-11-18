@@ -33,7 +33,7 @@ Wire and repayment details: [deposits.md](./deposits.md#stellar-plusd-mint-leg),
 
 ## EVM
 
-Read-only. `@pipeline/wallet-connect` has only calldata encoders for the EVM minter and no write client or AccessManager read (TD-152, #1573). Mint PLUSD, Record Coupon / Repayment and Bank income stay disabled with their existing reasons.
+Read-only. `@pipeline/wallet-connect` has only calldata encoders for the EVM minter and no AccessManager `can_call` read wired to those actions (TD-152). Mint PLUSD, Record Coupon / Repayment and Bank income stay disabled with their existing reasons.
 
 ## Verified on Stellar testnet, 2026-11-09 (simulation, nothing submitted)
 

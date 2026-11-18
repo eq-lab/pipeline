@@ -61,6 +61,13 @@ export function riskCouncilChainReason(
   return stellarOnlyActionReason(chainId);
 }
 
+export function drawChainReason(
+  chainId: number | null | undefined,
+): string | null {
+  if (isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID) return null;
+  return `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(chainId)} from the Trustee app is not supported yet. Reject or request changes instead.`;
+}
+
 export function riskCouncilTargetId(
   chainId: number | null | undefined,
   kind: PendingTargetKind,
