@@ -9,7 +9,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
 use shared::access_manager_repo::AccessManagerRepo;
-use shared::chains::ChainKind;
 use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
 use shared::security_registry::security_params;
 use shared::security_registry_repo::{LoanSecurityRows, SecurityRegistryRepo};
@@ -88,10 +87,6 @@ pub fn security_log_contracts<S: BuildHasher>(
     out
 }
 
-pub fn pending_operations_served(kind: ChainKind) -> bool {
-    kind == ChainKind::Stellar
-}
-
 pub fn parse_loan_id(raw: &str) -> Result<u32, ApiError> {
     raw.trim().parse::<u32>().map_err(|_| {
         ApiError::BadRequest(format!(
@@ -142,9 +137,6 @@ async fn get_loan_security(
         now,
         &marks,
     );
-    if !pending_operations_served(chain.kind) {
-        return Ok(Json(response));
-    }
     let scope = TargetScope {
         security_registry: Some(contract),
         ..TargetScope::default()

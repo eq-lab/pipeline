@@ -152,9 +152,7 @@ Operations the Risk Council scheduled on the Stellar or EVM AccessManager and th
 | `ready_at`, `expires_at` | ISO-8601 UTC | `ready_at` and `ready_at + 604800` |
 | `state` | `waiting`, `ready`, `expired` | derived at the API clock `now`: `waiting` while `now < ready_at`, `expired` once `now >= expires_at`, else `ready` |
 
-**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response.
-
-**Sort.** By `ready_at`, then `operation_id`, then `nonce`.
+**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response. **Sort.** By `ready_at`, then `operation_id`, then `nonce`.
 
 **Selection.**
 
@@ -162,7 +160,6 @@ Operations the Risk Council scheduled on the Stellar or EVM AccessManager and th
 - Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address, compared as canonical strings (a Strkey, or EIP-55 on EVM, exactly). A loan id of a retired contract never attaches to the same id on the current one.
 - The loan is the row's `loan_id`. For a `resolve_flag` or `release_with_consent` row projected before its record was known (`loan_id` `NULL`, `record_id` set), the read resolves the loan from `security_records`, the `SecurityRecordRegistered` rows of `contract_logs` and `security_view_snapshots`. Rows with no loan are not served.
 - Rows without native args (`args_xdr` or `calldata`) or without `args_json` are not served: they cannot be executed from the console. Stellar: the transaction was out of retention. EVM: the operation id did not verify, the selector is unknown, or the arguments are undecodable.
-- On EVM an expired schedule can still be canceled (OpenZeppelin `cancel` checks only that the schedule exists), which closes the row and removes it from the response.
 - A row is dropped when a later schedule (greater `(schedule_ledger, source_log_id)`) of the same contract and operation id exists, whatever its status. On chain a new schedule of an id is accepted only after the previous one stopped being live. The contract nonce restarts at 1 once the temporary entry lapses, so the rule does not compare nonces.
 
 **Empty array.** A chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. The EVM keys are `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (optional, must equal the indexer's Minter; it does not enable the cash book, analytics or attention-count Minter reads) and `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` (#1940). `other`, `set_inspectors` / `setInspectors` (a RecordNft operation on EVM, never a target) and any non-loan operation are out of scope.

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 use pipeline_api::pending_operations::{
-    chain_scope, group_by_loan, pending_operation, pending_state, PendingOperation,
-    PendingOperationState, PendingTargetKind, TargetScope,
+    chain_scope, group_by_loan, pending_for_loan, pending_operation, pending_state,
+    PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
 };
 use pipeline_api::routes::loan_book::{attach_pending_operations, compute_loan_book, LoanBookDoc};
 use pipeline_api::routes::loan_security::LoanSecurityDoc;
@@ -302,6 +302,27 @@ fn an_evm_row_serves_calldata_verbatim_and_a_null_args_xdr() {
             state
         );
     }
+}
+
+#[test]
+fn the_security_route_scope_serves_evm_rows_like_stellar() {
+    let evm = TargetScope {
+        security_registry: Some(EVM_SECURITY),
+        ..TargetScope::default()
+    };
+    let stellar = TargetScope {
+        security_registry: Some(SECURITY),
+        ..TargetScope::default()
+    };
+    let evm_ops = pending_for_loan(&[evm_row(7, "aa", 1, R, EVM_SECURITY)], &evm, R);
+    let stellar_ops = pending_for_loan(&[op_row(7, "aa", 1, R, SECURITY)], &stellar, R);
+    assert_eq!(evm_ops.len(), 1);
+    assert_eq!(stellar_ops.len(), 1);
+    assert_eq!(evm_ops[0].target_kind, PendingTargetKind::SecurityRegistry);
+    assert_eq!(
+        evm_ops[0].calldata.as_deref(),
+        Some(evm_calldata().as_str())
+    );
 }
 
 #[test]

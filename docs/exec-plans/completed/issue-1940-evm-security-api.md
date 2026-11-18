@@ -38,7 +38,7 @@ Contracts are frozen: `pipeline-contracts@150631a`, Hoodi `deployments/hoodi-v5.
 5. **EVM-only fields, additive and `null` on Stellar.**
    - `terms.default_ratio_bps` and `terms.originator_fee_rate`.
    - A top-level `default_breach` object that mirrors `margin_call` for the `DefaultBreach*` state and history.
-6. **`pending_operations` on `/security` stays `[]` for EVM** until #1941. The loan book already gates on Stellar; the route gets the same gate. This keeps rows that the #1939 indexer will write (calldata, no `args_xdr`) from being served half-decoded.
+6. **`pending_operations` on `/security` stays `[]` for EVM** until #1941. The loan book already gates on Stellar; the route gets the same gate. This keeps rows that the #1939 indexer will write (calldata, no `args_xdr`) from being served half-decoded. Superseded: #1941 removed the gate; EVM `/security` serves `pending_operations` like Stellar.
 7. **Audit log.** Render `SecurityDefaultBreach`, `SecurityDefaultBreachPriceStale` and `SecurityDefaultBreachCleared` (hand-off from #1938). `SecurityTermsSet` details gain `default_ratio_pct` and `originator_fee_rate_pct` when the row carries them.
 8. **Docs, user story and tech debt**, in the Stellar layout.
 
@@ -171,7 +171,7 @@ pub fn security_params(kind: ChainKind) -> &'static SecurityChainParams
 ### 6. Route — `packages/api/src/routes/loan_security.rs`
 
 - `pub fn security_log_contracts<S: BuildHasher>(chain: ConfiguredChain, contract: &str, nfts: &HashMap<i64, String, S>) -> Vec<String>` returns `[contract]`, plus the chain's RecordNft when present.
-- `pub fn pending_operations_served(kind: ChainKind) -> bool { kind == ChainKind::Stellar }`. The handler skips the AccessManager read and leaves `pending_operations: []` when it is false. This mirrors `loan_book::pending_ops_by_loan`'s Stellar check; #1941 flips both.
+- `pub fn pending_operations_served(kind: ChainKind) -> bool { kind == ChainKind::Stellar }`. The handler skips the AccessManager read and leaves `pending_operations: []` when it is false. This mirrors `loan_book::pending_ops_by_loan`'s Stellar check; #1941 flips both. Superseded: #1941 removed the gate; EVM `/security` serves `pending_operations` like Stellar.
 - The handler passes `security_log_contracts(..)` to `load_loan_security`, and `security_params(chain.kind)` to `load_mark_inputs` (unchanged) and `build_security_response`.
 - OpenAPI:
   - Tag description: "SecurityRegistry state of a loan (Stellar and EVM), read from the indexed projection".
