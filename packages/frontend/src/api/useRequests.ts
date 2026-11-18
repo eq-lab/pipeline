@@ -1,7 +1,7 @@
 // spec: docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
-import { subscribeMock } from "@/wallet";
+import { subscribeMock, useActiveChainConnection } from "@/wallet";
 import { apiFetch } from "./client";
 import {
   ACTIVITY_POLL_MS,
@@ -9,7 +9,6 @@ import {
   openExpectationsFor,
   settleExpectations,
   subscribeExpectations,
-  useActiveRequestsScope,
 } from "./activityRefresh";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -75,7 +74,7 @@ export function useRequests(
   options: UseRequestsOptions = {},
 ): UseRequestsResult {
   const queryClient = useQueryClient();
-  const { kind, address, isConnected, chainId } = useActiveRequestsScope();
+  const { kind, address, isConnected, chainId } = useActiveChainConnection();
 
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,

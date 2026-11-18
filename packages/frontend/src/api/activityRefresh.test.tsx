@@ -21,13 +21,22 @@ const view = vi.hoisted(() => ({
   stellar: "GSTELLAR" as string | undefined,
 }));
 
-vi.mock("@/wallet", () => ({
+vi.mock("@/wallet/WalletViewContext", () => ({
   useWalletView: () => ({ kind: view.kind }),
+}));
+vi.mock("@/wallet/evm/useEvmWallet", () => ({
   useEvmWallet: () => ({ address: view.evm, isConnected: !!view.evm }),
+}));
+vi.mock("@/wallet/stellar/useStellarWallet", () => ({
   useStellarWallet: () => ({
     address: view.stellar,
     isConnected: !!view.stellar,
   }),
+}));
+
+vi.mock("@/wallet", async () => ({
+  useActiveChainConnection: (await import("@/wallet/useActiveChainConnection"))
+    .useActiveChainConnection,
 }));
 
 vi.mock("@/lib/env", () => ({

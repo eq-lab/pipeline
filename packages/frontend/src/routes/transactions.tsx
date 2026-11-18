@@ -12,10 +12,8 @@ import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 import {
+  useActiveChainConnection,
   useConnectModal,
-  useEvmWallet,
-  useStellarWallet,
-  useWalletView,
   useEvmStakeDecimals,
 } from "@/wallet";
 import { useChainServed } from "@/api";
@@ -42,13 +40,10 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
   const { data, isLoading, error, refetch } = useRequests();
-  const { kind } = useWalletView();
+  const { kind, isConnected } = useActiveChainConnection();
   const { served, chainName } = useChainServed();
   const evmStakeDecimals = useEvmStakeDecimals();
-  const { isConnected: isEvmConnected } = useEvmWallet();
   const { open: openConnectModal } = useConnectModal();
-  const { isConnected: isStellarConnected } = useStellarWallet();
-  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
   const items = data?.requests ?? [];
   const filtered =

@@ -11,10 +11,8 @@ import {
 } from "@/lib/format";
 
 import {
-  useEvmWallet,
-  useStellarWallet,
-  useWalletView,
   useActiveChain,
+  useActiveChainConnection,
   useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
@@ -74,13 +72,9 @@ function Home() {
   );
   const fundingOpenCounter = useRef(0);
   const activeChain = useActiveChain();
-  const evm = useEvmWallet();
-  const stellar = useStellarWallet();
-  const { kind } = useWalletView();
+  const { kind, isConnected } = useActiveChainConnection();
   const { isAnyConnected, isConnectionPending } = useWalletPresence();
   const { served: chainServed, chainName } = useChainServed();
-  const isConnected =
-    kind === "stellar" ? stellar.isConnected : evm.isConnected;
   const pnl = usePnl();
   const [portfolioPeriodId, setPortfolioPeriodId] = useState(DEFAULT_PERIOD_ID);
   const positionsHistory = usePositionsHistory(portfolioPeriodId);

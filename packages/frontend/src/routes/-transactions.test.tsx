@@ -40,13 +40,25 @@ const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
 const mockConnectModalOpen = vi.fn();
 
+vi.mock("@/wallet/evm/useEvmWallet", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/wallet/evm/useEvmWallet")>()),
+  useEvmWallet: () => mockUseWallet(),
+}));
+vi.mock("@/wallet/stellar/useStellarWallet", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/wallet/stellar/useStellarWallet")
+  >()),
+  useStellarWallet: () => mockUseStellarWallet(),
+}));
+vi.mock("@/wallet/WalletViewContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/wallet/WalletViewContext")>()),
+  useWalletView: () => mockUseWalletView(),
+}));
+
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
   return {
     ...actual,
-    useEvmWallet: () => mockUseWallet(),
-    useStellarWallet: () => mockUseStellarWallet(),
-    useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
     useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
   };

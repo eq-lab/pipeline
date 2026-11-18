@@ -225,6 +225,19 @@ connected → `evm` / `ENV.EVM_CHAIN_ID`; Stellar wallet connected → `stellar`
 `useEvmWallet().isConnected` / `useStellarWallet().isConnected`; `useWalletView().kind` only breaks a
 both-connected tie. Spec: `docs/frontend/wallet-flows.md#active-chain-for-protocol-reads`.
 
+### `useActiveChainConnection()`
+
+```ts
+const { kind, address, isConnected, chainId } = useActiveChainConnection();
+```
+
+Wallet scope of the active view for wallet-scoped requests and connection gates (`useRequests`,
+`useActionConfirmedRefresh`, `usePnl`, `usePositionsHistory`, `RecentActivityCard`, `/transactions`,
+`/`). `kind` is `useWalletView().kind` (default `evm`); `address` / `isConnected` come from that
+namespace's wallet and `chainId` is `ENV.EVM_CHAIN_ID` / `ENV.STELLAR_CHAIN_ID`. The address is raw,
+not masked while disconnected. Unlike `useActiveChain()` (protocol reads, defaults to `stellar` with
+no wallet) it never switches namespace on connection state. Spec: `docs/frontend/hooks.md`.
+
 ### `useEvmPlusdTotalSupply()` / `useEvmUsdcCustodyBalance()`
 
 ```ts

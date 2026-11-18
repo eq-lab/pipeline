@@ -14,10 +14,19 @@ const mockStellarWallet = vi.hoisted(() => ({
   isConnected: true,
 }));
 
-vi.mock("@/wallet", () => ({
+vi.mock("@/wallet/WalletViewContext", () => ({
   useWalletView: () => ({ kind: mockWalletView.kind }),
+}));
+vi.mock("@/wallet/evm/useEvmWallet", () => ({
   useEvmWallet: () => mockEvmWallet,
+}));
+vi.mock("@/wallet/stellar/useStellarWallet", () => ({
   useStellarWallet: () => mockStellarWallet,
+}));
+
+vi.mock("@/wallet", async () => ({
+  useActiveChainConnection: (await import("@/wallet/useActiveChainConnection"))
+    .useActiveChainConnection,
   subscribeMock: () => () => {},
   readMock: () => undefined,
   parseJson: (value: string) => JSON.parse(value),
