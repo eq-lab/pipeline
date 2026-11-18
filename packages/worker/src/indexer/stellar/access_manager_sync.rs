@@ -1,12 +1,10 @@
 // spec: docs/references/access-manager-events.md#sync-loop
 use std::collections::HashMap;
-use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use futures::FutureExt;
 use stellar_xdr::curr::{Limits, WriteXdr};
 
 use shared::access_manager_repo::{
@@ -14,17 +12,20 @@ use shared::access_manager_repo::{
     OP_EVENT_SCHEDULED,
 };
 
+use crate::indexer::access_manager_sync::{
+    cancel_write, loan_columns, run_sync_loop, sync_rows, unparsable_row, AmRowResolver,
+};
+pub use crate::indexer::access_manager_sync::{
+    AmSyncStore, RepoStore, Retry, ACCESS_MANAGER_SYNC_INTERVAL, CYCLE_BUDGET, ROWS_PER_CYCLE,
+};
 use crate::indexer::stellar::access_manager_parsers::{
     args_display_json, contract_invocations, execute_candidate_ids, loan_ref,
-    recover_schedule_args, CanceledRow, ExecutedRow, LoanRef, ScheduledRow, TargetIds,
+    recover_schedule_args, ExecutedRow, ScheduledRow, TargetIds,
 };
 use crate::indexer::stellar::rpc::{GetTransactionResponse, StellarRpc};
 use crate::indexer::stellar::supervise::KeyedBackoff;
 
-pub const ACCESS_MANAGER_SYNC_INTERVAL: Duration = Duration::from_secs(15);
-pub const ROWS_PER_CYCLE: i64 = 200;
 pub const TX_FETCH_TIMEOUT: Duration = Duration::from_secs(20);
-pub const CYCLE_BUDGET: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TxFetch {
@@ -38,28 +39,10 @@ pub trait TxEnvelopeSource: Send + Sync {
     async fn fetch(&self, tx_hash: &str, row_ledger: i64) -> Result<TxFetch>;
 }
 
-#[async_trait]
-pub trait AmSyncStore: Send + Sync {
-    async fn watermark(&self) -> Result<i64>;
-    async fn rows_after(&self, after_id: i64, limit: i64) -> Result<Vec<AmLogRow>>;
-    async fn has_pending_call(&self, target: &str, function: &str, caller: &str) -> Result<bool>;
-    async fn record_loan(&self, security_contract: &str, record_id: i64) -> Result<Option<i64>>;
-    async fn apply(&self, log_id: i64, write: &OpWrite) -> Result<u64>;
-}
-
 #[derive(Debug, Clone)]
 pub struct AmSyncConfig {
     pub contract_id: String,
     pub ids: TargetIds,
-}
-
-#[derive(Debug)]
-pub struct Retry(pub anyhow::Error);
-
-impl From<anyhow::Error> for Retry {
-    fn from(e: anyhow::Error) -> Self {
-        Retry(e)
-    }
 }
 
 pub fn classify_transaction(resp: &GetTransactionResponse, row_ledger: i64) -> Result<TxFetch> {
@@ -90,45 +73,6 @@ impl TxEnvelopeSource for RpcTxSource {
     }
 }
 
-pub struct RepoStore {
-    pub repo: AccessManagerRepo,
-    pub chain_id: i64,
-    pub contract_id: String,
-}
-
-#[async_trait]
-impl AmSyncStore for RepoStore {
-    async fn watermark(&self) -> Result<i64> {
-        self.repo
-            .get_watermark(self.chain_id, &self.contract_id)
-            .await
-    }
-
-    async fn rows_after(&self, after_id: i64, limit: i64) -> Result<Vec<AmLogRow>> {
-        self.repo
-            .list_rows_after(self.chain_id, &self.contract_id, after_id, limit)
-            .await
-    }
-
-    async fn has_pending_call(&self, target: &str, function: &str, caller: &str) -> Result<bool> {
-        self.repo
-            .has_pending_call(self.chain_id, &self.contract_id, target, function, caller)
-            .await
-    }
-
-    async fn record_loan(&self, security_contract: &str, record_id: i64) -> Result<Option<i64>> {
-        self.repo
-            .record_loan(self.chain_id, security_contract, record_id)
-            .await
-    }
-
-    async fn apply(&self, log_id: i64, write: &OpWrite) -> Result<u64> {
-        self.repo
-            .apply(self.chain_id, &self.contract_id, log_id, write)
-            .await
-    }
-}
-
 async fn fetch_cached(
     row: &AmLogRow,
     tx: &dyn TxEnvelopeSource,
@@ -142,11 +86,6 @@ async fn fetch_cached(
     Ok(fetched)
 }
 
-fn unparsable(row: &AmLogRow) -> OpWrite {
-    tracing::warn!(log_id = row.id, event_name = %row.event_name, "AccessManager row params did not parse; skipped");
-    OpWrite::Skip
-}
-
 async fn resolve_schedule(
     row: &AmLogRow,
     cfg: &AmSyncConfig,
@@ -155,7 +94,7 @@ async fn resolve_schedule(
     cache: &mut HashMap<String, TxFetch>,
 ) -> Result<OpWrite, Retry> {
     let Some(sched) = ScheduledRow::from_params(&row.params) else {
-        return Ok(unparsable(row));
+        return Ok(unparsable_row(row));
     };
     let args = match fetch_cached(row, tx, cache).await? {
         TxFetch::NotYet => {
@@ -184,16 +123,9 @@ async fn resolve_schedule(
     if let Some(args) = &args {
         args_xdr = args.to_xdr_base64(Limits::none()).ok();
         args_json = Some(args_display_json(args));
-        match loan_ref(&sched.target, &sched.function, args, &cfg.ids) {
-            LoanRef::Loan(n) => loan_id = Some(i64::from(n)),
-            LoanRef::Record(r) => {
-                record_id = Some(i64::from(r));
-                if let Some(security) = &cfg.ids.security_registry {
-                    loan_id = store.record_loan(security, i64::from(r)).await?;
-                }
-            }
-            LoanRef::None => {}
-        }
+        let reference = loan_ref(&sched.target, &sched.function, args, &cfg.ids);
+        (loan_id, record_id) =
+            loan_columns(reference, cfg.ids.security_registry.as_deref(), store).await?;
     }
     Ok(OpWrite::Schedule(NewScheduledOp {
         operation_id: sched.operation_id,
@@ -202,6 +134,7 @@ async fn resolve_schedule(
         target: sched.target,
         function: sched.function,
         args_xdr,
+        calldata: None,
         args_json,
         ready_at: sched.when,
         loan_id,
@@ -221,7 +154,7 @@ async fn resolve_execute(
     cache: &mut HashMap<String, TxFetch>,
 ) -> Result<OpWrite, Retry> {
     let Some(exec) = ExecutedRow::from_params(&row.params) else {
-        return Ok(unparsable(row));
+        return Ok(unparsable_row(row));
     };
     if !store
         .has_pending_call(&exec.target, &exec.function, &exec.caller)
@@ -257,26 +190,39 @@ async fn resolve_execute(
     }
 }
 
-async fn resolve_row(
-    row: &AmLogRow,
-    cfg: &AmSyncConfig,
-    store: &dyn AmSyncStore,
-    tx: &dyn TxEnvelopeSource,
-    cache: &mut HashMap<String, TxFetch>,
-) -> Result<OpWrite, Retry> {
-    match row.event_name.as_str() {
-        OP_EVENT_SCHEDULED => resolve_schedule(row, cfg, store, tx, cache).await,
-        OP_EVENT_CANCELED => Ok(match CanceledRow::from_params(&row.params) {
-            Some(c) => OpWrite::Cancel {
-                operation_id: c.operation_id,
-                nonce: c.nonce,
-                tx_hash: row.tx_hash.clone(),
-                ledger: row.block_number,
-            },
-            None => unparsable(row),
-        }),
-        OP_EVENT_EXECUTED => resolve_execute(row, cfg, store, tx, cache).await,
-        _ => Ok(unparsable(row)),
+pub struct StellarRowResolver<'a> {
+    tx: &'a dyn TxEnvelopeSource,
+    cfg: &'a AmSyncConfig,
+    cache: HashMap<String, TxFetch>,
+}
+
+impl<'a> StellarRowResolver<'a> {
+    pub fn new(tx: &'a dyn TxEnvelopeSource, cfg: &'a AmSyncConfig) -> Self {
+        Self {
+            tx,
+            cfg,
+            cache: HashMap::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl AmRowResolver for StellarRowResolver<'_> {
+    fn begin_cycle(&mut self) {
+        self.cache.clear();
+    }
+
+    async fn resolve(&mut self, row: &AmLogRow, store: &dyn AmSyncStore) -> Result<OpWrite, Retry> {
+        match row.event_name.as_str() {
+            OP_EVENT_SCHEDULED => {
+                resolve_schedule(row, self.cfg, store, self.tx, &mut self.cache).await
+            }
+            OP_EVENT_CANCELED => Ok(cancel_write(row)),
+            OP_EVENT_EXECUTED => {
+                resolve_execute(row, self.cfg, store, self.tx, &mut self.cache).await
+            }
+            _ => Ok(unparsable_row(row)),
+        }
     }
 }
 
@@ -287,65 +233,8 @@ pub async fn sync_once(
     backoff: &mut KeyedBackoff<i64>,
     now: Instant,
 ) -> Result<usize> {
-    let after = store.watermark().await?;
-    let rows = store.rows_after(after, ROWS_PER_CYCLE).await?;
-    let mut cache: HashMap<String, TxFetch> = HashMap::new();
-    let mut applied = 0;
-    for row in rows {
-        if !backoff.is_due(row.id, now) {
-            break;
-        }
-        match resolve_row(&row, cfg, store, tx, &mut cache).await {
-            Ok(write) => {
-                if let Err(e) = store.apply(row.id, &write).await {
-                    backoff.record_failure(row.id, now);
-                    if backoff.first_warning(row.id) {
-                        tracing::warn!(log_id = row.id, error = %e, "AccessManager projection write failed; will retry");
-                    } else {
-                        tracing::debug!(log_id = row.id, error = %e, "AccessManager projection write failed; will retry");
-                    }
-                    break;
-                }
-                backoff.clear(row.id);
-                applied += 1;
-            }
-            Err(Retry(e)) => {
-                backoff.record_failure(row.id, now);
-                if backoff.first_warning(row.id) {
-                    tracing::warn!(log_id = row.id, tx_hash = %row.tx_hash, error = %e, "AccessManager row not resolved; will retry");
-                } else {
-                    tracing::debug!(log_id = row.id, tx_hash = %row.tx_hash, error = %e, "AccessManager row not resolved; will retry");
-                }
-                break;
-            }
-        }
-    }
-    Ok(applied)
-}
-
-async fn run_cycle(
-    chain_id: i64,
-    store: &dyn AmSyncStore,
-    tx: &dyn TxEnvelopeSource,
-    cfg: &AmSyncConfig,
-    backoff: &mut KeyedBackoff<i64>,
-) -> usize {
-    let fut = sync_once(store, tx, cfg, backoff, Instant::now());
-    match tokio::time::timeout(CYCLE_BUDGET, AssertUnwindSafe(fut).catch_unwind()).await {
-        Ok(Ok(Ok(applied))) => applied,
-        Ok(Ok(Err(e))) => {
-            tracing::warn!(chain_id, error = %e, "access-manager-sync cycle failed");
-            0
-        }
-        Ok(Err(_)) => {
-            tracing::error!(chain_id, "access-manager-sync cycle panicked");
-            0
-        }
-        Err(_) => {
-            tracing::warn!(chain_id, "access-manager-sync cycle exceeded its budget");
-            0
-        }
-    }
+    let mut resolver = StellarRowResolver::new(tx, cfg);
+    sync_rows(store, &mut resolver, backoff, now).await
 }
 
 pub async fn run_access_manager_sync_loop(
@@ -362,11 +251,6 @@ pub async fn run_access_manager_sync_loop(
     };
     let source = RpcTxSource { rpc };
     let cfg = AmSyncConfig { contract_id, ids };
-    let mut backoff: KeyedBackoff<i64> = KeyedBackoff::default();
-    loop {
-        let applied = run_cycle(chain_id, &store, &source, &cfg, &mut backoff).await;
-        if (applied as i64) < ROWS_PER_CYCLE {
-            tokio::time::sleep(ACCESS_MANAGER_SYNC_INTERVAL).await;
-        }
-    }
+    let mut resolver = StellarRowResolver::new(&source, &cfg);
+    run_sync_loop(chain_id, &store, &mut resolver).await
 }

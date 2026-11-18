@@ -1,3 +1,6 @@
+pub mod access_manager_evm_parsers;
+pub mod access_manager_evm_sync;
+pub mod access_manager_sync;
 pub mod asset_transfers;
 pub mod chain_poller;
 pub mod collateral_registry_parsers;
@@ -30,6 +33,10 @@ use shared::{
     security_registry::EVM_SECURITY_PARAMS, security_registry_repo::SecurityRegistryRepo,
 };
 
+use access_manager_evm_parsers::{
+    register_access_manager_handler, reject_access_manager_collision, EvmTargets,
+};
+use access_manager_evm_sync::{run_access_manager_sync_loop, EvmAmSyncConfig};
 use alloy::primitives::{Address, U256};
 use chain_poller::ChainEventPoller;
 use config::IndexerJobSettings;
@@ -42,6 +49,7 @@ use poller::EvmEventPollerBuilder;
 use security_registry_parsers::reject_security_collision;
 use security_registry_sync::run_security_sync_loop;
 use security_registry_views::EvmSecurityViewSource;
+use shared::access_manager_repo::AccessManagerRepo;
 use supervise::spawn_supervised;
 
 pub fn parse_collateral_registry_contracts(
@@ -110,6 +118,8 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
     )?];
     let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
     let loan_registry_checksum = loan_registry_contracts[0].to_checksum(None);
+    let loan_registry_address = loan_registry_contracts[0];
+    let minter_address = yield_minter_contracts[0];
     let collateral_registry_contracts = parse_collateral_registry_contracts(
         settings.chain_id,
         settings.collateral_registry_address.as_deref(),
@@ -243,6 +253,39 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             plusd_transfers::register_plusd_transfer_handler(builder, chain_id, plusd, repo.clone())
         }
         None => builder,
+    };
+    let (builder, _access_manager_guard) = match settings.access_manager_address {
+        Some(am) => {
+            let mut roles = core_roles.clone();
+            if let Some(tracking) = &settings.asset_tracking {
+                roles.push(("ASSET_ADDRESS", tracking.asset));
+            }
+            if let Some(plusd) = settings.plusd_address {
+                roles.push(("PLUSD_ADDRESS", plusd));
+            }
+            reject_access_manager_collision(chain_id, am, &roles)?;
+            tracing::info!(chain_id, access_manager = %am, "EVM AccessManager indexer enabled");
+            let builder = register_access_manager_handler(builder, chain_id, am, repo.clone());
+            let cfg = EvmAmSyncConfig {
+                contract_id: am.to_checksum(None),
+                targets: EvmTargets {
+                    loan_registry: loan_registry_address,
+                    minter: minter_address,
+                    security_registry: settings.security_registry.map(|s| s.registry),
+                    record_nft: settings.security_registry.map(|s| s.record_nft),
+                },
+            };
+            let pool = pool.clone();
+            let guard = spawn_supervised("access-manager-sync", chain_id, move || {
+                run_access_manager_sync_loop(
+                    AccessManagerRepo::new(pool.clone()),
+                    chain_id,
+                    cfg.clone(),
+                )
+            });
+            (builder, Some(guard))
+        }
+        None => (builder, None),
     };
     let poller = builder.build();
 

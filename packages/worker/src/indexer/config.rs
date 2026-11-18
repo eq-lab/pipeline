@@ -410,6 +410,7 @@ pub struct IndexerJobSettings {
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
     pub plusd_address: Option<Address>,
+    pub access_manager_address: Option<Address>,
     pub security_registry: Option<EvmSecurityRegistry>,
     pub asset_tracking: Option<EvmAssetTracking>,
     pub polling_block_range: u64,
@@ -445,6 +446,12 @@ impl IndexerJobSettings {
                 let plusd_key = format!("{ip}PLUSD_ADDRESS");
                 env_nonblank(&plusd_key)
                     .map(|raw| parse_evm_address(&plusd_key, &raw))
+                    .transpose()?
+            },
+            access_manager_address: {
+                let access_manager_key = format!("{ip}ACCESS_MANAGER_ADDRESS");
+                env_nonblank(&access_manager_key)
+                    .map(|raw| parse_evm_address(&access_manager_key, &raw))
                     .transpose()?
             },
             security_registry: evm_security_registry_from_env(chain_id)?,
