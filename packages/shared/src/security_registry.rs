@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 pub const SECURITY_PROJECTION_VERSION: i32 = 1;
 
-pub const SECURITY_LOAN_EVENT_NAMES: [&str; 18] = [
+pub const SECURITY_LOAN_EVENT_NAMES: [&str; 21] = [
     "SecurityRecordRegistered",
     "SecurityRecordPerfected",
     "SecurityRecordHandedOver",
@@ -30,6 +30,15 @@ pub const SECURITY_LOAN_EVENT_NAMES: [&str; 18] = [
     "SecurityInspectionApproved",
     "SecurityFlagResolved",
     "SecurityExtensionConsent",
+    "SecurityDefaultBreach",
+    "SecurityDefaultBreachPriceStale",
+    "SecurityDefaultBreachCleared",
+];
+
+pub const SECURITY_EVM_ONLY_EVENT_NAMES: [&str; 3] = [
+    "SecurityDefaultBreach",
+    "SecurityDefaultBreachPriceStale",
+    "SecurityDefaultBreachCleared",
 ];
 
 pub const SECURITY_CONTRACT_EVENT_NAMES: [&str; 4] = [
@@ -57,6 +66,20 @@ pub const SECURITY_OPAQUE_RECORD_EVENT_NAMES: [&str; 2] =
     ["SecurityRecordPerfected", "SecurityRecordHandedOver"];
 
 pub const PAR_VALUE_PER_UNIT: &str = "10000000";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SecurityChainParams {
+    pub par_value_per_unit: &'static str,
+}
+
+pub const STELLAR_SECURITY_PARAMS: SecurityChainParams = SecurityChainParams {
+    par_value_per_unit: PAR_VALUE_PER_UNIT,
+};
+
+pub const EVM_SECURITY_PARAMS: SecurityChainParams = SecurityChainParams {
+    par_value_per_unit: "1000000",
+};
+
 pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 pub fn is_security_registry_event(name: &str) -> bool {
@@ -149,7 +172,7 @@ pub struct InspectionView {
     pub variance_grade_bps: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TermsView {
     pub advance_ratio_bps: u32,
     pub margin_call_ratio_bps: u32,
@@ -163,6 +186,12 @@ pub struct TermsView {
     pub tolerance_bps: u32,
     pub grade_tolerance_bps: u32,
     pub margin_call_at: String,
+    #[serde(default)]
+    pub default_ratio_bps: Option<u32>,
+    #[serde(default)]
+    pub originator_fee_rate: Option<u32>,
+    #[serde(default)]
+    pub default_breach_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -190,7 +219,7 @@ pub struct CountedRecordView {
     pub flagged: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct CoverageDetailView {
     pub value: String,
     pub stale_value: String,
@@ -202,6 +231,8 @@ pub struct CoverageDetailView {
     pub cure_by: String,
     pub price_stale: bool,
     pub records: Vec<CountedRecordView>,
+    #[serde(default)]
+    pub default_breach_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -276,6 +307,9 @@ pub struct TermsRow {
     pub margin_call_at: BigDecimal,
     pub set_ledger: Option<i64>,
     pub complete: bool,
+    pub default_ratio_bps: Option<i64>,
+    pub originator_fee_rate: Option<i64>,
+    pub default_breach_at: Option<BigDecimal>,
 }
 
 #[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
@@ -289,6 +323,7 @@ pub struct MarginCallEventRow {
     pub cure_by: Option<BigDecimal>,
     pub block_timestamp: i64,
     pub tx_hash: String,
+    pub default_ratio_bps: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, sqlx::FromRow)]
@@ -369,6 +404,7 @@ pub struct ValuationRow {
     pub accrued_interest: BigDecimal,
     pub money_ledger: i64,
     pub source_log_id: i64,
+    pub default_breach_at: Option<BigDecimal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -557,6 +593,9 @@ pub fn terms_from_view(loan_id: i64, v: &TermsView) -> Option<TermsRow> {
         margin_call_at: dec(&v.margin_call_at)?,
         set_ledger: None,
         complete: false,
+        default_ratio_bps: v.default_ratio_bps.map(i64::from),
+        originator_fee_rate: v.originator_fee_rate.map(i64::from),
+        default_breach_at: v.default_breach_at.as_deref().and_then(dec),
     })
 }
 
@@ -577,6 +616,9 @@ fn terms_from_params(loan_id: i64, p: &Value) -> Option<TermsRow> {
         margin_call_at: p_dec(p, "margin_call_at")?,
         set_ledger: None,
         complete: false,
+        default_ratio_bps: p_i64(p, "default_ratio_bps"),
+        originator_fee_rate: p_i64(p, "originator_fee_rate"),
+        default_breach_at: p_dec(p, "default_breach_at"),
     })
 }
 
@@ -633,8 +675,8 @@ fn set(target: &mut String, value: &str) {
     value.clone_into(target);
 }
 
-fn par_mark(row: &mut RecordRow, at: BigDecimal) {
-    row.mark_value_per_unit = dec(PAR_VALUE_PER_UNIT);
+fn par_mark(row: &mut RecordRow, at: BigDecimal, params: &SecurityChainParams) {
+    row.mark_value_per_unit = dec(params.par_value_per_unit);
     row.mark_at = Some(at);
     row.mark_benchmark = Some("PAR".to_owned());
     row.mark_report_hash = Some(ZERO_HASH.to_owned());
@@ -663,6 +705,7 @@ fn apply_record_event(
     states: &mut BTreeMap<u32, RecState>,
     ev: &SecurityEventRow,
     inspections: &HashMap<u32, Snapshot<InspectionView>>,
+    params: &SecurityChainParams,
 ) -> Option<()> {
     let p = &ev.params;
     let loan_id = p_i64(p, "loan_id")?;
@@ -684,7 +727,7 @@ fn apply_record_event(
                     ..RecordRow::default()
                 };
                 if !is_goods(&protection) {
-                    par_mark(&mut row, ts(ev));
+                    par_mark(&mut row, ts(ev), params);
                 }
                 slot.insert(RecState {
                     row,
@@ -922,7 +965,29 @@ fn margin_call_row(ev: &SecurityEventRow, loan_id: i64) -> Option<MarginCallEven
         cure_by: Some(p_dec(p, "cure_by")?),
         block_timestamp: ev.block_timestamp,
         tx_hash: ev.tx_hash.clone(),
+        default_ratio_bps: None,
     })
+}
+
+fn default_breach_row(
+    ev: &SecurityEventRow,
+    loan_id: i64,
+    kind: &str,
+    ltv_bps: i64,
+    default_ratio_bps: Option<i64>,
+) -> MarginCallEventRow {
+    MarginCallEventRow {
+        block_number: ev.block_number,
+        log_index: ev.log_index,
+        loan_id,
+        kind: kind.to_owned(),
+        ltv_bps,
+        margin_call_ratio_bps: None,
+        cure_by: None,
+        block_timestamp: ev.block_timestamp,
+        tx_hash: ev.tx_hash.clone(),
+        default_ratio_bps,
+    }
 }
 
 fn is_name(ev: &SecurityEventRow, name: &str) -> bool {
@@ -935,8 +1000,9 @@ pub fn fold_loan(
     records: &HashMap<u32, Snapshot<RecordView>>,
     inspections: &HashMap<u32, Snapshot<InspectionView>>,
     loan: Option<&Snapshot<LoanView>>,
+    params: &SecurityChainParams,
 ) -> LoanProjection {
-    fold_loan_report(loan_id, events, records, inspections, loan).0
+    fold_loan_report(loan_id, events, records, inspections, loan, params).0
 }
 
 pub fn fold_loan_report(
@@ -945,6 +1011,7 @@ pub fn fold_loan_report(
     records: &HashMap<u32, Snapshot<RecordView>>,
     inspections: &HashMap<u32, Snapshot<InspectionView>>,
     loan: Option<&Snapshot<LoanView>>,
+    params: &SecurityChainParams,
 ) -> (LoanProjection, usize) {
     let loan_id_i = i64::from(loan_id);
     let registered: HashSet<i64> = events
@@ -1064,6 +1131,7 @@ pub fn fold_loan_report(
                             cure_by: None,
                             block_timestamp: ev.block_timestamp,
                             tx_hash: ev.tx_hash.clone(),
+                            default_ratio_bps: None,
                         });
                         true
                     }
@@ -1087,7 +1155,59 @@ pub fn fold_loan_report(
                         cure_by: None,
                         block_timestamp: ev.block_timestamp,
                         tx_hash: ev.tx_hash.clone(),
+                        default_ratio_bps: None,
                     });
+                    true
+                }
+                None => false,
+            },
+            "SecurityDefaultBreach" => match (p_i64(p, "ltv_bps"), p_i64(p, "default_ratio_bps")) {
+                (Some(ltv), Some(ratio)) => {
+                    if after(terms_v, ev) {
+                        if let Some(t) = terms.as_mut() {
+                            t.default_breach_at = Some(ts(ev));
+                        }
+                    }
+                    margin_events.push(default_breach_row(
+                        ev,
+                        loan_id_i,
+                        "default_breach",
+                        ltv,
+                        Some(ratio),
+                    ));
+                    true
+                }
+                _ => false,
+            },
+            "SecurityDefaultBreachPriceStale" => {
+                match (p_i64(p, "ltv_bps"), p_i64(p, "default_ratio_bps")) {
+                    (Some(ltv), Some(ratio)) => {
+                        margin_events.push(default_breach_row(
+                            ev,
+                            loan_id_i,
+                            "default_breach_price_stale",
+                            ltv,
+                            Some(ratio),
+                        ));
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            "SecurityDefaultBreachCleared" => match p_i64(p, "ltv_bps") {
+                Some(ltv) => {
+                    if after(terms_v, ev) {
+                        if let Some(t) = terms.as_mut() {
+                            t.default_breach_at = Some(BigDecimal::from(0));
+                        }
+                    }
+                    margin_events.push(default_breach_row(
+                        ev,
+                        loan_id_i,
+                        "default_breach_cleared",
+                        ltv,
+                        None,
+                    ));
                     true
                 }
                 None => false,
@@ -1104,10 +1224,10 @@ pub fn fold_loan_report(
             | "SecurityInspectionApproved"
             | "SecurityFlagResolved" => {
                 let a = apply_inspection_event(&mut insp_states, ev).is_some();
-                let b = apply_record_event(&mut rec_states, ev, inspections).is_some();
+                let b = apply_record_event(&mut rec_states, ev, inspections, params).is_some();
                 a && b
             }
-            _ => apply_record_event(&mut rec_states, ev, inspections).is_some(),
+            _ => apply_record_event(&mut rec_states, ev, inspections, params).is_some(),
         };
         if !ok {
             skipped += 1;
@@ -1299,6 +1419,7 @@ pub fn valuation_row(
         accrued_interest: dec(&money.view.accrued_interest)?,
         money_ledger: money.as_of_ledger,
         source_log_id,
+        default_breach_at: d.default_breach_at.as_deref().and_then(dec),
     })
 }
 

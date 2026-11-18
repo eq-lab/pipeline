@@ -429,3 +429,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1922 API: pending AccessManager operations inline in loan-book and loan security responses](https://github.com/eq-lab/pipeline/issues/1922) | [1922-pending-operations-api.md](./epic-1920/1922-pending-operations-api.md) | Initial |
 | [#1923 Trustee: Risk Council security page — list pending operations and execute them with the scheduled args](https://github.com/eq-lab/pipeline/issues/1923) | [1923-rc-security-pending-ops.md](./epic-1920/1923-rc-security-pending-ops.md) | Initial |
 | [#1924 Trustee: Risk Council hub and loan pages — pending operations from the API, execute from any session](https://github.com/eq-lab/pipeline/issues/1924) | [1924-rc-hub-pending-ops.md](./epic-1920/1924-rc-hub-pending-ops.md) | Initial |
+
+---
+
+## Epic #1937 — EVM parity
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1938 EVM SecurityRegistry indexer: records, terms, marks, margin calls, inspections (SecurityRegistry + RecordNft)](https://github.com/eq-lab/pipeline/issues/1938) | [1938-evm-security-registry-indexer.md](./epic-1937/1938-evm-security-registry-indexer.md) | Initial |

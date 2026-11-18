@@ -12,7 +12,11 @@ pub mod mappers;
 pub mod parsers;
 pub mod plusd_transfers;
 pub mod poller;
+pub mod security_registry_parsers;
+pub mod security_registry_sync;
+pub mod security_registry_views;
 pub mod stellar;
+pub mod supervise;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,6 +27,7 @@ use tracing::Instrument;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, metadata_fetcher::MetadataFetcher,
+    security_registry::EVM_SECURITY_PARAMS, security_registry_repo::SecurityRegistryRepo,
 };
 
 use alloy::primitives::{Address, U256};
@@ -34,6 +39,10 @@ use loan_metadata::{
 };
 use loan_registry_reader::LoanRegistryReader;
 use poller::EvmEventPollerBuilder;
+use security_registry_parsers::reject_security_collision;
+use security_registry_sync::run_security_sync_loop;
+use security_registry_views::EvmSecurityViewSource;
+use supervise::spawn_supervised;
 
 pub fn parse_collateral_registry_contracts(
     chain_id: i64,
@@ -100,6 +109,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         &settings.loan_registry_address,
     )?];
     let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
+    let loan_registry_checksum = loan_registry_contracts[0].to_checksum(None);
     let collateral_registry_contracts = parse_collateral_registry_contracts(
         settings.chain_id,
         settings.collateral_registry_address.as_deref(),
@@ -144,6 +154,24 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             .map(|a| ("COLLATERAL_REGISTRY_ADDRESS", *a)),
     );
 
+    if let Some(sr) = &settings.security_registry {
+        for (label, addr) in [
+            ("SECURITY_REGISTRY_ADDRESS", sr.registry),
+            ("SECURITY_RECORD_NFT_ADDRESS", sr.record_nft),
+            ("SECURITY_REGISTRY_READER_ADDRESS", sr.reader),
+        ] {
+            reject_security_collision(chain_id, label, addr, &core_roles)?;
+            core_roles.push((label, addr));
+        }
+        tracing::info!(
+            chain_id,
+            security_registry = %sr.registry,
+            record_nft = %sr.record_nft,
+            reader = %sr.reader,
+            "EVM SecurityRegistry indexer enabled"
+        );
+    }
+
     let deal_tokens = match settings.deal_token_factory_address.as_deref() {
         Some(raw) => {
             let factory = parse_address("DEAL_TOKEN_FACTORY_ADDRESS", raw)?;
@@ -170,6 +198,9 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             loan_registry_contracts,
             yield_minter_contracts,
             collateral_registry_contracts,
+            security_registry: settings
+                .security_registry
+                .map(|sr| (sr.registry, sr.record_nft)),
         },
         evm_parsers::EvmRepos {
             repo: repo.clone(),
@@ -214,6 +245,48 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         None => builder,
     };
     let poller = builder.build();
+
+    let _security_guard = match settings.security_registry {
+        Some(sr) => {
+            let rpc_url = settings.eth_rpc_url.clone();
+            let loan_registry = loan_registry_checksum.clone();
+            let confirmations = settings.log_confirmations_delay;
+            let pool = pool.clone();
+            Some(spawn_supervised(
+                "security-registry-sync",
+                chain_id,
+                move || {
+                    let pool = pool.clone();
+                    let rpc_url = rpc_url.clone();
+                    let loan_registry = loan_registry.clone();
+                    async move {
+                        let source = EvmSecurityViewSource::new(
+                            &rpc_url,
+                            sr.registry,
+                            sr.record_nft,
+                            sr.reader,
+                            confirmations,
+                        )?;
+                        run_security_sync_loop(
+                            source,
+                            SecurityRegistryRepo::new(pool.clone()),
+                            EventRepo::new(pool),
+                            chain_id,
+                            sr.registry.to_checksum(None),
+                            vec![
+                                sr.registry.to_checksum(None),
+                                sr.record_nft.to_checksum(None),
+                            ],
+                            Some(loan_registry),
+                            &EVM_SECURITY_PARAMS,
+                        )
+                        .await
+                    }
+                },
+            ))
+        }
+        None => None,
+    };
 
     index_loop(
         "indexer",

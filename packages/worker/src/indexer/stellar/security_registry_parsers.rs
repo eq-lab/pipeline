@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json::{json, Map, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScMap, ScVal};
 
+pub use crate::indexer::security_registry_sync::SecurityTopic;
 use crate::indexer::stellar::loan_registry_parsers::{enum_variant_name, extract_u32};
 use crate::indexer::stellar::loan_registry_reader::map_entry;
 use crate::indexer::stellar::parsers::{sc_address_to_strkey, synthesise_log_index, StellarLog};
@@ -29,13 +30,6 @@ pub const SECURITY_REGISTRY_ALLOW_LISTED_TOPICS: [&str; 5] = [
     "ownership_transfer_completed",
     "ownership_renounced",
 ];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SecurityTopic {
-    Stored(&'static str),
-    AllowListed,
-    Unknown,
-}
 
 pub fn classify_security_topic(topic: &str) -> SecurityTopic {
     if let Some(spec) = SPECS.iter().find(|s| s.topic == topic) {

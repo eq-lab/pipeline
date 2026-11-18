@@ -180,6 +180,9 @@ fn terms() -> TermsRow {
         margin_call_at: dec(0),
         set_ledger: Some(123),
         complete: true,
+        default_ratio_bps: None,
+        originator_fee_rate: None,
+        default_breach_at: None,
     }
 }
 
@@ -202,6 +205,7 @@ fn valuation_row(ltv_bps: i64, counted_records: Value) -> ValuationRow {
         accrued_interest: dec(100 * UNIT),
         money_ledger: 501,
         source_log_id: 40,
+        default_breach_at: None,
     }
 }
 
@@ -295,6 +299,7 @@ fn margin_event(block: i64, kind: &str, ltv: i64, cure_by: Option<i128>) -> Marg
         cure_by: cure_by.map(dec),
         block_timestamp: i64::try_from(NOW).unwrap() - 5_000 + block,
         tx_hash: format!("tx{block}"),
+        default_ratio_bps: None,
     }
 }
 
