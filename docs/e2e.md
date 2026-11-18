@@ -1,6 +1,6 @@
 # End-to-end harness
 
-A disposable local stack runs the real API, worker, contracts and apps; scripted journeys play on it, and a check runner reports one ✅/❌ per known finding as JSON. It is not part of the pre-commit gate. Agents drive it through the e2e skill ([Claude](../.claude/skills/e2e/SKILL.md) · [Codex](../.codex/skills/e2e/SKILL.md)).
+A disposable local stack runs the real API, worker, contracts and apps; scripted journeys play on it, and a check runner reports one ✅/❌ per known finding as JSON. It is not part of the pre-commit gate. Agents drive it through the e2e skill ([Claude](../.claude/skills/e2e/SKILL.md) · [Codex](../.codex/skills/e2e/SKILL.md)). The release evidence of the last full run is in [`e2e/release-run.md`](./e2e/release-run.md).
 
 ## Local stack
 
@@ -103,8 +103,8 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 | `stellar.reconcile.positions` | `/v1/pnl` sPLUSD shares against the vault balance; `/v1/requests` statuses against the requests' `claimed` on chain |
 | `stellar.reconcile.withdrawal-queue` | `/v1/withdrawal-queue` `total_queued`, `total_claimed`, `rate` against the contract |
 | `stellar.reconcile.financial-position` | `/v1/financial-position` secured loans outstanding against the loan registry's `outstanding_total` |
-| `stellar.known-bugs.lps-openapi-query` | optional, BUG-37: `payment_details` of `GET /v1/lps` in `/api-docs/openapi.json` is a query parameter |
-| `stellar.known-bugs.assay-decimal-bound` | optional, BUG-32: a `1e1000` assay grade is refused with `400`; validation runs before the loan lookup, so `404` on an unknown loan means it passed |
+| `stellar.known-bugs.lps-openapi-query` | optional, BUG-37 (#1990): `payment_details` of `GET /v1/lps` in `/api-docs/openapi.json` is a query parameter |
+| `stellar.known-bugs.assay-decimal-bound` | optional, BUG-32 (#1991): a `1e1000` assay grade is refused with `400`; validation runs before the loan lookup, so `404` on an unknown loan means it passed |
 
 API figures in 6-decimal USD strings are compared with chain amounts divided by 10 (truncated, as the API normalizes them).
 
@@ -150,7 +150,7 @@ The pinned contracts' `setup-access` maps no role to the security registry's `re
 | `stellar.loan-book.collateral` | `spot_price` and `collateral` against the static price × quantity, less the haircut |
 | `stellar.loan-book.ltv-range` | optional, #765: `ltv` within 0–200 % and equal to `principal / collateral`; `details` always carry the LTV |
 | `stellar.loan-book.margin-call` | `margin_call_open` against the security registry's `margin_call_at` |
-| `stellar.loan-book.ltv-bps` | optional, pending: `ltv_bps` against `ceil(debt × 10000 / value)` from the security registry; the worker reads `coverage_detail`, which the pinned contracts lack, so it stays `null` |
+| `stellar.loan-book.ltv-bps` | optional, #1998: `ltv_bps` against `ceil(debt × 10000 / value)` from the security registry; the worker reads `coverage_detail`, which the pinned contracts lack, so it stays `null` |
 | `stellar.loan-book.summary` | while the loan is active: `weighted_rate` and `/v1/dashboard/summary` `loan_book_yield` against the loan's rate; `deployed_senior` against `outstanding_total`; `/v1/financial-position` secured loans and `outstanding_in_loans` against Σ facility of the registry's active loans (the spec's senior + equity, [dashboards.md](./product-specs/dashboards.md)) |
 | `stellar.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against the cumulative offtaker receipts, `deployed_senior` and secured loans as above |
 | `stellar.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `interest_minted` of the minter's repayments |
