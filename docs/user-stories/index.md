@@ -448,3 +448,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1329 Add a Foundation/Tokens Storybook story for design-token visual review](https://github.com/eq-lab/pipeline/issues/1329) | [1329-tokens-storybook-story.md](./epic-2029/1329-tokens-storybook-story.md) | Initial |
+| [#2049 LP formatCompactUsd renders values just under a unit boundary as $1000.0K](https://github.com/eq-lab/pipeline/issues/2049) | [2049-compact-usd-rounding.md](./epic-2029/2049-compact-usd-rounding.md) | Initial |
