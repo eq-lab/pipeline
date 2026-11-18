@@ -210,15 +210,15 @@ the image just to change API, chain, contract, or WalletConnect settings.
 
 Supported runtime keys:
 
-| Key                             | Default when unset                           |
-| ------------------------------- | -------------------------------------------- |
-| `VITE_API_BASE_URL`             | `http://localhost:8080`                      |
-| `VITE_EVM_CHAIN_ID`             | `560048` (selects the chain-registry entry)  |
-| `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  |
-| `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` |
-| `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` |
-| `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` |
-| `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 |
+| Key                             | Default when unset                           | Stage (Hoodi v5)                             |
+| ------------------------------- | -------------------------------------------- | -------------------------------------------- |
+| `VITE_API_BASE_URL`             | `http://localhost:8080`                      | set per environment                          |
+| `VITE_EVM_CHAIN_ID`             | `560048` (selects the chain-registry entry)  | `560048`                                     |
+| `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  | `https://ethereum-hoodi-rpc.publicnode.com`  |
+| `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` | `0x7A8B7628Cd2DdE7E065F1BB441A0A8AcA993c1a9` |
+| `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` | `0x369033D21a4A62f837D4eeF9F65407Ae00357e75` |
+| `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` | `0x87CD1002bdB9401423cb50A860314FC8f11440Cd` |
+| `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 | set per environment                          |
 
 Local container verification:
 
@@ -247,15 +247,20 @@ static Vite output served on container port 80, SPA fallback to `index.html`). I
 surface is intentionally smaller — only the Relayer API base URL is needed at scaffold time (#777);
 it grows as Trustee flow sub-issues of epic #775 land.
 
-| Key                                    | Default when unset      |
-| -------------------------------------- | ----------------------- |
-| `VITE_API_BASE_URL`                    | `http://localhost:8080` |
-| `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)    |
-| `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)    |
-| `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)    |
-| `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)    |
-| `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)    |
-| `VITE_EVM_START_BLOCK`                 | `0`                     |
+| Key                                    | Default when unset                          | Stage (Hoodi v5)                                    |
+| -------------------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| `VITE_API_BASE_URL`                    | `http://localhost:8080`                     | set per environment                                 |
+| `VITE_EVM_CHAIN_ID`                    | `560048`                                    | `560048`                                            |
+| `VITE_EVM_RPC_URL`                     | `https://ethereum-hoodi-rpc.publicnode.com` | `https://ethereum-hoodi-rpc.publicnode.com`         |
+| `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)                        | `0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`        |
+| `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)                        | `0x621BaAb0ced6b11f88019582183b081A118755f4`        |
+| `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)                        | `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`        |
+| `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)                        | `0xB51E7f13420D106946376A67Fe5921C63B09BE15`        |
+| `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)                        | `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`        |
+| `VITE_EVM_START_BLOCK`                 | `0`                                         | `3808700` (worker's `CHAIN_560048_EVM_START_BLOCK`) |
+| `VITE_EVM_CAPITAL_WALLET_ADDRESS`      | empty                                       | set per deploy                                      |
+
+The Stage column lists the `hoodi-v5.json` values. Stage today sets only `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and `VITE_EVM_MINTER_ADDRESS` on the Trustee; the AccessManager, SecurityRegistry, RecordNft and start-block rows are the values to set (argocd `pipeline/test.yaml`). Production keeps them empty until the mainnet deployment (#1436).
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
