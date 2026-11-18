@@ -104,6 +104,9 @@ The mock wallet paths (EVM and Stellar) bypass the gate as a dev affordance.
 Mount inside `<WalletGateProvider>` in `main.tsx`. Wires
 `WagmiProvider` + `QueryClientProvider` and installs the same-tab localStorage
 mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
+Its wagmi config comes from `evm/config.ts`, which calls `createAppKit` once at
+module load (so StrictMode's double mount does not init the modal twice), with
+analytics, email, socials, swaps and onramp disabled.
 
 ### `useEvmWallet()`
 
@@ -903,10 +906,25 @@ When registered, the Connect modal's Soroban tab lists an **E2E test wallet**
 row first (`useStellarConnectors().e2eWalletId`); it connects like any other
 Soroban wallet.
 
+**EVM.** A wagmi connector (`@pipeline/wallet-connect/e2e-evm-wallet`,
+`packages/wallet-connect/src/evm/e2eConnector.ts`) does the same on anvil: it
+signs `personal_sign` and transactions locally with the run's key and sends the
+raw transactions to the chain's RPC, so `approve` / `requestDeposit` / `claim`
+are real. `evm/config.ts` adds it to the LP app's `WagmiAdapter` config only
+when **all** hold: `import.meta.env.DEV` (a dynamic `import()` inside a branch
+on the literal, as above), `VITE_E2E_WALLET` is set, and the configured chain id
+is `31337`. Its key is `E2E_EVM_WALLET_KEY` (fresh per stack, funded with ETH
+and USDC by `up.sh`), exposed the same way as `E2E_WALLET_SECRET`. It is reached
+through the existing connect flow, not auto-connected, so the terms gate stays
+in the walk: the Connect modal's EVM tab lists an **E2E test wallet** row first
+(`useEvmConnectors().e2eWalletId`). It does not reconnect after a full page
+load. The trustee app's adapter (`initEvmWalletConnect`) does not get it.
+
 `scripts/e2e/assert-prod-wallet.ts` (CI, JS job) builds the LP app in
-production mode with `VITE_E2E_WALLET` and a dummy `E2E_WALLET_SECRET` set and
-fails if the bundle contains the module's marker (`pipeline-e2e-wallet`) or
-the dummy secret.
+production mode with `VITE_E2E_WALLET`, `VITE_EVM_CHAIN_ID=31337` and dummy
+`E2E_WALLET_SECRET` / `E2E_EVM_WALLET_KEY` set and fails if the bundle contains
+either marker (`pipeline-e2e-wallet`, `pipeline-e2e-evm-wallet`) or either
+dummy key.
 
 ### `useStellarToken()`
 

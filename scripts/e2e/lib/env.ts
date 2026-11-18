@@ -56,8 +56,8 @@ export type EvmAddresses = Record<(typeof EVM_CONTRACTS)[number] | "USDC", strin
 
 export interface EvmDeployment {
   addresses: EvmAddresses;
-  /** Private keys of the relayer (whitelist manager) and the verifier; the capital wallet's address. */
-  accounts: { relayerKey: string; verifierKey: string; capitalWallet: string };
+  /** Private keys of the relayer (whitelist manager), the verifier and the LP app's e2e test wallet; the capital wallet's address. */
+  accounts: { relayerKey: string; verifierKey: string; capitalWallet: string; browserLpKey: string };
   /** The last deploy block: from block 0 the price poller would retry a block without sPLUSD until block 300 exists. */
   pricePollerStartBlock: number;
 }
@@ -219,5 +219,7 @@ function evmEnv(p: Ports, { addresses: a, accounts: k, pricePollerStartBlock }: 
     VITE_EVM_LOAN_REGISTRY_ADDRESS: a.PipelineLoanRegistry,
     VITE_EVM_MINTER_ADDRESS: a.PipelineMinter,
     VITE_EVM_CAPITAL_WALLET_ADDRESS: k.capitalWallet,
+    E2E_EVM_WALLET_KEY: k.browserLpKey,
+    VITE_E2E_WALLET: "1",
   };
 }
