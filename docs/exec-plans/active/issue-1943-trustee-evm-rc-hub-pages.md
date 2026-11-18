@@ -184,18 +184,20 @@ Rows 1–9, 15 and 17 of the #1942 table also apply unchanged here: write client
 - **Test mocks:** every test that mocks `@pipeline/wallet-connect` for these pages must add the new EVM functions (mechanical). The #1942 suites that pin "LoanRegistry blocked on EVM" flip.
 - **The import cycle risk** between `lib/targetChains.ts` and `lib/riskCouncilOps.ts` goes away: `riskCouncilChainReason` no longer needs `councilTarget`. Drop that import.
 
+## Decisions (human, 2026-11-18)
+
+All open questions were resolved with the recommended defaults:
+
+1. **EVM recovery list:** read from the chain in the browser, as on Stellar.
+   - Sources: the `nextRepaymentId` view, chunked log reads from `VITE_EVM_START_BLOCK`, and Minter `extsload` for its stored record.
+   - Logged as TD-190.
+   - #1943 absorbs #1755 step 1. Close #1755 when this PR merges, with a comment that step 2 moved to #1574.
+2. **The "24 hours" text** stays as on Stellar. The role lines and chips already show the on-chain delay.
+3. **Recovery step 2** (the corrected `Minter.repay`) stays with #1574. Until then it is gated with the Stellar-only message on EVM.
+
 ## Open Questions
 
-1. **EVM repayment-recovery data source.** The EVM contracts have no view for a recorded `RepaymentData`, the reversed flag or the Minter's repayment record, and the default Hoodi RPC caps `eth_getLogs` at 50 000 blocks.
-   - **(A, recommended, the mirror of Stellar's "read the chain in the browser"):** the `mutableLoanData.nextRepaymentId` view, chunked `eth_getLogs` for `PaymentRecorded` / `PaymentUnrecorded` / `CashRepaid` from a new `VITE_EVM_START_BLOCK`, and `Minter.extsload` for the Minter record (Decision 8). Logged as a new TD. #1943 absorbs #1755.
-   - **(B):** a new backend sub-issue of #1937 serves per-repayment rows inline on an existing per-loan endpoint (the indexer already stores all fields of `PaymentRecorded`, `PaymentUnrecorded` and `CashRepaid` verbatim). The Trustee EVM arm reads that instead. #1943 then ships everything else, and the recovery card stays `blocked-evm` with a specific reason. #1755 is re-scoped to the candidate read and kept open, blocked on the new issue.
-   - Default: A.
-2. **Static delay copy on EVM.** The hub intro ("Declaring a default executes at once; every other Risk Council action waits 24 hours …") and the closure table ("Risk Council only · 24 hours") are fixed text. On Hoodi all delays are 0 until #1944, whose role model is still open.
-   - Default: keep the copy unchanged on EVM, assuming #1944 adopts the Stellar model (`set_default` immediate, the others 24 h). The role lines and chips already show the on-chain delay.
-   - Alternative: chain-aware copy that leaves out the hour counts on EVM.
-3. **Recovery step 2 (corrected `Minter.repay`) on EVM.**
-   - Default: it stays with #1574 (EVM arm of `useRecordPayment`, which also needs the EVM `repaymentRefHash` convention). The dialog's step 2 shows `stellarOnlyActionReason(chainId)` on EVM until then, and #1574 lifts that gate.
-   - Alternative: #1943 adds the EVM `repay` arm now, which overlaps #1574's record-payment scope.
+_None_ (resolved 2026-11-18, see Decisions).
 
 ## Implementation Steps
 
