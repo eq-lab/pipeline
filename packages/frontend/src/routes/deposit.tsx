@@ -107,9 +107,6 @@ function Deposit() {
   }
   // Render nothing only during the initial load, before data first resolves.
   const isInitialDataLoad = flow.isDataPending && !hasLoadedDataRef.current;
-  // A request waiting for verification or its claim keeps the steps card even
-  // when the balance left after it is below the minimum deposit.
-  const isBelowMinimum = flow.hasBalance === false && !flow.requestIsConfirmed;
 
   // ── Auto-reset once a deposit settles to `Completed` ──────────────────
   // spec: docs/frontend/wallet-flows.md#request-state-model
@@ -624,7 +621,7 @@ function Deposit() {
             ) : isStellar &&
               isDeposit &&
               usdcTrustline?.needsTrustline &&
-              isBelowMinimum ? (
+              flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="usdc-trustline-banner"
@@ -657,7 +654,7 @@ function Deposit() {
                   {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
                 </Button>
               </Card>
-            ) : isDeposit && isBelowMinimum ? (
+            ) : isDeposit && flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="low-balance-banner"

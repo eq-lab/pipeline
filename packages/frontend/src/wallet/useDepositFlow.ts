@@ -151,6 +151,13 @@ export interface FlowState {
   isReady: boolean;
   /** Deposit: balance >= minDeposit.  Withdraw: true when balance loaded. */
   hasBalance: boolean | undefined;
+  /**
+   * Deposit: the balance is below the minimum and no deposit request is
+   * confirmed, so the page shows the low-balance banner instead of the steps
+   * card. A request waiting for verification or its claim keeps the steps card
+   * (BUG-40). Withdraw: always false.
+   */
+  isBelowMinimum: boolean;
   meetsMin: boolean;
   exceedsBalance: boolean;
   /** True while the active-direction balance query OR the requests API query is still loading,
@@ -1120,6 +1127,8 @@ export function useDepositFlow(
       minChipLabel: evmMinChipLabel,
       isReady: isEvmReady,
       hasBalance: evmHasBalance,
+      isBelowMinimum:
+        isDeposit && evmHasBalance === false && !evmDepositRequestIsConfirmed,
       meetsMin: evmMeetsMin,
       exceedsBalance:
         evmActiveRequest === null &&
@@ -1498,6 +1507,10 @@ export function useDepositFlow(
     minChipLabel: stellarMinChipLabel,
     isReady: isStellarReady,
     hasBalance: stellarHasBalance,
+    isBelowMinimum:
+      isDeposit &&
+      stellarHasBalance === false &&
+      !stellarDepositRequestIsConfirmed,
     meetsMin: stellarMeetsMin,
     exceedsBalance:
       !stellarRequestIsConfirmed &&

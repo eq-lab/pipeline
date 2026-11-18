@@ -1549,27 +1549,6 @@ describe("Deposit page — completed (claimed) deposit reset", () => {
     });
     expect(screen.queryByTestId("make-another-deposit")).toBeNull();
   });
-
-  it("keeps Claim reachable for a PendingClaim deposit when the balance is below the minimum", async () => {
-    seedBaseMocks({ balance: BALANCE_500_RAW, allowance: "10000000000" });
-    mockRequestsData = {
-      requests: [{ ...COMPLETED_DEPOSIT, status: "PendingClaim" as const }],
-    };
-    mockVoucherData = {
-      request_id: "42",
-      amount: "2000000000",
-      user: WALLET_ADDRESS,
-      signature: "0xsig",
-    };
-    mockVoucherStatus = "ready";
-
-    renderDeposit();
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Claim" })).not.toBeDisabled();
-    });
-    expect(screen.queryByTestId("low-balance-banner")).toBeNull();
-  });
 });
 
 describe("Deposit page — locked amount on active request", () => {

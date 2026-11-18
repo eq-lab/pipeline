@@ -106,7 +106,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Symptom:** After `requestDeposit` of the whole balance (the anvil minimum is 1000 USDC and the test wallet holds 1000), the deposit page replaces the steps card with "Add funds to your USDC balance", so the Claim button of the `PendingClaim` request is unreachable; Activity lists it as Pending with no action.
 - **Root cause:** The banner is chosen on the wallet balance alone, not on whether a deposit request is waiting for its claim.
 - **Workaround:** Bring the balance back above the minimum (on the stack: `anvil_dealERC20`); the steps card and Claim return.
-- **Resolved:** #2015 shows the low-balance and USDC-trustline banners only while `!flow.requestIsConfirmed`, so a deposit request awaiting verification or its claim keeps the steps card on both EVM and Stellar (both chains feed the same `flow.hasBalance` branches).
+- **Resolved:** #2015 shows the low-balance and USDC-trustline banners only on `flow.isBelowMinimum` (`useDepositFlow`: balance below the minimum and no confirmed deposit request), so a deposit request awaiting verification or its claim keeps the steps card on both EVM and Stellar.
 
 ### BUG-39: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
 - **Date:** 2026-11-18

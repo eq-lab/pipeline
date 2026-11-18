@@ -1889,10 +1889,10 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 2. **Initial data load** — first load only: chain data / requests API still loading; renders nothing until first resolved (avoids re-hide flicker on background refetches). Not shown again on later background refetches.
 3. **No-XLM banner** (`XlmFundingBanner`, Figma frame `6090-8741`, card node `6093-75787`) — Stellar only, **both directions**, `flow.needsXlmFunding` (see [`wallet-flows.md` § XLM funding rule](./wallet-flows.md#xlm-funding-rule)). "Add funds to your XLM balance / You need XLM to pay the network fee" with a Copy Address action (copies the connected address; label flips to "Copied"). Outranks the USDC-trustline banner because adding a trustline itself requires XLM (#1196, #1130).
 4. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
-5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`
-   (balance below the minimum deposit). Neither this nor the USDC-trustline banner shows while
-   `flow.requestIsConfirmed` (a deposit request awaiting verification or its claim), so the steps
-   card and its Claim stay reachable after depositing the whole balance (#2015).
+5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.isBelowMinimum`
+   (balance below the minimum deposit and no confirmed deposit request). Neither this nor the
+   USDC-trustline banner shows while a deposit request awaits verification or its claim, so the
+   steps card and its Claim stay reachable after depositing the whole balance (#2015).
 6. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
 
 **Insufficient-balance line (#1628):** independent of the banner, while `flow.exceedsBalance` is true
