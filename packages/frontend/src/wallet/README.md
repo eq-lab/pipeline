@@ -920,11 +920,21 @@ in the walk: the Connect modal's EVM tab lists an **E2E test wallet** row first
 (`useEvmConnectors().e2eWalletId`). It does not reconnect after a full page
 load. The trustee app's adapter (`initEvmWalletConnect`) does not get it.
 
-`scripts/e2e/assert-prod-wallet.ts` (CI, JS job) builds the LP app in
-production mode with `VITE_E2E_WALLET`, `VITE_EVM_CHAIN_ID=31337` and dummy
-`E2E_WALLET_SECRET` / `E2E_EVM_WALLET_KEY` set and fails if the bundle contains
-either marker (`pipeline-e2e-wallet`, `pipeline-e2e-evm-wallet`) or either
-dummy key.
+**Operations Console (Stellar only).** `packages/trustee/src/lib/e2eWallet.ts`
+loads the same Stellar module under the same guards (a dynamic `import()`
+inside a branch on the literal `import.meta.env.DEV`, `VITE_E2E_WALLET`, the
+standalone passphrase) and hands it to `registerStellarE2EWallet` of
+`@pipeline/wallet-connect`, which adds it to the kit; the shared Connect
+modal's Soroban tab then lists an **E2E test wallet** row first. Its
+`E2E_WALLET_SECRET` (in `.env.e2e-trustee`) is the stack's `trustee` key, the
+operator `run.ts` puts in `auth_users`, so the console signs in by wallet
+signature as in production. Operator authentication itself is unchanged.
+
+`scripts/e2e/assert-prod-wallet.ts` (CI, JS job) builds the LP app and the
+Operations Console in production mode with `VITE_E2E_WALLET`,
+`VITE_EVM_CHAIN_ID=31337` and dummy `E2E_WALLET_SECRET` / `E2E_EVM_WALLET_KEY`
+set and fails if a bundle contains either marker (`pipeline-e2e-wallet`,
+`pipeline-e2e-evm-wallet`) or either dummy key.
 
 ### `useStellarToken()`
 
