@@ -34,8 +34,9 @@
 //! 3. **Bound the offtaker leg** (`400` above `original_offtaker_price − repayment.offtaker_received`).
 //! 4. **Cascade `amount` through the tiers** in priority order — the interest tier
 //!    (senior coupon + management fee + performance fee) → OET → senior principal →
-//!    Equity residual — capping each tier at its step-2 target so a shortfall shrinks
-//!    lower-priority tiers instead of reporting more than the incoming payment can cover.
+//!    Equity residual — capping each tier at its step-2 target (the senior coupon may exceed
+//!    its own target, see below) so a shortfall shrinks lower-priority tiers instead of
+//!    reporting more than the incoming payment can cover.
 //!    This order is a deliberate departure from `docs/product-specs/yield.md`
 //!    §"Waterfall components", which puts senior principal first; here the vault (LP) and
 //!    Treasury legs are paid out ahead of principal return.
@@ -47,7 +48,10 @@
 //!    tier's full target is split across the three in the same ratio as their full-period
 //!    targets, rather than the coupon/vault leg draining the payment first and leaving
 //!    the fees at 0 — a small interest payment still carries its proportional share of
-//!    fees, the same way a full one does. OET is *not* part of this pool (it accrues
+//!    fees, the same way a full one does. The coupon takes the truncation residual, and
+//!    when the contract fee cap binds (`fit_interest_to_fee_cap`) it also takes the fee
+//!    legs' excess, so it can exceed its own target and the fee split departs from the
+//!    target ratio; total interest stays `min(target total, amount)`. OET is *not* part of this pool (it accrues
 //!    independently off the outstanding senior, never netted out of gross interest), so it
 //!    remains a separate, lower-priority tier, cascaded `min(target, remaining)` same as
 //!    before.
@@ -387,9 +391,9 @@ pub fn compute_waterfall(
 
     let fees_target = &target_management_fee + &target_performance_fee;
     if fees_target > headroom {
-        target_senior_coupon_net = BigDecimal::zero();
         target_management_fee = trunc(&(&headroom * &target_management_fee / &fees_target));
         target_performance_fee = trunc(&(&headroom * &target_performance_fee / &fees_target));
+        target_senior_coupon_net = &headroom - &target_management_fee - &target_performance_fee;
     } else {
         target_senior_coupon_net = target_senior_coupon_net.min(&headroom - &fees_target);
     }
@@ -405,11 +409,12 @@ pub fn compute_waterfall(
     let (senior_coupon_net, management_fee, performance_fee) = if target_total_interest.is_zero() {
         (BigDecimal::zero(), BigDecimal::zero(), BigDecimal::zero())
     } else {
-        (
-            trunc(&(&interest_payment * &target_senior_coupon_net / &target_total_interest)),
-            trunc(&(&interest_payment * &target_management_fee / &target_total_interest)),
-            trunc(&(&interest_payment * &target_performance_fee / &target_total_interest)),
-        )
+        let management_fee =
+            trunc(&(&interest_payment * &target_management_fee / &target_total_interest));
+        let performance_fee =
+            trunc(&(&interest_payment * &target_performance_fee / &target_total_interest));
+        let senior_coupon_net = trunc(&interest_payment) - &management_fee - &performance_fee;
+        (senior_coupon_net, management_fee, performance_fee)
     };
     let max_fee_bps = ASSUMED_MAX_FEE_BPS;
     let (senior_coupon_net, management_fee, performance_fee) = fit_interest_to_fee_cap(
@@ -490,9 +495,6 @@ pub fn fit_interest_to_fee_cap(
     max_fee_bps: u32,
 ) -> (BigDecimal, BigDecimal, BigDecimal) {
     let fees = &management_fee + &performance_fee;
-    if i64::from(max_fee_bps) >= BPS_DENOM || fees.is_zero() {
-        return (coupon, management_fee, performance_fee);
-    }
     let total = &coupon + &fees;
     let cap = trunc(&(&total * BigDecimal::from(max_fee_bps) / BigDecimal::from(BPS_DENOM)));
     if fees <= cap {

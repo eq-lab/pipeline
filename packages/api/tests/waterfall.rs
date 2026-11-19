@@ -232,13 +232,7 @@ fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
 }
 
 #[test]
-fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
-    // Same full-year targets/ratios as above (coupon 88,000 : mgmt 10,000 : perf 22,000,
-    // total 120,000). A 61-unit payment doesn't divide evenly by that ratio — each
-    // component's proportional share truncates down (44.7¯3 → 44, 5.08¯3 → 5,
-    // 11.18¯3 → 11 — summing to 60, one unit short of the full 61 paid in). That one unit
-    // of truncation dust is not lost: it flows into `remaining` and is picked up by OET,
-    // the next tier down, rather than vanishing from the accounting entirely.
+fn interest_tier_shortfall_dust_goes_to_the_coupon_not_lost() {
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("61");
     let b = compute_waterfall(
@@ -250,10 +244,10 @@ fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
     )
     .unwrap();
 
-    assert_eq!(b.senior_coupon_net, dec("44"));
+    assert_eq!(b.senior_coupon_net, dec("45"));
     assert_eq!(b.management_fee, dec("5"));
     assert_eq!(b.performance_fee, dec("11"));
-    assert_eq!(b.oet_allocation, dec("1"));
+    assert_eq!(b.oet_allocation, dec("0"));
 
     let total = &b.senior_coupon_net + &b.management_fee + &b.performance_fee + &b.oet_allocation;
     assert_eq!(total, amount);
@@ -1003,8 +997,6 @@ fn stellar_raw_scale_interest_adjustment_is_not_normalised() {
     assert_eq!(b.oet_allocation, dec("50000"));
 }
 
-// ── Fee cap binds: interest is not leaked (#2124) ────────────────────────────
-
 fn run_with(
     s: &LoanSnapshot,
     amount: &str,
@@ -1089,6 +1081,30 @@ fn fee_cap_second_year_pays_the_new_headroom_as_interest() {
     assert_eq!(b.senior_coupon_net, dec("25000"));
     assert_eq!(b.management_fee, dec("22059"));
     assert_eq!(b.performance_fee, dec("2941"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_rounding_leftover_goes_to_the_coupon_not_principal() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "30001", ONE_YEAR_LATER);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(
+        &b.senior_coupon_net + &b.management_fee + &b.performance_fee,
+        dec("30001")
+    );
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_third_year_headroom_scaling_leaves_no_dust_for_principal() {
+    let s = snapshot_with_repayment("1000000", recorded("50000", "44118", "5882"), 500);
+    let b = run_with(&s, "50000", ORIGINATION + 3 * CONTRACT_YEAR);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(
+        &b.senior_coupon_net + &b.management_fee + &b.performance_fee,
+        dec("50000")
+    );
     assert_within_fee_cap(&b);
 }
 
