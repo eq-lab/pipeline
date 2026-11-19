@@ -88,3 +88,12 @@ async fn get_health_calls_rpc() {
     assert_eq!(health.latest_ledger, 900);
     mock.assert_async().await;
 }
+
+#[test]
+fn gap_context_is_outermost_and_keeps_the_rpc_cause() {
+    let gap = retention_gap(7, 100, 160).expect("gap");
+    let err = anyhow::anyhow!("operation timed out").context(gap);
+    assert!(err.to_string().contains("chain 7"), "{err}");
+    assert!(format!("{err:#}").contains("operation timed out"));
+    assert!(err.downcast_ref::<CursorBelowRetention>().is_some());
+}

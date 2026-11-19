@@ -115,8 +115,6 @@ impl StellarRpc {
         Ok(seq)
     }
 
-    /// Fetch contract events in `[start_ledger, end_ledger]` (inclusive), paginating past the
-    /// 10k cap. Returns `(events, min latestLedger across every chunk and page)`.
     pub async fn get_events(
         &self,
         start_ledger: u64,

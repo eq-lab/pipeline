@@ -172,7 +172,7 @@ impl StellarEventPoller {
             missing_ledgers = gap.missing_ledgers,
             "stellar indexer cursor is below RPC retention; indexing halted until an operator resets the cursor"
         );
-        anyhow::Error::new(gap).context(err)
+        err.context(gap)
     }
 }
 

@@ -395,8 +395,8 @@ dashboard cumulative yield (#1533), which counts interest of non-carved-out loan
 **Operator runbook.**
 
 1. Stop the worker.
-2. Either point `CHAIN_<id>_STELLAR_RPC_URL` at an RPC whose retention covers the cursor (an archival RPC) and restart, or accept the gap with `UPDATE log_collector_state SET last_indexed_block = <oldest_ledger> WHERE chain_id = <id>` and restart.
-3. Record the chain, the lost ledger range `[cursor, oldest_ledger - 1]`, the date and the reason in the ops log. There is no table for accepted gaps.
+2. Either point `CHAIN_<id>_STELLAR_RPC_URL` at an RPC whose retention covers the cursor (an archival RPC) and restart, or accept the gap: call `getHealth` right before the change and read a fresh `oldestLedger` (the `oldest_ledger` in the error log is already pruned by restart time, since retention moves forward about one ledger every 5 s), then run `UPDATE log_collector_state SET last_indexed_block = <fresh oldestLedger + 1000> WHERE chain_id = <id>` (a margin of 1000 ledgers, about 83 minutes) and restart.
+3. Record the chain, the lost ledger range `[cursor, new_cursor - 1]`, the date and the reason in the ops log. There is no table for accepted gaps.
 4. Downstream effects: the PLUSD balance seed and the Pocket seed cover balances at the seed ledger, so balances stay right; per-event history inside the gap (loan, deposit, transfer and AccessManager events) is lost and is not backfilled.
 
 #### HTTP client timeouts
