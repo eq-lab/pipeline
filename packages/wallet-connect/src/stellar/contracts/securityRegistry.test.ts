@@ -56,6 +56,23 @@ beforeEach(() => {
 });
 
 describe("encodeSecurityRegistryArgs set_terms", () => {
+  it("rejects the EVM-only terms fields", () => {
+    expect(() =>
+      encodeSecurityRegistryArgs({
+        fn: "set_terms",
+        loanId: 9,
+        terms: { ...TERMS, defaultRatioBps: 9000 },
+      }),
+    ).toThrow("defaultRatioBps (EVM only)");
+    expect(() =>
+      encodeSecurityRegistryArgs({
+        fn: "set_terms",
+        loanId: 9,
+        terms: { ...TERMS, originatorFeeRate: 10000 },
+      }),
+    ).toThrow("originatorFeeRate (EVM only)");
+  });
+
   it("encodes loan id and a sorted 12-field Terms map", () => {
     const args = encodeSecurityRegistryArgs({
       fn: "set_terms",

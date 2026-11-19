@@ -76,15 +76,15 @@ fn coverage_overflow_is_the_sentinel() {
 #[test]
 fn one_division_over_the_sum_differs_from_per_term_flooring() {
     let terms = [term(1, true, 1, 5_000_000), term(2, true, 1, 5_000_000)];
-    assert_eq!(counted_value_excluding(&terms, 0), Some(1));
-    assert_eq!(record_term_value(&terms[0]), Some(0));
-    assert_eq!(record_term_value(&terms[1]), Some(0));
+    assert_eq!(counted_value_excluding(&terms, 0, UNIT), Some(1));
+    assert_eq!(record_term_value(&terms[0], UNIT), Some(0));
+    assert_eq!(record_term_value(&terms[1], UNIT), Some(0));
 }
 
 #[test]
 fn an_unmarked_goods_term_is_worth_nothing() {
     assert_eq!(
-        counted_value_excluding(&[term(1, true, 5 * UNIT, 0)], 0),
+        counted_value_excluding(&[term(1, true, 5 * UNIT, 0)], 0, UNIT),
         Some(0)
     );
 }
@@ -92,11 +92,11 @@ fn an_unmarked_goods_term_is_worth_nothing() {
 #[test]
 fn a_non_goods_term_is_its_quantity() {
     assert_eq!(
-        counted_value_excluding(&[term(1, false, 33 * UNIT, 0)], 0),
+        counted_value_excluding(&[term(1, false, 33 * UNIT, 0)], 0, UNIT),
         Some(33 * UNIT)
     );
     assert_eq!(
-        record_term_value(&term(1, false, 33 * UNIT, 0)),
+        record_term_value(&term(1, false, 33 * UNIT, 0), UNIT),
         Some(33 * UNIT)
     );
 }
@@ -104,7 +104,7 @@ fn a_non_goods_term_is_its_quantity() {
 #[test]
 fn a_goods_term_is_quantity_times_price() {
     assert_eq!(
-        counted_value_excluding(&[term(1, true, 1_000 * UNIT, 25_000_000)], 0),
+        counted_value_excluding(&[term(1, true, 1_000 * UNIT, 25_000_000)], 0, UNIT),
         Some(2_500 * UNIT)
     );
 }
@@ -116,27 +116,30 @@ fn exclude_drops_exactly_one_record() {
         term(2, false, 20 * UNIT, 0),
         term(3, false, 30 * UNIT, 0),
     ];
-    assert_eq!(counted_value_excluding(&terms, 2), Some(40 * UNIT));
-    assert_eq!(counted_value_excluding(&terms, 9), Some(60 * UNIT));
+    assert_eq!(counted_value_excluding(&terms, 2, UNIT), Some(40 * UNIT));
+    assert_eq!(counted_value_excluding(&terms, 9, UNIT), Some(60 * UNIT));
 }
 
 #[test]
 fn value_overflow_is_none() {
     assert_eq!(
-        counted_value_excluding(&[term(1, true, i128::MAX, 2)], 0),
+        counted_value_excluding(&[term(1, true, i128::MAX, 2)], 0, UNIT),
         None
     );
     assert_eq!(
-        counted_value_excluding(&[term(1, false, i128::MAX, 0)], 0),
+        counted_value_excluding(&[term(1, false, i128::MAX, 0)], 0, UNIT),
         None
     );
     let terms = [
         term(1, false, i128::MAX / UNIT, 0),
         term(2, false, i128::MAX / UNIT, 0),
     ];
-    assert_eq!(counted_value_excluding(&terms, 0), None);
-    assert_eq!(counted_value_excluding(&terms, 2), Some(i128::MAX / UNIT));
-    assert_eq!(record_term_value(&term(1, true, i128::MAX, 2)), None);
+    assert_eq!(counted_value_excluding(&terms, 0, UNIT), None);
+    assert_eq!(
+        counted_value_excluding(&terms, 2, UNIT),
+        Some(i128::MAX / UNIT)
+    );
+    assert_eq!(record_term_value(&term(1, true, i128::MAX, 2), UNIT), None);
 }
 
 const ADVANCE: u32 = 8000;
@@ -148,9 +151,30 @@ fn two_records() -> [CountedTerm; 2] {
     ]
 }
 
+fn release_7dp(
+    status: &str,
+    protection: &str,
+    outstanding: u128,
+    accrued: u128,
+    terms: &[CountedTerm],
+    record_id: u32,
+    advance_ratio_bps: u32,
+) -> AgentRelease {
+    agent_release(
+        status,
+        protection,
+        outstanding,
+        outstanding.checked_add(accrued),
+        terms,
+        record_id,
+        advance_ratio_bps,
+        UNIT,
+    )
+}
+
 #[test]
 fn agent_release_pending_perfection_is_allowed() {
-    let r = agent_release(
+    let r = release_7dp(
         "PendingPerfection",
         "WarehousePledge",
         9_999 * UNIT as u128,
@@ -164,7 +188,7 @@ fn agent_release_pending_perfection_is_allowed() {
 
 #[test]
 fn agent_release_loss_payee_is_allowed() {
-    let r = agent_release(
+    let r = release_7dp(
         "Active",
         "InsuranceLossPayee",
         9_999 * UNIT as u128,
@@ -178,7 +202,7 @@ fn agent_release_loss_payee_is_allowed() {
 
 #[test]
 fn agent_release_with_no_outstanding_principal_is_allowed() {
-    let r = agent_release("Active", "CashCover", 0, 5, &two_records(), 1, ADVANCE);
+    let r = release_7dp("Active", "CashCover", 0, 5, &two_records(), 1, ADVANCE);
     assert_eq!(r, AgentRelease::Allowed);
 }
 
@@ -186,7 +210,7 @@ fn agent_release_with_no_outstanding_principal_is_allowed() {
 fn agent_release_checks_ltv_without_the_record() {
     let rest = 1_000 * UNIT;
     let debt_at_ratio = (rest * 8 / 10) as u128;
-    let at = agent_release(
+    let at = release_7dp(
         "Active",
         "CashCover",
         debt_at_ratio,
@@ -196,7 +220,7 @@ fn agent_release_checks_ltv_without_the_record() {
         ADVANCE,
     );
     assert_eq!(at, AgentRelease::Allowed);
-    let above = agent_release(
+    let above = release_7dp(
         "Active",
         "CashCover",
         debt_at_ratio + 1,
@@ -211,7 +235,7 @@ fn agent_release_checks_ltv_without_the_record() {
 #[test]
 fn agent_release_counts_accrued_interest_in_the_debt() {
     let debt = (1_000 * UNIT * 8 / 10) as u128;
-    let r = agent_release(
+    let r = release_7dp(
         "Active",
         "CashCover",
         debt - 1,
@@ -225,7 +249,7 @@ fn agent_release_counts_accrued_interest_in_the_debt() {
 
 #[test]
 fn agent_release_needs_consent_when_nothing_would_be_left() {
-    let r = agent_release(
+    let r = release_7dp(
         "Active",
         "CashCover",
         1,
@@ -239,7 +263,7 @@ fn agent_release_needs_consent_when_nothing_would_be_left() {
 
 #[test]
 fn agent_release_needs_consent_on_overflow() {
-    let r = agent_release(
+    let r = release_7dp(
         "Active",
         "CashCover",
         u128::MAX,
@@ -250,7 +274,7 @@ fn agent_release_needs_consent_on_overflow() {
     );
     assert_eq!(r, AgentRelease::NeedsConsent);
     let big = [term(1, false, i128::MAX, 0)];
-    let r = agent_release("Active", "CashCover", 5, 0, &big, 2, ADVANCE);
+    let r = release_7dp("Active", "CashCover", 5, 0, &big, 2, ADVANCE);
     assert_eq!(r, AgentRelease::NeedsConsent);
 }
 
@@ -526,4 +550,105 @@ fn release_is_unconditional_for_pending_loss_payee_and_no_outstanding() {
     assert!(release_unconditional("Active", "CashCover", Some(0)));
     assert!(!release_unconditional("Active", "CashCover", Some(1)));
     assert!(!release_unconditional("Active", "CashCover", None));
+}
+
+fn fdp(raw: &str, decimals: u32) -> Option<String> {
+    format_dp(&dec(raw), decimals)
+}
+
+#[test]
+fn unit_is_ten_to_the_decimals() {
+    assert_eq!(unit(6), 1_000_000);
+    assert_eq!(unit(7), UNIT);
+}
+
+#[test]
+fn format_dp_at_six_decimals() {
+    assert_eq!(fdp("0", 6).unwrap(), "0.000000");
+    assert_eq!(fdp("1", 6).unwrap(), "0.000001");
+    assert_eq!(fdp("1000000", 6).unwrap(), "1.000000");
+    assert_eq!(fdp("1250000000", 6).unwrap(), "1250.000000");
+    assert_eq!(
+        fdp("12345678901234567890123", 6).unwrap(),
+        "12345678901234567.890123"
+    );
+    assert_eq!(fdp("-5", 6).unwrap(), "-0.000005");
+    assert_eq!(fdp("-1250000000", 6).unwrap(), "-1250.000000");
+    assert_eq!(fdp("123456789E-3", 6).unwrap(), "0.123456");
+    assert_eq!(fdp("1E+20", 6).unwrap(), "100000000000000.000000");
+}
+
+#[test]
+fn format_dp_at_seven_decimals_matches_format_7dp() {
+    for raw in ["0", "1", "-5", "12500000000", "123456789E-3", "1E+20"] {
+        assert_eq!(fdp(raw, 7), f7(raw));
+    }
+}
+
+#[test]
+fn format_dp_i128_at_six_and_seven_decimals() {
+    assert_eq!(format_dp_i128(0, 6), "0.000000");
+    assert_eq!(format_dp_i128(1, 6), "0.000001");
+    assert_eq!(format_dp_i128(-1_500_000, 6), "-1.500000");
+    assert_eq!(format_dp_i128(1_250_000_000, 6), "1250.000000");
+    assert_eq!(format_dp_i128(-5, 7), format_7dp_i128(-5));
+    assert_eq!(format_dp_i128(12_500_000_000, 7), "1250.0000000");
+    assert_eq!(
+        format_dp_i128(i128::MIN, 6),
+        "-170141183460469231731687303715884.105728"
+    );
+}
+
+#[test]
+fn record_and_counted_value_floor_at_the_chain_unit() {
+    let u = unit(6);
+    let goods = term(1, true, 1, 5_000_000 / 10);
+    assert_eq!(record_term_value(&goods, u), Some(0));
+    let two = [goods, term(2, true, 1, 500_000)];
+    assert_eq!(counted_value_excluding(&two, 0, u), Some(1));
+    assert_eq!(
+        record_term_value(&term(1, false, 33 * u, 0), u),
+        Some(33 * u)
+    );
+    assert_eq!(
+        counted_value_excluding(&[term(1, true, 1_000 * u, 2_500_000)], 0, u),
+        Some(2_500 * u)
+    );
+}
+
+#[test]
+fn agent_release_uses_the_supplied_debt() {
+    let u = unit(6);
+    let terms = [term(1, false, 1_000 * u, 0), term(2, false, 1_000 * u, 0)];
+    let at_ratio = (1_000 * u * 8 / 10) as u128;
+    let rel = |debt| agent_release("Active", "CashCover", 1, debt, &terms, 1, ADVANCE, u);
+    assert_eq!(rel(Some(at_ratio)), AgentRelease::Allowed);
+    assert_eq!(rel(Some(at_ratio + 1)), AgentRelease::NeedsConsent);
+    assert_eq!(rel(None), AgentRelease::NeedsConsent);
+}
+
+#[test]
+fn agent_release_unconditional_cases_ignore_the_debt() {
+    let terms = [term(1, false, 1_000 * UNIT, 0)];
+    let rel = |status, protection, outstanding| {
+        agent_release(
+            status,
+            protection,
+            outstanding,
+            None,
+            &terms,
+            1,
+            ADVANCE,
+            UNIT,
+        )
+    };
+    assert_eq!(
+        rel("PendingPerfection", "CashCover", 5),
+        AgentRelease::Allowed
+    );
+    assert_eq!(
+        rel("Active", "InsuranceLossPayee", 5),
+        AgentRelease::Allowed
+    );
+    assert_eq!(rel("Active", "CashCover", 0), AgentRelease::Allowed);
 }

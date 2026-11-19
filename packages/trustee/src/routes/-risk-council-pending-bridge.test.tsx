@@ -22,6 +22,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: SCHEDULER }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 
 import { useLoanBook } from "@/api/useLoanBook";

@@ -14,7 +14,7 @@ use crate::formatting::iso_utc_from_unix;
 use crate::minter_cash_book::{
     build_lp_wire_ins, build_wire_outs, to_base6_string, CashBookWireIn, WireOutStatus,
 };
-use crate::routes::common::{ChainScope, LenientChainFilter};
+use crate::routes::common::{stellar_minter, ChainScope, LenientChainFilter};
 use crate::routes::loan_book::loan_key;
 use crate::AppState;
 use shared::chains::ChainKind;
@@ -127,14 +127,16 @@ pub fn minter_chains_in_scope<S: std::hash::BuildHasher>(
     chains: &[ConfiguredChain],
     minter_addresses: &HashMap<i64, String, S>,
 ) -> Vec<(i64, String)> {
-    let in_scope: Vec<i64> = match scope {
-        ChainScope::All => chains.iter().map(|c| c.chain_id).collect(),
-        ChainScope::One(c) => vec![c.chain_id],
+    let in_scope: Vec<ConfiguredChain> = match scope {
+        ChainScope::All => chains.to_vec(),
+        ChainScope::One(c) => vec![c],
         ChainScope::Unconfigured(_) => Vec::new(),
     };
     in_scope
         .into_iter()
-        .filter_map(|id| minter_addresses.get(&id).map(|m| (id, m.clone())))
+        .filter_map(|c| {
+            stellar_minter(c.kind, minter_addresses, c.chain_id).map(|m| (c.chain_id, m.clone()))
+        })
         .collect()
 }
 

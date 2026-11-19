@@ -43,7 +43,7 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::pending_operations::{
-    group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
+    chain_scope, group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind,
 };
 use crate::routes::common::{
     chain_kind, loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
@@ -450,12 +450,12 @@ pub struct SubmitLoanResponse {
     /// Identifier of the newly created submission (the `submitted_loans` PK — not
     /// the on-chain `loan_id`, which does not exist until the loan is drawn).
     pub id: i64,
-    /// Contract-ready Stellar `draw_loan` arguments for this submission. `null` for an
-    /// EVM target (until #1573) or an unconfigured `target_chain_id`.
+    /// Contract-ready `draw_loan` arguments for this submission. `null` only for an
+    /// unconfigured `target_chain_id`.
     pub draw_loan: Option<DrawLoanArgs>,
 }
 
-/// Contract-ready arguments of the Stellar loan-registry `draw_loan(metadata_uri, economics)`,
+/// Contract-ready arguments of the loan-registry `draw_loan` / `drawLoan(metadata_uri, economics)`,
 /// derived at read time from the stored submission. Units are in
 /// `docs/product-specs/api-authorization-loan-submission.md`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -475,13 +475,13 @@ pub struct DrawLoanArgs {
 pub struct DrawLoanEconomics {
     /// sha256 of the trimmed `data_room_id` (UTF-8), 64 lowercase hex characters without `0x`.
     pub borrower_ref: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_facility_size: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_senior_tranche: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_equity_tranche: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_offtaker_price: Option<String>,
     /// u32 fixed-point with `ONE = 1_000_000` = 100 %/yr, i.e. `senior_interest_rate_bps * 100`.
     pub senior_interest_rate: Option<u32>,
@@ -492,6 +492,7 @@ pub struct DrawLoanEconomics {
 }
 
 pub const STELLAR_LOAN_MONEY_DECIMALS: u32 = 7;
+pub const EVM_LOAN_MONEY_DECIMALS: u32 = 6;
 
 pub fn normalize_data_room_id(raw: Option<String>) -> Option<String> {
     raw.and_then(|s| {
@@ -528,6 +529,10 @@ pub fn usdc_to_base_units(amount: &str, decimals: u32) -> Option<String> {
 }
 
 pub fn draw_loan_args(loan_data: &serde_json::Value) -> DrawLoanArgs {
+    draw_loan_args_at(loan_data, STELLAR_LOAN_MONEY_DECIMALS)
+}
+
+pub fn draw_loan_args_at(loan_data: &serde_json::Value, money_decimals: u32) -> DrawLoanArgs {
     let mut missing: Vec<String> = Vec::new();
     let mut take = |name: &str, v: Option<String>| -> Option<String> {
         if v.is_none() {
@@ -539,7 +544,7 @@ pub fn draw_loan_args(loan_data: &serde_json::Value) -> DrawLoanArgs {
         v.get(key).and_then(|x| x.as_str()).map(str::to_owned)
     };
     let money = |econ: &serde_json::Value, key: &str| -> Option<String> {
-        str_of(econ, key).and_then(|a| usdc_to_base_units(&a, STELLAR_LOAN_MONEY_DECIMALS))
+        str_of(econ, key).and_then(|a| usdc_to_base_units(&a, money_decimals))
     };
     let empty = serde_json::Value::Null;
     let econ = loan_data.get("economics").unwrap_or(&empty);
@@ -610,8 +615,9 @@ pub fn draw_loan_for(
     loan_data: &serde_json::Value,
 ) -> Option<DrawLoanArgs> {
     match kind {
-        Some(ChainKind::Stellar) => Some(draw_loan_args(loan_data)),
-        Some(ChainKind::Evm) | None => None,
+        Some(ChainKind::Stellar) => Some(draw_loan_args_at(loan_data, STELLAR_LOAN_MONEY_DECIMALS)),
+        Some(ChainKind::Evm) => Some(draw_loan_args_at(loan_data, EVM_LOAN_MONEY_DECIMALS)),
+        None => None,
     }
 }
 
@@ -657,8 +663,8 @@ pub struct SubmissionView {
     /// lifted from `loan_data.documents` for direct consumption. Empty for legacy
     /// submissions that predate the field (`loan_data` still carries it verbatim).
     pub documents: Vec<LoanDocumentDto>,
-    /// Stellar-target submissions only; `null` for an EVM target (until #1573), an
-    /// unconfigured `target_chain_id`, or once the submission is drawn or `Rejected`.
+    /// `null` for an unconfigured `target_chain_id`, or once the submission is drawn or
+    /// `Rejected`.
     pub draw_loan: Option<DrawLoanArgs>,
     /// The submitted payload, verbatim (legacy rows may carry `to`/`initial_ccr`/`initial_location`).
     pub loan_data: serde_json::Value,
@@ -812,7 +818,7 @@ async fn get_loan_book(
     params(RequiredChain),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 201, description = "Submission accepted; awaiting trustee review. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
+        (status = 201, description = "Submission accepted; awaiting trustee review. Carries the `draw_loan` args (`null` for an unconfigured target chain)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation, or missing, malformed, or unknown chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -926,7 +932,7 @@ async fn insert_valuation_and_fee_rows(
     params(("id" = i64, Path, description = "Submission id")),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 200, description = "Resubmission accepted; submission reopened as InReview. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
+        (status = 200, description = "Resubmission accepted; submission reopened as InReview. Carries the `draw_loan` args (`null` for an unconfigured target chain)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -1516,20 +1522,12 @@ async fn pending_ops_by_loan(
     let repo = AccessManagerRepo::new(state.pool.clone());
     let mut out = HashMap::new();
     for &chain_id in chain_ids {
-        if chain_kind(state, chain_id) != Some(ChainKind::Stellar) {
-            continue;
-        }
-        let scope = TargetScope {
-            loan_registry: state
-                .loan_registry_addresses
-                .get(&chain_id)
-                .map(String::as_str),
-            minter: state.minter_addresses.get(&chain_id).map(String::as_str),
-            security_registry: state
-                .security_registry_addresses
-                .get(&chain_id)
-                .map(String::as_str),
-        };
+        let scope = chain_scope(
+            chain_id,
+            &state.loan_registry_addresses,
+            &state.minter_addresses,
+            &state.security_registry_addresses,
+        );
         let targets = scope.targets();
         if targets.is_empty() {
             continue;

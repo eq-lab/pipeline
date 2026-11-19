@@ -380,12 +380,154 @@ export type {
   CheckCoverageParams,
 } from "./stellar/contracts/securityRegistry";
 
+// ── EVM Risk Council ──────────────────────────────────────────────────────────
+export {
+  EVM_TX_GAS_CAP,
+  readEvmContract,
+  sendEvmContractCall,
+  sendEvmContractCallChecked,
+} from "./evm/contracts/write";
+export type {
+  ReadEvmContractParams,
+  SendEvmContractCallParams,
+  SendEvmContractCallResult,
+} from "./evm/contracts/write";
+export {
+  accessManagerAbi,
+  readEvmCanCall,
+  readEvmOperationSchedule,
+  relayEvm,
+  readEvmScheduledOperation,
+  executeEvmScheduledOperation,
+} from "./evm/contracts/accessManager";
+export type {
+  EvmAccessManagerCallParams,
+  ReadEvmCanCallParams,
+  ReadEvmOperationScheduleParams,
+  RelayEvmParams,
+  ReadEvmScheduledOperationParams,
+  ExecuteEvmScheduledOperationParams,
+} from "./evm/contracts/accessManager";
+export {
+  evmSecurityRegistryAbi,
+  evmSecurityRecordNftAbi,
+  evmSecurityErrorAbi,
+  EVM_SECURITY_FUNCTION_NAMES,
+  evmSecuritySelector,
+  type EvmSecurityFn,
+  encodeEvmSecurityRegistryCalldata,
+  evmSecurityTarget,
+  relayEvmSecurityRegistry,
+  readEvmSecurityRegistrySchedule,
+  readEvmSecurityInspectors,
+  isEvmInspectorAddress,
+  normalizeEvmAddress,
+} from "./evm/contracts/securityRegistry";
+export type {
+  EvmSecurityAddresses,
+  EvmSecurityCallParams,
+  RelayEvmSecurityRegistryParams,
+} from "./evm/contracts/securityRegistry";
+
+export {
+  evmLoanRegistryRiskCouncilAbi,
+  evmLoanRegistryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  EVM_RISK_COUNCIL_FUNCTION_NAMES,
+  EVM_LOAN_STATUSES,
+  EVM_CLOSURE_REASONS,
+  evmRiskCouncilSelector,
+  encodeEvmRiskCouncilCalldata,
+  relayEvmRiskCouncil,
+  readEvmRiskCouncilSchedule,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+  readEvmLoanDisbursementState,
+} from "./evm/contracts/riskCouncil";
+export type {
+  EvmRiskCouncilCallParams,
+  RelayEvmRiskCouncilParams,
+  ReadEvmLoanParams,
+} from "./evm/contracts/riskCouncil";
+
+export {
+  drawEvmLoan,
+  encodeEvmDrawLoanCalldata,
+  evmLoanRegistryDrawAbi,
+  readEvmDrawnLoanId,
+  rolloverEvmLoan,
+  updateEvmMutable,
+  closeEvmLoan,
+  encodeEvmRolloverCalldata,
+  encodeEvmUpdateMutableCalldata,
+  encodeEvmCloseLoanCalldata,
+  evmLoanRegistryLifecycleAbi,
+} from "./evm/contracts/loanRegistry";
+export type {
+  DrawEvmLoanParams,
+  DrawEvmLoanResult,
+  EvmLoanRegistryCallParams,
+} from "./evm/contracts/loanRegistry";
+
+export {
+  readEvmDeal,
+  evmDealTokenFactoryAbi,
+  evmRegisterDealSelector,
+  encodeEvmRegisterDealCalldata,
+  evmRegisterDealErrorAbi,
+  relayEvmRegisterDeal,
+} from "./evm/contracts/dealTokenFactory";
+export type { RelayEvmRegisterDealParams } from "./evm/contracts/dealTokenFactory";
+
 export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
+  evmMinterErrorAbi,
+  evmRecoveryErrorAbi,
+  evmReverseRepaySelector,
+  evmRepaySelector,
+  evmReverseRepayRefHash,
+  relayEvmReverseRepay,
+  scheduleEvmReverseRepay,
+  executeEvmReverseRepay,
+  readEvmReverseRepaySchedule,
+  readEvmNextRepaymentId,
+  readEvmMinterRepayment,
+  readEvmRecoveryRepayments,
+  repayEvmLoan,
+  evmRepaymentRefHash,
+  readEvmRepaymentId,
+  evmRepayErrorAbi,
+  disburseEvmLoan,
+  encodeEvmDisburseCalldata,
+  evmDisburseSelector,
+  evmDisburseErrorAbi,
+  readEvmMinterPaused,
+  readEvmMinterBankCash,
+  readEvmRefHashSeen,
 } from "./evm/contracts/minter";
-export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
+export type {
+  EvmReverseRepayArgs,
+  EvmRepayArgs,
+  EvmReverseRepayCallParams,
+  RelayEvmReverseRepayParams,
+  ScheduleEvmReverseRepayParams,
+  EvmMinterRepaymentRecord,
+  EvmRecoveryRepayment,
+  ReadEvmRecoveryRepaymentsParams,
+  RepayEvmLoanParams,
+  DisburseEvmLoanParams,
+  EvmDisburseArgs,
+} from "./evm/contracts/minter";
+
+export {
+  EVM_LOG_CHUNK_BLOCKS,
+  isTransientRpcError,
+  readEvmHeadBlock,
+  scanEvmLogs,
+} from "./evm/contracts/logs";
+export type { ScanEvmLogsParams } from "./evm/contracts/logs";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

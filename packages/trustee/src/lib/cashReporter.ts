@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#cash-reporter-bookings
-import type { CanCall } from "@pipeline/wallet-connect";
+import { evmRepaySelector, type CanCall } from "@pipeline/wallet-connect";
 
 export type CashReporterFn = "record_wire_in" | "repay" | "record_income";
 
@@ -8,6 +8,10 @@ export const CASH_REPORTER_NO_ROLE: Record<CashReporterFn, string> = {
   repay: "Only the Cash reporter can book repayments.",
   record_income: "Only the Cash reporter can book bank income.",
 };
+
+export const EVM_CASH_REPORTER_SELECTORS: Partial<
+  Record<CashReporterFn, () => `0x${string}`>
+> = { repay: () => evmRepaySelector() };
 
 export function cashReporterReason(
   fn: CashReporterFn,

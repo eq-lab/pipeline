@@ -22,7 +22,8 @@ use crate::minter_cash_book::{
     build_ramps, build_wire_ins, build_wire_outs, RampStatus, WireInStatus, WireOutStatus,
 };
 use crate::routes::common::{
-    loan_registry_address, parse_chain_scope, require_trustee, ChainScope, LenientChainFilter,
+    loan_registry_address, parse_chain_scope, require_trustee, stellar_minter, ChainScope,
+    LenientChainFilter,
 };
 use crate::routes::loan_book::{display_status, loan_key, STATUS_DISBURSING, STATUS_PAST_DUE};
 use crate::routes::ramp::{filter_pending_ramp_events, RampEvent};
@@ -177,7 +178,7 @@ async fn chain_counts(
             }
         },
         async {
-            match state.minter_addresses.get(&id) {
+            match stellar_minter(chain.kind, &state.minter_addresses, id) {
                 Some(minter) => state
                     .contract_logs_repo
                     .list_minter_events(id, minter)
@@ -191,7 +192,7 @@ async fn chain_counts(
             match state
                 .transfer_addresses
                 .get(&id)
-                .filter(|_| !state.minter_addresses.contains_key(&id))
+                .filter(|_| stellar_minter(chain.kind, &state.minter_addresses, id).is_none())
             {
                 Some(addr) => state
                     .contract_logs_repo

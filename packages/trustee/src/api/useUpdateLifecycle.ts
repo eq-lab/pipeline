@@ -2,13 +2,17 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  readEvmLoanChainState,
   readLoanChainState,
+  updateEvmMutable,
   updateMutable,
+  useEvmWallet,
   useStellarWallet,
   type UpdateMutableStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { pickChainWallet } from "@/lib/chainWallet";
+import { isStellarTarget, loanActionChainReason } from "@/lib/targetChains";
 
 export type { UpdateMutableStage };
 
@@ -16,6 +20,7 @@ export interface UseUpdateLifecycleInput {
   loanId: number;
   status: string;
   metadataUri: string;
+  chainId: number | null | undefined;
 }
 
 export interface LoanMutableState {
@@ -32,12 +37,21 @@ export function useLoanMutableState(
     queryKey: ["loan-mutable", chainId, loanId],
     enabled:
       enabled &&
-      stellarOnlyActionReason(chainId) === null &&
+      loanActionChainReason(chainId) === null &&
       Number.isInteger(loanId) &&
-      !!ENV.STELLAR_LOAN_REGISTRY_ID,
+      !!(isStellarTarget(chainId)
+        ? ENV.STELLAR_LOAN_REGISTRY_ID
+        : ENV.EVM_LOAN_REGISTRY_ADDRESS),
     staleTime: 0,
     retry: false,
     queryFn: async () => {
+      if (!isStellarTarget(chainId)) {
+        const state = await readEvmLoanChainState({
+          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          loanId: loanId as number,
+        });
+        return { status: state.status, metadataUri: state.metadataUri };
+      }
       const state = await readLoanChainState({
         registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
         loanId: loanId as number,
@@ -60,7 +74,8 @@ export interface UseUpdateLifecycleResult {
 }
 
 export function useUpdateLifecycle(): UseUpdateLifecycleResult {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellar = useStellarWallet();
+  const evm = useEvmWallet();
   const [stage, setStage] = useState<UpdateMutableStage | null>(null);
   const queryClient = useQueryClient();
 
@@ -69,8 +84,32 @@ export function useUpdateLifecycle(): UseUpdateLifecycleResult {
     Error,
     UseUpdateLifecycleInput
   >({
-    mutationFn: async ({ loanId, status, metadataUri }) => {
+    mutationFn: async ({ loanId, status, metadataUri, chainId }) => {
       setStage(null);
+      const wallet = pickChainWallet(chainId, stellar, evm);
+
+      if (wallet.kind === "evm") {
+        const blocked = loanActionChainReason(chainId);
+        if (blocked) throw new Error(blocked);
+        if (!ENV.EVM_LOAN_REGISTRY_ADDRESS || !ENV.EVM_ACCESS_MANAGER_ADDRESS) {
+          throw new Error(
+            "On-chain lifecycle updates are not configured for this environment.",
+          );
+        }
+        if (!wallet.isConnected || !wallet.address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        return updateEvmMutable({
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          caller: wallet.address,
+          chainId: ENV.EVM_CHAIN_ID,
+          loanId,
+          status,
+          metadataUri,
+          onStageChange: setStage,
+        });
+      }
 
       if (
         !ENV.STELLAR_LOAN_REGISTRY_ID ||
@@ -80,20 +119,20 @@ export function useUpdateLifecycle(): UseUpdateLifecycleResult {
           "On-chain lifecycle updates are not configured for this environment.",
         );
       }
-      if (!isConnected || !address) {
+      if (!stellar.isConnected || !stellar.address) {
         throw new Error("Stellar wallet not connected.");
       }
 
       return updateMutable({
         executorId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         targetId: ENV.STELLAR_LOAN_REGISTRY_ID,
-        caller: address,
+        caller: stellar.address,
         loanId,
         status,
         metadataUri,
         rpcUrl: ENV.STELLAR_RPC_URL,
         networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
-        signTransaction,
+        signTransaction: stellar.signTransaction,
         onStageChange: setStage,
       });
     },

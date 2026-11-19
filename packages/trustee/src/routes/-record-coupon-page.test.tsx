@@ -1,20 +1,4 @@
-/**
- * Render tests for the Record Coupon full-page route
- * (`loans.$id_.record-coupon.tsx`, issue #882, Figma node `4116-11452`).
- *
- * Mocks the raw API hooks (`useLoanBook`, `useLoanFinancials`,
- * `useLoanWaterfall`) rather than the presenter — mirrors
- * `-loans.index.test.tsx`'s convention (raw hook mocked, real presenter +
- * route rendered) so the amount/date-input → base-unit scale conversion is
- * exercised end-to-end: typing a USD amount is asserted against the exact
- * argument `useLoanWaterfall` was called with. `Link`/`useNavigate` and
- * `Route.useParams` are patched, mirroring `-origination-detail-page.test.tsx`.
- *
- * Covers: the two cards + waterfall rows built from a mocked
- * `useLoanWaterfall` response; the suppressed "Next stage: principal
- * repayment" hint (absent) and the principal-block notice (#1623); the never-fabricated
- * "Recorded"/"Minted" chips (absent); loading / error / not-found states.
- */
+// spec: docs/frontend/trustee-flows.md#recording-a-payment--minterrepay-1712
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -82,12 +66,22 @@ vi.mock("@/api/useRecordPayment", () => ({
 }));
 
 const { mockRole } = vi.hoisted(() => ({
-  mockRole: { reason: null as string | null },
+  mockRole: {
+    reason: null as string | null,
+    lastEnabled: false,
+    lastChain: undefined as number | null | undefined,
+  },
 }));
 vi.mock("@/api/useCashReporterAccess", () => ({
-  useCashReporterAccess: (_fn: string, enabled: boolean) => ({
-    reason: enabled ? mockRole.reason : null,
-  }),
+  useCashReporterAccess: (
+    _fn: string,
+    enabled: boolean,
+    chainId?: number | null,
+  ) => {
+    mockRole.lastEnabled = enabled;
+    mockRole.lastChain = chainId;
+    return { reason: enabled ? mockRole.reason : null };
+  },
 }));
 
 import { useLoanBook } from "@/api/useLoanBook";
@@ -271,8 +265,55 @@ describe("Record Coupon route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows only the Stellar-only reason on an EVM loan", () => {
+  function renderOnChain(chain: number) {
+    const RouteWithSearch = Route as unknown as {
+      useSearch: () => { chain: number };
+    };
+    const previous = RouteWithSearch.useSearch;
+    RouteWithSearch.useSearch = () => ({ chain });
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, chain_id: chain }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    try {
+      renderRoute();
+    } finally {
+      RouteWithSearch.useSearch = previous;
+    }
+  }
+
+  it("opens the EVM loan: no chain block, the role read is enabled for that chain", () => {
     mockRole.reason = "Only the Cash reporter can book repayments.";
+    renderOnChain(560048);
+    expect(
+      screen.queryByTestId("record-coupon-onchain-blocked"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("record-coupon-role-blocked")).toHaveTextContent(
+      "Only the Cash reporter can book repayments.",
+    );
+    expect(mockRole.lastEnabled).toBe(true);
+    expect(mockRole.lastChain).toBe(560048);
+  });
+
+  it("shows only the Stellar-only reason on an unknown chain and never reads the role", () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    renderOnChain(1234);
+    expect(
+      screen.getByTestId("record-coupon-onchain-blocked"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-coupon-role-blocked"),
+    ).not.toBeInTheDocument();
+    expect(mockRole.lastEnabled).toBe(false);
+  });
+
+  it("records on an EVM loan from the 6-dp served waterfall and passes the chain id", async () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
     const RouteWithSearch = Route as unknown as {
       useSearch: () => { chain: number };
     };
@@ -289,12 +330,21 @@ describe("Record Coupon route — ready state", () => {
     });
     try {
       renderRoute();
-      expect(
-        screen.getByTestId("record-coupon-onchain-blocked"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("record-coupon-role-blocked"),
-      ).not.toBeInTheDocument();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: "45000" },
+      });
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          loanId: 4488,
+          chainId: 560048,
+          repayment: expect.objectContaining({
+            offtaker_received: "45000000000",
+          }),
+        }),
+      );
     } finally {
       RouteWithSearch.useSearch = previous;
     }
@@ -314,6 +364,7 @@ describe("Record Coupon route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       valueDate: expect.any(Number),
+      chainId: 99_000_001,
       repayment: {
         offtaker_received: "450000000000",
         senior_principal_repaid: "0",
@@ -377,6 +428,7 @@ describe("Record Coupon route — ready state", () => {
       expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
         valueDate: expect.any(Number),
+        chainId: 99_000_001,
         repayment: {
           offtaker_received: "5000000000000",
           senior_principal_repaid: "0",
@@ -858,6 +910,7 @@ describe("Record Coupon route — ready state", () => {
       expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
         valueDate: expect.any(Number),
+        chainId: 99_000_001,
         repayment: {
           offtaker_received: "500000000000",
           senior_principal_repaid: "0",

@@ -31,6 +31,18 @@ pub struct SeriesStat {
     pub average: String,
 }
 
+pub fn stellar_minter<S: std::hash::BuildHasher>(
+    kind: shared::chains::ChainKind,
+    minter_addresses: &std::collections::HashMap<i64, String, S>,
+    chain_id: i64,
+) -> Option<&String> {
+    if kind == shared::chains::ChainKind::Stellar {
+        minter_addresses.get(&chain_id)
+    } else {
+        None
+    }
+}
+
 pub fn chain_kind(state: &AppState, chain_id: i64) -> Option<shared::chains::ChainKind> {
     state
         .chains

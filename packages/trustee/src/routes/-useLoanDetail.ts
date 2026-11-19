@@ -14,9 +14,9 @@ import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
 import { findLoanEntry } from "@/lib/loanRoute";
-import { stellarOnlyActionReason, targetChainLabel } from "@/lib/targetChains";
+import { loanActionChainReason, targetChainLabel } from "@/lib/targetChains";
 import { toUserError } from "@/utils/userError";
-import { useDeal } from "@/api/useDealToken";
+import { useLoanDeal } from "@/api/useDealToken";
 import { debtTokenRegistered, type DealReadState } from "@/lib/dealToken";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -524,7 +524,10 @@ export function useLoanDetail(
   const loanBook = useLoanBook();
   const security = useLoanSecurity(chainId, loanId);
   const financials = useLoanFinancials(chainId, loanId);
-  const deal = useDeal(chainId, /^\d+$/.test(loanId) ? Number(loanId) : null);
+  const deal = useLoanDeal(
+    chainId,
+    /^\d+$/.test(loanId) ? Number(loanId) : null,
+  );
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
@@ -571,8 +574,6 @@ export function useLoanDetail(
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
     documents: buildDocuments(entry),
-    onChainBlockedReason: entry
-      ? stellarOnlyActionReason(entry.chain_id)
-      : null,
+    onChainBlockedReason: entry ? loanActionChainReason(entry.chain_id) : null,
   };
 }

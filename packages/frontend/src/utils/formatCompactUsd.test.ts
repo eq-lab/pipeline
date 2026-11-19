@@ -42,6 +42,22 @@ describe("formatCompactUsd", () => {
     expect(formatCompactUsd("1200.000000")).toBe("$1.2K");
   });
 
+  it("promotes a value that rounds to 1000.0K to the M unit", () => {
+    expect(formatCompactUsd("999949.000000")).toBe("$999.9K");
+    expect(formatCompactUsd("999950.000000")).toBe("$1.0M");
+    expect(formatCompactUsd("999999.000000")).toBe("$1.0M");
+    expect(formatCompactUsd("1000000.000000")).toBe("$1.0M");
+    expect(formatCompactUsd("1000001.000000")).toBe("$1.0M");
+    expect(formatCompactUsd("-999950.000000")).toBe("-$1.0M");
+  });
+
+  it("promotes a sub-thousand value that rounds to 1000.00 to the K unit", () => {
+    expect(formatCompactUsd("999.990000")).toBe("$999.99");
+    expect(formatCompactUsd("999.996000")).toBe("$1.0K");
+    expect(formatCompactUsd("1000.000000")).toBe("$1.0K");
+    expect(formatCompactUsd("1000.040000")).toBe("$1.0K");
+  });
+
   it("handles sub-thousand values with 2 decimal places", () => {
     expect(formatCompactUsd("999.000000")).toBe("$999.00");
     expect(formatCompactUsd("999")).toBe("$999.00");

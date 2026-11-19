@@ -1,5 +1,6 @@
 // spec: docs/product-specs/loan-security-state.md#pending-operations
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 use serde::Serialize;
 use shared::access_manager_repo::PendingOpRow;
@@ -32,7 +33,10 @@ pub struct PendingOperation {
     pub target: String,
     pub target_kind: PendingTargetKind,
     pub function: String,
-    pub args_xdr: String,
+    #[schema(required = true, nullable)]
+    pub args_xdr: Option<String>,
+    #[schema(required = true, nullable)]
+    pub calldata: Option<String>,
     #[schema(value_type = Vec<serde_json::Value>)]
     pub args: serde_json::Value,
     pub ready_at: String,
@@ -69,6 +73,19 @@ impl TargetScope<'_> {
     }
 }
 
+pub fn chain_scope<'a, S: BuildHasher>(
+    chain_id: i64,
+    loan_registry: &'a HashMap<i64, String, S>,
+    minter: &'a HashMap<i64, String, S>,
+    security_registry: &'a HashMap<i64, String, S>,
+) -> TargetScope<'a> {
+    TargetScope {
+        loan_registry: loan_registry.get(&chain_id).map(String::as_str),
+        minter: minter.get(&chain_id).map(String::as_str),
+        security_registry: security_registry.get(&chain_id).map(String::as_str),
+    }
+}
+
 pub fn pending_state(now: i64, ready_at: i64, expires_at: i64) -> PendingOperationState {
     if now < ready_at {
         PendingOperationState::Waiting
@@ -84,6 +101,15 @@ pub fn pending_operation(
     scope: &TargetScope<'_>,
     now: i64,
 ) -> Option<PendingOperation> {
+    if row.args_xdr.is_some() == row.calldata.is_some() {
+        tracing::warn!(
+            loan_id = row.loan_id,
+            operation_id = %row.operation_id,
+            nonce = row.nonce,
+            "pending operation dropped: args_xdr and calldata must be set exclusively"
+        );
+        return None;
+    }
     Some(PendingOperation {
         operation_id: row.operation_id.clone(),
         nonce: u32::try_from(row.nonce).ok()?,
@@ -92,6 +118,7 @@ pub fn pending_operation(
         target_kind: scope.kind(&row.target),
         function: row.function.clone(),
         args_xdr: row.args_xdr.clone(),
+        calldata: row.calldata.clone(),
         args: row.args_json.clone(),
         ready_at: iso_utc_from_unix(row.ready_at),
         expires_at: iso_utc_from_unix(row.expires_at),

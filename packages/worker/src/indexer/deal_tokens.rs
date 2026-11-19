@@ -76,10 +76,16 @@ impl DealTokenRegistry {
             .cloned()
     }
 
-    pub fn insert_deal(&self, loan_id: &str, debt: Address, cargo: Address) -> Vec<Address> {
+    pub fn insert_deal(
+        &self,
+        loan_id: &str,
+        debt: Address,
+        cargo: Option<Address>,
+    ) -> Vec<Address> {
         self.insert_tokens(
             loan_id,
-            [(debt, DealTokenKind::Debt), (cargo, DealTokenKind::Cargo)],
+            std::iter::once((debt, DealTokenKind::Debt))
+                .chain(cargo.map(|c| (c, DealTokenKind::Cargo))),
         )
     }
 

@@ -11,6 +11,7 @@ import type { TurnstileStatus } from "@/components/Turnstile";
 export interface AddEmailModalProps {
   open: boolean;
   onBack: () => void;
+  onSignIn?: () => void;
   onSubmit?: (credentials: {
     email: string;
     password: string;
@@ -26,6 +27,7 @@ export interface AddEmailModalProps {
 export function AddEmailModal({
   open,
   onBack,
+  onSignIn,
   onSubmit,
   formError,
   captchaStatus = "ready",
@@ -111,14 +113,45 @@ export function AddEmailModal({
           ) : null}
         </div>
 
-        <Button
-          type="submit"
-          variant="primary-blue"
-          disabled={!isValid || isSubmitting}
-          className="!w-full !min-w-0 disabled:opacity-[0.32]"
-        >
-          Save
-        </Button>
+        <div className="flex w-full flex-col gap-4">
+          <Button
+            type="submit"
+            variant="primary-blue"
+            disabled={!isValid || isSubmitting}
+            className="!w-full !min-w-0 disabled:opacity-[0.32]"
+          >
+            Save
+          </Button>
+
+          {onSignIn ? (
+            <p
+              className={[
+                "w-full text-center",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+              ].join(" ")}
+            >
+              <span className="text-[color:var(--color-pipeline-ink-muted)]">
+                Already have an account?{" "}
+              </span>
+              <button
+                type="button"
+                onClick={onSignIn}
+                className={[
+                  "text-[color:var(--color-pipeline-ink)]",
+                  "cursor-pointer bg-transparent",
+                  "hover:underline",
+                  "focus-visible:outline focus-visible:outline-2",
+                  "focus-visible:outline-offset-2",
+                  "focus-visible:outline-[color:var(--color-pipeline-ink)]",
+                ].join(" ")}
+              >
+                Sign in
+              </button>
+            </p>
+          ) : null}
+        </div>
       </form>
     </AuthModalShell>
   );

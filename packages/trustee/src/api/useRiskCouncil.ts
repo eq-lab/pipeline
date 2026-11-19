@@ -7,8 +7,25 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  encodeEvmRiskCouncilCalldata,
+  encodeEvmSecurityRegistryCalldata,
+  evmRecoveryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  evmRiskCouncilSelector,
+  evmSecurityErrorAbi,
+  evmSecuritySelector,
+  type EvmSecurityFn,
+  evmSecurityTarget,
+  executeEvmScheduledOperation,
   executeScheduledOperation,
   readCanCall,
+  readEvmCanCall,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+  readEvmRiskCouncilSchedule,
+  readEvmScheduledOperation,
+  readEvmSecurityInspectors,
+  readEvmSecurityRegistrySchedule,
   readLoanChainState,
   readLoanMoney,
   readRiskCouncilSchedule,
@@ -16,9 +33,12 @@ import {
   readScheduledOperation,
   readSecurityRegistrySchedule,
   relayRiskCouncil,
+  relayEvmRiskCouncil,
+  relayEvmSecurityRegistry,
   relaySecurityRegistry,
   riskCouncilArgsXdr,
   securityRegistryArgsXdr,
+  useEvmWallet,
   useStellarWallet,
   type CanCall,
   type LoanChainState,
@@ -30,9 +50,15 @@ import {
   type RiskCouncilClosureReason,
   type SecurityRegistryCall,
 } from "@pipeline/wallet-connect";
+import type { PendingTargetKind } from "@/api/pendingOperations";
 import { otherWalletCopy } from "@/lib/accessManagerAction";
+import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  isStellarTarget,
+  riskCouncilChainReason,
+  sameChainAddress,
+} from "@/lib/targetChains";
 import {
   councilTarget,
   markExecuted,
@@ -101,7 +127,9 @@ export interface PendingOperationExecuteInput {
   expectedTarget: string;
   paused: boolean;
   fn: string;
-  argsXdr: string;
+  argsXdr: string | null;
+  calldata: string | null;
+  targetKind: PendingTargetKind;
 }
 
 interface RelayOutcome {
@@ -110,6 +138,7 @@ interface RelayOutcome {
   caller?: string;
   target?: string;
   argsXdr?: string;
+  calldata?: string;
 }
 
 export interface RiskCouncilLoanState {
@@ -139,10 +168,116 @@ function riskCouncilConfig(target: CouncilTarget = "loan_registry") {
   return { accessManagerId, registryId, ...chainConfig() };
 }
 
+interface EvmCouncilConfig {
+  accessManager: string;
+  registry: string;
+  recordNft: string;
+  target: string;
+  chainId: number;
+}
+
+function evmCouncilConfig(fn: CouncilCall["fn"]): EvmCouncilConfig | null {
+  const accessManager = ENV.EVM_ACCESS_MANAGER_ADDRESS;
+  if (councilTarget(fn) === "loan_registry") {
+    const registry = ENV.EVM_LOAN_REGISTRY_ADDRESS;
+    if (!accessManager || !registry) return null;
+    return {
+      accessManager,
+      registry,
+      recordNft: "",
+      target: registry,
+      chainId: ENV.EVM_CHAIN_ID,
+    };
+  }
+  const registry = ENV.EVM_SECURITY_REGISTRY_ADDRESS;
+  const recordNft = ENV.EVM_SECURITY_RECORD_NFT_ADDRESS;
+  if (!accessManager || !registry || !recordNft) return null;
+  return {
+    accessManager,
+    registry,
+    recordNft,
+    target: evmSecurityTarget(fn as SecurityRegistryCall["fn"], {
+      registry,
+      recordNft,
+    }),
+    chainId: ENV.EVM_CHAIN_ID,
+  };
+}
+
+function evmSelectorFor(
+  fn: CouncilCall["fn"],
+): ReturnType<typeof evmSecuritySelector> {
+  return councilTarget(fn) === "security_registry"
+    ? evmSecuritySelector(fn as EvmSecurityFn)
+    : evmRiskCouncilSelector(fn as RiskCouncilCall["fn"]);
+}
+
+function evmCalldataFor(call: CouncilCall): string {
+  return councilTarget(call) === "security_registry"
+    ? encodeEvmSecurityRegistryCalldata(call as SecurityRegistryCall)
+    : encodeEvmRiskCouncilCalldata(call as RiskCouncilCall);
+}
+
+function readEvmScheduleFor(
+  evm: EvmCouncilConfig,
+  call: CouncilCall,
+  caller: string,
+): Promise<OperationSchedule> {
+  const base = {
+    accessManager: evm.accessManager,
+    registry: evm.registry,
+    caller,
+  };
+  return councilTarget(call) === "security_registry"
+    ? readEvmSecurityRegistrySchedule({
+        ...base,
+        call: call as SecurityRegistryCall,
+        recordNft: evm.recordNft,
+      })
+    : readEvmRiskCouncilSchedule({ ...base, call: call as RiskCouncilCall });
+}
+
+function relayEvmFor(
+  evm: EvmCouncilConfig,
+  call: CouncilCall,
+  caller: string,
+  mode: RelayMode,
+  onStageChange: (stage: RelayStage) => void,
+) {
+  const base = {
+    mode,
+    accessManager: evm.accessManager,
+    registry: evm.registry,
+    caller,
+    chainId: evm.chainId,
+    onStageChange,
+  };
+  return councilTarget(call) === "security_registry"
+    ? relayEvmSecurityRegistry({
+        ...base,
+        call: call as SecurityRegistryCall,
+        recordNft: evm.recordNft,
+      })
+    : relayEvmRiskCouncil({ ...base, call: call as RiskCouncilCall });
+}
+
 function notConfiguredFor(target: CouncilTarget): string {
   return target === "security_registry"
     ? SECURITY_NOT_CONFIGURED
     : NOT_CONFIGURED;
+}
+
+function evmErrorAbiFor(kind: PendingTargetKind) {
+  switch (kind) {
+    case "security_registry":
+      return evmSecurityErrorAbi;
+    case "loan_registry":
+      return evmRiskCouncilErrorAbi;
+    case "minter":
+      return evmRecoveryErrorAbi;
+    default:
+      return [];
+  }
 }
 
 function readScheduleFor(
@@ -168,16 +303,32 @@ export function useRiskCouncilAccess(
   call: CouncilCall | null,
   fn: CouncilCall["fn"],
 ) {
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
   const callKey = call == null ? null : riskCouncilCallKey(call);
   const target = councilTarget(fn);
 
   return useQuery<RiskCouncilAccess, Error>({
-    queryKey: ["risk-council-access", address, target, fn, callKey],
-    enabled: stellarOnlyActionReason(chainId) === null && !!address,
+    queryKey: ["risk-council-access", chainId, address, target, fn, callKey],
+    enabled: riskCouncilChainReason(chainId) === null && !!address,
     staleTime: 5_000,
     retry: false,
     queryFn: async () => {
+      if (!isStellarTarget(chainId)) {
+        const evm = evmCouncilConfig(fn);
+        if (!evm) throw new Error(notConfiguredFor(target));
+        if (!address) throw new Error("EVM wallet not connected.");
+        const canCall = await readEvmCanCall({
+          accessManager: evm.accessManager,
+          caller: address,
+          target: evm.target,
+          selector: evmSelectorFor(fn),
+        });
+        let schedule: OperationSchedule | null = null;
+        if (!canCall.immediate && canCall.delay > 0 && call !== null) {
+          schedule = await readEvmScheduleFor(evm, call, address);
+        }
+        return { canCall, schedule };
+      }
       const cfg = riskCouncilConfig(target);
       if (!cfg) throw new Error(notConfiguredFor(target));
       if (!address) throw new Error("Stellar wallet not connected.");
@@ -213,12 +364,22 @@ export function useRiskCouncilLoanState(
   return useQuery<RiskCouncilLoanState, Error>({
     queryKey: ["risk-council-loan", chainId, loanId],
     enabled:
-      stellarOnlyActionReason(chainId) === null &&
+      riskCouncilChainReason(chainId) === null &&
       loanId !== null &&
       Number.isInteger(loanId),
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {
+      if (!isStellarTarget(chainId)) {
+        const registry = ENV.EVM_LOAN_REGISTRY_ADDRESS;
+        if (!registry) throw new Error(NOT_CONFIGURED);
+        const params = { registry, loanId: loanId as number };
+        const [chain, money] = await Promise.all([
+          readEvmLoanChainState(params),
+          readEvmLoanMoney(params),
+        ]);
+        return { chain, money };
+      }
       const cfg = riskCouncilConfig();
       if (!cfg) throw new Error(NOT_CONFIGURED);
       const params = {
@@ -267,16 +428,50 @@ function invalidatePendingExecute(queryClient: QueryClient) {
 }
 
 export function useRiskCouncilRelay() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellarWallet = useStellarWallet();
+  const evmWallet = useEvmWallet();
+  const { signTransaction } = stellarWallet;
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
   const mutation = useMutation<RelayOutcome, Error, RiskCouncilRelayInput>({
     mutationFn: async ({ mode, call, chainId }) => {
       setStage(null);
-      const blocked = stellarOnlyActionReason(chainId);
+      const blocked = riskCouncilChainReason(chainId);
       if (blocked) throw new Error(blocked);
+      const wallet = pickChainWallet(chainId, stellarWallet, evmWallet);
+      const { address, isConnected } = wallet;
       const target = councilTarget(call);
+      if (wallet.kind === "evm") {
+        const evm = evmCouncilConfig(call.fn);
+        if (!evm) throw new Error(notConfiguredFor(target));
+        if (!isConnected || !address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        let executing: OperationSchedule | undefined;
+        if (mode === "execute") {
+          try {
+            executing = await readEvmScheduleFor(evm, call, address);
+          } catch {
+            executing = undefined;
+          }
+        }
+        const { hash } = await relayEvmFor(evm, call, address, mode, setStage);
+        if (mode !== "schedule") return { hash, schedule: executing };
+        let schedule: OperationSchedule | undefined;
+        try {
+          schedule = await readEvmScheduleFor(evm, call, address);
+        } catch {
+          schedule = undefined;
+        }
+        return {
+          hash,
+          schedule,
+          caller: address,
+          target: evm.target,
+          calldata: evmCalldataFor(call),
+        };
+      }
       const cfg = riskCouncilConfig(target);
       if (!cfg) throw new Error(notConfiguredFor(target));
       if (!isConnected || !address) {
@@ -346,6 +541,7 @@ export function useRiskCouncilRelay() {
           caller: data.caller,
           target: data.target,
           argsXdr: data.argsXdr,
+          calldata: data.calldata,
         });
       } else {
         markExecuted(chainId, call, data.hash);
@@ -382,7 +578,9 @@ export function useRiskCouncilRelay() {
 }
 
 export function usePendingOperationExecute() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellarWallet = useStellarWallet();
+  const evmWallet = useEvmWallet();
+  const { signTransaction } = stellarWallet;
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
@@ -400,20 +598,49 @@ export function usePendingOperationExecute() {
       paused,
       fn,
       argsXdr,
+      calldata,
+      targetKind,
     }) => {
       setStage(null);
-      const blocked = stellarOnlyActionReason(chainId);
+      const blocked = riskCouncilChainReason(chainId);
       if (blocked) throw new Error(blocked);
-      if (target !== expectedTarget) {
+      if (!sameChainAddress(chainId, target, expectedTarget)) {
         throw new PendingTargetMismatchError(target);
       }
       if (paused) throw new RegistryPausedError();
+      const wallet = pickChainWallet(chainId, stellarWallet, evmWallet);
+      const { address, isConnected } = wallet;
+      if (wallet.kind === "evm") {
+        const accessManager = ENV.EVM_ACCESS_MANAGER_ADDRESS;
+        if (!accessManager) throw new Error(NOT_CONFIGURED);
+        if (!isConnected || !address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        if (!sameChainAddress(chainId, address, caller)) {
+          throw new Error(otherWalletCopy(caller));
+        }
+        if (calldata == null) throw new PendingArgsMismatchError();
+        const evmBase = { accessManager, caller, target, calldata };
+        const schedule = await readEvmScheduledOperation(evmBase);
+        if (schedule.operationId !== operationId.toLowerCase()) {
+          throw new PendingArgsMismatchError();
+        }
+        if (schedule.readyAt === 0) throw new NoLongerScheduledError();
+        const { hash } = await executeEvmScheduledOperation({
+          ...evmBase,
+          chainId: ENV.EVM_CHAIN_ID,
+          errorAbi: evmErrorAbiFor(targetKind),
+          onStageChange: setStage,
+        });
+        return { hash, readyAt: schedule.readyAt };
+      }
       const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
       if (!accessManagerId) throw new Error(NOT_CONFIGURED);
       if (!isConnected || !address) {
         throw new Error("Stellar wallet not connected.");
       }
       if (address !== caller) throw new Error(otherWalletCopy(caller));
+      if (argsXdr == null) throw new PendingArgsMismatchError();
       const chain = chainConfig();
       const schedule = await readScheduledOperation({
         accessManagerId,
@@ -466,10 +693,15 @@ export function usePendingOperationExecute() {
 export function useSecurityInspectors(chainId: number | null | undefined) {
   return useQuery<string[], Error>({
     queryKey: ["risk-council-inspectors", chainId],
-    enabled: stellarOnlyActionReason(chainId) === null,
+    enabled: riskCouncilChainReason(chainId) === null,
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {
+      if (!isStellarTarget(chainId)) {
+        const recordNft = ENV.EVM_SECURITY_RECORD_NFT_ADDRESS;
+        if (!recordNft) throw new Error(SECURITY_NOT_CONFIGURED);
+        return readEvmSecurityInspectors({ recordNft });
+      }
       const cfg = riskCouncilConfig("security_registry");
       if (!cfg) throw new Error(SECURITY_NOT_CONFIGURED);
       return readSecurityInspectors({

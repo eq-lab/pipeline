@@ -61,9 +61,9 @@ Trustee app (`packages/trustee`), Record Coupon and Record Repayment on a Stella
 
 ---
 
-## Story 4: An EVM loan stays blocked
+## Story 4: A loan on an unknown chain stays blocked
 
-**Persona:** Trustee viewing a loan on an EVM chain.
+**Persona:** Trustee viewing a loan on a chain that is neither Stellar nor the configured EVM chain (the configured EVM chain signs `PipelineMinter.repay` since #1574).
 
 **Steps:**
 
@@ -72,4 +72,4 @@ Trustee app (`packages/trustee`), Record Coupon and Record Repayment on a Stella
 **Expected outcomes:**
 
 - The page shows the Stellar-only reason line and the record button stays disabled.
-- No transaction is built or signed (TD-152).
+- No transaction is built or signed.

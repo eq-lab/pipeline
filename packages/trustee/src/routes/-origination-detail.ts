@@ -31,7 +31,11 @@ import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
-import { DEFAULT_TARGET_CHAIN_ID, targetChainLabel } from "@/lib/targetChains";
+import {
+  DEFAULT_TARGET_CHAIN_ID,
+  isStellarTarget,
+  targetChainLabel,
+} from "@/lib/targetChains";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -127,13 +131,7 @@ export interface TransactionPreviewRow {
   value: string;
 }
 
-/**
- * View-model for the Approve & mint dialog's transaction-preview code block
- * (issue #838, Figma `4116:13943`). `keyword` is the static
- * `"LoanRegistry.draw_loan"` call name; `rows` are rendered as
- * `  <label>: <value>,` lines (the `.tsx` adds the structural indent/comma/
- * closing paren — see `-ApproveMintDialog.tsx`).
- */
+/** Approve & mint dialog's transaction-preview code block (issue #838). */
 export interface TransactionPreviewDisplay {
   keyword: string;
   rows: TransactionPreviewRow[];
@@ -262,7 +260,9 @@ function mapTransactionPreview(
   const ref = borrowerRefFull(served);
 
   return {
-    keyword: "LoanRegistry.draw_loan",
+    keyword: isStellarTarget(submission.target_chain_id)
+      ? "LoanRegistry.draw_loan"
+      : "LoanRegistry.drawLoan",
     rows: [
       { label: "metadata_uri", value: safeString(served?.metadata_uri) },
       { label: "borrower_ref", value: ref ? truncateAddress(ref) : "—" },

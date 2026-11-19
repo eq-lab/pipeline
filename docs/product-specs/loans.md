@@ -54,7 +54,7 @@ of the disbursement signing chain. The LoanRegistry mint and the Capital Wallet
 disbursement are independent actions: the mint is a Trustee-key transaction on LoanRegistry;
 the disbursement is an MPC co-signature on the Capital Wallet.
 
-On Stellar each drawn loan also gets a per-loan DEBT token: after `draw_loan` the Trustee registers it with `DealTokenFactory.register_deal(loan_id)` (separate signature; `sync_debt` follows later; EVM is #1892).
+On Stellar each drawn loan also gets a per-loan DEBT token: after `draw_loan` the Trustee registers it with `DealTokenFactory.register_deal(loan_id)` (separate signature; `sync_debt` follows later). On EVM the Trustee registers it after the draw with `registerDeal` through `AccessManager.execute` (#1892).
 
 ### Genesis economics
 

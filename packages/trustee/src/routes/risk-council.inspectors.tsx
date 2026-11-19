@@ -76,13 +76,13 @@ function PanelCard({ view }: { view: RiskCouncilInspectorsView }) {
 function EditCard({ view }: { view: RiskCouncilInspectorsView }) {
   return (
     <Card testId="risk-council-inspectors-edit" title="Set the panel">
-      <Field label="Add inspector (Stellar address)">
+      <Field label={view.addressField.label}>
         <input
           type="text"
           data-testid="risk-council-inspectors-draft"
           value={view.draft}
           onChange={(e) => view.setDraft(e.target.value)}
-          placeholder="G… or C…"
+          placeholder={view.addressField.placeholder}
           className={FIELD_CLASS}
           style={{ borderColor: LINE_COLOR }}
         />

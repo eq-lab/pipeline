@@ -1,6 +1,6 @@
 mod deal_token_support;
 
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{b256, Address, U256};
 use deal_token_support::*;
 use pipeline_worker::indexer::deal_token_parsers::{
     decode_deal_registered, parse_cargo_synced, parse_deal_registered, parse_deal_token_transfer,
@@ -33,7 +33,38 @@ fn deal_registered_params() {
     assert_eq!(ev.params["loan_id"], "18446744073709551620");
     assert_eq!(ev.params["debt"], DEBT.to_checksum(None));
     assert_eq!(ev.params["cargo"], CARGO.to_checksum(None));
-    assert_eq!(decode_deal_registered(&log), Some((loan, DEBT, CARGO)));
+    assert_eq!(
+        decode_deal_registered(&log),
+        Some((loan, DEBT, Some(CARGO)))
+    );
+}
+
+#[test]
+fn deal_registered_debt_only_params() {
+    let loan = U256::from(u64::MAX) + U256::from(5u64);
+    let log = deal_registered_debt_only(loan, DEBT, 10, 0);
+    let ev = parse_deal_registered(&log).unwrap();
+    assert_eq!(ev.event_name, "DealRegistered");
+    assert_eq!(ev.contract_address, FACTORY);
+    assert_eq!(keys(&ev.params), vec!["cargo", "debt", "loan_id"]);
+    assert_eq!(ev.params["loan_id"], "18446744073709551620");
+    assert_eq!(ev.params["debt"], DEBT.to_checksum(None));
+    assert_eq!(ev.params["cargo"], Value::Null);
+    assert_eq!(decode_deal_registered(&log), Some((loan, DEBT, None)));
+}
+
+#[test]
+fn deal_registered_topics_match_hoodi_and_legacy() {
+    let head = deal_registered_debt_only(U256::from(1u64), DEBT, 1, 0);
+    let legacy = deal_registered(U256::from(1u64), DEBT, CARGO, 1, 1);
+    assert_eq!(
+        head.topics()[0],
+        b256!("c272178e5556e8231a7c82e997e13098dca27aa84ecc3c032872356d49156c42")
+    );
+    assert_eq!(
+        legacy.topics()[0],
+        b256!("32ae778469dceb9ab8e5aae14ba7b896fd508033a5cb741979a381ca5d21e530")
+    );
 }
 
 #[test]
@@ -114,4 +145,20 @@ fn parsers_reject_foreign_events() {
     assert!(parse_cargo_synced(&wire).is_none());
     assert!(parse_deal_token_transfer(&wire, &debt_info()).is_none());
     assert!(decode_deal_registered(&wire).is_none());
+
+    let head = deal_registered_debt_only(loan, DEBT, 1, 2);
+    assert!(parse_debt_synced(&head).is_none());
+    assert!(parse_cargo_synced(&head).is_none());
+}
+
+#[test]
+fn truncated_debt_only_log_is_rejected_without_panic() {
+    let mut log = deal_registered_debt_only(U256::from(1u64), DEBT, 1, 0);
+    let truncated = alloy::primitives::LogData::new_unchecked(
+        log.inner.data.topics().to_vec(),
+        log.inner.data.data.slice(..16),
+    );
+    log.inner.data = truncated;
+    assert!(decode_deal_registered(&log).is_none());
+    assert!(parse_deal_registered(&log).is_none());
 }

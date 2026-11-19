@@ -12,6 +12,17 @@ import {
   SECURITY_REGISTRY,
   SET_TERMS_ARGS,
   STELLAR,
+  EVM,
+  EVM_CALLDATA,
+  EVM_OPERATION_ID,
+  EVM_SCHEDULER,
+  EVM_SECURITY_REGISTRY,
+  EVM_SET_TERMS_ARGS,
+  evmPendingOp,
+  evmLoanRegistryOp,
+  evmMinterOp,
+  EVM_LOAN_REGISTRY,
+  EVM_MINTER,
   OTHER_CHAIN,
   LOAN_REGISTRY,
   LOAN_REGISTRY_ARGS,
@@ -23,6 +34,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   wallet: { address: "GSCHEDULERADDRESS1234567890ABCD" as string | null },
+  evmWallet: { address: undefined as string | undefined },
   execute: vi.fn(),
 }));
 
@@ -30,6 +42,10 @@ vi.mock("@pipeline/wallet-connect", () => ({
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   useStellarWallet: () => ({ address: mocks.wallet.address }),
+  useEvmWallet: () => ({
+    address: mocks.evmWallet.address,
+    isConnected: mocks.evmWallet.address !== undefined,
+  }),
 }));
 vi.mock("@/api/useRiskCouncil", async () => {
   const actual = await vi.importActual<typeof import("@/api/useRiskCouncil")>(
@@ -46,6 +62,9 @@ import {
 } from "@/api/useRiskCouncil";
 import {
   callerText,
+  decodeEvmLoanRegistryCall,
+  decodeEvmReverseRepayCall,
+  decodeEvmSecurityCall,
   decodeLoanRegistryCall,
   decodePendingCall,
   decodeReverseRepayCall,
@@ -86,6 +105,7 @@ function termsArgs(patch: Record<string, unknown>) {
 
 beforeEach(() => {
   mocks.wallet.address = SCHEDULER;
+  mocks.evmWallet.address = undefined;
   mocks.execute.mockReset();
   mocks.execute.mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({ hash: "H" }),
@@ -538,9 +558,19 @@ describe("pendingStateText", () => {
 describe("callerText", () => {
   it("marks the connected wallet", () => {
     const item = fromServed(pendingOp());
-    expect(callerText(item, SCHEDULER)).toBe("GSCHED…ABCD · this wallet");
-    expect(callerText(item, "GOTHER")).toBe("GSCHED…ABCD");
-    expect(callerText(item, undefined)).toBe("GSCHED…ABCD");
+    expect(callerText(item, SCHEDULER, STELLAR)).toBe(
+      "GSCHED…ABCD · this wallet",
+    );
+    expect(callerText(item, "GOTHER", STELLAR)).toBe("GSCHED…ABCD");
+    expect(callerText(item, undefined, STELLAR)).toBe("GSCHED…ABCD");
+  });
+
+  it("compares EVM addresses case-insensitively", () => {
+    const item = fromServed(evmPendingOp());
+    expect(callerText(item, EVM_SCHEDULER.toLowerCase(), EVM)).toBe(
+      "0xAbCd…Ef01 · this wallet",
+    );
+    expect(callerText(item, "0xother", EVM)).toBe("0xAbCd…Ef01");
   });
 });
 
@@ -843,10 +873,16 @@ describe("usePendingOperationView", () => {
     );
   });
 
-  it("blocks on an EVM chain", () => {
-    const v = view({ chainId: OTHER_CHAIN });
-    expect(v.disabled).toBe(true);
-    expect(v.notice).not.toBeNull();
+  it("blocks any row on another chain id", () => {
+    const loan = view({
+      chainId: OTHER_CHAIN,
+      item: fromServed(evmPendingOp({ target_kind: "loan_registry" })),
+    });
+    expect(loan.disabled).toBe(true);
+    expect(loan.notice).toContain("Stellar only");
+    const other = view({ chainId: OTHER_CHAIN });
+    expect(other.disabled).toBe(true);
+    expect(other.notice).not.toBeNull();
   });
 
   it("disables while an execute is in flight", () => {
@@ -884,6 +920,8 @@ describe("usePendingOperationView", () => {
       paused: false,
       fn: "set_terms",
       argsXdr: "SERVEDXDR",
+      calldata: null,
+      targetKind: "security_registry",
     });
   });
 
@@ -1036,5 +1074,453 @@ describe("usePendingOperationView", () => {
 
   it("exports the Set terms notice copy", () => {
     expect(SET_TERMS_PENDING_NOTICE).toMatch(/already scheduled/);
+  });
+});
+
+describe("decodeEvmSecurityCall", () => {
+  const terms = EVM_SET_TERMS_ARGS[1] as Record<string, unknown>;
+
+  it("decodes the reference examples", () => {
+    expect(decodeEvmSecurityCall("set_terms", EVM_SET_TERMS_ARGS)).toEqual({
+      fn: "set_terms",
+      loanId: 7,
+      terms: {
+        advanceRatioBps: 7000,
+        marginCallRatioBps: 8250,
+        defaultRatioBps: 9000,
+        curePeriod: "604800",
+        priceStaleAfter: "86400",
+        paymentTerm: "Lc",
+        gracePeriod: "259200",
+        defaultRate: 20000,
+        originatorFeeRate: 10000,
+        attestationInterval: "2592000",
+        inspectionInterval: "0",
+        toleranceBps: 50,
+        gradeToleranceBps: 25,
+      },
+    });
+    expect(decodeEvmSecurityCall("resolve_flag", ["3", 1, HASH_A])).toEqual({
+      fn: "resolve_flag",
+      recordId: 3,
+      outcome: "TopUpRequired",
+      reasonHash: HASH_A,
+    });
+    expect(
+      decodeEvmSecurityCall("release_with_consent", ["3", HASH_B]),
+    ).toEqual({ fn: "release_with_consent", recordId: 3, consentHash: HASH_B });
+  });
+
+  it("rejects a missing key, a numeric id, an enum out of range and a non-zero marginCallAt", () => {
+    const missing = { ...terms };
+    delete missing.advanceRatioBps;
+    expect(decodeEvmSecurityCall("set_terms", ["7", missing])).toBeNull();
+    expect(decodeEvmSecurityCall("set_terms", [7, terms])).toBeNull();
+    expect(
+      decodeEvmSecurityCall("set_terms", ["7", { ...terms, paymentTerm: 4 }]),
+    ).toBeNull();
+    expect(
+      decodeEvmSecurityCall("set_terms", [
+        "7",
+        { ...terms, marginCallAt: "5" },
+      ]),
+    ).toBeNull();
+    expect(
+      decodeEvmSecurityCall("set_terms", [
+        "7",
+        { ...terms, defaultBreachAt: "5" },
+      ]),
+    ).toBeNull();
+    expect(
+      decodeEvmSecurityCall("set_terms", ["7", { ...terms, extra: 1 }]),
+    ).toBeNull();
+    expect(decodeEvmSecurityCall("resolve_flag", ["3", 3, HASH_A])).toBeNull();
+    expect(
+      decodeEvmSecurityCall("resolve_flag", ["3", 1.5, HASH_A]),
+    ).toBeNull();
+  });
+
+  it("rejects 0x-prefixed hashes and ids beyond u32", () => {
+    expect(
+      decodeEvmSecurityCall("release_with_consent", ["3", `0x${HASH_B}`]),
+    ).toBeNull();
+    expect(
+      decodeEvmSecurityCall("release_with_consent", ["4294967296", HASH_B]),
+    ).toBeNull();
+    expect(decodeEvmSecurityCall("set_default", ["7"])).toBeNull();
+  });
+});
+
+describe("EVM served rows", () => {
+  it("canonicalises setTerms and decodes it from the calldata row", () => {
+    const item = fromServed(evmPendingOp());
+    expect(item.fn).toBe("set_terms");
+    expect(item.calldata).toBe(EVM_CALLDATA);
+    expect(item.argsXdr).toBeNull();
+    expect(item.call?.fn).toBe("set_terms");
+    expect(item.loanId).toBe(7);
+    expect(pendingOwner(item.fn)).toBe("security");
+  });
+
+  it("keeps the escalate owner and decodes setDefault", () => {
+    const item = fromServed(evmLoanRegistryOp("setDefault"), 7);
+    expect(item.fn).toBe("set_default");
+    expect(item.call).toEqual({ fn: "set_default", loanId: 7 });
+    expect(pendingOwner(item.fn)).toBe("escalate");
+    expect(item.loanId).toBe(7);
+  });
+
+  it("canonicalises amendEconomics and decodes it from the calldata row", () => {
+    const item = fromServed(evmLoanRegistryOp("amendEconomics"));
+    expect(item.fn).toBe("amend_economics");
+    expect(item.targetKind).toBe("loan_registry");
+    expect(item.call).toEqual({
+      fn: "amend_economics",
+      loanId: 7,
+      rateBps: 1450,
+      maturity: 1_767_225_600,
+    });
+    expect(pendingOwner(item.fn)).toBe("reterm");
+  });
+
+  it("canonicalises reverseRepay to the recovery owner", () => {
+    const item = fromServed(evmMinterOp());
+    expect(item.fn).toBe("reverse_repay");
+    expect(item.call).toEqual({
+      fn: "reverse_repay",
+      loanId: 7,
+      repaymentId: 2,
+      refHash: "cd".repeat(32),
+    });
+    expect(pendingOwner(item.fn)).toBe("recovery");
+    expect(pendingActionLabel(item)).toBe("Reverse repayment · repayment #2");
+  });
+
+  it("reads the repayment number of an undecodable EVM row from its decimal string", () => {
+    const item = fromServed(evmMinterOp({ args: ["7", "5", "bad"] }));
+    expect(item.call).toBeNull();
+    expect(pendingActionLabel(item)).toBe("Reverse repayment · repayment #5");
+  });
+
+  it("shows the EVM rate and the 6 dp amounts", () => {
+    const rows = (op: ReturnType<typeof evmLoanRegistryOp>) =>
+      pendingArgRows(fromServed(op), EVM).map((r) => [r.label, r.value]);
+    expect(rows(evmLoanRegistryOp("amendEconomics"))).toEqual([
+      ["New rate", "14.5% (1450 bps)"],
+      ["New maturity", "1 Jan 2026"],
+    ]);
+    expect(
+      rows(evmLoanRegistryOp("writeDown", { args: ["7", "1500001"] })),
+    ).toEqual([["Amount", "$1.500001"]]);
+    expect(rows(evmLoanRegistryOp("adjustInterest"))).toEqual([
+      ["Delta", "-$5.00"],
+      ["Reason hash", "ababababab…"],
+    ]);
+    expect(rows(evmLoanRegistryOp("closeDefaulted"))).toEqual([
+      ["Closure reason", "Default"],
+    ]);
+    expect(rows(evmMinterOp())).toEqual([
+      ["Repayment", "#2"],
+      ["Reference hash", "cdcdcdcdcd…"],
+    ]);
+  });
+
+  it("falls back to raw JSON for an undecodable row", () => {
+    const item = fromServed(evmPendingOp({ args: ["7", {}] }));
+    expect(item.call).toBeNull();
+    expect(pendingArgRows(item, EVM)).toEqual([
+      { label: "Arguments", value: JSON.stringify(["7", {}]) },
+    ]);
+  });
+
+  it("adds the default ratio and originator fee rows", () => {
+    const rows = Object.fromEntries(
+      pendingArgRows(fromServed(evmPendingOp()), EVM).map((r) => [
+        r.label,
+        r.value,
+      ]),
+    );
+    expect(rows["Default ratio"]).toBe("90%");
+    expect(rows["Originator fee rate"]).toBe("1%");
+    expect(rows["Payment term"]).toBe("Letter of credit (Lc)");
+  });
+
+  it("merges an EVM session op carrying calldata and no argsXdr", () => {
+    const merged = mergePendingOps({
+      served: [],
+      session: [
+        sessionOp({
+          chainId: EVM,
+          call: {
+            fn: "release_with_consent",
+            recordId: 3,
+            consentHash: HASH_B,
+          },
+          operationId: EVM_OPERATION_ID,
+          caller: EVM_SCHEDULER,
+          target: EVM_SECURITY_REGISTRY,
+          argsXdr: undefined,
+          calldata: EVM_CALLDATA,
+        }),
+      ],
+      executed: new Map(),
+      everServed: new Set(),
+      chainId: EVM,
+      loanId: 7,
+      nowSec: READY_AT - 10,
+    });
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      source: "session",
+      calldata: EVM_CALLDATA,
+      argsXdr: null,
+      state: "waiting",
+    });
+  });
+
+  it("drops a session op with neither argsXdr nor calldata", () => {
+    expect(
+      fromSession(sessionOp({ argsXdr: undefined, calldata: undefined }), 0),
+    ).toBeNull();
+  });
+});
+
+describe("usePendingOperationView on EVM", () => {
+  const evmItem = (overrides = {}) => fromServed(evmPendingOp(overrides));
+  function evmView(
+    overrides: Partial<Parameters<typeof usePendingOperationView>[0]> = {},
+  ) {
+    return renderHook(() =>
+      usePendingOperationView({
+        chainId: EVM,
+        item: evmItem(),
+        executeGate: null,
+        expectedTarget: EVM_SECURITY_REGISTRY,
+        ...overrides,
+      }),
+    ).result.current;
+  }
+
+  it("enables Execute for a ready security row from the same wallet, ignoring address case", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER.toLowerCase();
+    const v = evmView();
+    expect(v.disabled).toBe(false);
+    expect(v.notice).toBeNull();
+  });
+
+  it("shows the other-wallet copy for another wallet", () => {
+    mocks.evmWallet.address = "0x0000000000000000000000000000000000000001";
+    const v = evmView();
+    expect(v.disabled).toBe(true);
+    expect(v.notice).toBe(
+      "Only the scheduling wallet (0xAbCd…Ef01) can execute this.",
+    );
+  });
+
+  it("compares the target case-insensitively", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const v = evmView({ expectedTarget: EVM_SECURITY_REGISTRY.toLowerCase() });
+    expect(v.disabled).toBe(false);
+  });
+
+  it("blocks a row that targets another registry", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const v = evmView({
+      expectedTarget: "0x0000000000000000000000000000000000000002",
+    });
+    expect(v.disabled).toBe(true);
+    expect(v.notice).toContain("another SecurityRegistry");
+  });
+
+  it("enables a ready LoanRegistry row for its caller", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const v = evmView({
+      item: fromServed(evmLoanRegistryOp("setDefault")),
+      expectedTarget: EVM_LOAN_REGISTRY,
+    });
+    expect(v.disabled).toBe(false);
+    expect(v.notice).toBeNull();
+  });
+
+  it("enables a ready Minter row and names the Minter in the target-mismatch copy", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const item = fromServed(evmMinterOp());
+    expect(evmView({ item, expectedTarget: EVM_MINTER }).disabled).toBe(false);
+    const wrong = evmView({ item, expectedTarget: EVM_LOAN_REGISTRY });
+    expect(wrong.disabled).toBe(true);
+    expect(wrong.notice).toContain("another Minter");
+  });
+
+  it("blocks a row on another EVM chain id", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const v = evmView({
+      chainId: OTHER_CHAIN,
+      item: evmItem({ target_kind: "loan_registry", function: "setDefault" }),
+    });
+    expect(v.disabled).toBe(true);
+    expect(v.notice).toContain("Stellar only");
+  });
+
+  it("maps Minter and LoanRegistry custom errors by target kind", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const withErr = (message: string) =>
+      mocks.execute.mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+        error: new Error(message),
+        hash: null,
+        stage: null,
+        reset: vi.fn(),
+      });
+    const item = fromServed(evmMinterOp());
+    withErr("reverted: MinterInsufficientBankCash(uint256,uint256)");
+    expect(
+      evmView({ item, expectedTarget: EVM_MINTER }).error?.message,
+    ).toMatch(/bank cash/);
+    withErr("reverted: MinterAlreadyReversed()");
+    expect(evmView({ item, expectedTarget: EVM_MINTER }).error?.message).toBe(
+      "This repayment is already reversed.",
+    );
+    withErr("reverted: AccessManagerNotReady(bytes32)");
+    expect(
+      evmView({ item, expectedTarget: EVM_MINTER }).error?.message,
+    ).toMatch(/not ready yet/);
+    const loan = fromServed(evmLoanRegistryOp("cure"));
+    withErr("reverted: EnforcedPause()");
+    expect(
+      evmView({ item: loan, expectedTarget: EVM_LOAN_REGISTRY }).error?.message,
+    ).not.toMatch(/SecurityRegistry is paused/);
+    withErr("reverted: AccessManagerNotReady(bytes32)");
+    expect(
+      evmView({ item: loan, expectedTarget: EVM_LOAN_REGISTRY }).error?.message,
+    ).toMatch(/not ready yet/);
+  });
+
+  it("maps a decoded EVM custom error", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    mocks.execute.mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      error: new Error("reverted: AccessManagerNotReady(bytes32)"),
+      hash: null,
+      stage: null,
+      reset: vi.fn(),
+    });
+    expect(evmView().error?.message).toMatch(/not ready yet/);
+  });
+
+  it("runs with the served calldata", () => {
+    mocks.evmWallet.address = EVM_SCHEDULER;
+    const mutateAsync = vi.fn().mockResolvedValue({ hash: "H" });
+    mocks.execute.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+      error: null,
+      hash: null,
+      stage: null,
+      reset: vi.fn(),
+    });
+    evmView().run();
+    expect(mutateAsync).toHaveBeenCalledWith({
+      chainId: EVM,
+      operationId: EVM_OPERATION_ID,
+      caller: EVM_SCHEDULER,
+      target: EVM_SECURITY_REGISTRY,
+      expectedTarget: EVM_SECURITY_REGISTRY,
+      paused: false,
+      fn: "set_terms",
+      argsXdr: null,
+      calldata: EVM_CALLDATA,
+      targetKind: "security_registry",
+    });
+  });
+});
+
+describe("decodeEvmLoanRegistryCall", () => {
+  it("decodes the reference shapes", () => {
+    expect(decodeEvmLoanRegistryCall("set_default", ["7"])).toEqual({
+      fn: "set_default",
+      loanId: 7,
+    });
+    expect(decodeEvmLoanRegistryCall("cure", ["7"])).toEqual({
+      fn: "cure",
+      loanId: 7,
+    });
+    expect(
+      decodeEvmLoanRegistryCall("amend_economics", ["7", 145000, "1767225600"]),
+    ).toEqual({
+      fn: "amend_economics",
+      loanId: 7,
+      rateBps: 1450,
+      maturity: 1_767_225_600,
+    });
+    expect(
+      decodeEvmLoanRegistryCall("adjust_interest", ["7", "-5000000", HASH_A]),
+    ).toEqual({
+      fn: "adjust_interest",
+      loanId: 7,
+      delta: "-5000000",
+      reasonHash: HASH_A,
+    });
+    expect(decodeEvmLoanRegistryCall("write_down", ["7", "1000000"])).toEqual({
+      fn: "write_down",
+      loanId: 7,
+      amount: "1000000",
+    });
+    expect(decodeEvmLoanRegistryCall("close_defaulted", ["7", 4])).toEqual({
+      fn: "close_defaulted",
+      loanId: 7,
+      reason: "Default",
+    });
+    expect(decodeEvmLoanRegistryCall("close_defaulted", ["7", 5])).toEqual({
+      fn: "close_defaulted",
+      loanId: 7,
+      reason: "OtherWriteDown",
+    });
+  });
+
+  it.each([
+    ["numeric id", "set_default", [7]],
+    ["rate not a multiple of 100", "amend_economics", ["7", 145001, "100"]],
+    ["rate zero", "amend_economics", ["7", 0, "100"]],
+    ["numeric maturity", "amend_economics", ["7", 145000, 100]],
+    ["zero maturity", "amend_economics", ["7", 145000, "0"]],
+    ["ordinal 3 (Cancelled)", "close_defaulted", ["7", 3]],
+    ["string ordinal", "close_defaulted", ["7", "4"]],
+    ["0x hash", "adjust_interest", ["7", "5", `0x${HASH_A}`]],
+    ["numeric amount", "write_down", ["7", 5]],
+    ["negative amount", "write_down", ["7", "-5"]],
+    ["wrong length", "cure", ["7", "1"]],
+    ["id beyond u32", "cure", ["4294967296"]],
+    ["not an array", "cure", {}],
+    ["unknown function", "pause", ["7"]],
+  ])("returns null for %s", (_name, fn, args) => {
+    expect(decodeEvmLoanRegistryCall(fn, args)).toBeNull();
+  });
+});
+
+describe("decodeEvmReverseRepayCall", () => {
+  it("decodes reverseRepay with decimal-string ids", () => {
+    expect(
+      decodeEvmReverseRepayCall("reverse_repay", ["7", "2", HASH_B]),
+    ).toEqual({
+      fn: "reverse_repay",
+      loanId: 7,
+      repaymentId: 2,
+      refHash: HASH_B,
+    });
+  });
+
+  it.each([
+    ["numeric ids", [7, 2, HASH_B]],
+    ["0x hash", ["7", "2", `0x${HASH_B}`]],
+    ["wrong length", ["7", "2"]],
+    ["repayment beyond u32", ["7", "4294967296", HASH_B]],
+  ])("returns null for %s", (_name, args) => {
+    expect(decodeEvmReverseRepayCall("reverse_repay", args)).toBeNull();
+  });
+
+  it("returns null for another function", () => {
+    expect(decodeEvmReverseRepayCall("cure", ["7", "2", HASH_B])).toBeNull();
   });
 });

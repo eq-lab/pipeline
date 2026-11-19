@@ -1,30 +1,24 @@
-/**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `rollover`:
- * the trustee-wallet-signed on-chain `LoanRegistry.rollover`, run through
- * the executor `execute` proxy (same pattern as `useDrawLoan`). On success
- * invalidates the loan-book/financials/security queries so the loan detail
- * + list refetch and the status flips Matured → Performing.
- *
- * spec: docs/frontend/trustee-flows.md#wired-actions (Roll over).
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   rollover,
+  rolloverEvmLoan,
+  useEvmWallet,
   useStellarWallet,
   type RolloverStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
+import { pickChainWallet } from "@/lib/chainWallet";
+import { loanActionChainReason } from "@/lib/targetChains";
 
 export type { RolloverStage };
 
 export interface UseRolloverInput {
-  /** On-chain loan id (u32). */
   loanId: number;
-  /** New senior interest rate, basis points. */
   newRateBps: number;
-  /** New maturity timestamp, Unix seconds. */
   newMaturity: number;
+  chainId: number | null | undefined;
 }
 
 export interface UseRolloverResult {
@@ -33,19 +27,43 @@ export interface UseRolloverResult {
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
-  /** In-flight progress stage, or `null` before/after an attempt. */
   stage: RolloverStage | null;
   reset: () => void;
 }
 
 export function useRollover(): UseRolloverResult {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellar = useStellarWallet();
+  const evm = useEvmWallet();
   const [stage, setStage] = useState<RolloverStage | null>(null);
   const queryClient = useQueryClient();
 
   const mutation = useMutation<{ hash: string }, Error, UseRolloverInput>({
-    mutationFn: async ({ loanId, newRateBps, newMaturity }) => {
+    mutationFn: async ({ loanId, newRateBps, newMaturity, chainId }) => {
       setStage(null);
+      const wallet = pickChainWallet(chainId, stellar, evm);
+
+      if (wallet.kind === "evm") {
+        const blocked = loanActionChainReason(chainId);
+        if (blocked) throw new Error(blocked);
+        if (!ENV.EVM_LOAN_REGISTRY_ADDRESS || !ENV.EVM_ACCESS_MANAGER_ADDRESS) {
+          throw new Error(
+            "On-chain rollover is not configured for this environment.",
+          );
+        }
+        if (!wallet.isConnected || !wallet.address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        return rolloverEvmLoan({
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          caller: wallet.address,
+          chainId: ENV.EVM_CHAIN_ID,
+          loanId,
+          newRateBps,
+          newMaturity,
+          onStageChange: setStage,
+        });
+      }
 
       if (
         !ENV.STELLAR_LOAN_REGISTRY_ID ||
@@ -55,20 +73,20 @@ export function useRollover(): UseRolloverResult {
           "On-chain rollover is not configured for this environment.",
         );
       }
-      if (!isConnected || !address) {
+      if (!stellar.isConnected || !stellar.address) {
         throw new Error("Stellar wallet not connected.");
       }
 
       return rollover({
         executorId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         targetId: ENV.STELLAR_LOAN_REGISTRY_ID,
-        caller: address,
+        caller: stellar.address,
         loanId,
         newRateBps,
         newMaturity,
         rpcUrl: ENV.STELLAR_RPC_URL,
         networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
-        signTransaction,
+        signTransaction: stellar.signTransaction,
         onStageChange: setStage,
       });
     },

@@ -74,14 +74,20 @@ describe("useLoanSecurity", () => {
     expect(result.current.notConfigured).toBe(false);
   });
 
-  it("does not fetch for an EVM chain and reports notConfigured", () => {
+  it("fetches for an EVM chain with its chain_id", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(FIXTURE), { status: 200 }),
+    );
     const { result } = renderHook(() => useLoanSecurity(EVM, "7"), {
       wrapper: makeWrapper(),
     });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(result.current.notConfigured).toBe(true);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.data).toBeUndefined();
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/loan-book/7/security");
+    expect(url).toContain(`chain_id=${EVM}`);
+    expect(result.current.notConfigured).toBe(false);
   });
 
   it("does not fetch for a non-numeric loan id", () => {

@@ -23,11 +23,17 @@ import {
   SCHEDULED,
   SCHEDULER,
   STELLAR,
+  EVM,
+  EVM_CALLDATA,
+  EVM_OPERATION_ID,
+  EVM_SCHEDULER,
+  EVM_SECURITY_REGISTRY,
   accessResult,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
   loanState,
+  evmPendingOp,
   minterOp,
   pendingOp,
   relayResult,
@@ -63,19 +69,31 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-const walletState = vi.hoisted(() => ({ address: null as string | null }));
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  const { SECURITY_REGISTRY } = await import("./-riskCouncilFixtures");
+  const { SECURITY_REGISTRY, EVM_SECURITY_REGISTRY } =
+    await import("./-riskCouncilFixtures");
   return {
     ...actual,
-    ENV: { ...actual.ENV, STELLAR_SECURITY_REGISTRY_ID: SECURITY_REGISTRY },
+    ENV: {
+      ...actual.ENV,
+      STELLAR_SECURITY_REGISTRY_ID: SECURITY_REGISTRY,
+      EVM_SECURITY_REGISTRY_ADDRESS: EVM_SECURITY_REGISTRY,
+    },
   };
 });
 
 const HASH = "cd".repeat(32);
 vi.mock("@pipeline/wallet-connect", () => ({
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   securityReasonHash: vi.fn(async () => "cd".repeat(32)),
@@ -215,6 +233,7 @@ beforeEach(() => {
   relay = relayResult();
   pendingExecute = pendingExecuteResult();
   walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
   _resetRiskCouncilOpsForTests();
 });
 
@@ -739,6 +758,8 @@ describe("Security page — scheduled operations", () => {
       paused: false,
       fn: "set_terms",
       argsXdr: READY_SET_TERMS.args_xdr,
+      calldata: null,
+      targetKind: "security_registry",
     });
   });
 
@@ -1090,5 +1111,183 @@ describe("Security page — scheduled terms notice", () => {
     setup(DELAYED, served());
     renderRoute();
     expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+  });
+});
+
+describe("Security page — EVM loan", () => {
+  const EVM_TERMS = {
+    ...TERMS,
+    default_ratio_bps: 9000,
+    originator_fee_rate: 10000,
+  };
+  const evmServed = (...ops: ReturnType<typeof pendingOp>[]) => ({
+    terms: EVM_TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  });
+
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER.toLowerCase();
+  });
+
+  it("shows 12 term inputs and the two EVM rows in the current terms", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    const { container } = renderRoute();
+    expect(
+      container.querySelectorAll(
+        'input[data-testid^="risk-council-security-terms-"]',
+      ),
+    ).toHaveLength(12);
+    expect(
+      screen.getByTestId("risk-council-security-terms-defaultRatio"),
+    ).toHaveValue("90");
+    expect(
+      screen.getByTestId("risk-council-security-terms-originatorFeeRate"),
+    ).toHaveValue("1");
+    const terms = screen.getByTestId("risk-council-security-terms");
+    expect(terms).toHaveTextContent("Default ratio90%");
+    expect(terms).toHaveTextContent("Originator fee rate1%");
+  });
+
+  it("keeps the Stellar form at 10 inputs", () => {
+    chain = STELLAR;
+    setup(IMMEDIATE);
+    const { container } = renderRoute();
+    expect(
+      container.querySelectorAll(
+        'input[data-testid^="risk-council-security-terms-"]',
+      ),
+    ).toHaveLength(10);
+  });
+
+  it("enables Set terms per access and sends both EVM fields", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    renderRoute();
+    const button = screen.getByTestId("risk-council-security-terms-button");
+    expect(button).toHaveTextContent("Set terms");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "execute",
+      call: expect.objectContaining({
+        fn: "set_terms",
+        terms: expect.objectContaining({
+          defaultRatioBps: 9000,
+          originatorFeeRate: 10000,
+        }),
+      }),
+      chainId: EVM,
+      loanId: 4471,
+    });
+  });
+
+  it("flags a default ratio below the margin call ratio", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    renderRoute();
+    fireEvent.change(
+      screen.getByTestId("risk-council-security-terms-defaultRatio"),
+      { target: { value: "80" } },
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-ratio-error"),
+    ).toHaveTextContent(
+      "The default ratio must be at least the margin call ratio.",
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("lists the EVM row with decoded args, this wallet, and executes with the calldata", () => {
+    setup(DELAYED, evmServed(evmPendingOp()), EVM);
+    renderRoute();
+    const args = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-args`);
+    expect(args).toHaveTextContent("Default ratio90%");
+    expect(args).toHaveTextContent("Originator fee rate1%");
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-caller`),
+    ).toHaveTextContent("this wallet");
+    const button = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`);
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: EVM,
+      operationId: EVM_OPERATION_ID,
+      caller: EVM_SCHEDULER,
+      target: EVM_SECURITY_REGISTRY,
+      expectedTarget: EVM_SECURITY_REGISTRY,
+      paused: false,
+      fn: "set_terms",
+      argsXdr: null,
+      calldata: EVM_CALLDATA,
+      targetKind: "security_registry",
+    });
+  });
+
+  it("shows the other-wallet copy for another wallet", () => {
+    walletState.evmAddress = "0x0000000000000000000000000000000000000001";
+    setup(DELAYED, evmServed(evmPendingOp()), EVM);
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-notice`),
+    ).toHaveTextContent("Only the scheduling wallet");
+  });
+
+  it("still asks for confirmation before executing a release", () => {
+    setup(
+      DELAYED,
+      evmServed(
+        evmPendingOp({
+          function: "releaseWithConsent",
+          args: ["1", HASH_B],
+        }),
+      ),
+      EVM,
+    );
+    renderRoute();
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    );
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(
+        `${PENDING}-${EVM_OPERATION_ID}-confirm-dialog-confirm`,
+      ),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "release_with_consent",
+        calldata: EVM_CALLDATA,
+      }),
+    );
+  });
+
+  it("links an EVM setDefault row to Escalate without an Execute button", () => {
+    setup(
+      DELAYED,
+      evmServed(
+        evmPendingOp({
+          function: "setDefault",
+          target_kind: "loan_registry",
+          args: ["4471"],
+        }),
+      ),
+      EVM,
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-link`),
+    ).toHaveTextContent("Open Escalate to Default");
   });
 });

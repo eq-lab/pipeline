@@ -41,11 +41,14 @@ export function formatCompactUsd(
   const abs = Math.abs(num);
   const sign = num < 0 ? "-" : "";
 
-  if (abs >= 1_000_000) {
+  const roundsToMillion = Number((abs / 1_000).toFixed(1)) >= 1_000;
+  const roundsToThousand = Number(abs.toFixed(2)) >= 1_000;
+
+  if (abs >= 1_000_000 || roundsToMillion) {
     const val = abs / 1_000_000;
     return `${sign}$${val.toFixed(1)}M`;
   }
-  if (abs >= 1_000) {
+  if (abs >= 1_000 || roundsToThousand) {
     const val = abs / 1_000;
     return `${sign}$${val.toFixed(1)}K`;
   }

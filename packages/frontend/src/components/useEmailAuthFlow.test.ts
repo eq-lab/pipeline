@@ -369,6 +369,17 @@ describe("useEmailAuthFlow — Add email (#1459)", () => {
     expect(result.current.signupCaptchaReady).toBe(false);
   });
 
+  it("goToSignIn from 'add-email' switches to 'sign-in' and dismiss still calls onClose", () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, initialScreen: "add-email", onClose }),
+    );
+    act(() => result.current.goToSignIn());
+    expect(result.current.screen).toBe("sign-in");
+    act(() => result.current.dismiss());
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("goBackFromOtp returns to 'add-email' after the add-email submit", async () => {
     mockSignup.mockResolvedValue(undefined);
     const { result } = renderHook(() =>

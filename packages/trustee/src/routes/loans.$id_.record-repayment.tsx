@@ -47,9 +47,6 @@ function closeStageLabel(stage: string | null): string {
   }
 }
 
-// Muted surface fill behind the input boxes and the waterfall step badges —
-// the exact Figma fill (matching Record Coupon, node `4116-11295`), a light
-// warm grey distinct from the ink-based `--color-pipeline-surface-muted` token.
 const FIELD_FILL = "rgba(191,189,187,0.12)";
 
 // The input is a single filled/bordered box holding its label (small, top) and
@@ -96,7 +93,6 @@ function WaterfallRowView({
   isCalculating,
 }: {
   row: WaterfallRow;
-  /** 1-based step number shown in the row's circular badge (Figma node `4116-11295`). */
   step: number;
   isLast: boolean;
   /** Masks the value with a pulse skeleton while a recalculation is pending (#1049). */
@@ -237,6 +233,7 @@ function RecordRepayment() {
         loanId: Number(id),
         repayment: view.recordPaymentInput,
         valueDate: view.valueDate,
+        chainId: chain,
       })
       .catch(() => {
         // Error surfaces inline via `record.error`; stay on the page to retry.
@@ -247,7 +244,11 @@ function RecordRepayment() {
     if (view.closureReason == null) return;
     closeLoan.reset();
     void closeLoan
-      .mutateAsync({ loanId: Number(id), reason: view.closureReason })
+      .mutateAsync({
+        loanId: Number(id),
+        reason: view.closureReason,
+        chainId: chain,
+      })
       .then(() =>
         navigate({ to: "/loans/$id", params: { id }, search: { chain } }),
       )
