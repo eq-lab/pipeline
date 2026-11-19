@@ -4,7 +4,11 @@ import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
 } from "@pipeline/wallet-connect";
-import { InlineError } from "@pipeline/ui";
+import { Button, InlineError } from "@pipeline/ui";
+import {
+  DETAIL_SECONDARY_BUTTON_CLASS,
+  detailSecondaryButtonStyle,
+} from "@/components/detail/detailTokens";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   NO_FLAGGED_RECORDS,
@@ -13,6 +17,7 @@ import {
   OUTCOME_EFFECTS,
   PAYMENT_TERM_LABELS,
   RELEASE_WARNING,
+  TERMS_SHAPE_LOADING,
   useResolveFlagForm,
   pendingConfirmText,
   useRiskCouncilSecurity,
@@ -78,6 +83,39 @@ function CurrentTermsCard({ view }: { view: RiskCouncilSecurityView }) {
 }
 
 function SetTermsCard({ form }: { form: SetTermsFormView }) {
+  if (form.shape.loading) {
+    return (
+      <Card testId="risk-council-security-set-terms" title="Set terms">
+        <Muted testId="risk-council-security-terms-shape-loading">
+          {TERMS_SHAPE_LOADING}
+        </Muted>
+      </Card>
+    );
+  }
+  if (form.shape.error) {
+    return (
+      <Card testId="risk-council-security-set-terms" title="Set terms">
+        <div
+          data-testid="risk-council-security-terms-shape-error"
+          className="flex flex-col gap-[12px]"
+        >
+          <InlineError
+            message={form.shape.error.message}
+            details={form.shape.error.details}
+          />
+          <Button
+            variant="secondary"
+            size="m"
+            onClick={form.shape.retry}
+            className={`w-fit ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+            style={detailSecondaryButtonStyle()}
+          >
+            Retry
+          </Button>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card testId="risk-council-security-set-terms" title="Set terms">
       {form.termsFields.map(({ key, label, placeholder }) => {

@@ -12,6 +12,7 @@ import {
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
+  useEvmSecurityTermsShape,
   useSecurityInspectors,
 } from "./useRiskCouncil";
 import {
@@ -1002,6 +1003,38 @@ describe("EVM Risk Council", () => {
       mocks.readEvmCanCall.mockResolvedValue({ immediate: true, delay: 0 });
     });
 
+    it("retries the probe after a transient error and then succeeds", async () => {
+      mocks.readEvmSecurityTermsShape
+        .mockRejectedValueOnce(new Error("rpc timeout"))
+        .mockResolvedValueOnce("terms12");
+      const { result } = renderHook(() => useEvmSecurityTermsShape(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.data).toBe("terms12"), {
+        timeout: 5000,
+      });
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledTimes(2);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("reports an error after the retries are exhausted", async () => {
+      mocks.readEvmSecurityTermsShape.mockRejectedValue(new Error("rpc down"));
+      const { result } = renderHook(() => useEvmSecurityTermsShape(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.isError).toBe(true), {
+        timeout: 8000,
+      });
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledTimes(3);
+    });
+
+    it("never reads the probe on Stellar", () => {
+      renderHook(() => useEvmSecurityTermsShape(STELLAR), {
+        wrapper: makeWrapper(),
+      });
+      expect(mocks.readEvmSecurityTermsShape).not.toHaveBeenCalled();
+    });
+
     it("selects the f92d719 selector for set_terms access", async () => {
       const { result } = renderHook(
         () => useRiskCouncilAccess(EVM, null, "set_terms"),
@@ -1152,7 +1185,9 @@ describe("EVM Risk Council", () => {
         () => useRiskCouncilAccess(EVM, null, "set_terms"),
         { wrapper: makeWrapper() },
       );
-      await waitFor(() => expect(result.current.error).not.toBeNull());
+      await waitFor(() => expect(result.current.error).not.toBeNull(), {
+        timeout: 8000,
+      });
       expect(result.current.error?.message).toMatch(/Unrecognised/);
       expect(mocks.readEvmCanCall).not.toHaveBeenCalled();
       expect(mocks.relayEvmSecurityRegistry).not.toHaveBeenCalled();

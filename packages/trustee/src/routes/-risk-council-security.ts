@@ -520,12 +520,23 @@ export function buildReleaseCall(
   return { fn: "release_with_consent", recordId: id, consentHash };
 }
 
+export interface TermsShapeView {
+  loading: boolean;
+  error: UserFacingError | null;
+  retry: () => void;
+}
+
+export const TERMS_SHAPE_LOADING = "Checking the SecurityRegistry build…";
+export const TERMS_SHAPE_ERROR =
+  "Could not identify the SecurityRegistry build — Set terms is unavailable.";
+
 export interface SetTermsFormView {
   values: TermsFormValues;
   setField: (key: TermsFieldKey, value: string) => void;
   setPaymentTerm: (value: SecurityPaymentTerm | "") => void;
   echoes: Record<TermsFieldKey, { echo: string | null; invalid: boolean }>;
   termsFields: ReadonlyArray<TermsFieldSpec>;
+  shape: TermsShapeView;
   ratioOrderError: string | null;
   pendingNotice: string | null;
   action: ActionView;
@@ -592,7 +603,15 @@ export function useRiskCouncilSecurity(
   const [overrides, setOverrides] = useState<Partial<TermsFormValues>>({});
   const prefill = prefillTermsForm(served?.terms);
   const values: TermsFormValues = { ...prefill, ...overrides };
-  const termsShape = useEvmSecurityTermsShape(chainId).data ?? null;
+  const shapeQuery = useEvmSecurityTermsShape(chainId);
+  const termsShape = shapeQuery.data ?? null;
+  const shapeError =
+    shapeQuery.error && termsShape === null
+      ? {
+          ...toUserError(shapeQuery.error, TERMS_SHAPE_ERROR),
+          message: TERMS_SHAPE_ERROR,
+        }
+      : null;
   const termsCall = buildSetTermsCall(base.loanId, values, chainId, termsShape);
   const termsFields = termsFieldsFor(chainId, termsShape);
   const parsed = parseTermsForm(values);
@@ -669,6 +688,11 @@ export function useRiskCouncilSecurity(
         setOverrides((prev) => ({ ...prev, paymentTerm: value })),
       echoes,
       termsFields,
+      shape: {
+        loading: shapeQuery.isLoading === true,
+        error: shapeError,
+        retry: () => void shapeQuery.refetch(),
+      },
       ratioOrderError: ratioOrderErrorFor(parsed, chainId, termsShape),
       pendingNotice: termsPending ? SET_TERMS_PENDING_NOTICE : null,
       action: termsAction,

@@ -218,7 +218,7 @@ export function evmSecurityTermsShapeQuery() {
     },
     staleTime: Infinity,
     gcTime: Infinity,
-    retry: false,
+    retry: 2,
   });
 }
 

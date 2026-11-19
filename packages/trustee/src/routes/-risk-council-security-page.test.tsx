@@ -1389,4 +1389,54 @@ describe("Security page — EVM loan on an f92d719 registry", () => {
       screen.getByTestId("risk-council-security-terms-button"),
     ).toBeDisabled();
   });
+
+  it("holds the form with a reason while the build is checked", () => {
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-loading"),
+    ).toHaveTextContent("Checking the SecurityRegistry build…");
+    expect(termsInputs(container)).toHaveLength(0);
+    expect(
+      screen.queryByTestId("risk-council-security-terms-button"),
+    ).toBeNull();
+  });
+
+  it("shows the reason and a retry when the build cannot be identified", () => {
+    const refetch = vi.fn();
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("unrecognised setTerms selector"),
+      refetch,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-error"),
+    ).toHaveTextContent(
+      "Could not identify the SecurityRegistry build — Set terms is unavailable.",
+    );
+    expect(termsInputs(container)).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the form again once the retry resolves", () => {
+    mockTermsShape.mockReturnValue({
+      data: "terms12",
+      isLoading: false,
+      error: null,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-shape-error"),
+    ).toBeNull();
+    expect(termsInputs(container)).toHaveLength(10);
+  });
 });
