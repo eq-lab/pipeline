@@ -236,6 +236,36 @@ vi.mock("@/api", () => ({
 
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
 
+function composite(
+  last: Record<string, string>,
+  stats: Record<string, { max: string; min: string; average: string }> = {},
+) {
+  const stat = (max: string) => ({ max, min: "0", average: "0" });
+  mockPositionsHistory.current = {
+    wallet: WALLET_ADDRESS,
+    interval: "hourly",
+    history: [
+      {
+        timestamp: "2026-09-21T00:00:00Z",
+        shares_balance: "0",
+        avg_cost_basis: "0",
+        cumulative_realized_pnl: "0",
+        total_balance: "1.000000",
+      },
+      {
+        timestamp: "2026-09-21T01:00:00Z",
+        shares_balance: "0",
+        avg_cost_basis: "0",
+        cumulative_realized_pnl: "0",
+        ...last,
+      },
+    ],
+    shares_balance: stat("0"),
+    cumulative_realized_pnl: stat("0"),
+    ...stats,
+  };
+}
+
 function renderHome() {
   const HomePage = Route.options.component as React.ComponentType;
   return render(
@@ -905,19 +935,21 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("headline and StakeCard value use convertToAssets, not the share count (#1658)", async () => {
+  it("StakeCard uses convertToAssets and the headline is a dash without a served composite (#1658, #2057)", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
       "1001500000000000000",
     );
     renderHome();
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("heading", { name: "$1,001.50" }).length,
-      ).toBeGreaterThanOrEqual(1);
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
       expect(subLine?.textContent).toContain("1,001.50 sPLUSD · $1,001.50");
     });
+    expect(screen.queryByRole("heading", { name: "$1,001.50" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "$0.00" })).toBeNull();
+    expect(
+      screen.getAllByRole("heading", { name: "—" }).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByTestId("splusd-shares")[0]?.textContent).toContain(
       "1,000.00",
     );
@@ -1085,17 +1117,18 @@ describe("Home page — Stellar connected balances (#688)", () => {
     localStorage.clear();
   });
 
-  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows sPLUSD only, Stake enabled, mobile state plusd", async () => {
+  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows the served composite, Stake enabled, mobile state plusd", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
       "5000000000",
     );
 
+    composite({ total_balance: "500.000000", plusd_balance: "500.000000" });
     renderHomeStellar();
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$0.00",
+        name: "$500.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
       expect(
@@ -1120,7 +1153,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares in currency format, mobile state splusd, RecentActivityCard present", async () => {
+  it("Case 2: has sPLUSD — Total Balance shows the served composite, StakeCard the sPLUSD value, mobile state splusd, RecentActivityCard present", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
       "1000000000",
@@ -1134,6 +1167,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
       "1000000000",
     );
 
+    composite({ total_balance: "154.000000", plusd_balance: "50.000000" });
     renderHomeStellar();
 
     await waitFor(() => {
@@ -1143,7 +1177,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$104.00",
+        name: "$154.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
@@ -1939,7 +1973,8 @@ describe("Home page — plusd-held state (#1424)", () => {
     localStorage.clear();
   });
 
-  it("the top-left card shows Total Balance, $0.00 and the split Stake PLUSD / Add USD sentence", async () => {
+  it("the top-left card shows Total Balance, the served composite and the split Stake PLUSD / Add USD sentence", async () => {
+    composite({ total_balance: "1000.000000", plusd_balance: "1000.000000" });
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
@@ -1948,7 +1983,10 @@ describe("Home page — plusd-held state (#1424)", () => {
     expect(portfolio).toHaveAttribute("data-node-id", "6701:97451");
     expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
     expect(
-      within(portfolio).getByRole("heading", { name: "$0.00" }),
+      within(portfolio).getByRole("heading", { name: "$1,000.00" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByTestId("total-balance-includes-plusd"),
     ).toBeInTheDocument();
     expect(
       within(portfolio).getByRole("link", { name: "Stake PLUSD" }),
@@ -2918,19 +2956,15 @@ describe("Home page — nothing navigates after the connect modal opens (#1809)"
   });
 });
 
-describe("Home page — portfolio chart on the served splusd_value (#1629)", () => {
+describe("Home page — Total Balance on the served total_balance (#1629, #2057)", () => {
   const stat = (max: string) => ({ max, min: "0", average: "0" });
-  const history = [
-    { h: "2026-09-21T00:00:00Z", v: "500.000000" },
-    { h: "2026-09-21T01:00:00Z", v: "1500.000000" },
-    { h: "2026-09-21T02:00:00Z", v: "2000.000000" },
-  ].map(({ h, v }) => ({
+  const item = (h: string, extra: Record<string, string>) => ({
     timestamp: h,
     shares_balance: "999000000",
     avg_cost_basis: "0",
     cumulative_realized_pnl: "0",
-    splusd_value: v,
-  }));
+    ...extra,
+  });
 
   beforeEach(() => {
     localStorage.clear();
@@ -2942,19 +2976,49 @@ describe("Home page — portfolio chart on the served splusd_value (#1629)", () 
     localStorage.clear();
   });
 
-  function serve(withStat: boolean) {
+  function serve(
+    history: Record<string, unknown>[],
+    stats: Record<string, unknown> = {
+      total_balance: stat("2000.000000"),
+      splusd_value: stat("9000.000000"),
+    },
+  ) {
     mockPositionsHistory.current = {
       wallet: WALLET_ADDRESS,
       interval: "hourly",
       history,
       shares_balance: stat("999000000"),
       cumulative_realized_pnl: stat("0"),
-      ...(withStat ? { splusd_value: stat("2000.000000") } : {}),
+      ...stats,
     };
   }
 
-  it("derives the Y axis from splusd_value.max and renders one slot per bucket", async () => {
-    serve(true);
+  const fullHistory = () => [
+    item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+    item("2026-09-21T01:00:00Z", { total_balance: "1500.000000" }),
+    item("2026-09-21T02:00:00Z", {
+      total_balance: "1500.250000",
+      splusd_value: "1000.000000",
+      plusd_balance: "500.250000",
+    }),
+  ];
+
+  it("headline is the last bucket's total_balance on mobile and desktop, with the incl. PLUSD label", async () => {
+    serve(fullHistory());
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$1,500.25" }).length,
+      ).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      screen.getAllByTestId("total-balance-includes-plusd").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("heading", { name: "$1,000.00" })).toBeNull();
+  });
+
+  it("derives the Y axis from total_balance.max and renders one slot per bucket", async () => {
+    serve(fullHistory());
     renderHome();
     await waitFor(() => {
       expect(
@@ -2973,8 +3037,38 @@ describe("Home page — portfolio chart on the served splusd_value (#1629)", () 
     );
   });
 
-  it("renders no Y axis when the splusd_value stat is absent", async () => {
-    serve(false);
+  it("shows no incl. PLUSD suffix when the last bucket has no plusd_balance", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { total_balance: "600.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$600.00" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByTestId("total-balance-includes-plusd"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a dash, never splusd_value, when the last bucket lacks total_balance", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { splusd_value: "1000.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "—" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByRole("heading", { name: "$1,000.00" })).toBeNull();
+  });
+
+  it("renders no Y axis when the total_balance stat is absent", async () => {
+    serve(fullHistory(), { splusd_value: stat("9000.000000") });
     renderHome();
     await waitFor(() => {
       expect(
@@ -2982,5 +3076,20 @@ describe("Home page — portfolio chart on the served splusd_value (#1629)", () 
       ).toBeGreaterThanOrEqual(1);
     });
     expect(screen.queryByTestId("chart-value-axis")).not.toBeInTheDocument();
+  });
+
+  it("marks a mid-series bucket without total_balance as missing", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { splusd_value: "700.000000" }),
+      item("2026-09-21T02:00:00Z", { total_balance: "900.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll('[data-bar-slot][data-missing="true"]')
+          .length,
+      ).toBeGreaterThan(0);
+    });
   });
 });

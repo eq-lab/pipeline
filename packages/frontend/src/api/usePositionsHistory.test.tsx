@@ -7,8 +7,9 @@ import {
   type PositionHistoryResponse,
 } from "./usePositionsHistory";
 
-const { mockApiFetch } = vi.hoisted(() => ({
+const { mockApiFetch, walletState } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
+  walletState: { address: "0x8493000000000000000000000000000000003b92" },
 }));
 
 vi.mock("./client", () => ({
@@ -18,7 +19,7 @@ vi.mock("./client", () => ({
 vi.mock("@/wallet", () => ({
   useWalletView: () => ({ kind: "evm" }),
   useEvmWallet: () => ({
-    address: "0x8493000000000000000000000000000000003b92",
+    address: walletState.address,
     isConnected: true,
   }),
   useStellarWallet: () => ({ address: undefined, isConnected: false }),
@@ -68,6 +69,7 @@ function calledPaths(): string[] {
 
 beforeEach(() => {
   mockApiFetch.mockReset();
+  walletState.address = "0x8493000000000000000000000000000000003b92";
 });
 
 describe("usePositionsHistory — fixed periods", () => {
@@ -119,5 +121,43 @@ describe("usePositionsHistory — All interval ladder (#1140)", () => {
     });
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePositionsHistory — placeholder data (#2057)", () => {
+  it("keeps the previous data while only the window changes, then replaces it", async () => {
+    const next = { ...RESPONSE, interval: "daily" };
+    mockApiFetch.mockResolvedValueOnce(RESPONSE);
+    const { result, rerender } = renderHook(
+      ({ period }) => usePositionsHistory(period),
+      { wrapper: makeWrapper(), initialProps: { period: "7d" } },
+    );
+    await waitFor(() => expect(result.current.data).toBe(RESPONSE));
+
+    let resolveNext: (v: PositionHistoryResponse) => void = () => {};
+    mockApiFetch.mockReturnValueOnce(
+      new Promise<PositionHistoryResponse>((r) => {
+        resolveNext = r;
+      }),
+    );
+    rerender({ period: "1m" });
+    expect(result.current.data).toBe(RESPONSE);
+
+    resolveNext(next);
+    await waitFor(() => expect(result.current.data).toBe(next));
+  });
+
+  it("does not carry data across a wallet address switch", async () => {
+    mockApiFetch.mockResolvedValueOnce(RESPONSE);
+    const { result, rerender } = renderHook(
+      ({ period }) => usePositionsHistory(period),
+      { wrapper: makeWrapper(), initialProps: { period: "7d" } },
+    );
+    await waitFor(() => expect(result.current.data).toBe(RESPONSE));
+
+    mockApiFetch.mockReturnValueOnce(new Promise(() => {}));
+    walletState.address = "0x9999000000000000000000000000000000000001";
+    rerender({ period: "7d" });
+    expect(result.current.data).toBeUndefined();
   });
 });

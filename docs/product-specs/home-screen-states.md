@@ -117,8 +117,8 @@ swap: the Shape B slot mounts `AddUsdCard variant="verify"` (the same card state
 `"verifying"`. `Start Verification` calls `openAddEmail()` rather than `openAccountSetup()`, because
 the latter is a no-op without a session (`AuthFlowProvider`'s `setup` is `null` until a token
 exists) — `openAddEmail()` opens the same Add email → OTP → session flow as the Account page's row
-(#1459). The Total Balance headline keeps the sPLUSD-position binding (`$0.00`, served, not a
-default — the same decision #1424 took for state 4). `Buy` and `Get PLUSD to start` both navigate to
+(#1459). The Total Balance headline is the served composite `total_balance` (#2057), `$0.00` for a zero
+wallet without history. `Buy` and `Get PLUSD to start` both navigate to
 `/deposit?direction=deposit`, exactly as they do for any connected visitor today — `/deposit` has no
 `beforeLoad` auth guard. After registering through `Start Verification`, the visitor is signed-in +
 connected + `lpRead: "absent"`, which lands in `"legacy"` (session + connected + `NotStarted` is an
@@ -174,19 +174,16 @@ tinted `rgba(184,191,190,0.12)` with a primary-ink label, and Sell is untinted w
 label (the `--color-pipeline-ink-muted` token, not an opacity override) — scoped to this state's
 compact balance mode only; states 1–3's navy-Buy/ink-Sell pair is unchanged.
 
-In state 3 the Total Balance card keeps its served wiring — the heading is the real
-`formatBigintCurrency(splusdInPlusdActive)` (which reads `$0.00` because sPLUSD is zero, a served value
-rather than a default) and the chart stays bound to `GET /v1/positions/history`. The
+In state 3 the Total Balance heading is the served composite `total_balance` (#2057; `$0.00` for a zero
+wallet without history, `—` otherwise) and the chart stays bound to `GET /v1/positions/history`. The
 `View Status` CTA on the Verifying card navigates to `/account`, per the Figma node's
 `Open Account` annotation and [kyb-lp-verification.md](./kyb-lp-verification.md), which freezes LP
 writes while `UnderReview`. The card's heading ships as `Verifying account…`; the Figma frame's
 "Veryfying account..." is a typo and is not reproduced.
 
-**State 4's Total Balance heading keeps the same sPLUSD-position binding as state 3** —
-`formatBigintCurrency(splusdInPlusdActive)`, `$0.00` here since sPLUSD is zero — even though the
-Figma frame mocks `$1,000.00` (the PLUSD holding). No endpoint serves a combined PLUSD+sPLUSD
-total, and summing them client-side is the derived-metric the project forbids; a backend total is
-out of scope for #1424 (human decision, 2026-10-12). The sub-line below it,
+**State 4's Total Balance heading is the served composite `total_balance` (#2057)**, labelled
+`incl. PLUSD` when the API serves `plusd_balance` (the Figma frame's `$1,000.00`); `—` when none
+is served. Nothing is summed client-side. The sub-line below it,
 "Stake PLUSD or Add USD to start earning", carries two real actions in one underlined brand-navy
 sentence: "Stake PLUSD" navigates to `/stake?tab=stake`; "Add USD" opens the `FundingDetailsModal`
 (#1283), which fetches the served bank details and a payment reference (#1817), reachable from

@@ -97,7 +97,7 @@ _None_
 
 ## Implementation Steps
 
-1. `packages/frontend/src/components/usePortfolioChart.ts`
+1. [x] `packages/frontend/src/components/usePortfolioChart.ts`
    - `buildSeries(history)`: read `item.total_balance` instead of `item.splusd_value`; input type
      becomes `{ timestamp: string; total_balance?: string }[] | undefined`. Missing or non-finite →
      `null` for that bucket; malformed timestamp → `null` series; empty → `null` (unchanged logic).
@@ -106,13 +106,13 @@ _None_
      empty history; otherwise reads only the **last** item (`total_balance` verbatim string,
      `includesPlusd = item.plusd_balance !== undefined`). No arithmetic.
 
-2. `packages/frontend/src/api/usePositionsHistory.ts`
+2. [x] `packages/frontend/src/api/usePositionsHistory.ts`
    - Add `placeholderData: (previousData, previousQuery) => …` to the `useQuery` options: return
      `previousData` only when `previousQuery.queryKey` has the same `kind`, `address` and `chainId`
      (indices 1–3 of the existing key) as the current key; otherwise `undefined`. Build the key once
      in a local so both sites use it. No other fetch or ladder change.
 
-3. `packages/frontend/src/routes/index.tsx`
+3. [x] `packages/frontend/src/routes/index.tsx`
    - After `portfolioSeries`, compute
      `const latestTotal = latestTotalBalance(positionsHistory.data?.history);`
      and a `totalBalanceFormatted: string`:
@@ -131,7 +131,7 @@ _None_
    - Keep `splusdBalanceFormatted` for both `StakeCard` instances (`splusdUsdValue`).
    - Import `latestTotalBalance` and `formatMoney` from `@/components/usePortfolioChart`.
 
-4. `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`
+4. [x] `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`
    - New optional prop `includesPlusd?: boolean` (default `false`).
    - In the eyebrow span (`Total Balance`, ~L205), when `includesPlusd`, render
      `Total Balance` followed by `<span data-testid="total-balance-includes-plusd"> · incl. PLUSD</span>`
@@ -141,7 +141,7 @@ _None_
    - No change to variants, chart branch, tooltip, axis or aria-label logic (the aria-label already
      reads `balanceLabel`).
 
-5. Lint and gates (from the repo root unless noted):
+5. [x] Lint and gates (from the repo root unless noted):
    - `npx tsx scripts/lint-comments.ts` (shrink `scripts/lint-comments.baseline.json` for any touched
      file it lists); `npx tsx scripts/lint-docs.ts`.
    - `cd packages/frontend && npx tsc --noEmit` (or the package typecheck script) and `yarn build`.

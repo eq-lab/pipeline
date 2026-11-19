@@ -86,7 +86,7 @@ export interface ChartSeries {
 }
 
 export function buildSeries(
-  history: { timestamp: string; splusd_value?: string }[] | undefined,
+  history: { timestamp: string; total_balance?: string }[] | undefined,
 ): ChartSeries | null {
   if (!history || history.length === 0) return null;
   const timestamps: number[] = [];
@@ -95,11 +95,27 @@ export function buildSeries(
     const ts = Date.parse(item.timestamp);
     if (!Number.isFinite(ts)) return null;
     const value =
-      item.splusd_value === undefined ? null : Number(item.splusd_value);
+      item.total_balance === undefined ? null : Number(item.total_balance);
     timestamps.push(ts);
     values.push(value !== null && Number.isFinite(value) ? value : null);
   }
   return { timestamps, values };
+}
+
+export interface LatestTotalBalance {
+  totalBalance: string | undefined;
+  includesPlusd: boolean;
+}
+
+export function latestTotalBalance(
+  history: { total_balance?: string; plusd_balance?: string }[] | undefined,
+): LatestTotalBalance | null {
+  const last = history?.[history.length - 1];
+  if (!last) return null;
+  return {
+    totalBalance: last.total_balance,
+    includesPlusd: last.plusd_balance !== undefined,
+  };
 }
 
 export interface SeriesSpans {
