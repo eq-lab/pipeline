@@ -87,7 +87,7 @@ export function useEvmDeal(
   loanId: number | null | undefined,
 ) {
   return useQuery<DealRead | null, Error>({
-    queryKey: ["deal-token", chainId ?? null, loanId ?? null],
+    queryKey: ["evm-deal-token", chainId ?? null, loanId ?? null],
     enabled:
       !isStellarTarget(chainId) &&
       loanActionChainReason(chainId) === null &&

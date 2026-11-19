@@ -58,6 +58,7 @@ const INVALIDATED_KEYS = [
   "loan-waterfall",
   "cash-book",
   "deal-token",
+  "evm-deal-token",
   "debt-trustline",
   "audit-log",
   "evm-minter-bank-cash",

@@ -571,7 +571,6 @@ export async function readEvmRecoveryRepayments({
   );
 }
 
-// ── repay (direct PipelineMinter.repay) ──────────────────────────────────────
 
 export const evmRepayErrorAbi: Abi = [
   ...evmMinterErrorAbi,
@@ -657,7 +656,6 @@ export async function repayEvmLoan({
   return { hash, repaymentId: readEvmRepaymentId(receipt, minterAddress) };
 }
 
-// ── disburse (AccessManager.execute -> PipelineMinter.disburse) ──────────────
 
 export const minterDisburseAbi = [
   {
