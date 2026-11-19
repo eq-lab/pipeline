@@ -70,7 +70,7 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 ```
 
 - `run.ts` plays the selected journeys in registry order and writes what they recorded to `stacks/<tag>/run.json` (commit, timings, journeys, recorded figures, and `error` when a step failed). It does not judge anything.
-- `check.ts` evaluates the checks of the journeys that ran against `run.json`, redacts the files in `logs/`, writes `stacks/<tag>/result.json` and prints it with `--json` (one ✅/❌ line per check otherwise). `--optional` and `--require` may repeat.
+- `check.ts` evaluates the checks of the journeys that ran against `run.json`, redacts the files in `logs/`, writes `stacks/<tag>/result.json` and prints it with `--json` (one ✅/❌ line per check otherwise). `--optional` and `--require` may repeat. `down.sh` keeps a copy of `result.json` at `$E2E_HOME/results/<tag>.json`, so the evidence outlives the stack.
 - `npx tsx scripts/e2e/passcode.ts --tag <tag> --email <email> [--wait <seconds>]` prints only the latest signup/login passcode the API logged for that email (waits up to 10 s, exits 1 with a message if none). Browser passes use it instead of reading `logs/api.log` or calling the API; run it before `check.ts`, which redacts the log.
 - Journeys live in `scripts/e2e/journeys/<chain>-<journey>.ts`, one module per journey exporting its steps and checks, and are registered in order in `scripts/e2e/journeys/index.ts`.
 - Unit tests of the runner need no stack: `yarn test:e2e-scripts`.

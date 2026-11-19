@@ -530,6 +530,10 @@ export function down(tag: string) {
   if (vols.length) docker("volume", "rm", "-f", ...vols);
   const nets = docker("network", "ls", "-q", "--filter", `label=${LABEL}=${tag}`);
   if (nets.length) docker("network", "rm", ...nets);
+  if (fs.existsSync(join(dir, "result.json"))) {
+    fs.mkdirSync(join(e2eHome(), "results"), { recursive: true });
+    fs.copyFileSync(join(dir, "result.json"), join(e2eHome(), "results", `${tag}.json`));
+  }
   fs.rmSync(dir, { recursive: true, force: true });
   if (fs.existsSync(lockPath()) && fs.readFileSync(lockPath(), "utf8").trim() === tag) fs.rmSync(lockPath());
   console.log(`stack ${tag} down`);
