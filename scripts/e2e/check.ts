@@ -136,6 +136,17 @@ function redactLogs(dir: string): string[] {
 
 const CHECKS_JSON = join(dirname(fileURLToPath(import.meta.url)), "checks.json");
 
+// --tag and --json read leniently, so a failure the strict parse rejects (an unknown flag) still reaches result.json.
+function failureTarget(argv: string[]): { dir: string; tag: string; json: boolean } | undefined {
+  try {
+    const options = { tag: { type: "string" }, json: { type: "boolean" } } as const;
+    const { values } = parseArgs({ args: argv, options, strict: false });
+    return typeof values.tag === "string" ? { dir: stackDir(values.tag), tag: values.tag, json: values.json === true } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function check(argv: string[], journeys: Journey[] = registry, checksPath = CHECKS_JSON): number {
   const started = Date.now();
   try {
@@ -149,10 +160,10 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
       },
     });
     if (!values.tag) throw new Error("--tag is required");
+    const dir = stackDir(values.tag);
     const both = values.optional.filter((id) => values.require.includes(id));
     if (both.length) throw new Error(`both --optional and --require: ${both.join(", ")}`);
     validateIds(journeys, [...values.optional, ...values.require]);
-    const dir = stackDir(values.tag);
     if (!existsSync(dir)) throw new Error(`no stack ${dir}`);
     const result = buildResult({
       tag: values.tag,
@@ -179,7 +190,21 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
     }
     return exitCode(result);
   } catch (e) {
-    console.error(`check: ${redact(errorMessage(e))}`);
+    const error = redact(errorMessage(e));
+    console.error(`check: ${error}`);
+    // Overwrite a stale result.json with a minimal failure, so a caller reading the file never sees an old ok:true.
+    // shortcut: a missing or invalid --tag or a missing stack dir writes nothing (there is no file to go stale), upgrade if callers need one anyway.
+    const failed = failureTarget(argv);
+    if (failed && existsSync(failed.dir)) {
+      const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, tag: failed.tag, ok: false, error }, null, 2) + "\n";
+      try {
+        writeFileSync(join(failed.dir, "result.json"), json);
+      } catch (w) {
+        // The failure may be this very write (EISDIR, EACCES, ENOSPC); a throw here would exit 1, which reads as a failed check.
+        console.error(`check: cannot write result.json: ${redact(errorMessage(w))}`);
+      }
+      if (failed.json) process.stdout.write(json);
+    }
     return 2;
   }
 }

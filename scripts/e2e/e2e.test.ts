@@ -197,11 +197,30 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     assert.equal(check(["--tag", tag], [broken], checksPath), 2);
     assert.ok(!readResult().includes(SEED));
     assert.equal(await run(["--tag", "../escape"], [fakeJourney(100)]), 2);
+    assert.equal(check(["--tag", "../escape"], [fakeJourney(100)], checksPath), 2);
     assert.equal(await run(["--tag", tag, "--chains", "solana"], [fakeJourney(100)]), 2);
     assert.equal(await run(["--tag", tag, "--chains", "evm"], [fakeJourney(100)]), 2);
     assert.equal(await run(["--tag", tag], []), 2);
     assert.equal(check(["--tag", tag, "--require", "stellar.nope.x"], [fakeJourney(100)], checksPath), 2);
     writeFileSync(checksPath, JSON.stringify({ "stellar.fake.reconcile": { issue: "pending" } }));
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 2);
+  });
+
+  it("a failing check.ts replaces a stale result.json with ok:false", async () => {
+    assert.equal(await run(["--tag", tag], [fakeJourney(100)]), 0);
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 0);
+    assert.equal(check(["--tag", tag, "--require", "stellar.nope.x"], [fakeJourney(100)], checksPath), 2);
+    const r = JSON.parse(readResult());
+    assert.deepEqual([r.ok, r.tag, r.schemaVersion], [false, tag, 1]);
+    assert.match(r.error, /unknown check id/);
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 0);
+    assert.equal(check(["--tag", tag, "--requier", "stellar.fake.always"], [fakeJourney(100)], checksPath), 2);
+    assert.equal(JSON.parse(readResult()).ok, false);
+  });
+
+  it("an unwritable result.json still exits 2, not a crash that reads as a failed check", async () => {
+    assert.equal(await run(["--tag", tag], [fakeJourney(100)]), 0);
+    mkdirSync(join(dir(), "result.json"));
     assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 2);
   });
 

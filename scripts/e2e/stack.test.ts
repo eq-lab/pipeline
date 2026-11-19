@@ -20,6 +20,8 @@ const REPO = join(HERE, "../..");
 const TIMEOUT = 30_000;
 const home = mkdtempSync(join(tmpdir(), "e2e-stack-"));
 process.env.E2E_HOME = join(home, "e2e-home");
+// Run from a commit hook, git exports these; left in place, the fixture repo's git add/commit would act on the committer's repo.
+for (const name of execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8" }).split("\n")) delete process.env[name];
 // down() cleans docker by label machine-wide; a stub docker keeps the fixed test tags (x, d, ...) from touching a real stack.
 // It records its calls and lists one id per `ps`/`ls`, so down()'s removals run against the stub too.
 const dockerLog = join(home, "docker.log");
