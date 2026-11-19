@@ -1,10 +1,10 @@
 // EVM Risk Council journey: pause → the LP's calls refused → unpause → the same calls succeed; then a second loan: Default refused for other keys → Default → write down → close; see docs/e2e.md "Risk Council".
 
 import { setTimeout as sleep } from "node:timers/promises";
-import { parseAbi, type Address, type Hex } from "viem";
+import { parseAbi, toHex, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import type { Journey } from "../lib/journey";
-import { EVM_CHAIN, evmWorld, read, send, views, type EvmWorld } from "../lib/evm-world";
+import { anvil, EVM_CHAIN, evmWorld, read, send, views, type EvmWorld } from "../lib/evm-world";
 import { until } from "../lib/stellar-world";
 import { depositManagerAbi } from "../../../packages/frontend/src/wallet/evm/abis/depositManager";
 import { erc20Abi } from "../../../packages/frontend/src/wallet/evm/abis/erc20";
@@ -14,7 +14,8 @@ import loan, { chain, CLOSURE, ids, role, STATUS, trusteeTokenOf } from "./evm-l
 import lp, { voucher } from "./evm-lp";
 import { rejection, riskApi, riskChecks } from "./risk-checks";
 
-const DEPOSIT = 100_000_000n;
+/** The pinned contracts' anvil minimum deposit (`DepositManager__MinDeposit`, 1000 USDC): a smaller request reverts `DepositManagerLessThanMinAmount`. */
+const DEPOSIT = 1_000_000_000n;
 const STAKE = 40_000_000n;
 const SHARES = 10_000_000n;
 const WITHDRAW = 20_000_000n;
@@ -80,6 +81,8 @@ const journey: Journey = {
       name: "prepare the LP",
       run: async () => {
         // Allowances for every call of "attempt" (it runs twice), PLUSD to stake and an unclaimed withdrawal request to claim while paused; the LP is KYC'd by the LP journey.
+        // The LP journey leaves the LP less USDC than the two minimum deposits made here (this one and the one after unpause).
+        await anvil.request({ method: "anvil_dealERC20", params: [me(), w.usdc, toHex((await read<bigint>(w.usdc, "balanceOf", [me()])) + 2n * DEPOSIT)] } as never);
         await send(w.lp, w.usdc, erc20Abi, "approve", [w.dm, 2n * DEPOSIT]);
         await send(w.lp, w.plusd, erc20Abi, "approve", [w.vault, 2n * STAKE]);
         await send(w.lp, w.plusd, erc20Abi, "approve", [w.wq, 3n * WITHDRAW]);
