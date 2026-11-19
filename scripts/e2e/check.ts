@@ -92,7 +92,9 @@ export function buildResult(input: BuildInput): Result {
       if (entry?.finding) result.finding = entry.finding;
       return result;
     });
-  const error = run ? run.error && redact(run.error) : "no run.json: run.ts did not run";
+  const error = run
+    ? (run.error && redact(run.error)) || (checks.length ? "" : "no checks ran")
+    : "no run.json: run.ts did not run";
   return {
     schemaVersion: SCHEMA_VERSION,
     tag: input.tag,
