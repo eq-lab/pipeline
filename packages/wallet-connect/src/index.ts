@@ -465,7 +465,12 @@ export type {
 export {
   readEvmDeal,
   evmDealTokenFactoryAbi,
+  evmRegisterDealSelector,
+  encodeEvmRegisterDealCalldata,
+  evmRegisterDealErrorAbi,
+  relayEvmRegisterDeal,
 } from "./evm/contracts/dealTokenFactory";
+export type { RelayEvmRegisterDealParams } from "./evm/contracts/dealTokenFactory";
 
 export {
   minterRecoveryAbi,

@@ -7,12 +7,18 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  encodeEvmRegisterDealCalldata,
+  evmRegisterDealSelector,
   readCanCall,
   readDeal,
+  readEvmCanCall,
   readEvmDeal,
+  readEvmOperationSchedule,
   readOperationSchedule,
   registerDeal,
   registerDealArgs,
+  relayEvmRegisterDeal,
+  useEvmWallet,
   useStellarWallet,
   type CanCall,
   type DealRead,
@@ -21,6 +27,7 @@ import {
   type RelayStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
+import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
 import {
   isStellarTarget,
   loanActionChainReason,
@@ -43,7 +50,14 @@ export interface RegisterDealInput {
 
 const REGISTER_DEAL_FN = "register_deal";
 
-export function dealTokenConfigured(): boolean {
+export function dealTokenConfigured(
+  chainId?: number | null | undefined,
+): boolean {
+  if (!isStellarTarget(chainId)) {
+    return (
+      !!ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS && !!ENV.EVM_ACCESS_MANAGER_ADDRESS
+    );
+  }
   return (
     !!ENV.STELLAR_DEAL_TOKEN_FACTORY_ID &&
     !!ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID
@@ -103,19 +117,59 @@ export function useEvmDeal(
   });
 }
 
+export function useLoanDeal(
+  chainId: number | null | undefined,
+  loanId: number | null | undefined,
+) {
+  const stellar = useDeal(chainId, loanId);
+  const evm = useEvmDeal(chainId, loanId);
+  return isStellarTarget(chainId) ? stellar : evm;
+}
+
 export function useRegisterDealAccess(
+  chainId: number | null | undefined,
   loanId: number | null | undefined,
   enabled: boolean,
 ) {
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
   return useQuery<RegisterDealAccess, Error>({
-    queryKey: ["register-deal-access", address, loanId ?? null],
+    queryKey: [
+      "register-deal-access",
+      chainId ?? null,
+      address,
+      loanId ?? null,
+    ],
     enabled:
-      enabled && !!address && dealTokenConfigured() && validLoanId(loanId),
+      enabled &&
+      !!address &&
+      loanActionChainReason(chainId) === null &&
+      dealTokenConfigured(chainId) &&
+      validLoanId(loanId),
     staleTime: 5_000,
     retry: false,
     queryFn: async () => {
-      if (!dealTokenConfigured()) throw new Error(DEBT_TOKEN_NOT_CONFIGURED);
+      if (!dealTokenConfigured(chainId)) {
+        throw new Error(DEBT_TOKEN_NOT_CONFIGURED);
+      }
+      if (!isStellarTarget(chainId)) {
+        const evmBase = {
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          caller: address!,
+          target: ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS,
+        };
+        const canCall = await readEvmCanCall({
+          ...evmBase,
+          selector: evmRegisterDealSelector(),
+        });
+        const schedule =
+          !canCall.immediate && canCall.delay > 0
+            ? await readEvmOperationSchedule({
+                ...evmBase,
+                data: encodeEvmRegisterDealCalldata(loanId as number),
+              })
+            : null;
+        return { canCall, schedule };
+      }
       const base = {
         accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         caller: address!,
@@ -137,32 +191,56 @@ export function useRegisterDealAccess(
 }
 
 function invalidateDealToken(queryClient: QueryClient) {
-  for (const key of ["deal-token", "register-deal-access", "audit-log"]) {
+  for (const key of [
+    "deal-token",
+    "evm-deal-token",
+    "register-deal-access",
+    "audit-log",
+  ]) {
     void queryClient.invalidateQueries({ queryKey: [key] });
   }
 }
 
 export function useRegisterDeal() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellar = useStellarWallet();
+  const evm = useEvmWallet();
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
   const mutation = useMutation<{ hash: string }, Error, RegisterDealInput>({
     mutationFn: async ({ mode, loanId, chainId }) => {
       setStage(null);
-      const blocked = stellarOnlyActionReason(chainId);
+      const wallet = pickChainWallet(chainId, stellar, evm);
+      const blocked = loanActionChainReason(chainId);
       if (blocked) throw new Error(blocked);
-      if (!dealTokenConfigured()) throw new Error(DEBT_TOKEN_NOT_CONFIGURED);
-      if (!isConnected || !address) {
-        throw new Error("Stellar wallet not connected.");
+      if (!dealTokenConfigured(chainId)) {
+        throw new Error(DEBT_TOKEN_NOT_CONFIGURED);
+      }
+      if (!wallet.isConnected || !wallet.address) {
+        throw new Error(
+          wallet.kind === "evm"
+            ? "EVM wallet not connected."
+            : "Stellar wallet not connected.",
+        );
+      }
+      if (wallet.kind === "evm") {
+        return relayEvmRegisterDeal({
+          mode,
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          factory: ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS,
+          caller: wallet.address,
+          loanId,
+          chainId: ENV.EVM_CHAIN_ID,
+          onStageChange: setStage,
+        });
       }
       return registerDeal({
         mode,
         accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         factoryId: ENV.STELLAR_DEAL_TOKEN_FACTORY_ID,
         loanId,
-        caller: address,
-        signTransaction,
+        caller: wallet.address,
+        signTransaction: stellar.signTransaction,
         onStageChange: setStage,
         ...rpc(),
       });

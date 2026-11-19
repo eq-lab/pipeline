@@ -261,7 +261,7 @@ it grows as Trustee flow sub-issues of epic #775 land.
 | `VITE_EVM_START_BLOCK`                 | `0`                                         | `3808700` (worker's `CHAIN_560048_EVM_START_BLOCK`) |
 | `VITE_EVM_CAPITAL_WALLET_ADDRESS`      | empty                                       | set per deploy                                      |
 
-The Stage column lists the `hoodi-v5.json` values. Stage today sets only `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and `VITE_EVM_MINTER_ADDRESS` on the Trustee; the AccessManager, DealTokenFactory (EVM Disburse, #1574), SecurityRegistry, RecordNft and start-block rows are the values to set (argocd `pipeline/test.yaml`). Production keeps them empty until the mainnet deployment (#1436).
+The Stage column lists the `hoodi-v5.json` values. Stage today sets `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS` and `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` on the Trustee (argocd `pipeline/test.yaml`, eq-lab/argocd#516 and #517), so EVM draw, the lifecycle writes, Disburse (#1574) and Register debt token (#1892) are configured; the SecurityRegistry, RecordNft and start-block rows are the values to set once Hoodi is upgraded (#1944). Production keeps them empty until the mainnet deployment (#1436).
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
