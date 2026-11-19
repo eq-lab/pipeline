@@ -119,6 +119,7 @@ export function generateEnv({ ports: p, jwt, stellar, evm }: EnvInput): Record<s
     SPACES_BUCKET: SPACES.bucket,
     VITE_API_BASE_URL: `http://localhost:${p.api}`,
     VITE_WALLETCONNECT_PROJECT_ID: "e2e",
+    VITE_E2E_CAPTCHA: "1",
     // Without the EVM chain a dead local port, so the apps never fall back to the public Hoodi node.
     VITE_EVM_RPC_URL: `http://localhost:${p.evm}`,
     // Likewise without the Stellar chain: the apps would otherwise default to the public Stellar testnet.
