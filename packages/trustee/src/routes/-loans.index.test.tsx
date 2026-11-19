@@ -115,7 +115,8 @@ function withLtvKeys(
   };
 }
 
-function renderRoute() {
+function renderRoute(search: { tab?: string; chain?: number } = {}) {
+  vi.spyOn(Route, "useSearch").mockReturnValue(search as never);
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
@@ -189,6 +190,24 @@ describe("Loans list route (ready)", () => {
       "all",
     );
     expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
+  });
+
+  it("restores tab and chain from the URL and writes changes back with replace", async () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(560048);
+    expect(screen.getByTestId("loans-tab-Watchlist")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId("loans-chain-filter"),
+      "all",
+    );
+    expect(mockNavigate).toHaveBeenLastCalledWith({
+      to: "/loans",
+      search: { tab: "Watchlist", chain: undefined },
+      replace: true,
+    });
   });
 
   it("offers only served chains in the filter, with All chains always present (#1667)", () => {

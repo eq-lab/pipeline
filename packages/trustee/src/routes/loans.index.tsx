@@ -450,9 +450,29 @@ function LtvFootnote() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function LoansIndex() {
-  const [activeTab, setActiveTab] = useState<LoanTab>("All");
-  const [chainFilter, setChainFilter] = useState<number | null>(null);
+  // Tab + chain live in the URL (replace-navigated) so Back from a loan restores them.
+  const search = Route.useSearch();
+  const [activeTab, setActiveTabState] = useState<LoanTab>(search.tab ?? "All");
+  const [chainFilter, setChainFilterState] = useState<number | null>(
+    search.chain ?? null,
+  );
   const navigate = useNavigate();
+  const setActiveTab = (tab: LoanTab) => {
+    setActiveTabState(tab);
+    void navigate({
+      to: "/loans",
+      search: { tab, chain: chainFilter ?? undefined },
+      replace: true,
+    });
+  };
+  const setChainFilter = (chain: number | null) => {
+    setChainFilterState(chain);
+    void navigate({
+      to: "/loans",
+      search: { tab: activeTab, chain: chain ?? undefined },
+      replace: true,
+    });
+  };
   const targetChains = useServedTargetChains();
   const {
     state,
@@ -536,5 +556,14 @@ function LoansIndex() {
 }
 
 export const Route = createFileRoute("/loans/")({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { tab?: LoanTab; chain?: number } => {
+    const chain = Number(s.chain);
+    return {
+      tab: LOAN_TABS.find((t) => t === s.tab),
+      chain: Number.isInteger(chain) && chain > 0 ? chain : undefined,
+    };
+  },
   component: LoansIndex,
 });
