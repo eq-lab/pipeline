@@ -23,7 +23,18 @@ vi.mock("@wagmi/core", () => ({
 }));
 vi.mock("../config", () => ({ initEvmWalletConnect: () => ({ id: "cfg" }) }));
 
-import { EVM_TX_GAS_CAP, readEvmContract, sendEvmContractCall } from "./write";
+import {
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  UserRejectedRequestError,
+  encodeErrorResult,
+} from "viem";
+import {
+  EVM_TX_GAS_CAP,
+  readEvmContract,
+  sendEvmContractCall,
+  sendEvmContractCallChecked,
+} from "./write";
 
 const ACCOUNT = "0xAbCdEf0000000000000000000000000000000001";
 const TARGET = "0x00000000000000000000000000000000000000aa";
@@ -199,5 +210,77 @@ describe("readEvmContract", () => {
     expect(wagmi.readContract.mock.calls.at(-1)![1]).toMatchObject({
       blockNumber: 99n,
     });
+  });
+});
+
+const errorAbi = [{ type: "error", name: "Boom", inputs: [] }] as const;
+
+function revertError() {
+  return new ContractFunctionExecutionError(
+    new ContractFunctionRevertedError({
+      abi: errorAbi,
+      data: encodeErrorResult({ abi: errorAbi, errorName: "Boom" }),
+      functionName: "ping",
+    }),
+    { abi, functionName: "ping", args: [] },
+  );
+}
+
+describe("sendEvmContractCallChecked", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    wagmi.getConnection.mockReturnValue({
+      address: ACCOUNT.toLowerCase(),
+      chainId: 560048,
+    });
+    wagmi.simulateContract.mockResolvedValue(undefined);
+    wagmi.estimateContractGas.mockResolvedValue(100_000n);
+    wagmi.writeContract.mockResolvedValue(HASH);
+    wagmi.waitForTransactionReceipt.mockResolvedValue(RECEIPT);
+  });
+
+  it("wraps a revert before the prompt as a labelled simulation error", async () => {
+    const err = revertError();
+    wagmi.simulateContract.mockRejectedValue(err);
+    const run = sendEvmContractCallChecked("pingEvm", params());
+    await expect(run).rejects.toThrow(/^pingEvm: simulation error: /);
+    await expect(run).rejects.toThrow(/Boom/);
+    await expect(run).rejects.toThrow(err.message);
+    expect(wagmi.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("passes a revert after the prompt through unchanged", async () => {
+    const err = revertError();
+    wagmi.writeContract.mockRejectedValue(err);
+    await expect(sendEvmContractCallChecked("pingEvm", params())).rejects.toBe(
+      err,
+    );
+  });
+
+  it("passes a wallet rejection through unchanged", async () => {
+    const err = new UserRejectedRequestError(new Error("denied"));
+    wagmi.writeContract.mockRejectedValue(err);
+    await expect(sendEvmContractCallChecked("pingEvm", params())).rejects.toBe(
+      err,
+    );
+  });
+
+  it("passes a non-revert error before the prompt through unchanged", async () => {
+    const err = new Error("rpc down");
+    wagmi.simulateContract.mockRejectedValue(err);
+    await expect(sendEvmContractCallChecked("pingEvm", params())).rejects.toBe(
+      err,
+    );
+  });
+
+  it("forwards the stages and returns the hash and receipt", async () => {
+    const stages: string[] = [];
+    const result = await sendEvmContractCallChecked(
+      "pingEvm",
+      params({ onStageChange: (s: string) => stages.push(s) }),
+    );
+    expect(stages).toEqual(["awaiting-signature", "confirming"]);
+    expect(result).toEqual({ hash: HASH, receipt: RECEIPT });
   });
 });

@@ -255,12 +255,13 @@ it grows as Trustee flow sub-issues of epic #775 land.
 | `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)                        | `0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`        |
 | `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)                        | `0x621BaAb0ced6b11f88019582183b081A118755f4`        |
 | `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)                        | `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`        |
+| `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`  | empty (unconfigured)                        | `0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC`        |
 | `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)                        | `0xB51E7f13420D106946376A67Fe5921C63B09BE15`        |
 | `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)                        | `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`        |
 | `VITE_EVM_START_BLOCK`                 | `0`                                         | `3808700` (worker's `CHAIN_560048_EVM_START_BLOCK`) |
 | `VITE_EVM_CAPITAL_WALLET_ADDRESS`      | empty                                       | set per deploy                                      |
 
-The Stage column lists the `hoodi-v5.json` values. Stage today sets only `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and `VITE_EVM_MINTER_ADDRESS` on the Trustee; the AccessManager, SecurityRegistry, RecordNft and start-block rows are the values to set (argocd `pipeline/test.yaml`). Production keeps them empty until the mainnet deployment (#1436).
+The Stage column lists the `hoodi-v5.json` values. Stage today sets only `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and `VITE_EVM_MINTER_ADDRESS` on the Trustee; the AccessManager, DealTokenFactory (EVM Disburse, #1574), SecurityRegistry, RecordNft and start-block rows are the values to set (argocd `pipeline/test.yaml`). Production keeps them empty until the mainnet deployment (#1436).
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.

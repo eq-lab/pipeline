@@ -1420,7 +1420,12 @@ function LoanDetail() {
             onClose={() => setRolloverOpen(false)}
             onConfirm={(newRateBps, newMaturity) => {
               void rolloverMutation
-                .mutateAsync({ loanId: Number(id), newRateBps, newMaturity })
+                .mutateAsync({
+                  loanId: Number(id),
+                  newRateBps,
+                  newMaturity,
+                  chainId: chain,
+                })
                 .then(() => setRolloverOpen(false))
                 .catch(() => {});
             }}
@@ -1517,7 +1522,7 @@ function LoanDetail() {
         onClose={() => setUpdateOpen(false)}
         onConfirm={(input) => {
           void updateLifecycle
-            .mutateAsync({ loanId: Number(id), ...input })
+            .mutateAsync({ loanId: Number(id), ...input, chainId: chain })
             .then(() => setUpdateOpen(false))
             .catch(() => {});
         }}

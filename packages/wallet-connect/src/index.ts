@@ -379,6 +379,7 @@ export {
   EVM_TX_GAS_CAP,
   readEvmContract,
   sendEvmContractCall,
+  sendEvmContractCallChecked,
 } from "./evm/contracts/write";
 export type {
   ReadEvmContractParams,
@@ -434,6 +435,7 @@ export {
   readEvmRiskCouncilSchedule,
   readEvmLoanChainState,
   readEvmLoanMoney,
+  readEvmLoanDisbursementState,
 } from "./evm/contracts/riskCouncil";
 export type {
   EvmRiskCouncilCallParams,
@@ -446,11 +448,24 @@ export {
   encodeEvmDrawLoanCalldata,
   evmLoanRegistryDrawAbi,
   readEvmDrawnLoanId,
+  rolloverEvmLoan,
+  updateEvmMutable,
+  closeEvmLoan,
+  encodeEvmRolloverCalldata,
+  encodeEvmUpdateMutableCalldata,
+  encodeEvmCloseLoanCalldata,
+  evmLoanRegistryLifecycleAbi,
 } from "./evm/contracts/loanRegistry";
 export type {
   DrawEvmLoanParams,
   DrawEvmLoanResult,
+  EvmLoanRegistryCallParams,
 } from "./evm/contracts/loanRegistry";
+
+export {
+  readEvmDeal,
+  evmDealTokenFactoryAbi,
+} from "./evm/contracts/dealTokenFactory";
 
 export {
   minterRecoveryAbi,
@@ -468,6 +483,17 @@ export {
   readEvmNextRepaymentId,
   readEvmMinterRepayment,
   readEvmRecoveryRepayments,
+  repayEvmLoan,
+  evmRepaymentRefHash,
+  readEvmRepaymentId,
+  evmRepayErrorAbi,
+  disburseEvmLoan,
+  encodeEvmDisburseCalldata,
+  evmDisburseSelector,
+  evmDisburseErrorAbi,
+  readEvmMinterPaused,
+  readEvmMinterBankCash,
+  readEvmRefHashSeen,
 } from "./evm/contracts/minter";
 export type {
   EvmReverseRepayArgs,
@@ -478,6 +504,9 @@ export type {
   EvmMinterRepaymentRecord,
   EvmRecoveryRepayment,
   ReadEvmRecoveryRepaymentsParams,
+  RepayEvmLoanParams,
+  DisburseEvmLoanParams,
+  EvmDisburseArgs,
 } from "./evm/contracts/minter";
 
 export {

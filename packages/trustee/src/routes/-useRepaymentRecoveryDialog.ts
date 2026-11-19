@@ -16,9 +16,9 @@ import {
 import { findLoanEntry } from "@/lib/loanRoute";
 import {
   isStellarTarget,
+  loanActionChainReason,
   riskCouncilChainReason,
   riskCouncilTargetId,
-  recordRepaymentChainReason,
 } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import {
@@ -164,7 +164,7 @@ export function useRepaymentRecoveryDialog(
   const indexed = hasServedPositive(financials.data?.offtaker_outstanding);
   const canRepay = access?.canRepay.immediate === true;
 
-  const recordChainReason = recordRepaymentChainReason(chainId);
+  const recordChainReason = loanActionChainReason(chainId);
   let blockedReason: string | null = null;
   if (!reversed) blockedReason = "Reverse the repayment first.";
   else if (recordChainReason !== null) blockedReason = recordChainReason;
@@ -238,6 +238,7 @@ export function useRepaymentRecoveryDialog(
             loanId: Number(loanId),
             repayment: corrected,
             valueDate,
+            chainId,
           })
           .then(({ hash }) => setRecordedHash(hash))
           .catch(() => {});

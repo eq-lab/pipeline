@@ -5,12 +5,14 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useDeal,
+  useEvmDeal,
   useRegisterDeal,
   useRegisterDealAccess,
 } from "./useDealToken";
 
 const mocks = vi.hoisted(() => ({
   readDeal: vi.fn(),
+  readEvmDeal: vi.fn(),
   registerDeal: vi.fn(),
   readCanCall: vi.fn(),
   readOperationSchedule: vi.fn(),
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@pipeline/wallet-connect", () => ({
   readDeal: mocks.readDeal,
+  readEvmDeal: mocks.readEvmDeal,
   registerDeal: mocks.registerDeal,
   registerDealArgs: (loanId: number) => [`u32:${loanId}`],
   readCanCall: mocks.readCanCall,
@@ -38,6 +41,7 @@ const ENV_CONFIGURED = {
   STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
   STELLAR_DEAL_TOKEN_FACTORY_ID: "CFACTORY",
   STELLAR_LOAN_REGISTRY_EXECUTOR_ID: "CAM",
+  EVM_DEAL_TOKEN_FACTORY_ADDRESS: "0xFACTORY",
 };
 const envMock = vi.hoisted(() => ({}) as Record<string, string | number>);
 vi.mock("@/lib/env", () => ({ ENV: envMock }));
@@ -61,6 +65,7 @@ beforeEach(() => {
   mocks.wallet.isConnected = true;
   for (const key of [
     "readDeal",
+    "readEvmDeal",
     "registerDeal",
     "readCanCall",
     "readOperationSchedule",
@@ -90,6 +95,27 @@ describe("useDeal", () => {
     renderHook(() => useDeal(STELLAR, null), { wrapper });
     renderHook(() => useDeal(STELLAR, 1.5), { wrapper });
     expect(mocks.readDeal).not.toHaveBeenCalled();
+  });
+});
+
+describe("useEvmDeal", () => {
+  it("keeps its cache apart from useDeal, so invalidation runs only its own reader", async () => {
+    mocks.readEvmDeal.mockResolvedValue({ debt: "0xDEBT" });
+    const evm = renderHook(
+      () => ({ stellar: useDeal(EVM, 7), evm: useEvmDeal(EVM, 7) }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(evm.result.current.evm.data).toEqual({ debt: "0xDEBT" }),
+    );
+    expect(evm.result.current.stellar.data).toBeUndefined();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["deal-token"] });
+      await queryClient.invalidateQueries({ queryKey: ["evm-deal-token"] });
+    });
+    expect(mocks.readDeal).not.toHaveBeenCalled();
+    expect(mocks.readEvmDeal).toHaveBeenCalledTimes(2);
+    expect(evm.result.current.stellar.data).toBeUndefined();
   });
 });
 

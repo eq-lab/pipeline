@@ -42,15 +42,10 @@ export function stellarOnlyActionReason(
   return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
 }
 
-export const EVM_RECORD_REPAYMENT_PENDING_COPY =
-  "Recording the corrected repayment on EVM is not available yet. It arrives with the EVM record-repayment flow.";
-
-export function recordRepaymentChainReason(
+export function loanActionChainReason(
   chainId: number | null | undefined,
 ): string | null {
-  if (!isStellarTarget(chainId) && chainId === ENV.EVM_CHAIN_ID) {
-    return EVM_RECORD_REPAYMENT_PENDING_COPY;
-  }
+  if (isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID) return null;
   return stellarOnlyActionReason(chainId);
 }
 

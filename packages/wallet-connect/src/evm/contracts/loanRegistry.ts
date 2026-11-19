@@ -1,7 +1,5 @@
-// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831
+// spec: docs/frontend/trustee-flows.md#wired-actions
 import {
-  BaseError,
-  ContractFunctionRevertedError,
   encodeFunctionData,
   isAddress,
   parseEventLogs,
@@ -12,10 +10,15 @@ import {
 import type {
   DrawLoanArgs,
   DrawLoanStage,
+  RolloverStage,
 } from "../../stellar/contracts/loanRegistry";
 import { accessManagerAbi } from "./accessManager";
-import { evmLoanRegistryErrorAbi } from "./riskCouncil";
-import { sendEvmContractCall } from "./write";
+import {
+  EVM_CLOSURE_REASONS,
+  EVM_LOAN_STATUSES,
+  evmLoanRegistryErrorAbi,
+} from "./riskCouncil";
+import { sendEvmContractCallChecked } from "./write";
 
 export const evmLoanRegistryDrawAbi = [
   {
@@ -186,19 +189,16 @@ export interface DrawEvmLoanResult {
   loanId: number | null;
 }
 
-function requireAddress(name: string, value: string): Address {
-  if (!value) throw new Error(`drawEvmLoan: ${name} must not be empty`);
+function requireAddress(
+  name: string,
+  value: string,
+  who = "drawEvmLoan",
+): Address {
+  if (!value) throw new Error(`${who}: ${name} must not be empty`);
   if (!isAddress(value)) {
-    throw new Error(`drawEvmLoan: invalid ${name} ${value}`);
+    throw new Error(`${who}: invalid ${name} ${value}`);
   }
   return value;
-}
-
-function isContractRevert(err: unknown): boolean {
-  return (
-    err instanceof BaseError &&
-    err.walk((e) => e instanceof ContractFunctionRevertedError) !== null
-  );
 }
 
 export async function drawEvmLoan({
@@ -214,28 +214,212 @@ export async function drawEvmLoan({
   requireAddress("caller", caller);
   const calldata = encodeEvmDrawLoanCalldata(args);
 
-  let prompted = false;
-  try {
-    const { hash, receipt } = await sendEvmContractCall({
-      abi: [...accessManagerAbi, ...evmLoanRegistryErrorAbi],
-      address: managerAddress,
-      functionName: "execute",
-      args: [registryAddress, calldata],
-      value: 0n,
-      account: caller,
-      chainId,
-      onStageChange: (stage) => {
-        if (stage === "awaiting-signature") prompted = true;
-        onStageChange?.(stage);
-      },
-    });
-    return { hash, loanId: readEvmDrawnLoanId(receipt, registryAddress) };
-  } catch (err) {
-    if (!prompted && isContractRevert(err)) {
-      throw new Error(
-        `drawEvmLoan: simulation error: ${(err as Error).message}`,
-      );
-    }
-    throw err;
+  const { hash, receipt } = await sendEvmContractCallChecked("drawEvmLoan", {
+    abi: [...accessManagerAbi, ...evmLoanRegistryErrorAbi],
+    address: managerAddress,
+    functionName: "execute",
+    args: [registryAddress, calldata],
+    value: 0n,
+    account: caller,
+    chainId,
+    onStageChange,
+  });
+  return { hash, loanId: readEvmDrawnLoanId(receipt, registryAddress) };
+}
+
+
+export const evmLoanRegistryLifecycleAbi = [
+  {
+    type: "function",
+    name: "rollover",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      { name: "newRate", type: "uint32" },
+      { name: "newMaturityTimestamp", type: "uint64" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "updateMutable",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      { name: "newStatus", type: "uint8" },
+      { name: "metadataURI", type: "string" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "closeLoan",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      { name: "reason", type: "uint8" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+const MAX_RATE_BPS = 10_000;
+const RATE_SCALE = 100;
+
+function failField(who: string, field: string, value: unknown): never {
+  throw new Error(`${who}: invalid ${field} ${String(value)}`);
+}
+
+function loanIdArg(who: string, loanId: number): bigint {
+  if (!Number.isSafeInteger(loanId) || loanId < 0) {
+    failField(who, "loanId", loanId);
   }
+  return BigInt(loanId);
+}
+
+function ordinalOf(
+  who: string,
+  field: string,
+  names: readonly string[],
+  value: string,
+): number {
+  const ordinal = names.indexOf(value);
+  if (ordinal < 0) failField(who, field, value);
+  return ordinal;
+}
+
+export function encodeEvmRolloverCalldata(
+  loanId: number,
+  newRateBps: number,
+  newMaturity: number,
+): Hex {
+  const who = "encodeEvmRolloverCalldata";
+  const id = loanIdArg(who, loanId);
+  if (
+    !Number.isInteger(newRateBps) ||
+    newRateBps < 1 ||
+    newRateBps > MAX_RATE_BPS
+  ) {
+    failField(who, "newRateBps", newRateBps);
+  }
+  if (!Number.isSafeInteger(newMaturity) || newMaturity <= 0) {
+    failField(who, "newMaturity", newMaturity);
+  }
+  return encodeFunctionData({
+    abi: evmLoanRegistryLifecycleAbi,
+    functionName: "rollover",
+    args: [id, newRateBps * RATE_SCALE, BigInt(newMaturity)],
+  });
+}
+
+export function encodeEvmUpdateMutableCalldata(
+  loanId: number,
+  status: string,
+  metadataUri: string,
+): Hex {
+  const who = "encodeEvmUpdateMutableCalldata";
+  const id = loanIdArg(who, loanId);
+  const ordinal = ordinalOf(who, "status", EVM_LOAN_STATUSES, status);
+  if (typeof metadataUri !== "string") {
+    failField(who, "metadataUri", metadataUri);
+  }
+  return encodeFunctionData({
+    abi: evmLoanRegistryLifecycleAbi,
+    functionName: "updateMutable",
+    args: [id, ordinal, metadataUri],
+  });
+}
+
+export function encodeEvmCloseLoanCalldata(
+  loanId: number,
+  reason: string,
+): Hex {
+  const who = "encodeEvmCloseLoanCalldata";
+  const id = loanIdArg(who, loanId);
+  const ordinal = ordinalOf(who, "reason", EVM_CLOSURE_REASONS, reason);
+  if (ordinal === 0) failField(who, "reason", reason);
+  return encodeFunctionData({
+    abi: evmLoanRegistryLifecycleAbi,
+    functionName: "closeLoan",
+    args: [id, ordinal],
+  });
+}
+
+export interface EvmLoanRegistryCallParams {
+  accessManager: string;
+  registry: string;
+  caller: string;
+  chainId: number;
+  onStageChange?: (stage: RolloverStage) => void;
+}
+
+async function sendLifecycle(
+  who: string,
+  {
+    accessManager,
+    registry,
+    caller,
+    chainId,
+    onStageChange,
+  }: EvmLoanRegistryCallParams,
+  encode: () => Hex,
+): Promise<{ hash: Hex }> {
+  const managerAddress = requireAddress("accessManager", accessManager, who);
+  const registryAddress = requireAddress("registry", registry, who);
+  requireAddress("caller", caller, who);
+  const calldata = encode();
+  const { hash } = await sendEvmContractCallChecked(who, {
+    abi: [...accessManagerAbi, ...evmLoanRegistryErrorAbi],
+    address: managerAddress,
+    functionName: "execute",
+    args: [registryAddress, calldata],
+    value: 0n,
+    account: caller,
+    chainId,
+    onStageChange,
+  });
+  return { hash };
+}
+
+export function rolloverEvmLoan({
+  loanId,
+  newRateBps,
+  newMaturity,
+  ...base
+}: EvmLoanRegistryCallParams & {
+  loanId: number;
+  newRateBps: number;
+  newMaturity: number;
+}): Promise<{ hash: Hex }> {
+  return sendLifecycle("rolloverEvmLoan", base, () =>
+    encodeEvmRolloverCalldata(loanId, newRateBps, newMaturity),
+  );
+}
+
+export function updateEvmMutable({
+  loanId,
+  status,
+  metadataUri,
+  ...base
+}: EvmLoanRegistryCallParams & {
+  loanId: number;
+  status: string;
+  metadataUri: string;
+}): Promise<{ hash: Hex }> {
+  return sendLifecycle("updateEvmMutable", base, () =>
+    encodeEvmUpdateMutableCalldata(loanId, status, metadataUri),
+  );
+}
+
+export function closeEvmLoan({
+  loanId,
+  reason,
+  ...base
+}: EvmLoanRegistryCallParams & {
+  loanId: number;
+  reason: string;
+}): Promise<{ hash: Hex }> {
+  return sendLifecycle("closeEvmLoan", base, () =>
+    encodeEvmCloseLoanCalldata(loanId, reason),
+  );
 }

@@ -1,5 +1,8 @@
 // spec: docs/product-specs/loan-repayment-recovery.md
 import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
@@ -12,6 +15,7 @@ import {
   type Abi,
   type Address,
   type Hex,
+  type TransactionReceipt,
 } from "viem";
 import type {
   OperationSchedule,
@@ -21,11 +25,23 @@ import type {
 } from "../../stellar/contracts/accessManager";
 import { sha256Hex } from "../../stellar/contracts/hash";
 import type { RepaymentInput } from "../../stellar/contracts/loanRegistry";
-import type { MinterRepayment } from "../../stellar/contracts/minter";
-import { readEvmOperationSchedule, relayEvm } from "./accessManager";
+import type {
+  MinterRepayment,
+  RepayStage,
+} from "../../stellar/contracts/minter";
+import {
+  accessManagerAbi,
+  readEvmOperationSchedule,
+  relayEvm,
+} from "./accessManager";
+import { evmDealNotRegisteredErrorAbi } from "./dealTokenFactory";
 import { loanIdTopic, readEvmHeadBlock, scanEvmLogs } from "./logs";
-import { evmRiskCouncilErrorAbi, readEvmMutableLoanData } from "./riskCouncil";
-import { readEvmContract } from "./write";
+import {
+  evmLoanRegistryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  readEvmMutableLoanData,
+} from "./riskCouncil";
+import { readEvmContract, sendEvmContractCallChecked } from "./write";
 
 export const minterRecoveryAbi = [
   {
@@ -108,31 +124,74 @@ export function encodeEvmReverseRepayCalldata({
   });
 }
 
-export function encodeEvmRepayCalldata({
-  loanId,
-  repayment,
-  valueDate,
-  refHash,
-  saleId = 0,
-}: EvmRepayArgs): Hex {
+const UINT256_MAX = 2n ** 256n - 1n;
+const DIGITS = /^[0-9]+$/;
+
+function failField(who: string, field: string, value: unknown): never {
+  throw new Error(`${who}: invalid ${field} ${String(value)}`);
+}
+
+function uintField(who: string, field: string, value: unknown): bigint {
+  if (typeof value !== "string" || !DIGITS.test(value)) {
+    failField(who, field, value);
+  }
+  const n = BigInt(value);
+  if (n > UINT256_MAX) failField(who, field, value);
+  return n;
+}
+
+function idField(who: string, field: string, value: number | bigint): bigint {
+  if (typeof value === "bigint") {
+    if (value < 0n || value > UINT256_MAX) failField(who, field, value);
+    return value;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) failField(who, field, value);
+  return BigInt(value);
+}
+
+function repayArgs(
+  who: string,
+  { loanId, repayment, valueDate, refHash, saleId = 0 }: EvmRepayArgs,
+) {
+  const id = idField(who, "loanId", loanId);
+  const date = Number(valueDate);
+  if (!Number.isSafeInteger(date) || date <= 0) {
+    failField(who, "valueDate", valueDate);
+  }
+  const sale = idField(who, "saleId", saleId);
+  const data = {
+    offtakerReceived: uintField(
+      who,
+      "offtaker_received",
+      repayment.offtaker_received,
+    ),
+    seniorPrincipalRepaid: uintField(
+      who,
+      "senior_principal_repaid",
+      repayment.senior_principal_repaid,
+    ),
+    seniorInterest: uintField(
+      who,
+      "senior_interest",
+      repayment.senior_interest,
+    ),
+    equityDistributed: uintField(
+      who,
+      "equity_distributed",
+      repayment.equity_distributed,
+    ),
+    mgmtFee: uintField(who, "mgmt_fee", repayment.mgmt_fee),
+    perfFee: uintField(who, "perf_fee", repayment.perf_fee),
+    oetAlloc: uintField(who, "oet_alloc", repayment.oet_alloc),
+  };
+  return [id, data, BigInt(date), checkRefHash(who, refHash), sale] as const;
+}
+
+export function encodeEvmRepayCalldata(args: EvmRepayArgs): Hex {
   return encodeFunctionData({
     abi: minterRecoveryAbi,
     functionName: "repay",
-    args: [
-      BigInt(loanId),
-      {
-        offtakerReceived: BigInt(repayment.offtaker_received),
-        seniorPrincipalRepaid: BigInt(repayment.senior_principal_repaid),
-        seniorInterest: BigInt(repayment.senior_interest),
-        equityDistributed: BigInt(repayment.equity_distributed),
-        mgmtFee: BigInt(repayment.mgmt_fee),
-        perfFee: BigInt(repayment.perf_fee),
-        oetAlloc: BigInt(repayment.oet_alloc),
-      },
-      BigInt(valueDate),
-      checkRefHash("encodeEvmRepayCalldata", refHash),
-      BigInt(saleId),
-    ],
+    args: repayArgs("encodeEvmRepayCalldata", args),
   });
 }
 
@@ -510,4 +569,289 @@ export async function readEvmRecoveryRepayments({
       };
     }),
   );
+}
+
+
+export const evmRepayErrorAbi: Abi = [
+  ...evmMinterErrorAbi,
+  ...evmLoanRegistryErrorAbi,
+  { type: "error", name: "RateLimiterExceedsTxLimit", inputs: [] },
+  { type: "error", name: "RateLimiterExceedsWindowLimit", inputs: [] },
+  ...evmDealNotRegisteredErrorAbi,
+  {
+    type: "error",
+    name: "AccessManagedUnauthorized",
+    inputs: [{ name: "caller", type: "address" }],
+  },
+];
+
+export async function evmRepaymentRefHash({
+  registry,
+  loanId,
+  nextRepaymentId,
+}: {
+  registry: string;
+  loanId: number;
+  nextRepaymentId: number;
+}): Promise<Hex> {
+  const digest = await sha256Hex(
+    `pipeline:repay:${getAddress(registry)}:${loanId}:${nextRepaymentId}`,
+  );
+  return `0x${digest}`;
+}
+
+export function readEvmRepaymentId(
+  receipt: Pick<TransactionReceipt, "logs">,
+  minter: string,
+): number | null {
+  const wanted = minter.toLowerCase();
+  const logs = parseEventLogs({
+    abi: recoveryEventsAbi,
+    eventName: "CashRepaid",
+    logs: receipt.logs,
+    strict: false,
+  });
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== wanted) continue;
+    const id = log.args.repaymentId;
+    if (typeof id !== "bigint") continue;
+    return id <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(id) : null;
+  }
+  return null;
+}
+
+function requireAddress(who: string, name: string, value: string): Address {
+  if (!value) throw new Error(`${who}: ${name} must not be empty`);
+  if (!isAddress(value)) throw new Error(`${who}: invalid ${name} ${value}`);
+  return value;
+}
+
+export interface RepayEvmLoanParams extends EvmRepayArgs {
+  minter: string;
+  caller: string;
+  chainId: number;
+  onStageChange?: (stage: RepayStage) => void;
+}
+
+export async function repayEvmLoan({
+  minter,
+  caller,
+  chainId,
+  onStageChange,
+  ...repay
+}: RepayEvmLoanParams): Promise<{ hash: Hex; repaymentId: number | null }> {
+  const who = "repayEvmLoan";
+  const minterAddress = requireAddress(who, "minter", minter);
+  requireAddress(who, "caller", caller);
+  const args = repayArgs(who, repay);
+  const { hash, receipt } = await sendEvmContractCallChecked(who, {
+    abi: [minterRecoveryAbi[1], ...evmRepayErrorAbi],
+    address: minterAddress,
+    functionName: "repay",
+    args,
+    account: caller,
+    chainId,
+    onStageChange,
+  });
+  return { hash, repaymentId: readEvmRepaymentId(receipt, minterAddress) };
+}
+
+
+export const minterDisburseAbi = [
+  {
+    type: "function",
+    name: "disburse",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "valueDate", type: "uint64" },
+      { name: "refHash", type: "bytes32" },
+    ],
+    outputs: [{ name: "entryId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "bankCash",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "refHashSeen",
+    stateMutability: "view",
+    inputs: [{ name: "refHash", type: "bytes32" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "paused",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+export const MINTER_BANK_CASH_FIELD = 8n;
+export const MINTER_REF_HASHES_SEEN_FIELD = 20n;
+
+export const evmDisburseErrorAbi: Abi = [
+  ...evmMinterErrorAbi,
+  ...evmLoanRegistryErrorAbi,
+  ...evmDealNotRegisteredErrorAbi,
+];
+
+export function evmDisburseSelector(): Hex {
+  return toFunctionSelector(minterDisburseAbi[0]);
+}
+
+export interface EvmDisburseArgs {
+  loanId: number;
+  amountRaw: string;
+  valueDate: number;
+  refHash: string;
+}
+
+function disburseArgs(
+  who: string,
+  { loanId, amountRaw, valueDate, refHash }: EvmDisburseArgs,
+) {
+  const id = idField(who, "loanId", loanId);
+  const amount = uintField(who, "amountRaw", amountRaw);
+  if (amount === 0n) failField(who, "amountRaw", amountRaw);
+  if (!Number.isSafeInteger(valueDate) || valueDate <= 0) {
+    failField(who, "valueDate", valueDate);
+  }
+  return [id, amount, BigInt(valueDate), checkRefHash(who, refHash)] as const;
+}
+
+export function encodeEvmDisburseCalldata(args: EvmDisburseArgs): Hex {
+  return encodeFunctionData({
+    abi: minterDisburseAbi,
+    functionName: "disburse",
+    args: disburseArgs("encodeEvmDisburseCalldata", args),
+  });
+}
+
+export interface DisburseEvmLoanParams extends EvmDisburseArgs {
+  accessManager: string;
+  minter: string;
+  caller: string;
+  chainId: number;
+  onStageChange?: (stage: RepayStage) => void;
+}
+
+export async function disburseEvmLoan({
+  accessManager,
+  minter,
+  caller,
+  chainId,
+  onStageChange,
+  ...disburse
+}: DisburseEvmLoanParams): Promise<{ hash: Hex }> {
+  const who = "disburseEvmLoan";
+  const managerAddress = requireAddress(who, "accessManager", accessManager);
+  const minterAddress = requireAddress(who, "minter", minter);
+  requireAddress(who, "caller", caller);
+  const calldata = encodeEvmDisburseCalldata(disburse);
+  const { hash } = await sendEvmContractCallChecked(who, {
+    abi: [...accessManagerAbi, ...evmDisburseErrorAbi],
+    address: managerAddress,
+    functionName: "execute",
+    args: [minterAddress, calldata],
+    value: 0n,
+    account: caller,
+    chainId,
+    onStageChange,
+  });
+  return { hash };
+}
+
+function isMissingFunction(err: unknown): boolean {
+  if (!(err instanceof BaseError)) return false;
+  const zero = err.walk((e) => e instanceof ContractFunctionZeroDataError);
+  if (zero) return true;
+  const reverted = err.walk((e) => e instanceof ContractFunctionRevertedError);
+  if (!(reverted instanceof ContractFunctionRevertedError)) return false;
+  return (
+    reverted.data === undefined && (!reverted.raw || reverted.raw === "0x")
+  );
+}
+
+function minterSlot(field: bigint): Hex {
+  return toHex(BigInt(MINTER_STORAGE_SLOT) + field, { size: 32 });
+}
+
+function readMinterWord(minter: Address, slot: Hex): Promise<Hex> {
+  return readEvmContract<Hex>({
+    abi: minterExtsloadAbi,
+    address: minter,
+    functionName: "extsload",
+    args: [slot],
+  });
+}
+
+export async function readEvmMinterPaused({
+  minter,
+}: {
+  minter: string;
+}): Promise<boolean> {
+  return readEvmContract<boolean>({
+    abi: minterDisburseAbi,
+    address: requireAddress("readEvmMinterPaused", "minter", minter),
+    functionName: "paused",
+  });
+}
+
+export async function readEvmMinterBankCash({
+  minter,
+}: {
+  minter: string;
+}): Promise<string> {
+  const address = requireAddress("readEvmMinterBankCash", "minter", minter);
+  try {
+    const cash = await readEvmContract<bigint>({
+      abi: minterDisburseAbi,
+      address,
+      functionName: "bankCash",
+    });
+    return cash.toString();
+  } catch (err) {
+    if (!isMissingFunction(err)) throw err;
+  }
+  const word = await readMinterWord(
+    address,
+    minterSlot(MINTER_BANK_CASH_FIELD),
+  );
+  return BigInt(word).toString();
+}
+
+export async function readEvmRefHashSeen({
+  minter,
+  refHash,
+}: {
+  minter: string;
+  refHash: string;
+}): Promise<boolean> {
+  const who = "readEvmRefHashSeen";
+  const address = requireAddress(who, "minter", minter);
+  const hash = checkRefHash(who, refHash);
+  try {
+    return await readEvmContract<boolean>({
+      abi: minterDisburseAbi,
+      address,
+      functionName: "refHashSeen",
+      args: [hash],
+    });
+  } catch (err) {
+    if (!isMissingFunction(err)) throw err;
+  }
+  const slot = keccak256(
+    encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "uint256" }],
+      [hash, BigInt(MINTER_STORAGE_SLOT) + MINTER_REF_HASHES_SEEN_FIELD],
+    ),
+  );
+  return BigInt(await readMinterWord(address, slot)) !== 0n;
 }

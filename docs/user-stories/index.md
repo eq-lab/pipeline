@@ -369,6 +369,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
 | [#1667 Trustee: hide target-chain options the API does not serve](https://github.com/eq-lab/pipeline/issues/1667) | [1667-trustee-served-chains.md](./epic-1521/1667-trustee-served-chains.md) | Initial |
 | [#1573 Trustee: EVM draw_loan path so Approve works for EVM-targeted submissions](https://github.com/eq-lab/pipeline/issues/1573) | [1573-trustee-evm-draw-loan.md](./epic-1521/1573-trustee-evm-draw-loan.md) | Initial |
+| [#1574 Trustee: EVM write paths for rollover / update lifecycle / record payment / close loan (TD-152)](https://github.com/eq-lab/pipeline/issues/1574) | [1574-trustee-evm-lifecycle-writes.md](./epic-1521/1574-trustee-evm-lifecycle-writes.md) | Initial |
 
 ---
 

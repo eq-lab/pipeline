@@ -9,6 +9,7 @@ import {
 import {
   readCanCall,
   readDeal,
+  readEvmDeal,
   readOperationSchedule,
   registerDeal,
   registerDealArgs,
@@ -20,7 +21,11 @@ import {
   type RelayStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  isStellarTarget,
+  loanActionChainReason,
+  stellarOnlyActionReason,
+} from "@/lib/targetChains";
 import { DEBT_TOKEN_NOT_CONFIGURED } from "@/lib/dealToken";
 
 export type { RelayStage };
@@ -73,6 +78,27 @@ export function useDeal(
         factoryId: ENV.STELLAR_DEAL_TOKEN_FACTORY_ID,
         loanId: loanId as number,
         ...rpc(),
+      }),
+  });
+}
+
+export function useEvmDeal(
+  chainId: number | null | undefined,
+  loanId: number | null | undefined,
+) {
+  return useQuery<DealRead | null, Error>({
+    queryKey: ["evm-deal-token", chainId ?? null, loanId ?? null],
+    enabled:
+      !isStellarTarget(chainId) &&
+      loanActionChainReason(chainId) === null &&
+      !!ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS &&
+      validLoanId(loanId),
+    staleTime: 15_000,
+    retry: false,
+    queryFn: () =>
+      readEvmDeal({
+        factory: ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS,
+        loanId: loanId as number,
       }),
   });
 }

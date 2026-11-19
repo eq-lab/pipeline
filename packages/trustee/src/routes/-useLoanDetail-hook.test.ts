@@ -82,13 +82,29 @@ describe("useLoanDetail (#1537)", () => {
     expect(result.current.hero.title).toBe("Hoodi Co · Lithium");
   });
 
-  it("reports the Stellar-only gate for a non-Stellar loan and nothing for a Stellar one", () => {
+  it("opens the on-chain actions on Stellar and on the configured EVM chain", () => {
     const evm = renderHook(() => useLoanDetail(560048, "4"));
-    expect(evm.result.current.onChainBlockedReason).toContain("lives on Hoodi");
+    expect(evm.result.current.hero.title).toBe("Hoodi Co · Lithium");
+    expect(evm.result.current.onChainBlockedReason).toBeNull();
 
     const stellar = renderHook(() => useLoanDetail(99_000_001, "4"));
     expect(stellar.result.current.hero.title).toBe("Stellar Co · Lithium");
     expect(stellar.result.current.onChainBlockedReason).toBeNull();
+  });
+
+  it("reports the Stellar-only gate for an unknown chain", () => {
+    mockUseLoanBook.mockReturnValue({
+      ...IDLE,
+      data: {
+        loans: [
+          entry({ chain_id: 1234, loan_id: "4", originator: "Other Co" }),
+        ],
+      },
+    } as never);
+    const other = renderHook(() => useLoanDetail(1234, "4"));
+    expect(other.result.current.onChainBlockedReason).toContain(
+      "lives on Chain 1234",
+    );
   });
 
   it("reports no gate while the row is unknown", () => {

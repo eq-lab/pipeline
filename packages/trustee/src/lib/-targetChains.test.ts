@@ -12,8 +12,7 @@ import {
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
-  EVM_RECORD_REPAYMENT_PENDING_COPY,
-  recordRepaymentChainReason,
+  loanActionChainReason,
   riskCouncilChainReason,
   riskCouncilTargetId,
   sameChainAddress,
@@ -135,21 +134,20 @@ describe("drawChainReason (#1573)", () => {
   });
 });
 
-describe("recordRepaymentChainReason (#1943)", () => {
-  it("never blocks Stellar", () => {
-    expect(recordRepaymentChainReason(99_000_001)).toBeNull();
-    expect(recordRepaymentChainReason(null)).toBeNull();
+describe("loanActionChainReason (#1574)", () => {
+  it("never blocks Stellar or a missing chain id", () => {
+    expect(loanActionChainReason(99_000_001)).toBeNull();
+    expect(loanActionChainReason(null)).toBeNull();
+    expect(loanActionChainReason(undefined)).toBeNull();
   });
 
-  it("explains that the corrected EVM repayment is not available yet", () => {
-    expect(recordRepaymentChainReason(560048)).toBe(
-      EVM_RECORD_REPAYMENT_PENDING_COPY,
-    );
-    expect(EVM_RECORD_REPAYMENT_PENDING_COPY).not.toMatch(/Stellar only|#\d/);
+  it("opens the configured EVM chain", () => {
+    expect(loanActionChainReason(560048)).toBeNull();
   });
 
   it("keeps the Stellar-only copy for any other chain id", () => {
-    expect(recordRepaymentChainReason(1)).toBe(stellarOnlyActionReason(1));
+    expect(loanActionChainReason(1234)).toBe(stellarOnlyActionReason(1234));
+    expect(loanActionChainReason(1234)).toMatch(/Stellar only/);
   });
 });
 
