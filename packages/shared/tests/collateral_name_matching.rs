@@ -203,3 +203,21 @@ fn metal_absent_from_the_assay_still_gets_grade_zero() {
     let base = waterfall(&la, &offtake("gold", "silver", "gold", "arsenic"));
     assert_eq!(with_platinum.gross_value, base.gross_value);
 }
+
+#[test]
+fn case_duplicate_payable_terms_value_like_the_first_occurrence() {
+    let (la, mut lo) = lower();
+    let base = waterfall(&la, &lo);
+    let dup = lo.payable_terms.0[0].clone();
+    lo.payable_terms.0.insert(
+        1,
+        PayableTermJson {
+            metal: "Gold".to_owned(),
+            ..dup
+        },
+    );
+    let got = waterfall(&la, &lo);
+    assert_eq!(got.gross_value, base.gross_value);
+    assert_eq!(got.refining_charge, base.refining_charge);
+    assert_eq!(got.collateral_value, base.collateral_value);
+}

@@ -39,7 +39,7 @@ fn grams_per_troy_oz() -> BigDecimal {
 
 /// Map a payable-metal name (as stored in `payable_terms`/`assays`, e.g. `"gold"`) to
 /// its price-feed asset symbol — the MetalpriceAPI / Chainlink code, e.g. `"XAU"`.
-/// Case- and whitespace-insensitive. Returns `None` for a metal outside the known precious-metal set:
+/// Case-insensitive. Returns `None` for a metal outside the known precious-metal set:
 /// its collateral cannot be priced, so the loan reads "unpriced" rather than being
 /// silently mispriced against another metal's feed.
 pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
@@ -52,7 +52,6 @@ pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
     }
 }
 
-/// Metal / element names match ignoring ASCII case and surrounding whitespace.
 pub fn same_name(a: &str, b: &str) -> bool {
     a.trim().eq_ignore_ascii_case(b.trim())
 }
@@ -331,7 +330,7 @@ fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
 }
 
 /// Join offtake payable terms with assay grades, refining charges, and each metal's own
-/// reference price. Names match case- and whitespace-insensitively. A metal absent from the assay/refining list defaults to grade/charge
+/// reference price. A metal absent from the assay/refining list defaults to grade/charge
 /// 0. Each metal is priced by resolving its name to a price-feed asset symbol
 /// ([`asset_for_metal`]) and looking that symbol up in `prices`. Returns `Ok(None)` when
 /// any payable metal maps to no known symbol or has no price yet — the loan is unpriced,
@@ -342,7 +341,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
     prices: &HashMap<String, BigDecimal, S>,
 ) -> anyhow::Result<Option<Vec<PayableMetal>>> {
     let mut metals = Vec::with_capacity(offtake.payable_terms.0.len());
-    for term in &offtake.payable_terms.0 {
+    for (i, term) in offtake.payable_terms.0.iter().enumerate() {
+        if offtake.payable_terms.0[..i]
+            .iter()
+            .any(|p| same_name(&p.metal, &term.metal))
+        {
+            continue;
+        }
         let Some(reference_price) = asset_for_metal(&term.metal).and_then(|a| prices.get(a)) else {
             return Ok(None);
         };

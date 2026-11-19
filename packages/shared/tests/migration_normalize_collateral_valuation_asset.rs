@@ -10,15 +10,22 @@ fn flat() -> String {
 #[test]
 fn the_asset_update_is_guarded_and_idempotent() {
     assert!(flat().contains(
-        "UPDATE loan_collateral_valuations SET asset = upper(btrim(asset)), updated_at = now() WHERE asset <> upper(btrim(asset));"
+        "UPDATE loan_collateral_valuations SET asset = upper(btrim(asset, E' \\t\\n\\r\\f\\v')), updated_at = now() WHERE asset <> upper(btrim(asset, E' \\t\\n\\r\\f\\v'));"
     ));
 }
 
 #[test]
 fn the_provider_update_is_guarded_and_idempotent() {
     assert!(flat().contains(
-        "UPDATE loan_collateral_valuations SET price_provider = lower(btrim(price_provider)), updated_at = now() WHERE price_provider <> lower(btrim(price_provider));"
+        "UPDATE loan_collateral_valuations SET price_provider = lower(btrim(price_provider, E' \\t\\n\\r\\f\\v')), updated_at = now() WHERE price_provider <> lower(btrim(price_provider, E' \\t\\n\\r\\f\\v'));"
     ));
+}
+
+#[test]
+fn trimming_covers_the_same_whitespace_as_rust_trim() {
+    let set = r"E' \t\n\r\f\v'";
+    assert_eq!(SQL.matches(set).count(), 4);
+    assert!(!SQL.contains("btrim(asset)") && !SQL.contains("btrim(price_provider)"));
 }
 
 #[test]

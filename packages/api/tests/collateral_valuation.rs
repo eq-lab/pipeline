@@ -439,8 +439,6 @@ fn unbounded_exponent_grade_is_rejected() {
     assert!(err.contains("grade_g_per_t"), "unexpected error: {err}");
 }
 
-// ── name hygiene ─────────────────────────────────────────────────────────────
-
 #[test]
 fn blank_names_are_rejected_in_every_list() {
     let mut a = valid_assay();

@@ -370,9 +370,9 @@ pub struct LocationInput {
 pub struct CollateralValuationInput {
     /// One of `StandardGoods`, `MetalConcentrate`.
     pub valuation_mode: String,
-    /// Headline symbol for the price feed (e.g. `XAU`); trimmed and upper-cased at ingest.
+    /// Headline symbol for the price feed (e.g. `XAU`).
     pub asset: String,
-    /// Selects the `PriceProvider` implementation; trimmed and lower-cased at ingest.
+    /// Selects the `PriceProvider` implementation.
     pub price_provider: String,
     /// Haircut applied to collateral value — decimal fraction string in `[0, 1]`.
     pub haircut_pct: String,
@@ -1304,7 +1304,11 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
     if !shared::security_marks::valid_asset(&req.collateral_valuation.asset) {
         return Err(format!(
             "`asset` must be 1-16 characters of A-Z, 0-9, `_` or `-` (got `{}`)",
-            req.collateral_valuation.asset
+            req.collateral_valuation
+                .asset
+                .chars()
+                .take(32)
+                .collect::<String>()
         ));
     }
     if !is_known_provider(&req.collateral_valuation.price_provider) {

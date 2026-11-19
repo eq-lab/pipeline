@@ -943,7 +943,13 @@ fn build_metals(
         .payable_terms
         .0
         .iter()
-        .map(|term| MetalInput {
+        .enumerate()
+        .filter(|(i, term)| {
+            !offtake.payable_terms.0[..*i]
+                .iter()
+                .any(|p| same_name(&p.metal, &term.metal))
+        })
+        .map(|(_, term)| MetalInput {
             metal: term.metal.clone(),
             grade_g_per_t: assay
                 .assays
