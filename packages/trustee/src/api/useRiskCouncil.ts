@@ -53,6 +53,7 @@ import type { PendingTargetKind } from "@/api/pendingOperations";
 import { otherWalletCopy } from "@/lib/accessManagerAction";
 import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
+import { evmPreflight } from "@/lib/evmPreflight";
 import {
   isStellarTarget,
   riskCouncilChainReason,
@@ -442,31 +443,39 @@ export function useRiskCouncilRelay() {
       const { address, isConnected } = wallet;
       const target = councilTarget(call);
       if (wallet.kind === "evm") {
-        const evm = evmCouncilConfig(call.fn);
-        if (!evm) throw new Error(notConfiguredFor(target));
-        if (!isConnected || !address) {
-          throw new Error("EVM wallet not connected.");
-        }
+        const { config: evm, caller: evmCaller } = evmPreflight({
+          chainId,
+          wallet,
+          config: evmCouncilConfig(call.fn),
+          notConfigured: notConfiguredFor(target),
+          chainReason: riskCouncilChainReason,
+        });
         let executing: OperationSchedule | undefined;
         if (mode === "execute") {
           try {
-            executing = await readEvmScheduleFor(evm, call, address);
+            executing = await readEvmScheduleFor(evm, call, evmCaller);
           } catch {
             executing = undefined;
           }
         }
-        const { hash } = await relayEvmFor(evm, call, address, mode, setStage);
+        const { hash } = await relayEvmFor(
+          evm,
+          call,
+          evmCaller,
+          mode,
+          setStage,
+        );
         if (mode !== "schedule") return { hash, schedule: executing };
         let schedule: OperationSchedule | undefined;
         try {
-          schedule = await readEvmScheduleFor(evm, call, address);
+          schedule = await readEvmScheduleFor(evm, call, evmCaller);
         } catch {
           schedule = undefined;
         }
         return {
           hash,
           schedule,
-          caller: address,
+          caller: evmCaller,
           target: evm.target,
           calldata: evmCalldataFor(call),
         };
@@ -610,12 +619,18 @@ export function usePendingOperationExecute() {
       const wallet = pickChainWallet(chainId, stellarWallet, evmWallet);
       const { address, isConnected } = wallet;
       if (wallet.kind === "evm") {
-        const accessManager = ENV.EVM_ACCESS_MANAGER_ADDRESS;
-        if (!accessManager) throw new Error(NOT_CONFIGURED);
-        if (!isConnected || !address) {
-          throw new Error("EVM wallet not connected.");
-        }
-        if (!sameChainAddress(chainId, address, caller)) {
+        const {
+          config: accessManager,
+          caller: evmCaller,
+          chainId: evmChainId,
+        } = evmPreflight({
+          chainId,
+          wallet,
+          config: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          notConfigured: NOT_CONFIGURED,
+          chainReason: riskCouncilChainReason,
+        });
+        if (!sameChainAddress(chainId, evmCaller, caller)) {
           throw new Error(otherWalletCopy(caller));
         }
         if (calldata == null) throw new PendingArgsMismatchError();
@@ -627,7 +642,7 @@ export function usePendingOperationExecute() {
         if (schedule.readyAt === 0) throw new NoLongerScheduledError();
         const { hash } = await executeEvmScheduledOperation({
           ...evmBase,
-          chainId: ENV.EVM_CHAIN_ID,
+          chainId: evmChainId,
           errorAbi: evmErrorAbiFor(targetKind),
           onStageChange: setStage,
         });

@@ -1,9 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#wired-actions
 import {
   encodeFunctionData,
-  isAddress,
   parseEventLogs,
-  type Address,
   type Hex,
   type TransactionReceipt,
 } from "viem";
@@ -13,6 +11,7 @@ import type {
   RolloverStage,
 } from "../../stellar/contracts/loanRegistry";
 import { accessManagerAbi } from "./accessManager";
+import { requireAddress } from "./args";
 import {
   EVM_CLOSURE_REASONS,
   EVM_LOAN_STATUSES,
@@ -189,18 +188,6 @@ export interface DrawEvmLoanResult {
   loanId: number | null;
 }
 
-function requireAddress(
-  name: string,
-  value: string,
-  who = "drawEvmLoan",
-): Address {
-  if (!value) throw new Error(`${who}: ${name} must not be empty`);
-  if (!isAddress(value)) {
-    throw new Error(`${who}: invalid ${name} ${value}`);
-  }
-  return value;
-}
-
 export async function drawEvmLoan({
   accessManager,
   registry,
@@ -209,9 +196,13 @@ export async function drawEvmLoan({
   args,
   onStageChange,
 }: DrawEvmLoanParams): Promise<DrawEvmLoanResult> {
-  const managerAddress = requireAddress("accessManager", accessManager);
-  const registryAddress = requireAddress("registry", registry);
-  requireAddress("caller", caller);
+  const managerAddress = requireAddress(
+    "drawEvmLoan",
+    "accessManager",
+    accessManager,
+  );
+  const registryAddress = requireAddress("drawEvmLoan", "registry", registry);
+  requireAddress("drawEvmLoan", "caller", caller);
   const calldata = encodeEvmDrawLoanCalldata(args);
 
   const { hash, receipt } = await sendEvmContractCallChecked("drawEvmLoan", {
@@ -226,7 +217,6 @@ export async function drawEvmLoan({
   });
   return { hash, loanId: readEvmDrawnLoanId(receipt, registryAddress) };
 }
-
 
 export const evmLoanRegistryLifecycleAbi = [
   {
@@ -364,9 +354,9 @@ async function sendLifecycle(
   }: EvmLoanRegistryCallParams,
   encode: () => Hex,
 ): Promise<{ hash: Hex }> {
-  const managerAddress = requireAddress("accessManager", accessManager, who);
-  const registryAddress = requireAddress("registry", registry, who);
-  requireAddress("caller", caller, who);
+  const managerAddress = requireAddress(who, "accessManager", accessManager);
+  const registryAddress = requireAddress(who, "registry", registry);
+  requireAddress(who, "caller", caller);
   const calldata = encode();
   const { hash } = await sendEvmContractCallChecked(who, {
     abi: [...accessManagerAbi, ...evmLoanRegistryErrorAbi],

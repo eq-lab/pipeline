@@ -8,18 +8,18 @@ Parent epic: #1937 (EVM parity). Review origin: PR #2055 comment https://github.
 
 A pure refactor with no behaviour change. Every thrown message, guard order, query key, stage and on-chain call stays the same. It has four parts.
 
-1. **One EVM preflight helper in `packages/trustee`.** Add `packages/trustee/src/lib/evmPreflight.ts` next to `lib/chainWallet.ts`. The EVM arm of each of these hooks calls it:
+1. [x] **One EVM preflight helper in `packages/trustee`.** Add `packages/trustee/src/lib/evmPreflight.ts` next to `lib/chainWallet.ts`. The EVM arm of each of these hooks calls it:
    - `useRollover`, `useUpdateLifecycle`, `useCloseLoan`, `useRecordPayment` and `useDisburse` (the five named in the issue).
    - `useDrawLoan`, a sixth copy from #1573/TD-151 with the same sequence under `drawChainReason`.
    - `useRiskCouncilRelay` and `usePendingOperationExecute` (`useRiskCouncil.ts:579`), both in `api/useRiskCouncil.ts` from #1942 (PR #2036) and #1943 (PR #2039). These are the seventh and eighth copies.
 
    The helper runs chain gate, then config check, then wallet check, and returns `{ config, caller, chainId: ENV.EVM_CHAIN_ID }`. The chain switch itself already lives in one place, `sendEvmContractCall` in `packages/wallet-connect/src/evm/contracts/write.ts`, which calls `switchChain` when `connection.chainId !== chainId`. So the helper's part of the "chain switch" step is handing out the single target `chainId`. The switch code does not move.
-2. **One `requireAddress` in wallet-connect.** Add `packages/wallet-connect/src/evm/contracts/args.ts` with `requireAddress(who, name, value): Address`. It keeps `minter.ts`'s argument order, which matches the `"<who>: …"` message order and the existing `requireAddresses(who, …)` and `requireCalldata(who, …)` helpers. It replaces:
+2. [x] **One `requireAddress` in wallet-connect.** Add `packages/wallet-connect/src/evm/contracts/args.ts` with `requireAddress(who, name, value): Address`. It keeps `minter.ts`'s argument order, which matches the `"<who>: …"` message order and the existing `requireAddresses(who, …)` and `requireCalldata(who, …)` helpers. It replaces:
    - the two private copies in `minter.ts:623` and `loanRegistry.ts:192`;
    - `requireEvmRegistry` in `riskCouncil.ts:442`, a third private variant with arguments `(registry, who)`;
    - three inline copies that produce exactly the same messages: `readEvmMinterRepayment` (`minter.ts:398`), `readEvmDeal` (`dealTokenFactory.ts:60`) and `readEvmSecurityInspectors` (`securityRegistry.ts:444`).
-3. **One chain-reason predicate in `packages/trustee/src/lib/targetChains.ts`.** `riskCouncilChainReason` and `loanActionChainReason` return the same value for every input, because `stellarOnlyActionReason` already returns `null` on Stellar. Keep `loanActionChainReason` as the only implementation and make `riskCouncilChainReason` delegate to it, as the issue allows. Both names stay, so the ~25 call sites and the pinned tests do not change. `drawChainReason` uses the same open-chain predicate through a private `isSignableChain`, and its own copy stays.
-4. **One decimals-parameterised unit module.** `packages/trustee/src/utils/stellarSacUnits.ts` becomes the only home for raw/decimal conversion:
+3. [x] **One chain-reason predicate in `packages/trustee/src/lib/targetChains.ts`.** `riskCouncilChainReason` and `loanActionChainReason` return the same value for every input, because `stellarOnlyActionReason` already returns `null` on Stellar. Keep `loanActionChainReason` as the only implementation and make `riskCouncilChainReason` delegate to it, as the issue allows. Both names stay, so the ~25 call sites and the pinned tests do not change. `drawChainReason` uses the same open-chain predicate through a private `isSignableChain`, and its own copy stays.
+4. [x] **One decimals-parameterised unit module.** `packages/trustee/src/utils/stellarSacUnits.ts` becomes the only home for raw/decimal conversion:
    - `rawToDecimal(raw, decimals)` moves there from `lib/disburse.ts`.
    - `lib/wireOut.ts`'s `rawToDecimal7` becomes a one-line wrapper, `rawToDecimal(raw, SAC_DECIMALS)`. Its byte-identical 7-dp output is pinned by `lib/-wireOut.test.ts`.
    - `parseDisburseAmount` moves there as `parseExactAmount(input, decimals)`: strict, with no truncation and no `$`/`,` stripping.
@@ -53,13 +53,13 @@ _None_
 
 ## Implementation Steps
 
-1. **`lib/targetChains.ts` (item 3).**
+1. [x] **`lib/targetChains.ts` (item 3).**
    - Add a private `function isSignableChain(chainId): boolean { return isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID; }`.
    - `loanActionChainReason` becomes `isSignableChain(chainId) ? null : stellarOnlyActionReason(chainId)`.
    - `riskCouncilChainReason` becomes `return loanActionChainReason(chainId);`. Keep it as an exported `function` so call sites, the `-targetChains.test.ts` imports and spec references still resolve.
    - `drawChainReason` uses `isSignableChain`, and its copy is unchanged.
 
-2. **New `packages/trustee/src/lib/evmPreflight.ts` (item 1).** Header: `// spec: docs/frontend/trustee-flows.md#evm-1574`, with no other comments.
+2. [x] **New `packages/trustee/src/lib/evmPreflight.ts` (item 1).** Header: `// spec: docs/frontend/trustee-flows.md#evm-1574`, with no other comments.
    - `export const EVM_WALLET_NOT_CONNECTED = "EVM wallet not connected.";`
    - `export interface EvmPreflightInput<T> { chainId: number | null | undefined; wallet: ChainWallet; config: T | null | false; notConfigured: string; chainReason?: (chainId: number | null | undefined) => string | null; }`
    - `export interface EvmPreflight<T> { config: T; caller: string; chainId: number; }`
@@ -70,7 +70,7 @@ _None_
      4. returns `{ config, caller: wallet.address, chainId: ENV.EVM_CHAIN_ID }`.
    - `export function evmLoanRegistryConfig(): { accessManager: string; registry: string } | null` returns `ENV.EVM_ACCESS_MANAGER_ADDRESS` and `ENV.EVM_LOAN_REGISTRY_ADDRESS` when both are set, otherwise `null`. It reads `ENV` at call time.
 
-3. **Route the hooks through the helper.** Only the EVM arm (`if (wallet.kind === "evm") { … }`) changes, and each keeps its own not-configured sentence verbatim. Rename the returned `chainId` to `evmChainId` when destructuring, so it does not shadow the input.
+3. [x] **Route the hooks through the helper.** Only the EVM arm (`if (wallet.kind === "evm") { … }`) changes, and each keeps its own not-configured sentence verbatim. Rename the returned `chainId` to `evmChainId` when destructuring, so it does not shadow the input.
    - `api/useRollover.ts`: `evmPreflight({ chainId, wallet, config: evmLoanRegistryConfig(), notConfigured: "On-chain rollover is not configured for this environment." })`, then `rolloverEvmLoan({ accessManager: config.accessManager, registry: config.registry, caller, chainId: evmChainId, … })`. Drop the now-unused `loanActionChainReason` import.
    - `api/useUpdateLifecycle.ts`: the same, with "On-chain lifecycle updates are not configured for this environment.". `useLoanMutableState` is unchanged and still uses `loanActionChainReason`.
    - `api/useCloseLoan.ts`: the same, with "On-chain loan closing is not configured for this environment.".
@@ -83,7 +83,7 @@ _None_
    - `api/useRiskCouncil.ts`, `usePendingOperationExecute` (line 579): leave the leading gate, the target mismatch and the paused check where they are. In the EVM arm, replace the `accessManager` and connected checks with `const { config: accessManager, caller: address } = evmPreflight({ chainId, wallet, config: ENV.EVM_ACCESS_MANAGER_ADDRESS, notConfigured: NOT_CONFIGURED, chainReason: riskCouncilChainReason });`. The `sameChainAddress(chainId, address, caller)` check that follows and the rest stay. `executeEvmScheduledOperation`'s `chainId: ENV.EVM_CHAIN_ID` may use the returned chain id.
    - Run `yarn workspace @pipeline/trustee test` after each hook. Its existing `-use*.test.tsx` suites pin the messages and their order.
 
-4. **wallet-connect `requireAddress` (item 2).**
+4. [x] **wallet-connect `requireAddress` (item 2).**
    - New `packages/wallet-connect/src/evm/contracts/args.ts`. Header: `// spec: docs/frontend/wallet-flows.md#trustee-evm-contract-client`. It contains `export function requireAddress(who: string, name: string, value: string): Address`. The body is `minter.ts:623-627` verbatim: `"<who>: <name> must not be empty"`, then `"<who>: invalid <name> <value>"` via viem `isAddress(value)`. Do not re-export it from `src/index.ts`.
    - `minter.ts`: delete the local `requireAddress` and import from `./args`. Replace the inline `readEvmMinterRepayment` check (lines 398-402) with `requireAddress("readEvmMinterRepayment", "minter", minter)`. Drop `isAddress` from the viem import if it becomes unused, but `minter.ts:497` still uses it.
    - `loanRegistry.ts`: delete the local copy. `drawEvmLoan` calls `requireAddress("drawEvmLoan", "accessManager", accessManager)`, and likewise for `"registry"` and `"caller"`. `sendLifecycle` calls `requireAddress(who, "accessManager", accessManager)`, and likewise for the other two. Remove unused `isAddress` imports.
@@ -91,7 +91,7 @@ _None_
    - `dealTokenFactory.ts:60-63` and `securityRegistry.ts:444-450`: replace each with one `requireAddress(...)` call carrying the same `who` and `name`.
    - Run `yarn workspace @pipeline/wallet-connect test`.
 
-5. **Unit helpers (item 4).** In `packages/trustee/src/utils/stellarSacUnits.ts`:
+5. [x] **Unit helpers (item 4).** In `packages/trustee/src/utils/stellarSacUnits.ts`:
    - Replace the 5-line JSDoc header with `// spec: docs/frontend/trustee-flows.md#disburse-1898`. Leave the existing `economicsUsdDecimal` JSDoc untouched, since it is not flagged in the baseline (`nodeIds: 0`) and this issue adds or edits no comments.
    - Add a private `scaleToRaw(whole: string, fraction: string, decimals: number): bigint`, returning `BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"))`.
    - `usdInputToSacBaseUnits` uses it on its already-sliced fraction, with the same regex, stripping and `> 0n` rule.
@@ -102,7 +102,7 @@ _None_
    - `lib/wireOut.ts`: `export function rawToDecimal7(raw: string): string { return rawToDecimal(raw, SAC_DECIMALS); }`. The four callers (`-ConversionsSection.tsx`, `-wire-outs.ts`, `-conversions.ts`, `lib/conversions.ts`) stay unchanged.
    - Run `npx tsx scripts/lint-comments.ts --update-baseline` so the `stellarSacUnits.ts` entry is dropped or shrunk, and commit the smaller baseline.
 
-6. **Docs (see below), then the gates.**
+6. [x] **Docs (see below), then the gates.**
    - `yarn workspace @pipeline/trustee test`
    - `yarn workspace @pipeline/wallet-connect test`
    - `yarn workspace @pipeline/trustee lint`

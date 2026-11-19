@@ -21,6 +21,7 @@ import {
   type SecurityRegistryCall,
 } from "../../stellar/contracts/securityRegistry";
 import { readEvmOperationSchedule, relayEvm } from "./accessManager";
+import { requireAddress } from "./args";
 import { readEvmContract } from "./write";
 
 export const evmSecurityRegistryAbi = [
@@ -441,14 +442,7 @@ export async function readEvmSecurityInspectors({
 }: {
   recordNft: string;
 }): Promise<string[]> {
-  if (!recordNft) {
-    throw new Error("readEvmSecurityInspectors: recordNft must not be empty");
-  }
-  if (!isAddress(recordNft)) {
-    throw new Error(
-      `readEvmSecurityInspectors: invalid recordNft ${recordNft}`,
-    );
-  }
+  requireAddress("readEvmSecurityInspectors", "recordNft", recordNft);
   const inspectors = await readEvmContract<readonly string[]>({
     abi: evmSecurityRecordNftAbi,
     address: recordNft as Address,

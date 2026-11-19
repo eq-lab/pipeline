@@ -29,6 +29,7 @@ import {
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
+import { evmPreflight } from "@/lib/evmPreflight";
 import { isStellarTarget, loanActionChainReason } from "@/lib/targetChains";
 import {
   DISBURSE_NOT_CONFIGURED,
@@ -231,9 +232,12 @@ export function useDisburse() {
         throw new Error(DISBURSE_NOT_CONFIGURED);
 
       if (wallet.kind === "evm") {
-        if (!wallet.isConnected || !wallet.address) {
-          throw new Error("EVM wallet not connected.");
-        }
+        const { caller, chainId: evmChainId } = evmPreflight({
+          chainId,
+          wallet,
+          config: disburseConfigured(chainId),
+          notConfigured: DISBURSE_NOT_CONFIGURED,
+        });
         const evmRefHash = `0x${await bankReferenceRefHash(reference)}`;
         const evmSeen = await readEvmRefHashSeen({
           minter: ENV.EVM_MINTER_ADDRESS,
@@ -246,8 +250,8 @@ export function useDisburse() {
         return disburseEvmLoan({
           accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
           minter: ENV.EVM_MINTER_ADDRESS,
-          caller: wallet.address,
-          chainId: ENV.EVM_CHAIN_ID,
+          caller,
+          chainId: evmChainId,
           loanId,
           amountRaw,
           valueDate,

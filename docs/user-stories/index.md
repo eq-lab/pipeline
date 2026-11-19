@@ -446,6 +446,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1942 Trustee: Risk Council security page and inspectors on EVM loans](https://github.com/eq-lab/pipeline/issues/1942) | [1942-trustee-evm-security-page.md](./epic-1937/1942-trustee-evm-security-page.md) | Initial |
 | [#1943 Trustee: Risk Council hub, escalate, reterm, writedown and repayment recovery on EVM loans](https://github.com/eq-lab/pipeline/issues/1943) | [1943-trustee-evm-rc-pages.md](./epic-1937/1943-trustee-evm-rc-pages.md) | Initial |
 
+| [#2060 Trustee + wallet-connect: consolidate duplicated EVM preflight and helpers](https://github.com/eq-lab/pipeline/issues/2060) | [2060-evm-preflight-consolidation.md](./epic-1937/2060-evm-preflight-consolidation.md) | Initial |
 
 ## Epic #2029 — Frontend tech debt
 

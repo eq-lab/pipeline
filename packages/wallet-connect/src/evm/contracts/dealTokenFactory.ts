@@ -3,10 +3,10 @@ import {
   BaseError,
   ContractFunctionRevertedError,
   getAddress,
-  isAddress,
   type Abi,
 } from "viem";
 import type { DealRead } from "../../stellar/contracts/dealTokenFactory";
+import { requireAddress } from "./args";
 import { readEvmContract } from "./write";
 
 export const evmDealNotRegisteredErrorAbi = [
@@ -57,17 +57,14 @@ export async function readEvmDeal({
   factory: string;
   loanId: number;
 }): Promise<DealRead | null> {
-  if (!factory) throw new Error("readEvmDeal: factory must not be empty");
-  if (!isAddress(factory)) {
-    throw new Error(`readEvmDeal: invalid factory ${factory}`);
-  }
+  const factoryAddress = requireAddress("readEvmDeal", "factory", factory);
   if (!Number.isSafeInteger(loanId) || loanId < 0) {
     throw new Error(`readEvmDeal: invalid loanId ${loanId}`);
   }
   try {
     const data = await readEvmContract<{ debt: string }>({
       abi: evmDealTokenFactoryAbi,
-      address: factory,
+      address: factoryAddress,
       functionName: "deal",
       args: [BigInt(loanId)],
     });
