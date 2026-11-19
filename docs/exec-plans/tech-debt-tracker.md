@@ -2026,13 +2026,13 @@ line, whichever section it lands in.
 - **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
 - **Follow-up (#1595):** `YieldMinted` is no longer indexed, so the Dashboard's `cumulative_yield_total` and `/v1/dashboard/yield-history` froze; they now add Minter `CashRepaid` mints (net of `CashRepaymentReversed`) to the historical `YieldMinted` rows (#1533), as the LoanBook `minted_yield` does (#1525). The portfolio `GET /v1/stats/yield` is a separate gross-accrual estimate and is unaffected.
 
-### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
+### TD-131: No Ethereum mainnet deployment of the reworked contracts, and no prod environment mapping for EVM [PARTIALLY RESOLVED 2026-11-18 / #1503]
 
-- **Date:** 2026-10-08
-- **Location:** `pipeline-contracts/deployments/` (4 months stale, pre-rework), `argocd/pipeline/test.yaml`, `argocd/pipeline/prod.yaml` (both: `CHAINS` is Stellar-only, zero `CHAIN_*_ETH_RPC_URL`/EVM keys) — Issue #1434, finding F9.
-- **Gap:** `pipeline-contracts` has no deploy CI job and no docs naming which deployment serves which environment; the only configured chain anywhere (`script/base/ChainValues.sol`) is Hoodi, whose deployment JSONs are pre-rework and un-configured in either argocd environment.
-- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
-- **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
+- **Date:** 2026-10-08 (narrowed 2026-11-18)
+- **Location:** `pipeline-contracts/deployments/` (only `hoodi-v5.json` is post-rework; no mainnet file), `argocd/pipeline/prod.yaml` (`CHAINS="99000002"`, zero `VITE_*` EVM addresses) — Issue #1434, finding F9.
+- **Gap:** A post-rework Hoodi deployment exists (`hoodi-v5.json`, contracts #50/#53) and stage (`argocd/pipeline/test.yaml`) runs it: `CHAINS="99000001,560048"`, API/worker `CHAIN_560048_*` and LP/Trustee `VITE_EVM_*` addresses are mapped (argocd #498–#501). What remains is mainnet only: no Ethereum mainnet deployment of the reworked contracts, so there are no addresses or deploy block to put in `prod.yaml`, and `pipeline-contracts` still has no deploy CI job or doc naming which deployment serves which environment.
+- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance. Prod EVM stays dark by design. The exact variables to flip once a mainnet deployment exists are in the #1436 comment; the repo-side env docs (`.env.example`, `docs/FRONTEND.md`) are current for Hoodi v5 (#1503).
+- **Suggested fix:** Deploy the reworked contracts to mainnet, then follow #1436; stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` has for `test.yaml`'s deployment-id references.
 
 ### TD-132: `outstanding` is defined two ways between the EVM contract and the API [PARTIALLY RESOLVED 2026-10-15 / #1524]
 
