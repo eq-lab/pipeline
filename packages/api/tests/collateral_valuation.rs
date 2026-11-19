@@ -438,3 +438,76 @@ fn unbounded_exponent_grade_is_rejected() {
     let err = validate_assay(&r).unwrap_err();
     assert!(err.contains("grade_g_per_t"), "unexpected error: {err}");
 }
+
+// ── name hygiene ─────────────────────────────────────────────────────────────
+
+#[test]
+fn blank_names_are_rejected_in_every_list() {
+    let mut a = valid_assay();
+    a.assays[0].metal = "  ".to_owned();
+    assert!(validate_assay(&a).unwrap_err().contains("assays"));
+    let mut a = valid_assay();
+    a.deleterious[0].element = String::new();
+    assert!(validate_assay(&a).unwrap_err().contains("deleterious"));
+    let mut o = valid_offtake();
+    o.payable_terms[0].metal = " ".to_owned();
+    assert!(validate_offtake(&o).unwrap_err().contains("payable_terms"));
+    let mut o = valid_offtake();
+    o.refining_charges[0].metal = String::new();
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("refining_charges"));
+    let mut o = valid_offtake();
+    o.penalty_schedule[0].element = "\t".to_owned();
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("penalty_schedule"));
+}
+
+#[test]
+fn duplicate_assay_names_differing_by_case_are_rejected() {
+    let mut a = valid_assay();
+    a.assays.push(AssayMetalInput {
+        metal: "Gold".to_owned(),
+        grade_g_per_t: "10".to_owned(),
+    });
+    assert!(validate_assay(&a).unwrap_err().contains("duplicate assays"));
+    let mut a = valid_assay();
+    a.deleterious.push(DeleteriousInput {
+        element: "Arsenic ".to_owned(),
+        level: "1".to_owned(),
+        unit: "Pct".to_owned(),
+    });
+    assert!(validate_assay(&a)
+        .unwrap_err()
+        .contains("duplicate deleterious"));
+}
+
+#[test]
+fn duplicate_offtake_names_differing_by_case_are_rejected() {
+    let mut o = valid_offtake();
+    o.payable_terms.push(PayableTermInput {
+        metal: "GOLD".to_owned(),
+        payable_pct: "0.5".to_owned(),
+        min_deduction_g_per_t: "0".to_owned(),
+    });
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("duplicate payable_terms"));
+    let mut o = valid_offtake();
+    o.refining_charges.push(RefiningChargeInput {
+        metal: "gold".to_owned(),
+        rc_per_oz: "1".to_owned(),
+    });
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("duplicate refining_charges"));
+}
+
+#[test]
+fn repeated_penalty_elements_are_allowed() {
+    let mut o = valid_offtake();
+    let tier = o.penalty_schedule[0].clone();
+    o.penalty_schedule.push(tier);
+    assert!(validate_offtake(&o).is_ok());
+}

@@ -4,10 +4,10 @@
 
 use async_trait::async_trait;
 use pipeline_api::routes::loan_book::{
-    extract_documents, normalize_data_room_id, resolve_review, validate_metadata_uri,
-    validate_submission, CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanBookDoc,
-    LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest, SubmissionView,
-    SubmitLoanRequest,
+    extract_documents, normalize_collateral_valuation, normalize_data_room_id, resolve_review,
+    validate_metadata_uri, validate_submission, CollateralValuationInput, EconomicsInput,
+    FeeScheduleInput, LoanBookDoc, LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest,
+    SubmissionView, SubmitLoanRequest,
 };
 use shared::chains::ChainKind;
 use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
@@ -756,4 +756,42 @@ fn openapi_serves_draw_loan_on_view_and_response() {
     assert!(schemas["SubmitLoanResponse"]["properties"]["draw_loan"].is_object());
     assert!(schemas["DrawLoanArgs"].is_object());
     assert!(schemas["DrawLoanEconomics"].is_object());
+}
+
+#[test]
+fn collateral_valuation_is_trimmed_and_case_normalized() {
+    let mut r = valid_request();
+    r.collateral_valuation.asset = "  xau\n".to_owned();
+    r.collateral_valuation.price_provider = " Metal_Price ".to_owned();
+    normalize_collateral_valuation(&mut r.collateral_valuation);
+    assert_eq!(r.collateral_valuation.asset, "XAU");
+    assert_eq!(r.collateral_valuation.price_provider, "metal_price");
+}
+
+#[test]
+fn normalized_asset_and_static_provider_are_accepted() {
+    let mut r = valid_request();
+    r.collateral_valuation.asset = " xau ".to_owned();
+    r.collateral_valuation.price_provider = " Static ".to_owned();
+    normalize_collateral_valuation(&mut r.collateral_valuation);
+    validate_submission(&r).expect("normalized anchor is valid");
+}
+
+#[test]
+fn malformed_asset_symbols_are_rejected() {
+    for bad in ["XAU/USD", "X AU", "xau", "ABCDEFGHIJKLMNOPQ"] {
+        let mut r = valid_request();
+        r.collateral_valuation.asset = bad.to_owned();
+        let err = validate_submission(&r).unwrap_err();
+        assert!(err.contains("asset"), "{bad}: unexpected error: {err}");
+    }
+}
+
+#[test]
+fn well_formed_asset_symbols_are_accepted() {
+    for ok in ["BRENT", "XCU", "LME-XCU", "A", "ABCDEFGHIJKLMNOP"] {
+        let mut r = valid_request();
+        r.collateral_valuation.asset = ok.to_owned();
+        validate_submission(&r).unwrap_or_else(|e| panic!("{ok}: {e}"));
+    }
 }

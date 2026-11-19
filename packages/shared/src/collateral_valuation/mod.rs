@@ -39,17 +39,22 @@ fn grams_per_troy_oz() -> BigDecimal {
 
 /// Map a payable-metal name (as stored in `payable_terms`/`assays`, e.g. `"gold"`) to
 /// its price-feed asset symbol — the MetalpriceAPI / Chainlink code, e.g. `"XAU"`.
-/// Case-insensitive. Returns `None` for a metal outside the known precious-metal set:
+/// Case- and whitespace-insensitive. Returns `None` for a metal outside the known precious-metal set:
 /// its collateral cannot be priced, so the loan reads "unpriced" rather than being
 /// silently mispriced against another metal's feed.
 pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
-    match metal.to_ascii_lowercase().as_str() {
+    match metal.trim().to_ascii_lowercase().as_str() {
         "gold" => Some("XAU"),
         "silver" => Some("XAG"),
         "platinum" => Some("XPT"),
         "palladium" => Some("XPD"),
         _ => None,
     }
+}
+
+/// Metal / element names match ignoring ASCII case and surrounding whitespace.
+pub fn same_name(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
 }
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
@@ -326,7 +331,7 @@ fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
 }
 
 /// Join offtake payable terms with assay grades, refining charges, and each metal's own
-/// reference price. A metal absent from the assay/refining list defaults to grade/charge
+/// reference price. Names match case- and whitespace-insensitively. A metal absent from the assay/refining list defaults to grade/charge
 /// 0. Each metal is priced by resolving its name to a price-feed asset symbol
 /// ([`asset_for_metal`]) and looking that symbol up in `prices`. Returns `Ok(None)` when
 /// any payable metal maps to no known symbol or has no price yet — the loan is unpriced,
@@ -345,13 +350,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
             .assays
             .0
             .iter()
-            .find(|m| m.metal == term.metal)
+            .find(|m| same_name(&m.metal, &term.metal))
             .map_or("0", |m| m.grade_g_per_t.as_str());
         let rc = offtake
             .refining_charges
             .0
             .iter()
-            .find(|r| r.metal == term.metal)
+            .find(|r| same_name(&r.metal, &term.metal))
             .map_or("0", |r| r.rc_per_oz.as_str());
         metals.push(PayableMetal {
             grade_g_per_t: dec("grade_g_per_t", grade)?,
@@ -394,7 +399,7 @@ fn assemble_penalties(
                 .deleterious
                 .0
                 .iter()
-                .find(|d| d.element == tier.element)
+                .find(|d| same_name(&d.element, &tier.element))
             {
                 Some(d) => to_pct(dec("deleterious.level", &d.level)?, &d.unit),
                 None => BigDecimal::zero(),

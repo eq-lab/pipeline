@@ -151,7 +151,7 @@ fn non_blank(v: Option<&str>) -> Option<&str> {
     v.map(str::trim).filter(|s| !s.is_empty())
 }
 
-fn valid_asset(s: &str) -> bool {
+pub fn valid_asset(s: &str) -> bool {
     (1..=MAX_ASSET_BYTES).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
