@@ -263,7 +263,7 @@ The same as on Stellar: play it once per stack, after the EVM LP journey, whose 
 - `commit` is the pipeline commit `run.ts` ran from. `contracts` and `durations.up` come from `state.json`; any value that is missing is `null`, never invented. `startedAt` is the start of `run.ts`, `finishedAt` the end of `check.ts`. Durations are in seconds.
 - Check ids are stable across runs: `<chain>.<area>.<name>` (lowercase, `-` inside a part).
 - A check carries `details` when it has something to say (a failure always should), `issue` when `checks.json` lists it, and `finding` for a `"pending"` entry.
-- `error` is present only when the run itself failed (no `run.json`, a step threw); `ok` is then `false`.
+- `error` is present only when the run itself failed (no `run.json`, a step threw, no check ran); `ok` is then `false`. `run.ts` rejects a selection that matches no journey (exit `2`).
 - `canBeRequired` lists the optional checks that passed.
 - `artifacts` are paths relative to the stack directory.
 - No private key, seed or email passcode appears in any field. Log artifacts are redacted in place: Stellar secret seeds, values of `private_key`, `secret`, `seed`, `mnemonic`, `password`, `passcode`, `otp`, `token` and `verification code is …`, and values of secret-named environment variables become `***`.

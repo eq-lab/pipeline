@@ -141,6 +141,18 @@ describe("optional and required checks", () => {
     assert.equal(exitCode(buildResult(input({ run: runRecord({}, "stack down") }))), 2);
     assert.equal(exitCode(buildResult(input({ run: undefined }))), 2);
   });
+
+  it("a run that checked nothing is an error, not a green run", () => {
+    for (const r of [
+      buildResult(input({ run: { ...runRecord({}), journeys: [] } })),
+      buildResult(input({ journeys: [{ ...fakeJourney(100), checks: [] }] })),
+    ]) {
+      assert.deepEqual(r.checks, []);
+      assert.equal(r.ok, false);
+      assert.equal(r.error, "no checks ran");
+      assert.equal(exitCode(r), 2);
+    }
+  });
 });
 
 // run() spawns git for the commit sha.
@@ -186,6 +198,8 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     assert.ok(!readResult().includes(SEED));
     assert.equal(await run(["--tag", "../escape"], [fakeJourney(100)]), 2);
     assert.equal(await run(["--tag", tag, "--chains", "solana"], [fakeJourney(100)]), 2);
+    assert.equal(await run(["--tag", tag, "--chains", "evm"], [fakeJourney(100)]), 2);
+    assert.equal(await run(["--tag", tag], []), 2);
     assert.equal(check(["--tag", tag, "--require", "stellar.nope.x"], [fakeJourney(100)], checksPath), 2);
     writeFileSync(checksPath, JSON.stringify({ "stellar.fake.reconcile": { issue: "pending" } }));
     assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 2);
