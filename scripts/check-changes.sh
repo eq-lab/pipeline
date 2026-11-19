@@ -69,7 +69,7 @@ if [ -z "${CODING_FLOW_BASE_SHA:-}" ]; then
     changed=$(printf '%s\n%s\n' "$changed" "$(names_of HEAD)")
 fi
 
-rust=false ui=false wallet=false frontend=false trustee=false all=false docs_only=true
+rust=false e2e=false ui=false wallet=false frontend=false trustee=false all=false docs_only=true
 while IFS= read -r path; do
     case "$path" in
         '') continue ;;
@@ -77,6 +77,7 @@ while IFS= read -r path; do
         packages/api/* | packages/worker/* | packages/shared/* | Cargo.toml | Cargo.lock | \
             rust-toolchain | rust-toolchain.toml | rustfmt.toml | .rustfmt.toml | clippy.toml | .cargo/*)
             rust=true; docs_only=false ;;
+        scripts/e2e/*) e2e=true; all=true; docs_only=false ;;
         packages/ui/*) ui=true; docs_only=false ;;
         packages/wallet-connect/*) wallet=true; docs_only=false ;;
         packages/frontend/*) frontend=true; docs_only=false ;;
@@ -146,6 +147,7 @@ add "doc lint" "npx tsx scripts/lint-docs.ts"
 if [ "$ui" = true ] || [ "$frontend" = true ] || [ "$trustee" = true ]; then
     add "comment lint" "npx tsx scripts/lint-comments.ts"
 fi
+[ "$e2e" = true ] && add "e2e scripts tests" '"${YARN[@]}" test:e2e-scripts'
 [ "$frontend" = true ] && add "frontend build" "yarn_ws frontend build"
 [ "$trustee" = true ] && add "trustee build" "yarn_ws trustee build"
 [ "$frontend" = true ] && add "frontend tests" "yarn_ws frontend test"

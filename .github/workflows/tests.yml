@@ -28,6 +28,7 @@ jobs:
       - run: yarn workspace @pipeline/frontend test
       - run: yarn workspace @pipeline/wallet-connect test
       - run: yarn workspace @pipeline/trustee test
+      - run: yarn test:e2e-scripts
       - name: No e2e test wallet in the production LP build
         run: npx tsx scripts/e2e/assert-prod-wallet.ts
 
