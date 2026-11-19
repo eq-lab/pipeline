@@ -898,22 +898,33 @@ describe("Origination details route", () => {
 });
 
 describe("Origination detail — Approve gate for non-Stellar targets (#1536)", () => {
-  it("InReview on an EVM target: Approve disabled with the reason line, Reject and Request changes enabled", () => {
+  it("InReview on an unknown chain: Approve disabled with the reason line, Reject and Request changes enabled", () => {
     mockDetail(READY_RESULT);
     mockReview({
       approveBlockedReason:
-        "Approve & draw runs on Stellar only — drawing on Hoodi from the Trustee app is not supported yet. Reject or request changes instead.",
+        "Approve & draw runs on Stellar only — drawing on Chain 1234 from the Trustee app is not supported yet. Reject or request changes instead.",
     });
     renderRoute();
 
     expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
     expect(
       screen.getByTestId("origination-detail-approve-blocked"),
-    ).toHaveTextContent("drawing on Hoodi");
+    ).toHaveTextContent("drawing on Chain 1234");
     expect(screen.getByTestId("origination-detail-reject")).not.toBeDisabled();
     expect(
       screen.getByTestId("origination-detail-request-changes"),
     ).not.toBeDisabled();
+  });
+
+  it("InReview on the configured EVM chain (#1573): Approve enabled, no blocked line", () => {
+    mockDetail(READY_RESULT);
+    mockReview({ approveBlockedReason: null });
+    renderRoute();
+
+    expect(screen.getByTestId("origination-detail-approve")).not.toBeDisabled();
+    expect(
+      screen.queryByTestId("origination-detail-approve-blocked"),
+    ).toBeNull();
   });
 });
 

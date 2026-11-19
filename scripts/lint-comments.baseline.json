@@ -575,10 +575,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/api/-useDrawLoan.test.tsx": {
-    "header": 15,
-    "nodeIds": 0
-  },
   "packages/trustee/src/api/-useLoanBook.test.tsx": {
     "header": 9,
     "nodeIds": 0
@@ -703,10 +699,6 @@
     "header": 35,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-origination-detail.ts": {
-    "header": 0,
-    "nodeIds": 1
-  },
   "packages/trustee/src/routes/-origination.index.test.tsx": {
     "header": 19,
     "nodeIds": 0
@@ -725,10 +717,6 @@
   },
   "packages/trustee/src/routes/-record-repayment.test.ts": {
     "header": 8,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-useOriginationReview.test.ts": {
-    "header": 36,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-useOriginationTable.test.ts": {

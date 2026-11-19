@@ -114,8 +114,24 @@ fn stellar_units_match_contract() {
 }
 
 #[test]
-fn evm_row_gets_null_draw_loan() {
-    assert!(draw_loan_for(Some(ChainKind::Evm), &complete()).is_none());
+fn evm_row_gets_draw_loan_at_six_decimals() {
+    let evm_args = draw_loan_for(Some(ChainKind::Evm), &complete()).unwrap();
+    let stellar_args = draw_loan_for(Some(ChainKind::Stellar), &complete()).unwrap();
+    let e = &evm_args.economics;
+    let s = &stellar_args.economics;
+    assert_eq!(e.original_facility_size.as_deref(), Some("100000000000"));
+    assert_eq!(e.original_senior_tranche.as_deref(), Some("80000000000"));
+    assert_eq!(e.original_equity_tranche.as_deref(), Some("20000000000"));
+    assert_eq!(e.original_offtaker_price.as_deref(), Some("105000000000"));
+    assert_eq!(e.borrower_ref.as_deref(), Some(DR_0001));
+    assert_eq!(e.senior_interest_rate, Some(120_000));
+    assert_eq!(e.borrower_ref, s.borrower_ref);
+    assert_eq!(e.senior_interest_rate, s.senior_interest_rate);
+    assert_eq!(e.origination_date, s.origination_date);
+    assert_eq!(e.original_maturity_date, s.original_maturity_date);
+    assert_eq!(evm_args.metadata_uri, stellar_args.metadata_uri);
+    assert!(evm_args.missing_inputs.is_empty());
+
     let evm = serde_json::to_value(SubmissionView::from_row(
         row(complete()),
         Some(ChainKind::Evm),
@@ -126,7 +142,7 @@ fn evm_row_gets_null_draw_loan() {
         Some(ChainKind::Stellar),
     ))
     .unwrap();
-    assert!(evm["draw_loan"].is_null());
+    assert!(!evm["draw_loan"].is_null());
     assert!(!stellar["draw_loan"].is_null());
     for k in [
         "status",
@@ -138,6 +154,20 @@ fn evm_row_gets_null_draw_loan() {
     ] {
         assert_eq!(evm[k], stellar[k], "{k} must not depend on chain kind");
     }
+}
+
+#[test]
+fn evm_amount_with_seven_fraction_digits_is_missing() {
+    let mut d = complete();
+    d["economics"]["original_facility_size"] = json!("1.0000001");
+    let stellar = draw_loan_for(Some(ChainKind::Stellar), &d).unwrap();
+    assert_eq!(
+        stellar.economics.original_facility_size.as_deref(),
+        Some("10000001")
+    );
+    let evm = draw_loan_for(Some(ChainKind::Evm), &d).unwrap();
+    assert!(evm.economics.original_facility_size.is_none());
+    assert_eq!(evm.missing_inputs, vec!["economics.original_facility_size"]);
 }
 
 #[test]

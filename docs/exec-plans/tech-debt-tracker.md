@@ -2157,8 +2157,9 @@ line, whichever section it lands in.
 - **Impact:** After a redeploy on the same chain, a reused `loan_id` collides with the old registry's link. `link_drawn` skips it, the indexer logs a `warn`, and the new submission stays unlinked until an operator unlinks the stale row.
 - **Suggested fix:** #1545 adds the registry address to the link and the unique index.
 
-### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions
+### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions [RESOLVED 2026-11-18 / #1573]
 
+- **Resolved (#1573):** `useDrawLoan` has an EVM arm (`drawEvmLoan`, `AccessManager.execute(registry, drawLoan)`), the API serves the EVM `draw_loan` block at 6 decimals, and Approve opens on `ENV.EVM_CHAIN_ID` (`drawChainReason`); other chain ids keep the gate.
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useOriginationReview.ts` (`approveBlockedReason`), `packages/trustee/src/api/useDrawLoan.ts`
 - **Gap:** Submissions can now target an EVM chain (#1529 backend, #1536 form), but the trustee's chain-first Approve (#831) only knows the Stellar executor → `draw_loan` path. #1536 therefore disables Approve for a non-Stellar target with an explanatory line; Reject / Request changes still work.
@@ -2174,8 +2175,8 @@ line, whichever section it lands in.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 - **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
 - **Repayment recovery (#1711):** step 1 (`MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` through the EVM AccessManager, `MINTER_OPS_ROLE`) runs on EVM since #1943, with the candidates read as described in TD-190. Step 2, the corrected `Minter.repay` (`MINT_CALLER_ROLE`), stays gated with `recordRepaymentChainReason` ("not available yet") until the EVM arm of `useRecordPayment` lands (#1574).
-- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573 and #1574 reuse it; the LP app's `wallet/evm` hooks keep their own pipeline.
-- **Status (#1943):** the Risk Council hub, Escalate, Amend economics, Default resolution and the recovery card and dialog (step 1) run on the configured EVM chain (`packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts`). What remains for EVM is rollover, Update lifecycle, Record coupon / Record repayment (including recovery step 2) and Close loan (#1574), the EVM draw (#1573), and the cash reporter bookings above.
+- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573 reused it (`sendEvmContractCall` now also returns the receipt); #1574 reuses `evm/contracts/loanRegistry.ts`; the LP app's `wallet/evm` hooks keep their own pipeline.
+- **Status (#1943):** the Risk Council hub, Escalate, Amend economics, Default resolution and the recovery card and dialog (step 1) run on the configured EVM chain (`packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts`). What remains for EVM is rollover, Update lifecycle, Record coupon / Record repayment (including recovery step 2) and Close loan (#1574), and the cash reporter bookings above.
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 

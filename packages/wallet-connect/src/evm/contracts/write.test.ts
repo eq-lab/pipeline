@@ -28,6 +28,7 @@ import { EVM_TX_GAS_CAP, readEvmContract, sendEvmContractCall } from "./write";
 const ACCOUNT = "0xAbCdEf0000000000000000000000000000000001";
 const TARGET = "0x00000000000000000000000000000000000000aa";
 const HASH = `0x${"11".repeat(32)}`;
+const RECEIPT = { status: "success", logs: [] };
 const abi = [
   {
     type: "function",
@@ -75,7 +76,7 @@ describe("sendEvmContractCall", () => {
     });
     wagmi.waitForTransactionReceipt.mockImplementation(async () => {
       wagmi.calls.push("receipt");
-      return { status: "success" };
+      return RECEIPT;
     });
   });
 
@@ -84,7 +85,7 @@ describe("sendEvmContractCall", () => {
     const result = await sendEvmContractCall(
       params({ onStageChange: (s: string) => stages.push(s) }),
     );
-    expect(result).toEqual({ hash: HASH });
+    expect(result).toEqual({ hash: HASH, receipt: RECEIPT });
     expect(wagmi.calls).toEqual(["simulate", "estimate", "write", "receipt"]);
     expect(stages).toEqual(["awaiting-signature", "confirming"]);
   });

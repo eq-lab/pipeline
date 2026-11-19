@@ -8,7 +8,7 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "@wagmi/core";
-import type { Abi, Address, Hex } from "viem";
+import type { Abi, Address, Hex, TransactionReceipt } from "viem";
 import type { RelayStage } from "../../stellar/contracts/accessManager";
 import { initEvmWalletConnect } from "../config";
 import { parseAddress, readMock } from "../mock";
@@ -34,6 +34,7 @@ export interface SendEvmContractCallParams extends ReadEvmContractParams {
 
 export interface SendEvmContractCallResult {
   hash: Hex;
+  receipt: TransactionReceipt;
 }
 
 function shortAddress(address: string): string {
@@ -108,5 +109,5 @@ export async function sendEvmContractCall({
   if (receipt.status !== "success") {
     throw new Error(`transaction reverted: ${hash}`);
   }
-  return { hash };
+  return { hash, receipt };
 }

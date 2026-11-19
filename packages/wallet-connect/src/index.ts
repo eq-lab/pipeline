@@ -423,6 +423,7 @@ export type {
 
 export {
   evmLoanRegistryRiskCouncilAbi,
+  evmLoanRegistryErrorAbi,
   evmRiskCouncilErrorAbi,
   EVM_RISK_COUNCIL_FUNCTION_NAMES,
   EVM_LOAN_STATUSES,
@@ -439,6 +440,17 @@ export type {
   RelayEvmRiskCouncilParams,
   ReadEvmLoanParams,
 } from "./evm/contracts/riskCouncil";
+
+export {
+  drawEvmLoan,
+  encodeEvmDrawLoanCalldata,
+  evmLoanRegistryDrawAbi,
+  readEvmDrawnLoanId,
+} from "./evm/contracts/loanRegistry";
+export type {
+  DrawEvmLoanParams,
+  DrawEvmLoanResult,
+} from "./evm/contracts/loanRegistry";
 
 export {
   minterRecoveryAbi,

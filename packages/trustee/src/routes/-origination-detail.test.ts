@@ -534,6 +534,18 @@ describe("useOriginationDetail — transactionPreview", () => {
     expect(rows.find((r) => r.label === "economics")?.value).toContain("—");
   });
 
+  it("names the call per target chain", () => {
+    const keyword = (target_chain_id: number | undefined) => {
+      const submission = { ...FULL_SUBMISSION, target_chain_id };
+      mockSubmissions([submission]);
+      return renderHook(() => useOriginationDetail("7", submission)).result
+        .current.transactionPreview.keyword;
+    };
+    expect(keyword(undefined)).toBe("LoanRegistry.draw_loan");
+    expect(keyword(99_000_001)).toBe("LoanRegistry.draw_loan");
+    expect(keyword(560048)).toBe("LoanRegistry.drawLoan");
+  });
+
   it("gives a safe empty-dash transactionPreview in the not-found state", async () => {
     mockSubmissions([FULL_SUBMISSION], false);
     const { result } = renderHook(() => useOriginationDetail("999", undefined));
