@@ -104,8 +104,7 @@ pub fn is_staking_event_name(event_name: &str) -> bool {
 
 /// Every event that moves a holder's share balance and therefore needs running
 /// position fields computed pre-insert: the staking mint/burn pair plus
-/// peer-to-peer `ShareTransfer` (Stellar only — the EVM indexer does not decode
-/// ERC-20 transfers on the vault).
+/// peer-to-peer `ShareTransfer`.
 pub fn is_position_event_name(event_name: &str) -> bool {
     is_staking_event_name(event_name) || event_name == "ShareTransfer"
 }
@@ -349,6 +348,50 @@ pub fn carry_over_transfer(
     }
 }
 
+pub fn transfer_sides(params: &Value) -> Option<(String, String, BigDecimal)> {
+    let side = |key: &str| {
+        params
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_lowercase()
+    };
+    let from = side("from");
+    let to = side("to");
+    let amount = params
+        .get("amount")
+        .and_then(|v| v.as_str())
+        .and_then(|s| BigDecimal::from_str(s).ok())
+        .unwrap_or_else(|| BigDecimal::from(0i64));
+
+    if amount == 0i64 || from.is_empty() || to.is_empty() {
+        return None;
+    }
+    Some((from, to, amount))
+}
+
+pub fn write_transfer_position(params: &mut Value, next: &TransferPosition) {
+    if let Some(obj) = params.as_object_mut() {
+        obj.insert(
+            "shares_balance_from".to_owned(),
+            Value::String(next.shares_from.to_string()),
+        );
+        obj.insert(
+            "avg_buy_share_price_from".to_owned(),
+            Value::String(next.avg_price_from.to_string()),
+        );
+        obj.insert(
+            "shares_balance_to".to_owned(),
+            Value::String(next.shares_to.to_string()),
+        );
+        obj.insert(
+            "avg_buy_share_price_to".to_owned(),
+            Value::String(next.avg_price_to.to_string()),
+        );
+        obj.insert("realized_pnl".to_owned(), Value::String("0".to_owned()));
+    }
+}
+
 /// Compute both sides of a `ShareTransfer` and write them into `params`.
 ///
 /// `contract_logs` permits one row per on-chain event, but a transfer moves two
@@ -365,28 +408,9 @@ async fn compute_transfer_position_fields(
     vault_address: &str,
     params: &mut Value,
 ) -> anyhow::Result<()> {
-    let from = params
-        .get("from")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_lowercase();
-    let to = params
-        .get("to")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_lowercase();
-
-    let amount = params
-        .get("amount")
-        .and_then(|v| v.as_str())
-        .and_then(|s| BigDecimal::from_str(s).ok())
-        .unwrap_or_else(|| BigDecimal::from(0i64));
-
-    // A zero-amount transfer moves nothing; skip it so it doesn't become a
-    // no-op link in the running-balance chain.
-    if amount == 0i64 || from.is_empty() || to.is_empty() {
+    let Some((from, to, amount)) = transfer_sides(params) else {
         return Ok(());
-    }
+    };
 
     let self_transfer = from == to;
     let prev_from = fetch_prev_position(&mut *conn, chain_id, vault_address, &from).await?;
@@ -407,27 +431,7 @@ async fn compute_transfer_position_fields(
     }
 
     let next = carry_over_transfer(prev_from, prev_to, &amount, self_transfer);
-
-    if let Some(obj) = params.as_object_mut() {
-        obj.insert(
-            "shares_balance_from".to_owned(),
-            Value::String(next.shares_from.to_string()),
-        );
-        obj.insert(
-            "avg_buy_share_price_from".to_owned(),
-            Value::String(next.avg_price_from.to_string()),
-        );
-        obj.insert(
-            "shares_balance_to".to_owned(),
-            Value::String(next.shares_to.to_string()),
-        );
-        obj.insert(
-            "avg_buy_share_price_to".to_owned(),
-            Value::String(next.avg_price_to.to_string()),
-        );
-        obj.insert("realized_pnl".to_owned(), Value::String("0".to_owned()));
-    }
-
+    write_transfer_position(params, &next);
     Ok(())
 }
 

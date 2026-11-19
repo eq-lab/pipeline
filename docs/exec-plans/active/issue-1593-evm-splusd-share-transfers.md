@@ -175,16 +175,16 @@ history for that chain are incomplete.
 
 ## Implementation Steps
 
-1. `packages/worker/src/indexer/parsers.rs`: add `parse_share_transfer(log, vaults)` as in
+1. [x] `packages/worker/src/indexer/parsers.rs`: add `parse_share_transfer(log, vaults)` as in
    In scope 1, next to `parse_staking_withdraw`. Import `super::asset_transfers::Transfer`.
-2. `packages/worker/src/indexer/evm_parsers.rs`: import `parse_share_transfer` and add the
+2. [x] `packages/worker/src/indexer/evm_parsers.rs`: import `parse_share_transfer` and add the
    `splusd_addrs` clone, the `is_emitted_by` check and the `.or_else(..)` as in In scope 2.
-3. `packages/worker/src/indexer/mappers.rs`: extract `transfer_sides` and
+3. [x] `packages/worker/src/indexer/mappers.rs`: extract `transfer_sides` and
    `write_transfer_position`, rewire `compute_transfer_position_fields` to use them, and fix the
    `is_position_event_name` doc comment (In scope 3).
-4. Tests (Test Strategy).
-5. Docs (Docs to Update).
-6. `cargo fmt --all`, `cargo clippy --all -- -D warnings`, `cargo test -p pipeline-worker`, and
+4. [x] Tests (Test Strategy).
+5. [x] Docs (Docs to Update).
+6. [x] `cargo fmt --all`, `cargo clippy --all -- -D warnings`, `cargo test -p pipeline-worker`, and
    `npx tsx scripts/lint-docs.ts`.
 
 ## Test Strategy

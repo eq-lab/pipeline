@@ -11,9 +11,19 @@
 use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
-use pipeline_worker::indexer::mappers::{
-    apply_position_delta, carry_over_transfer, is_position_event_name, is_staking_event_name,
+use alloy::primitives::{address, Address, U256};
+use pipeline_worker::indexer::{
+    mappers::{
+        apply_position_delta, carry_over_transfer, is_position_event_name, is_staking_event_name,
+        transfer_sides, write_transfer_position,
+    },
+    parsers::parse_share_transfer,
 };
+use serde_json::json;
+use std::collections::HashMap;
+
+mod deal_token_support;
+use deal_token_support::{make_log, SPLUSD};
 
 fn bd(s: &str) -> BigDecimal {
     BigDecimal::from_str(s).expect("valid decimal")
@@ -198,4 +208,102 @@ fn stake_updates_the_weighted_average_without_realizing_pnl() {
     assert_eq!(shares, bd("200"));
     assert_eq!(avg, bd("1.1"));
     assert_eq!(pnl, bd("0"));
+}
+
+// ── EVM end-to-end replay (issue #1593) ──────────────────────────────────────
+
+const EVM_ALICE: Address = address!("a11ce00000000000000000000000000000000001");
+const EVM_BOB: Address = address!("b0b0000000000000000000000000000000000002");
+
+type Ledger = HashMap<String, (BigDecimal, BigDecimal)>;
+
+fn evm_transfer_params(from: Address, to: Address, amount: u64) -> serde_json::Value {
+    alloy::sol! {
+        event Transfer(address indexed from, address indexed to, uint256 value);
+    }
+    use alloy::sol_types::SolEvent;
+    let ev = Transfer {
+        from,
+        to,
+        value: U256::from(amount),
+    };
+    let log = make_log(SPLUSD, ev.encode_log_data(), 1, 0);
+    parse_share_transfer(&log, &[SPLUSD])
+        .expect("decodes")
+        .params
+}
+
+fn replay_transfer(
+    ledger: &mut Ledger,
+    from: Address,
+    to: Address,
+    amount: u64,
+) -> serde_json::Value {
+    let mut params = evm_transfer_params(from, to, amount);
+    let (f, t, amt) = transfer_sides(&params).expect("sides");
+    assert_eq!(f, from.to_checksum(None).to_lowercase());
+    assert_eq!(t, to.to_checksum(None).to_lowercase());
+    let zero = (bd("0"), bd("0"));
+    let prev_from = ledger.get(&f).cloned().unwrap_or_else(|| zero.clone());
+    let prev_to = ledger.get(&t).cloned().unwrap_or(zero);
+    let next = carry_over_transfer(prev_from, prev_to, &amt, f == t);
+    write_transfer_position(&mut params, &next);
+    ledger.insert(f, (next.shares_from.clone(), next.avg_price_from.clone()));
+    ledger.insert(t, (next.shares_to.clone(), next.avg_price_to.clone()));
+    params
+}
+
+fn alice_with_400_shares() -> Ledger {
+    let key = EVM_ALICE.to_checksum(None).to_lowercase();
+    let (shares, avg, _) = apply_position_delta(true, &bd("0"), &bd("0"), &bd("400"), &bd("400"));
+    HashMap::from([(key, (shares, avg))])
+}
+
+#[test]
+fn evm_transfer_before_redeem_realizes_only_the_real_gain() {
+    let mut ledger = alice_with_400_shares();
+    let params = replay_transfer(&mut ledger, EVM_ALICE, EVM_BOB, 400);
+
+    assert_eq!(params["shares_balance_from"], "0");
+    assert_eq!(params["shares_balance_to"], "400");
+    assert_eq!(
+        bd(params["avg_buy_share_price_to"].as_str().unwrap()),
+        bd("1")
+    );
+    assert_eq!(params["realized_pnl"], "0");
+
+    let (bob_shares, bob_avg) = ledger[&EVM_BOB.to_checksum(None).to_lowercase()].clone();
+    let (shares, _, pnl) =
+        apply_position_delta(false, &bob_shares, &bob_avg, &bd("400"), &bd("420"));
+    assert_eq!(shares, bd("0"));
+    assert_eq!(pnl, bd("20"));
+}
+
+#[test]
+fn without_the_transfer_the_redeem_books_the_whole_payout_as_gain() {
+    let (_, _, pnl) = apply_position_delta(false, &bd("0"), &bd("0"), &bd("400"), &bd("420"));
+    assert_eq!(pnl, bd("420"));
+}
+
+#[test]
+fn evm_partial_transfer_conserves_cost() {
+    let mut ledger = alice_with_400_shares();
+    replay_transfer(&mut ledger, EVM_ALICE, EVM_BOB, 100);
+
+    let (a_shares, a_avg) = ledger[&EVM_ALICE.to_checksum(None).to_lowercase()].clone();
+    let (b_shares, b_avg) = ledger[&EVM_BOB.to_checksum(None).to_lowercase()].clone();
+    assert_eq!(a_shares, bd("300"));
+    assert_eq!(a_avg, bd("1"));
+    assert_eq!(b_shares, bd("100"));
+    assert_eq!(b_avg, bd("1"));
+    assert_eq!(total_cost(&a_shares, &a_avg, &b_shares, &b_avg), bd("400"));
+}
+
+#[test]
+fn transfer_sides_rejects_zero_amount_and_missing_sides() {
+    assert!(transfer_sides(&json!({"from": "A", "to": "B", "amount": "0"})).is_none());
+    assert!(transfer_sides(&json!({"to": "B", "amount": "5"})).is_none());
+    assert!(transfer_sides(&json!({"from": "A", "amount": "5"})).is_none());
+    let (f, t, a) = transfer_sides(&json!({"from": "AbC", "to": "dEf", "amount": "5"})).unwrap();
+    assert_eq!((f.as_str(), t.as_str(), a), ("abc", "def", bd("5")));
 }
