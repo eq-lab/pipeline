@@ -359,6 +359,30 @@ export const minterExtsloadAbi = [
   },
 ] as const;
 
+export const minterRepaymentViewAbi = [
+  {
+    type: "function",
+    name: "repayment",
+    stateMutability: "view",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      { name: "repaymentId", type: "uint256" },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "feeShares", type: "uint256" },
+          { name: "fees", type: "uint256" },
+          { name: "released", type: "uint256" },
+          { name: "carvedOut", type: "bool" },
+        ],
+      },
+    ],
+  },
+] as const;
+
 export const MINTER_STORAGE_SLOT: Hex =
   "0x1cb61fb8c91dfac98430b399e1cf1804c4c3862229ec367a9bc71c2a7e5cc100";
 export const MINTER_REPAYMENTS_FIELD = 19n;
@@ -397,6 +421,24 @@ export async function readEvmMinterRepayment({
   blockNumber?: bigint;
 }): Promise<EvmMinterRepaymentRecord> {
   requireAddress("readEvmMinterRepayment", "minter", minter);
+  try {
+    const record = await readEvmContract<{
+      released: bigint;
+      carvedOut: boolean;
+    }>({
+      abi: minterRepaymentViewAbi,
+      address: minter as Address,
+      functionName: "repayment",
+      args: [BigInt(loanId), BigInt(repaymentId)],
+      blockNumber,
+    });
+    return {
+      released: record.released.toString(),
+      carvedOut: record.carvedOut === true,
+    };
+  } catch (err) {
+    if (!isMissingFunction(err)) throw err;
+  }
   const base = BigInt(evmMinterRepaymentSlot(loanId, repaymentId));
   const word = (offset: bigint) =>
     readEvmContract<Hex>({

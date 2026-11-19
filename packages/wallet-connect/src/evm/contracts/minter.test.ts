@@ -6,7 +6,9 @@ import {
   ContractFunctionZeroDataError,
   concatHex,
   decodeFunctionData,
+  decodeFunctionResult,
   encodeAbiParameters,
+  encodeFunctionResult,
   encodeEventTopics,
   getAddress,
   hexToBigInt,
@@ -68,6 +70,7 @@ import {
   executeEvmReverseRepay,
   minterExtsloadAbi,
   minterRecoveryAbi,
+  minterRepaymentViewAbi,
   readEvmMinterRepayment,
   readEvmNextRepaymentId,
   MINTER_BANK_CASH_FIELD,
@@ -387,32 +390,134 @@ describe("readEvmMinterRepayment", () => {
           : toHex(0n, { size: 32 });
   }
 
-  it("reads words +2 and +3 through extsload", async () => {
-    mockRead.mockImplementation(async ({ args }: { args: [Hex] }) =>
-      words(900n, 1n)(args[0]),
+  const view = { feeShares: 1n, fees: 2n, released: 900n, carvedOut: true };
+  const zeroRecord = {
+    feeShares: 0n,
+    fees: 0n,
+    released: 0n,
+    carvedOut: false,
+  };
+  const call = { minter: MINTER, loanId: 7, repaymentId: 2 };
+
+  function viewMissing(served: (slot: Hex) => Hex) {
+    mockRead.mockImplementation(
+      async ({ functionName, args }: { functionName: string; args: [Hex] }) => {
+        if (functionName === "repayment") throw emptyRevert();
+        return served(args[0]);
+      },
     );
-    await expect(
-      readEvmMinterRepayment({ minter: MINTER, loanId: 7, repaymentId: 2 }),
-    ).resolves.toEqual({ released: "900", carvedOut: true });
+  }
+
+  it("reads the legacy repayment view first", async () => {
+    mockRead.mockResolvedValue(view);
+    await expect(readEvmMinterRepayment(call)).resolves.toEqual({
+      released: "900",
+      carvedOut: true,
+    });
+    expect(mockRead).toHaveBeenCalledTimes(1);
+    expect(mockRead.mock.calls[0]![0]).toMatchObject({
+      abi: minterRepaymentViewAbi,
+      address: MINTER,
+      functionName: "repayment",
+      args: [7n, 2n],
+    });
+  });
+
+  it("returns the zero record of a non-existent id without a fallback", async () => {
+    mockRead.mockResolvedValue(zeroRecord);
+    await expect(readEvmMinterRepayment(call)).resolves.toEqual({
+      released: "0",
+      carvedOut: false,
+    });
+    expect(mockRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to words +2 and +3 through extsload when the view reverts with empty data", async () => {
+    viewMissing(words(900n, 1n));
+    await expect(readEvmMinterRepayment(call)).resolves.toEqual({
+      released: "900",
+      carvedOut: true,
+    });
     const base = BigInt(evmMinterRepaymentSlot(7, 2));
-    expect(mockRead.mock.calls.map(([call]) => call.args[0])).toEqual([
+    expect(mockRead).toHaveBeenCalledTimes(3);
+    expect(mockRead.mock.calls[0]![0]).toMatchObject({
+      abi: minterRepaymentViewAbi,
+      functionName: "repayment",
+    });
+    expect(mockRead.mock.calls.slice(1).map(([c]) => c.args[0])).toEqual([
       toHex(base + 2n, { size: 32 }),
       toHex(base + 3n, { size: 32 }),
     ]);
-    expect(mockRead.mock.calls[0]![0]).toMatchObject({
+    expect(mockRead.mock.calls[1]![0]).toMatchObject({
       abi: minterExtsloadAbi,
       address: MINTER,
       functionName: "extsload",
     });
   });
 
-  it("treats only the low byte of word 3 as carvedOut", async () => {
-    mockRead.mockImplementation(async ({ args }: { args: [Hex] }) =>
-      words(5n, (7n << 8n) | 0n)(args[0]),
+  it("falls back to extsload on a zero-data result", async () => {
+    mockRead.mockRejectedValueOnce(
+      new ContractFunctionExecutionError(
+        new ContractFunctionZeroDataError({ functionName: "repayment" }),
+        {
+          abi: minterRepaymentViewAbi,
+          functionName: "repayment",
+          args: [7n, 2n],
+        },
+      ),
     );
-    await expect(
-      readEvmMinterRepayment({ minter: MINTER, loanId: 7, repaymentId: 2 }),
-    ).resolves.toEqual({ released: "5", carvedOut: false });
+    mockRead.mockImplementation(async ({ args }: { args: [Hex] }) =>
+      words(900n, 1n)(args[0]),
+    );
+    await expect(readEvmMinterRepayment(call)).resolves.toEqual({
+      released: "900",
+      carvedOut: true,
+    });
+    expect(mockRead).toHaveBeenCalledTimes(3);
+  });
+
+  it("treats only the low byte of word 3 as carvedOut on the fallback", async () => {
+    viewMissing(words(5n, (7n << 8n) | 0n));
+    await expect(readEvmMinterRepayment(call)).resolves.toEqual({
+      released: "5",
+      carvedOut: false,
+    });
+  });
+
+  it("propagates a revert with data without a fallback", async () => {
+    const err = new ContractFunctionExecutionError(
+      new ContractFunctionRevertedError({
+        abi: evmMinterErrorAbi,
+        data: "0x118f9b3d",
+        functionName: "repayment",
+      }),
+      {
+        abi: minterRepaymentViewAbi,
+        functionName: "repayment",
+        args: [7n, 2n],
+      },
+    );
+    mockRead.mockRejectedValue(err);
+    await expect(readEvmMinterRepayment(call)).rejects.toBe(err);
+    expect(mockRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a plain error without a fallback", async () => {
+    const err = new Error("rpc down");
+    mockRead.mockRejectedValue(err);
+    await expect(readEvmMinterRepayment(call)).rejects.toBe(err);
+    expect(mockRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards blockNumber to the view and to both extsload words", async () => {
+    mockRead.mockResolvedValue(view);
+    await readEvmMinterRepayment({ ...call, blockNumber: 77n });
+    expect(mockRead.mock.calls[0]![0].blockNumber).toBe(77n);
+    mockRead.mockReset();
+    viewMissing(words(900n, 1n));
+    await readEvmMinterRepayment({ ...call, blockNumber: 77n });
+    expect(mockRead).toHaveBeenCalledTimes(3);
+    for (const [c] of mockRead.mock.calls) expect(c.blockNumber).toBe(77n);
   });
 
   it("rejects an empty or invalid minter", async () => {
@@ -422,6 +527,44 @@ describe("readEvmMinterRepayment", () => {
     await expect(
       readEvmMinterRepayment({ minter: "nope", loanId: 7, repaymentId: 2 }),
     ).rejects.toThrow(/invalid minter/);
+    expect(mockRead).not.toHaveBeenCalled();
+  });
+});
+
+describe("minterRepaymentViewAbi", () => {
+  it("has the selector found in the Hoodi Minter bytecode", () => {
+    expect(toFunctionSelector(minterRepaymentViewAbi[0])).toBe("0x1ac459b5");
+  });
+
+  it("decodes the 128-byte zero blob Hoodi returned for an unknown id", () => {
+    expect(
+      decodeFunctionResult({
+        abi: minterRepaymentViewAbi,
+        functionName: "repayment",
+        data: `0x${"00".repeat(128)}`,
+      }),
+    ).toEqual({ feeShares: 0n, fees: 0n, released: 0n, carvedOut: false });
+  });
+
+  it("round-trips a record by field name", () => {
+    const record = {
+      feeShares: 1n,
+      fees: 2n,
+      released: 900n,
+      carvedOut: true,
+    };
+    const data = encodeFunctionResult({
+      abi: minterRepaymentViewAbi,
+      functionName: "repayment",
+      result: record,
+    });
+    expect(
+      decodeFunctionResult({
+        abi: minterRepaymentViewAbi,
+        functionName: "repayment",
+        data,
+      }),
+    ).toEqual(record);
   });
 });
 
@@ -577,13 +720,30 @@ describe("readEvmRecoveryRepayments", () => {
     chainId: 560048,
   };
 
-  function arrange(logs: unknown[], next = 1n, released = 900n, flags = 1n) {
+  type Mode = "view" | "extsload";
+
+  function arrange(
+    logs: unknown[],
+    next = 1n,
+    released = 900n,
+    flags = 1n,
+    mode: Mode = "view",
+  ) {
     mockScan.mockResolvedValue(logs);
     mockHead.mockResolvedValue(4_500_000n);
     mockRead.mockImplementation(
       async ({ functionName, args }: { functionName: string; args: [Hex] }) => {
         if (functionName === "mutableLoanData") {
           return { nextRepaymentId: next };
+        }
+        if (functionName === "repayment") {
+          if (mode === "extsload") throw emptyRevert();
+          return {
+            feeShares: 0n,
+            fees: 0n,
+            released,
+            carvedOut: flags !== 0n,
+          };
         }
         const base = BigInt(evmMinterRepaymentSlot(7, 0));
         return args[0] === toHex(base + 3n, { size: 32 })
@@ -593,34 +753,43 @@ describe("readEvmRecoveryRepayments", () => {
     );
   }
 
-  it("maps a PaymentRecorded and CashRepaid pair into the Stellar row shape", async () => {
-    arrange([recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)]);
-    const rows = await readEvmRecoveryRepayments(params);
-    expect(rows).toEqual([
-      {
-        repaymentId: 0,
-        repayment: {
-          offtaker_received: "1500",
-          senior_principal_repaid: "0",
-          senior_interest: "1155",
-          equity_distributed: "20",
-          mgmt_fee: "120",
-          perf_fee: "150",
-          oet_alloc: "75",
-        },
-        minter: {
-          cash: "1000",
-          principal: "900",
-          interestMinted: "11",
-          feeShares: "22",
-          carvedOut: true,
-          saleId: 3,
+  it.each<Mode>(["view", "extsload"])(
+    "maps a PaymentRecorded and CashRepaid pair into the Stellar row shape (%s)",
+    async (mode) => {
+      arrange(
+        [recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)],
+        1n,
+        900n,
+        1n,
+        mode,
+      );
+      const rows = await readEvmRecoveryRepayments(params);
+      expect(rows).toEqual([
+        {
+          repaymentId: 0,
+          repayment: {
+            offtaker_received: "1500",
+            senior_principal_repaid: "0",
+            senior_interest: "1155",
+            equity_distributed: "20",
+            mgmt_fee: "120",
+            perf_fee: "150",
+            oet_alloc: "75",
+          },
+          minter: {
+            cash: "1000",
+            principal: "900",
+            interestMinted: "11",
+            feeShares: "22",
+            carvedOut: true,
+            saleId: 3,
+            reversed: false,
+          },
           reversed: false,
         },
-        reversed: false,
-      },
-    ]);
-  });
+      ]);
+    },
+  );
 
   it("scans both contracts for the three events of this loan from the start block", async () => {
     arrange([recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)]);
@@ -634,15 +803,27 @@ describe("readEvmRecoveryRepayments", () => {
     });
   });
 
-  it("pins nextRepaymentId and the extsload reads to the same head as the scan", async () => {
-    arrange([recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)]);
-    await readEvmRecoveryRepayments(params);
-    expect(mockHead).toHaveBeenCalledTimes(1);
-    expect(mockHead).toHaveBeenCalledWith(560048);
-    const reads = mockRead.mock.calls.map(([call]) => call);
-    expect(reads.length).toBeGreaterThan(1);
-    for (const call of reads) expect(call.blockNumber).toBe(4_500_000n);
-  });
+  it.each<Mode>(["view", "extsload"])(
+    "pins nextRepaymentId and the Minter reads to the same head as the scan (%s)",
+    async (mode) => {
+      arrange(
+        [recorded(7, 0, SPLIT), cashRepaid(7, 0, 1_000n)],
+        1n,
+        900n,
+        1n,
+        mode,
+      );
+      await readEvmRecoveryRepayments(params);
+      expect(mockHead).toHaveBeenCalledTimes(1);
+      expect(mockHead).toHaveBeenCalledWith(560048);
+      const reads = mockRead.mock.calls.map(([call]) => call);
+      expect(reads.length).toBeGreaterThan(1);
+      expect(reads.some((call) => call.functionName === "repayment")).toBe(
+        true,
+      );
+      for (const call of reads) expect(call.blockNumber).toBe(4_500_000n);
+    },
+  );
 
   it("rejects an invalid Minter address before any RPC call", async () => {
     arrange([]);
