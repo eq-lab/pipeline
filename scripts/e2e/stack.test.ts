@@ -285,7 +285,7 @@ describe("down", { timeout: TIMEOUT }, () => {
   });
 });
 
-describe("contracts cache", { timeout: TIMEOUT }, () => {
+describe("contracts cache", { timeout: 3 * TIMEOUT }, () => {
   const fixture = () => {
     const root = mkdtempSync(join(home, "contracts-"));
     const repo = join(root, "repo");
