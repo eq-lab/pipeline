@@ -246,6 +246,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1475 Account page opens on the connected wallet's tab; LP home heading reads "Welcome back" whenever the header shows the account icon](https://github.com/eq-lab/pipeline/issues/1475) | [1475-account-entry-tab-welcome-back.md](./epic-1419/1475-account-entry-tab-welcome-back.md) | Initial |
 | [#1577 Home: collapse the desktop home-grid branches into one shared layout](https://github.com/eq-lab/pipeline/issues/1577) | [1577-home-grid-shared-layout.md](./epic-1419/1577-home-grid-shared-layout.md) | Initial |
 | [#1576 Home: loading state while GET /v1/lps/me is in flight](https://github.com/eq-lab/pipeline/issues/1576) | [1576-home-loading-state.md](./epic-1419/1576-home-loading-state.md) | Initial |
+| [#2058 Home: merged Recent activity feed with bank wire-ins and wire-outs](https://github.com/eq-lab/pipeline/issues/2058) | [2058-merged-activity-feed.md](./epic-1419/2058-merged-activity-feed.md) | Initial |
 | [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
 
 ---

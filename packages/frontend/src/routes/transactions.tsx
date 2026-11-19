@@ -9,11 +9,10 @@ import {
   SegmentedTabs,
 } from "@pipeline/ui";
 import type { RequestType } from "@/api";
-import { renderRequestRow } from "@/components/activity/renderRequestRow";
-import { renderWireOutRow } from "@/components/activity/renderWireOutRow";
+import { renderActivityRow } from "@/components/activity/renderBankTransferRow";
+import type { ActivityFeedItem } from "@/components/activity/useActivityFeed";
 import { useActivityFeed } from "@/components/activity/useActivityFeed";
 import {
-  SAC_DECIMALS,
   useConnectModal,
   useEvmWallet,
   useStellarWallet,
@@ -41,12 +40,15 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
   Unstake: "unstake",
 };
 
+function tabOf(entry: ActivityFeedItem): string {
+  if (entry.kind === "wireIn") return "buy";
+  if (entry.kind === "wireOut") return "sell";
+  return TYPE_TO_TAB[entry.item.type];
+}
+
 function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
-  const showWireOuts = activeTab === "all" || activeTab === "sell";
-  const { items, wireOuts, requests } = useActivityFeed({
-    includeWireOuts: showWireOuts,
-  });
+  const { items, requests } = useActivityFeed();
   const { data, isLoading, error, refetch } = requests;
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
@@ -56,16 +58,10 @@ function Transactions() {
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
-  const wireOutDecimals =
-    kind === "stellar" ? SAC_DECIMALS : evmStakeDecimals?.plusd;
   const filtered =
     activeTab === "all"
       ? items
-      : items.filter(
-          (entry) =>
-            entry.kind === "wireOut" ||
-            TYPE_TO_TAB[entry.item.type] === activeTab,
-        );
+      : items.filter((entry) => tabOf(entry) === activeTab);
 
   const shouldRenderEmpty =
     !isLoading && !error && (!isConnected || filtered.length === 0);
@@ -152,21 +148,13 @@ function Transactions() {
                 filtered.length > 0 &&
                 filtered.map((entry, i) => (
                   <React.Fragment key={i}>
-                    {entry.kind === "request"
-                      ? renderRequestRow(
-                          entry.item,
-                          kind,
-                          `transactions-row-${i}`,
-                          "pb-4",
-                          evmStakeDecimals,
-                        )
-                      : renderWireOutRow({
-                          timestamp: entry.timestamp,
-                          read: wireOuts[entry.id],
-                          decimals: wireOutDecimals,
-                          testId: `transactions-row-${i}`,
-                          className: "pb-4",
-                        })}
+                    {renderActivityRow(
+                      entry,
+                      kind,
+                      `transactions-row-${i}`,
+                      "pb-4",
+                      evmStakeDecimals,
+                    )}
                   </React.Fragment>
                 ))}
             </div>

@@ -2201,3 +2201,11 @@ line, whichever section it lands in.
 - **Gap:** The user docs say a voucher is valid for 24 hours, but the EVM signature does not cover a deadline, so an EVM voucher never expires. The LP hooks (#1760) already honour a served `deadline`, so nothing changes in the app once the backend serves one.
 - **Impact:** The documented 24-hour expiry and fresh-voucher behaviour only exist on Stellar.
 - **Suggested fix:** Backend follow-up #1798: add a deadline to the EVM `VerifiedRequests` digest and serve it.
+
+### TD-161: The withdraw page's wire-out list still reads the audit log although `GET /v1/requests` serves `wire_outs[]`
+
+- **Date:** 2026-11-19
+- **Location:** `packages/frontend/src/api/useWireOutRequests.ts`, `packages/frontend/src/components/withdraw/useWireOutList.ts`
+- **Gap:** #2058 sources the activity feed from the served `wire_outs[]`, while `useWireOutRequests` (audit-log listing plus per-id contract reads, #1757) still feeds the withdraw page's "Your bank wire-outs" list.
+- **Impact:** Two sources for the same rows can disagree, and the audit-log path costs extra reads.
+- **Suggested fix:** Move `useWireOutList` onto `useRequests().data.wire_outs` and drop `useWireOutRequests` once the epic #1795 branch lands.

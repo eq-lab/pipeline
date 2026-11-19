@@ -35,6 +35,8 @@ export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
 export { useRequests, useInvalidateRequests } from "./useRequests";
 export type {
   RequestItem,
+  WireInItem,
+  WireOutItem,
   RequestType,
   RequestStatus,
   RequestsResponse,

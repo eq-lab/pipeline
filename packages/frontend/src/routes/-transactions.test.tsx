@@ -29,26 +29,9 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
-const mockWireOutItems = vi.hoisted(() => ({
-  items: [] as Array<{ id: string; timestamp: string }>,
-  error: null as Error | null,
-}));
-const mockWireOutReads = vi.hoisted(() => ({
-  reads: {} as Record<
-    string,
-    { amountRaw?: string; status?: "Pending" | "Settled" | "Cancelled" }
-  >,
-}));
-
 vi.mock("@/api", () => ({
   useChainServed: () => mockChainServed(),
   useRequests: () => mockUseRequests(),
-  useWireOutRequests: () => ({
-    items: mockWireOutItems.items,
-    isLoading: false,
-    error: mockWireOutItems.error,
-    refetch: vi.fn(),
-  }),
 }));
 
 const mockUseWallet = vi.fn(() => ({ isConnected: true }));
@@ -66,7 +49,6 @@ vi.mock("@/wallet", async (importOriginal) => {
     useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
     useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
-    useWireOuts: () => mockWireOutReads.reads,
   };
 });
 
@@ -1071,57 +1053,92 @@ describe("Shared renderRequestRow helper — EVM decimals (#1627)", () => {
   });
 });
 
-describe("Transactions page — wire-out rows (#1757)", () => {
+describe("Transactions page — bank transfer rows (#2058)", () => {
+  const BANK_FIXTURE: RequestsResponse = {
+    ...FIXTURE,
+    wire_ins: [
+      {
+        chain_id: 1,
+        id: 4,
+        status: "Assigned",
+        amount: "1234.5",
+        value_date: "2026-05-14",
+        ref_hash: "0xaa",
+        recorded_at: "2026-05-14T10:00:00Z",
+        assigned_at: "2999-01-01T00:00:00Z",
+      },
+    ],
+    wire_outs: [
+      {
+        chain_id: 1,
+        id: 3,
+        status: "Settled",
+        amount: "5",
+        requested_at: "2026-05-14T12:00:00Z",
+      },
+    ],
+  };
+
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: true });
     mockUseStellarWallet.mockReturnValue({ isConnected: false });
     mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
-      data: FIXTURE,
+      data: BANK_FIXTURE,
       isLoading: false,
       error: null,
       refetch: mockRefetch,
     });
-    mockWireOutItems.items = [{ id: "3", timestamp: "2999-01-01T00:00:00Z" }];
-    mockWireOutReads.reads = {
-      "3": { amountRaw: "5000000", status: "Settled" },
-    };
   });
 
   afterEach(() => {
-    mockWireOutItems.items = [];
-    mockWireOutItems.error = null;
-    mockWireOutReads.reads = {};
     vi.clearAllMocks();
   });
 
-  it("shows the wire-out first under All", () => {
+  it("interleaves the bank rows with the requests under All", () => {
     renderTransactions();
-    expect(screen.getByTestId("transactions-row-0")).toHaveTextContent(
-      "Bank transfer · Settled",
-    );
+    const rows = screen.getAllByTestId(/^transactions-row-\d+$/);
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toHaveTextContent("Add funds");
+    expect(rows[0]).toHaveTextContent("+1,234.50 USD");
+    expect(rows[0]).toHaveTextContent("Bank transfer · Assigned");
+    expect(rows[2]).toHaveTextContent("Withdraw funds");
+    expect(rows[2]).toHaveTextContent("Bank transfer · Settled");
   });
 
-  it("shows the wire-out under Sell and hides it under Buy, Stake and Unstake", async () => {
+  it("puts the wire-in under Buy and the wire-out under Sell only", async () => {
     const user = userEvent.setup();
     renderTransactions();
+    await user.click(screen.getByRole("tab", { name: "Buy" }));
+    expect(screen.getByText("Add funds")).toBeInTheDocument();
+    expect(screen.queryByText("Withdraw funds")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Sell" }));
-    expect(screen.getByText("Bank transfer · Settled")).toBeInTheDocument();
-    for (const name of ["Buy", "Stake", "Unstake"]) {
+    expect(screen.getByText("Withdraw funds")).toBeInTheDocument();
+    expect(screen.queryByText("Add funds")).not.toBeInTheDocument();
+  });
+
+  it("hides the bank rows under Stake and Unstake", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+    for (const name of ["Stake", "Unstake"]) {
       await user.click(screen.getByRole("tab", { name }));
-      expect(
-        screen.queryByText("Bank transfer · Settled"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Bank transfer/)).not.toBeInTheDocument();
     }
   });
 
-  it("keeps the request rows when the audit log fails", () => {
-    mockWireOutItems.items = [];
-    mockWireOutItems.error = new Error("audit log down");
+  it("is not empty for a wallet with only bank rows", () => {
+    mockUseRequests.mockReturnValue({
+      data: { requests: [], wire_ins: BANK_FIXTURE.wire_ins },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
     renderTransactions();
-    expect(screen.getByTestId("transactions-row-0")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("transactions-error-state"),
+      screen.queryByTestId("transactions-empty-state"),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId("transactions-row-0")).toHaveTextContent(
+      "Add funds",
+    );
   });
 });

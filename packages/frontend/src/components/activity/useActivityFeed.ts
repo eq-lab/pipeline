@@ -1,75 +1,64 @@
-// spec: docs/frontend/dashboard-components.md#recentactivitycard
-import { useRequests, useWireOutRequests } from "@/api";
-import type { RequestItem, UseRequestsResult } from "@/api";
-import { useWalletView, useWireOuts } from "@/wallet";
-import type { WireOutRead } from "@/wallet";
+// spec: docs/frontend/dashboard-components.md#activity-feed
+import { useRequests } from "@/api";
+import type {
+  RequestItem,
+  RequestsResponse,
+  UseRequestsResult,
+  WireInItem,
+  WireOutItem,
+} from "@/api";
 
 export type ActivityFeedItem =
   | { kind: "request"; item: RequestItem }
-  | { kind: "wireOut"; id: string; timestamp: string };
+  | { kind: "wireIn"; item: WireInItem }
+  | { kind: "wireOut"; item: WireOutItem };
 
 export interface UseActivityFeedOptions {
   limit?: number;
-  includeWireOuts?: boolean;
 }
 
 export interface UseActivityFeedResult {
   items: ActivityFeedItem[];
-  wireOuts: Record<string, WireOutRead>;
   requests: UseRequestsResult;
 }
 
-function timeOf(iso: string): number {
-  const t = Date.parse(iso);
+export function activityTime(entry: ActivityFeedItem): string | undefined {
+  if (entry.kind === "request") return entry.item.created_at;
+  if (entry.kind === "wireIn") {
+    return entry.item.assigned_at ?? entry.item.recorded_at;
+  }
+  return entry.item.requested_at;
+}
+
+function timeOf(entry: ActivityFeedItem): number {
+  const iso = activityTime(entry);
+  const t = iso === undefined ? NaN : Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
 }
 
 export function mergeActivityFeed(
-  requests: RequestItem[],
-  wireOuts: Array<{ id: string; timestamp: string }>,
+  data: RequestsResponse | undefined,
 ): ActivityFeedItem[] {
-  const merged: ActivityFeedItem[] = [];
-  let r = 0;
-  let w = 0;
-  while (r < requests.length || w < wireOuts.length) {
-    const request = requests[r];
-    const wireOut = wireOuts[w];
-    const takeRequest =
-      request !== undefined &&
-      (wireOut === undefined ||
-        timeOf(request.created_at) >= timeOf(wireOut.timestamp));
-    if (takeRequest) {
-      merged.push({ kind: "request", item: request });
-      r += 1;
-    } else if (wireOut !== undefined) {
-      merged.push({
-        kind: "wireOut",
-        id: wireOut.id,
-        timestamp: wireOut.timestamp,
-      });
-      w += 1;
-    }
-  }
-  return merged;
+  if (!data) return [];
+  const entries: ActivityFeedItem[] = [
+    ...(data.requests ?? []).map((item) => ({
+      kind: "request" as const,
+      item,
+    })),
+    ...(data.wire_ins ?? []).map((item) => ({ kind: "wireIn" as const, item })),
+    ...(data.wire_outs ?? []).map((item) => ({
+      kind: "wireOut" as const,
+      item,
+    })),
+  ];
+  return entries.sort((a, b) => timeOf(b) - timeOf(a));
 }
 
 export function useActivityFeed({
   limit,
-  includeWireOuts = true,
 }: UseActivityFeedOptions = {}): UseActivityFeedResult {
-  const { kind } = useWalletView();
   const requests = useRequests();
-  const { items: wireOutItems } = useWireOutRequests();
-
-  const merged = mergeActivityFeed(
-    requests.data?.requests ?? [],
-    includeWireOuts ? wireOutItems : [],
-  );
+  const merged = mergeActivityFeed(requests.data);
   const items = limit === undefined ? merged : merged.slice(0, limit);
-  const wireOuts = useWireOuts(
-    kind,
-    items.flatMap((entry) => (entry.kind === "wireOut" ? [entry.id] : [])),
-  );
-
-  return { items, wireOuts, requests };
+  return { items, requests };
 }

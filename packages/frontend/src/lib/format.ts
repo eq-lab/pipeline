@@ -43,6 +43,12 @@ export function formatTokenAmount(
   return tokenFormatter.format(float);
 }
 
+export function formatDecimalAmount(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") return "—";
+  const n = Number(value);
+  return Number.isFinite(n) ? tokenFormatter.format(n) : "—";
+}
+
 /**
  * Same as `formatTokenAmount` but rounds to a whole number (no fraction
  * digits). Used where the design omits cents, e.g. "1,000 USDC".
