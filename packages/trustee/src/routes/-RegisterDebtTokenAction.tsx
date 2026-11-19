@@ -1,12 +1,12 @@
 // spec: docs/frontend/trustee-flows.md#register-debt-token-1766
 import { InlineError } from "@pipeline/ui";
-import { useStellarWallet } from "@pipeline/wallet-connect";
 import {
   dealTokenConfigured,
-  useDeal,
+  useLoanDeal,
   useRegisterDeal,
   useRegisterDealAccess,
 } from "@/api/useDealToken";
+import { useChainWallet } from "@/lib/chainWallet";
 import { CardTitle } from "@/components/detail/DetailCard";
 import {
   BRAND,
@@ -46,10 +46,14 @@ export function RegisterDebtTokenAction({
   loanId: number | null | undefined;
   variant: "card" | "inline";
 }) {
-  const { address, isConnected } = useStellarWallet();
-  const deal = useDeal(chainId, loanId);
-  const view = debtTokenView(chainId, dealTokenConfigured(), deal);
-  const access = useRegisterDealAccess(loanId, view.kind === "unregistered");
+  const { address, isConnected } = useChainWallet(chainId);
+  const deal = useLoanDeal(chainId, loanId);
+  const view = debtTokenView(chainId, dealTokenConfigured(chainId), deal);
+  const access = useRegisterDealAccess(
+    chainId,
+    loanId,
+    view.kind === "unregistered",
+  );
   const register = useRegisterDeal();
 
   if (view.kind === "hidden") return null;

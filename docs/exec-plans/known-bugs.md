@@ -93,6 +93,15 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Resolved
 
+### BUG-39: The EVM worker drops the DEBT-only `DealRegistered(uint256,address)` [FIXED 2026-11-19 / #1892]
+- **Date:** 2026-11-19
+- **Tracked:** #1892; found while planning #1892.
+- **Location:** `packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`.
+- **Symptom:** An EVM `registerDeal` leaves no `DealRegistered` row and no audit-log entry, and the DEBT token's `Transfer`s are not indexed.
+- **Root cause:** The decoder declares only the legacy `DealRegistered(uint256,address,address)`, `decode_log` validates topic0, and Hoodi / `150631a` emit `DealRegistered(uint256,address)`.
+- **Workaround:** None needed for the UI (it reads `deal()` on chain).
+- **Resolved:** #1892 accepts both shapes per log (`cargo: null` for DEBT-only) and tracks the DEBT token alone. No Hoodi registration existed before the fix (scan from block 3 955 455 to head), so nothing needs a backfill.
+
 ### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1) [FIXED 2026-11-16 / #1927]
 - **Date:** 2026-11-16
 - **Tracked:** #1927 (epic #1920); Found while planning #1922.

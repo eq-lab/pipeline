@@ -993,8 +993,8 @@ every variant today.
   (`loan-detail-onchain-blocked`), the Matured rollover button is disabled, `onOtherAction` is a
   no-op for them, and the Record Coupon / Record Repayment pages null their
   `recordPaymentInput` / `closureReason` and print the same line. Each mutation input carries the
-  loan's `chainId` and the hook picks the arm (`pickChainWallet`). Only Register debt token stays
-  Stellar-only ([Register debt token](#register-debt-token-1766), #1892). Escalate to Risk Council
+  loan's `chainId` and the hook picks the arm (`pickChainWallet`). Register debt token uses the same
+  gate ([Register debt token](#register-debt-token-1766), #1892). Escalate to Risk Council
   and Disbursement complete (DB-only) stay available. The Disbursement card (#1898) uses the same gate.
 
 ### Repayment recovery (#1711)
@@ -1055,13 +1055,13 @@ Resolves TD-157. Contract: Minter `disburse(loan_id: u32, amount: i128, value_da
 Same card, dialog, test ids, copy, form rules and success line; the differences are rows 23 to 33 of the [differences table](#evm-1574).
 
 - **Call:** `AccessManager.execute(minter, disburse(uint256,uint256,uint64,bytes32))`, `value 0`, through `disburseEvmLoan` (`sendEvmContractCallChecked("disburseEvmLoan", …)`). The role is `MINTER_OPS_ROLE`, read with `canCall(wallet, minter, 0x1d492b02)` (`useDisburseAccess(chainId, …)`, `readEvmCanCall`); the copy still says "Trustee role".
-- **Pre-flight order** is the Stellar order without step 5: the DEBT trustline is skipped (`trustline: null`), because the EVM `DealToken` is an ERC-20 that only the factory mints, so `syncDebt` has no trustline precondition. Step 3 is `readEvmLoanDisbursementState` (`mutableLoanData` + `immutableLoanData.originalSeniorTranche`); step 4 is `readEvmDeal` (`DealTokenFactory.deal(uint256)`, a `DealTokenFactoryNotRegistered` revert is `null`) through `useEvmDeal`, keyed `["evm-deal-token", chainId, loanId]` (its own cache, so the Stellar `useDeal` observer on the same loan never shares or overwrites its query function); step 6 is `readEvmMinterPaused` (`useEvmMinterPaused`, key `["evm-minter-paused", minter]`). The card's bank cash is `useEvmMinterBankCash` (key `["evm-minter-bank-cash", minter]`, refetch 30 s). `useDeal` and the "Debt token" row stay Stellar-only (#1892) and keep the separate `["deal-token", chainId, loanId]` cache.
+- **Pre-flight order** is the Stellar order without step 5: the DEBT trustline is skipped (`trustline: null`), because the EVM `DealToken` is an ERC-20 that only the factory mints, so `syncDebt` has no trustline precondition. Step 3 is `readEvmLoanDisbursementState` (`mutableLoanData` + `immutableLoanData.originalSeniorTranche`); step 4 is `readEvmDeal` (`DealTokenFactory.deal(uint256)`, a `DealTokenFactoryNotRegistered` revert is `null`) through `useEvmDeal`, keyed `["evm-deal-token", chainId, loanId]` (its own cache, so the Stellar `useDeal` observer on the same loan never shares or overwrites its query function); step 6 is `readEvmMinterPaused` (`useEvmMinterPaused`, key `["evm-minter-paused", minter]`). The card's bank cash is `useEvmMinterBankCash` (key `["evm-minter-bank-cash", minter]`, refetch 30 s). `useDeal` keeps the separate `["deal-token", chainId, loanId]` cache; Register debt token and the "Debt token" row read both caches through `useLoanDeal` (#1892).
 - **Minter reads (Hoodi vs the frozen source).** `readEvmMinterBankCash` and `readEvmRefHashSeen` call the legacy views (`bankCash()`, `refHashSeen(bytes32)`, present on the Hoodi Minter). On a revert with empty data (the function does not exist, as on a `150631a` Minter) they fall back to `Minter.extsload` at the `PipelineMinterReader` layout: `bankCash` at `MINTER_STORAGE_SLOT + 8`, `refHashesSeen` at `keccak256(refHash . (MINTER_STORAGE_SLOT + 20))`. Any other error propagates. `paused()` exists on both.
 - **Units:** the card, dialog and form use `chainAmountDecimals(chainId)` (6 on EVM): amounts are parsed strictly (`parseExactAmount` in `utils/stellarSacUnits.ts`, no truncation), formatted with `rawToDecimal` (also in `utils/stellarSacUnits.ts`), and the form error reads "Enter the amount disbursed (up to 6 decimals)." Stellar output stays byte-identical at 7 dp.
 - **`ref_hash`:** `0x` + `sha256(reference.trim())`; the zero hash is rejected by `encodeEvmDisburseCalldata`. The hook refuses a seen hash (`readEvmRefHashSeen`) and a paused Minter (`readEvmMinterPaused`) before the signature.
 - **Errors** (`disburseErrorCopy`, EVM names matched in the details): `EnforcedPause` paused; `MinterRefHashSeen` reused reference; `MinterInsufficientBankCash` bank cash; `MinterInvalidAmount` / `LoanRegistryInvalidAmount` amount; `LoanRegistryDisbursementExceedsTranche` tranche (values at the chain's decimals); `LoanRegistryWrongCurrentStatus` / `LoanRegistryNonExistentLoanId` status; `LoanRegistryCarvedOut`; `DealTokenFactoryNotRegistered` "Register this loan's debt token first."
 - **Config:** `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and the new `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` (Hoodi `0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC`, equal to the worker's `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS`). Until the factory key is set the card shows "Disbursement isn't configured for this environment."
-- **Testnet caveat.** On Hoodi the registry holds no loans yet and `bankCash() = 0`. Disburse needs, in contract order, an unused non-zero `ref_hash`, booked bank cash at least the amount (EVM bank cash rises through `recordWireIn`, #1501, not bookable from the Trustee app on EVM), the loan `Approved..WatchList` within its tranche, and a registered deal: `drawLoan` does not register one, and `registerDeal` (#1892) is on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` and stays out of this app, so until it runs out of band the card shows "Register this loan's debt token first.".
+- **Testnet caveat.** On Hoodi the registry holds no loans yet and `bankCash() = 0`. Disburse needs, in contract order, an unused non-zero `ref_hash`, booked bank cash at least the amount (EVM bank cash rises through `recordWireIn`, #1501, not bookable from the Trustee app on EVM), the loan `Approved..WatchList` within its tranche, and a registered deal: `drawLoan` does not register one, so until the Trustee runs [Register debt token](#register-debt-token-1766) (`registerDeal`, #1892, on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`) the card shows "Register this loan's debt token first."; a successful registration invalidates `evm-deal-token`, which clears it without a reload.
 
 ### Figma → token / px mapping (`4116:10549`)
 
@@ -1203,14 +1203,14 @@ Rollover, Update lifecycle, Close loan, Record coupon / repayment (and recovery 
 | 25 | Disburse `ref_hash` | `sha256(reference.trim())`, 64 hex; zero rejected | `0x` + the same digest; zero rejected |
 | 26 | Disburse amount units | 7 dp | 6 dp via `chainAmountDecimals`; "up to 6 decimals" |
 | 27 | Disburse loan read | Soroban `mutable_loan_data` + `immutable_loan_data` | `mutableLoanData` + `immutableLoanData` (ordinal to name) |
-| 28 | Deal read | `readDeal`; `useDeal` | `readEvmDeal`; a separate `useEvmDeal` with its own `["evm-deal-token", …]` cache, used only by Disburse |
+| 28 | Deal read | `readDeal`; `useDeal` | `readEvmDeal`; a separate `useEvmDeal` with its own `["evm-deal-token", …]` cache, used by Disburse, Register debt token and the Debt token row (through `useLoanDeal`, #1892) |
 | 29 | DEBT trustline step | `owner_of` + SAC `authorized(holder)` | skipped (`trustline: null`) |
 | 30 | Bank cash / ref-seen reads | `readMinterPoolState` / `readRefHashSeen` | `readEvmMinterBankCash` / `readEvmRefHashSeen`: legacy views, `extsload` fallback on a `150631a` Minter |
 | 31 | Paused read | `readMinterPaused` | `paused()` view on the Minter |
 | 32 | Disburse errors | Soroban codes (`1000`, `7`, `8`, `6`/`25`, `13`, `3`/`2`, `21`) | the same copy keyed by custom-error name, plus `DealTokenFactoryNotRegistered` |
 | 33 | Disburse config | the four `VITE_STELLAR_*` ids | `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, new `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` |
 
-Not in the app: `registerDeal` (#1892), booking EVM bank cash (#1501), scheduling a lifecycle write.
+Not in the app: booking EVM bank cash (#1501), scheduling a lifecycle write.
 
 ### Scale handling (both flows; verified against `-useLoanDetail.ts` / `useLoanWaterfall.ts`)
 
@@ -2229,7 +2229,6 @@ differences:
 - Role: the trustee's EVM wallet needs `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` with delay 0 (the role
   that holds `drawLoan`). A delayed role fails the immediate `execute` at simulate
   (`AccessManagerNotScheduled`); scheduling a draw is not supported, as on Stellar.
-- Not covered: the Debt token block keeps its Stellar-only reason on EVM until #1892.
 
 #### Draw-inputs gate (#1805)
 
@@ -2287,14 +2286,50 @@ follow-up backend issue — see `docs/exec-plans/tech-debt-tracker.md`.
 
 ### Register debt token (#1766)
 
-A drawn loan has no debt token until `DealTokenFactory.register_deal(loan_id: u32)` runs (Stellar only; the EVM `registerDeal` arm is #1892, so an EVM loan shows the Stellar-only reason and no button). It is a separate, explicit signature, never chained into Approve. `register_deal` is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(factory, "register_deal", [loan_id], caller)` by a `TRUSTEE` wallet (`relay`, #1761); the factory id is `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
+A drawn loan has no debt token until `DealTokenFactory.register_deal(loan_id: u32)` runs (Stellar; the EVM arm is [below](#evm-1892)). It is a separate, explicit signature, never chained into Approve. `register_deal` is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(factory, "register_deal", [loan_id], caller)` by a `TRUSTEE` wallet (`relay`, #1761); the factory id is `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
 
 - **Placement.** One shared control, `-RegisterDebtTokenAction.tsx`: a "Debt token" card on every loan-detail layout (performing, watchlist, matured), and an inline block under the "Approved & drawn" banner on the origination detail once the drawn loan id is known. Registered loans render nothing on the loan page; the origination block swaps in "Debt token registered · <address>".
 - **Source of truth.** Registered or not is decided by `deal(loan_id)` only (`readDeal`): `Error(Contract, #4)` means not registered, any other failure is a read error and renders no action and "—". `debt_address(loan_id)` is never used for this: it returns a deterministic address even for unregistered loans. `Deal` is `{ debt }` (a legacy `cargo` field is ignored); `loan_id` is u32.
 - **Debt token row.** "Registry state & derived" gains `Debt token`, tag `chain`, showing `Deal.debt` verbatim, or "—" when not registered or the read fails.
 - **Gating.** `can_call(caller, factory, "register_deal")` mapped by `accessAction`: immediate role signs `execute` in one step; a delayed role schedules, then executes after the ready time (the Risk Council flow, `riskCouncilRoleLine`); no role disables the button with "Only the Trustee role can register a loan's debt token." An unset factory id shows "Debt token registration isn't configured for this environment."
 - **Errors** (`lib/dealToken.ts`, codes from `DealTokenFactoryError`): `#2` loan id too large, `#3` already registered, `#5` the issuer has not made the factory the DEBT admin (`set_admin`); `#1` (registry `NonExistentLoanId`, propagated by the factory) reads as "The registry has no loan with this id." AccessManager codes win for schedule/execute (`#6`-`#9`). Factory codes are mapped in execute mode only; anything else gets the generic simulation copy with the raw text behind "View details".
-- **After success** the `deal-token`, `register-deal-access` and `audit-log` queries are invalidated (and again after 5 s); the worker already indexes `DealRegistered`.
+- **After success** the `deal-token`, `evm-deal-token`, `register-deal-access` and `audit-log` queries are invalidated (and again after 5 s); the worker already indexes `DealRegistered` on both chains (EVM since #1892, BUG-39).
+
+#### EVM (#1892)
+
+An EVM loan on `ENV.EVM_CHAIN_ID` uses the same component, mount points, test ids, copy, `accessAction` states and invalidation as Stellar ("everything the same as on Stellar, the same approach"); the arm is picked by the loan's `chain_id`. The gate is `loanActionChainReason`: another non-Stellar chain id keeps the Stellar-only reason and no button.
+
+- **Call.** `AccessManager.execute(factory, registerDeal(uint256))`, `value 0` (or `schedule(factory, data, 0)` for a delayed role), through `relayEvmRegisterDeal` and `sendEvmContractCallChecked`; selector `0x19da0d36`. The caller is `msg.sender`. `registerDeal` is `restricted` on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` (`0x536b6c688f09d8f7`, the role that holds `drawLoan`); `drawLoan` never calls it. The copy still says "Trustee role" (as Disburse, #1574 row 24).
+- **Access read.** `readEvmCanCall(wallet, factory, 0x19da0d36)`, then `readEvmOperationSchedule` (`hashOperation(caller, factory, calldata)` + `getSchedule`) when `!immediate && delay > 0`; key `["register-deal-access", chainId, address, loanId]`.
+- **Deal read.** `readEvmDeal` through `useEvmDeal`, key `["evm-deal-token", chainId, loanId]`; `useLoanDeal(chainId, loanId)` calls both `useDeal` and `useEvmDeal` and picks one by chain, so the two caches never share a key (the #1574 shared-key bug). The row and the inline line print the EIP-55 `Deal.debt` verbatim.
+- **Errors** (`registerDealError`): custom-error names in the decoded details. `LoanRegistryNonExistentLoanId` reads as the `#1` copy and `DealTokenFactoryAlreadyRegistered` as the `#3` copy, in execute mode only; `AccessManagerNotScheduled` / `NotReady` / `Expired` / `AlreadyScheduled` read as the `#6`-`#9` copy; anything else (including `AccessManagerUnauthorizedCall`) gets the generic simulation copy with the raw text behind "View details". There is no `#2` (uint256 ids) or `#5` (no issuer) analogue.
+- **No trustline and no issuer step.** `registerDeal` deploys the per-loan `DealToken` itself (CREATE2, salt = loan id); the token is an ERC-20 that only the factory mints, so its holder needs no trustline (Disburse already skips it, `trustline: null`).
+- **Config.** `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` and `VITE_EVM_ACCESS_MANAGER_ADDRESS`; either unset shows the same not-configured copy.
+- **Indexing.** The EVM worker accepts both `DealRegistered(uint256 indexed loanId, address debt)` (topic0 `0xc272178e…`, Hoodi v5 and contracts #51 and later) and the legacy `(…, address cargo)` (`0x32ae7784…`) per log; the DEBT-only row carries `cargo: null` and the DEBT token is tracked alone ([backend](../references/backend.md#evm-dealtokenfactory-1485)).
+- **Hoodi check (2026-11-19, read only, nothing submitted).** Factory proxy `0xCf54…eCDC`; `registerDeal(uint256)` and `deal(uint256)` are in the implementation; `getTargetFunctionRole` is `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`; both trustee wallets (`0x96ef…c04e4`, `0xd3b9…a57c`) have `canCall = (true, 0)`, so the schedule path is not reachable there and is covered by unit tests only; `AM.execute(factory, registerDeal(0))` from `0x96ef…c04e4` reaches the factory and reverts `LoanRegistryNonExistentLoanId` (the registry holds no loans), and from a wallet without the role reverts `AccessManagerUnauthorizedCall`.
+
+**Differences from Stellar** (everything not listed is identical):
+
+| # | Area | Stellar (#1766) | EVM (#1892) |
+|---|---|---|---|
+| 1 | Chain gate | `stellarOnlyActionReason` | `loanActionChainReason`: open on `ENV.EVM_CHAIN_ID`; another non-Stellar id keeps the Stellar-only copy |
+| 2 | Call | `AM.execute(factory, "register_deal", [u32], caller)` / `AM.schedule(…)` via `relay` | `AccessManager.execute(factory, registerDeal(uint256))`, `value 0` / `schedule(factory, data, 0)`; caller = `msg.sender` |
+| 3 | Selector / encoding | symbol `register_deal`, `u32` arg | `0x19da0d36`, `uint256` arg; ids that are not safe non-negative integers are refused before any RPC call |
+| 4 | Role / access read | `TRUSTEE`, `can_call(caller, factory, "register_deal")` | `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, `canCall(wallet, factory, 0x19da0d36)`; copy still says "Trustee role" |
+| 5 | Schedule lookup | `readOperationSchedule` | `readEvmOperationSchedule` (operation id over calldata) |
+| 6 | Deal read | `readDeal` via `useDeal`, `["deal-token", …]`, `Error(Contract, #4)` is `null` | `readEvmDeal` via `useEvmDeal`, `["evm-deal-token", …]`, `DealTokenFactoryNotRegistered` is `null`; consumers use `useLoanDeal` |
+| 7 | Debt address shown | Soroban `C…` verbatim | EIP-55 `0x…` verbatim |
+| 8 | Error mapping | Soroban codes `#1`/`#2`/`#3`/`#5` (execute), AM `#6`-`#9` | error names: `LoanRegistryNonExistentLoanId` is the `#1` copy, `DealTokenFactoryAlreadyRegistered` the `#3` copy (execute only); AM names map to `#6`-`#9`; no `#2` / `#5` analogue |
+| 9 | Issuer precondition | the DEBT issuer must `set_admin(factory)` first (`#5`) | none: `registerDeal` deploys the `DealToken` |
+| 10 | DEBT trustline | not part of registration (Disburse step 5; ops `just new-deal <id>`) | none anywhere |
+| 11 | Simulate failure | `"<mode> simulation error: <Soroban error>"` | `"registerEvmDeal: simulation error: <viem message>"`; same user copy |
+| 12 | Stages | `awaiting-signature` during simulate, then `submitting`, `confirming` | no stage during simulate, then `awaiting-signature`, `confirming` |
+| 13 | Signing | Stellar wallet `signTransaction` | EVM wallet; a wrong network switches to `ENV.EVM_CHAIN_ID`; mock wallets refused |
+| 14 | Wallet guard (raw) | "Stellar wallet not connected." | "EVM wallet not connected." (same mapped copy) |
+| 15 | Config | `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` | `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS` |
+| 16 | Invalidation | `deal-token`, `register-deal-access`, `audit-log` | the same plus `evm-deal-token` (both arms invalidate all four) |
+| 17 | Access key | `["register-deal-access", address, loanId]` | `["register-deal-access", chainId, address, loanId]` (both arms) |
+| 18 | Indexed event | `deal_registered` map `{debt}` or legacy `{cargo, debt}`, told apart by map keys (#1788) | `DealRegistered(uint256,address)` or legacy `(…,address)`, told apart per log by topic0 (#1892, BUG-39); same row (`cargo: null`), same audit-log text |
 
 ### Review error copy
 

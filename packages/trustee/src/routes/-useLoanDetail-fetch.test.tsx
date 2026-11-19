@@ -16,7 +16,7 @@ vi.mock("@/lib/env", () => ({
 }));
 vi.mock("@/auth/sessionStore", () => ({ getSessionToken: () => "t" }));
 vi.mock("@/api/useDealToken", () => ({
-  useDeal: () => ({ data: undefined, isPending: false, isError: false }),
+  useLoanDeal: () => ({ data: undefined, isPending: false, isError: false }),
 }));
 
 import { useLoanDetail } from "./-useLoanDetail";
