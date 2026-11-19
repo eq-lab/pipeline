@@ -35,7 +35,7 @@ const stellar = {
 const E = "0x00000000000000000000000000000000000000E2";
 const evm = {
   addresses: Object.fromEntries([...EVM_CONTRACTS, "USDC"].map((k) => [k, E])) as EvmAddresses,
-  accounts: { relayerKey: `0x${"11".repeat(32)}`, verifierKey: `0x${"22".repeat(32)}`, capitalWallet: E, browserLpKey: `0x${"33".repeat(32)}` },
+  accounts: { relayerKey: `0x${"11".repeat(32)}`, verifierKey: `0x${"22".repeat(32)}`, capitalWallet: E, browserLpKey: `0x${"33".repeat(32)}`, riskCouncilKey: `0x${"44".repeat(32)}` },
   pricePollerStartBlock: 60,
 };
 const envInput = {

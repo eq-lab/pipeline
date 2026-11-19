@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, beforeEach, describe, it } from "node:test";
 import { buildResult, check, exitCode, parseChecksFile, type BuildInput } from "./check";
+import { riskChecks } from "./journeys/risk-checks";
 import type { Journey } from "./lib/journey";
 import { redact } from "./lib/redact";
 import { stackDir } from "./lib/stack";
@@ -222,5 +223,21 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
       const out = redact(line, []);
       for (const w of words.split(" ")) assert.ok(!out.includes(w), `${w} leaked from ${out}`);
     }
+  });
+});
+
+describe("risk council refusal check", () => {
+  const refused = riskChecks("stellar").find((c) => c.id === "stellar.risk.default-refused")!;
+  const recorded = (statusAfter: string, ...errors: (string | null)[]) => ({
+    "risk.defaultRefused": { attempts: errors.map((error, i) => ({ who: `key${i}`, error })), statusAfter },
+  });
+
+  it("passes when every key without the role is rejected and the loan keeps its status", () => {
+    assert.equal(refused.evaluate(recorded("Performing", "Unauthorized", "Unauthorized")).ok, true);
+  });
+
+  it("fails when the role went to the wrong key: a refused key's call went through and the loan defaulted", () => {
+    assert.equal(refused.evaluate(recorded("Default", "Unauthorized", null)).ok, false);
+    assert.equal(refused.evaluate(recorded("Performing", "Unauthorized", null)).ok, false);
   });
 });

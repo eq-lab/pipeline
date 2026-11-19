@@ -24,12 +24,12 @@ const QUANTITY = units("1", 6);
 /** The collateral registry's coverage floor for an 85 % margin-call LTV: ceil(10000 / 0.85) bps. */
 const FLOOR_BPS = 11_765;
 const GATEWAY = `http://localhost:${PORTS.fakes}/ipfs`;
-const STATUS = ["Approved", "Performing", "WatchList", "Default", "Closed"];
-const CLOSURE = ["None", "ScheduledMaturity", "EarlyRepayment", "Cancelled", "Default", "OtherWriteDown"];
+export const STATUS = ["Approved", "Performing", "WatchList", "Default", "Closed"];
+export const CLOSURE = ["None", "ScheduledMaturity", "EarlyRepayment", "Cancelled", "Default", "OtherWriteDown"];
 const CMA = 3;
 const WAREHOUSE_RECEIPT = 1;
 
-const abi = parseAbi([
+export const abi = parseAbi([
   "struct ImmutableLoanData { bytes32 borrowerRef; uint256 originalFacilitySize; uint256 originalSeniorTranche; uint256 originalEquityTranche; uint256 originalOfftakerPrice; uint32 seniorInterestRate; uint64 originationDate; uint64 originalMaturityDate; }",
   "struct MutableLoanData { uint256 nextEconomicsEpochsId; uint256 nextRepaymentId; uint8 status; uint64 currentMaturityTimestamp; uint32 currentRate; uint8 closureReason; bool carvedOut; uint256 disbursed; uint256 repaid; uint256 writtenDown; int256 interestAdjustment; string metadataURI; }",
   "struct LoanMoney { uint256 disbursed; uint256 repaid; uint256 writtenDown; uint256 outstanding; uint256 accruedInterest; bool carvedOut; }",
@@ -76,7 +76,8 @@ let trusteeToken: string;
 let originatorToken: string;
 let loanId = 0n;
 const C = `CHAIN_${EVM_CHAIN_ID}_EVM`;
-const ids = () => ({
+export const trusteeTokenOf = () => trusteeToken;
+export const ids = () => ({
   registry: env[`${C}_INDEXER_LOAN_REGISTRY_ADDRESS`] as Address,
   minter: env[`${C}_INDEXER_MINTER_ADDRESS`] as Address,
   collateral: env[`${C}_INDEXER_COLLATERAL_REGISTRY_ADDRESS`] as Address,
@@ -84,8 +85,8 @@ const ids = () => ({
   vault: env[`${C}_INDEXER_STAKED_PLUSD_ADDRESS`] as Address,
   capital: env.VITE_EVM_CAPITAL_WALLET_ADDRESS as Address,
 });
-const role = (name: keyof typeof EVM_ROLES) => roles[EVM_ROLES[name]];
-const chain = <T>(address: Address, fn: string, args: unknown[] = []) => read<T>(address, fn, args, abi);
+export const role = (name: keyof typeof EVM_ROLES) => roles[EVM_ROLES[name]];
+export const chain =<T>(address: Address, fn: string, args: unknown[] = []) => read<T>(address, fn, args, abi);
 const sha256 = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const ref = (): Hex => `0x${randomBytes(32).toString("hex")}`;
 const now = () => BigInt(Math.floor(Date.now() / 1000));

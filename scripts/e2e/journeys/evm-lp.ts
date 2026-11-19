@@ -26,7 +26,7 @@ interface Voucher {
   signature: `0x${string}`;
   deadline?: string | null;
 }
-async function voucher(kind: "deposits" | "withdrawals", id: bigint): Promise<Voucher> {
+export async function voucher(kind: "deposits" | "withdrawals", id: bigint): Promise<Voucher> {
   return until(`the ${kind} voucher of request ${id}`, async () => {
     const r = await http("GET", `/v1/${kind}/${id}/voucher?wallet=${me()}&${EVM_CHAIN}`);
     return r.status === 403 || r.status === 404 ? undefined : (ok(r, `${kind} voucher`) as Voucher);
