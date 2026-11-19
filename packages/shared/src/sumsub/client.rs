@@ -19,7 +19,7 @@ pub struct SumsubClient {
 impl SumsubClient {
     pub fn new(settings: SumsubSettings) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http_client::http_client(),
             settings,
         }
     }

@@ -1,4 +1,5 @@
 // spec: docs/references/security-registry-events.md#sync-loop
+use crate::evm_http::evm_rpc_client;
 use alloy::eips::BlockId;
 use alloy::primitives::{Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
@@ -507,11 +508,11 @@ impl EvmSecurityViewSource {
         reader: Address,
         confirmations: u64,
     ) -> Result<Self> {
-        let provider: HttpProvider = ProviderBuilder::new().on_http(
+        let provider: HttpProvider = ProviderBuilder::new().on_client(evm_rpc_client(
             rpc_url
                 .parse()
                 .with_context(|| format!("EvmSecurityViewSource: invalid RPC URL {rpc_url}"))?,
-        );
+        ));
         Ok(Self {
             provider,
             registry,

@@ -1,3 +1,4 @@
+use crate::evm_http::evm_rpc_client;
 use alloy::primitives::{Address, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
@@ -121,11 +122,11 @@ pub struct LoanRegistryReader {
 
 impl LoanRegistryReader {
     pub fn new(rpc_url: &str) -> Result<Self> {
-        let provider: HttpProvider = ProviderBuilder::new().on_http(
+        let provider: HttpProvider = ProviderBuilder::new().on_client(evm_rpc_client(
             rpc_url
                 .parse()
                 .with_context(|| format!("LoanRegistryReader: invalid RPC URL {rpc_url}"))?,
-        );
+        ));
         Ok(Self { provider })
     }
 }

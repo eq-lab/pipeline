@@ -141,7 +141,7 @@ impl MetalPricePriceProvider {
     /// Construct from environment (`METALPRICE_API_KEY`, optional `METALPRICE_BASE_URL`).
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            http: reqwest::Client::new(),
+            http: crate::http_client::http_client(),
             settings: MetalPriceSettings::from_env()?,
         })
     }

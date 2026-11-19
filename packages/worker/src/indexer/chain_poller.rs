@@ -23,13 +23,9 @@ pub trait ChainEventPoller: Send + Sync {
     /// For Stellar: the latest closed ledger sequence.
     async fn get_latest_block(&self) -> anyhow::Result<u64>;
 
-    /// Poll all decoded events in `[from, to]` (inclusive) as `LogMapper` boxes.
-    /// Each `LogMapper` is a fully-parsed, chain-aware event ready to persist.
-    async fn poll(
-        &self,
-        from: u64,
-        to: u64,
-    ) -> anyhow::Result<Vec<Box<dyn shared::log_mapper::LogMapper>>>;
+    /// Poll decoded events in `[from, to]` (inclusive); `covered_to` is the highest ledger the
+    /// source has actually ingested, and the cursor never commits past it.
+    async fn poll(&self, from: u64, to: u64) -> anyhow::Result<super::cursor::PolledRange>;
 
     /// Per-event timestamp enrichment.
     /// For EVM: fetches the block header via `eth_getBlockByNumber` and caches

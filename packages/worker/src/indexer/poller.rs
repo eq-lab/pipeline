@@ -14,6 +14,8 @@ use reqwest::Client;
 use shared::log_mapper::LogMapper;
 
 use super::chain_poller::ChainEventPoller;
+use super::cursor::PolledRange;
+use crate::evm_http::evm_rpc_client;
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 type DecodeFn = Box<dyn Fn(&alloy::rpc::types::Log) -> Option<Box<dyn LogMapper>> + Send + Sync>;
@@ -160,7 +162,8 @@ pub struct EvmEventPollerBuilder {
 
 impl EvmEventPollerBuilder {
     pub fn new(rpc_url: &str, block_range: u64, interval_ms: u64) -> Self {
-        let provider = ProviderBuilder::new().on_http(rpc_url.parse().expect("valid RPC URL"));
+        let provider = ProviderBuilder::new()
+            .on_client(evm_rpc_client(rpc_url.parse().expect("valid RPC URL")));
         Self {
             provider,
             handlers: vec![],
@@ -307,8 +310,12 @@ impl ChainEventPoller for EvmEventPoller {
         self.get_latest_block().await
     }
 
-    async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
-        self.poll(from, to).await
+    async fn poll(&self, from: u64, to: u64) -> Result<PolledRange> {
+        let mappers = self.poll(from, to).await?;
+        Ok(PolledRange {
+            mappers,
+            covered_to: to,
+        })
     }
 
     async fn get_block_timestamp(

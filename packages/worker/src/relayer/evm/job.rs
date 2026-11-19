@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::evm_http::evm_rpc_client;
 use alloy::network::EthereumWallet;
 use alloy::providers::fillers::{ChainIdFiller, GasFiller, NonceFiller, SimpleNonceManager};
 use alloy::providers::ProviderBuilder;
@@ -39,7 +40,7 @@ pub(crate) async fn run_evm_relayer_inner(
         .filler(NonceFiller::<SimpleNonceManager>::default())
         .filler(ChainIdFiller::new(Some(settings.chain_id as u64)))
         .wallet(EthereumWallet::from(signer))
-        .on_http(rpc_url);
+        .on_client(evm_rpc_client(rpc_url));
 
     let whitelister = EvmWhitelister::new(
         settings.chain_id,

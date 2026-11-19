@@ -10,7 +10,7 @@ frozen: nothing here touches contracts, deploy scripts or upgrades.
 
 All three problems in the issue body were checked against `origin/main` (`b75cf30b`) and are still real.
 
-1. **Skipped ledger behind a load-balanced RPC (the main fix, epic item 7).**
+1. [x] **Skipped ledger behind a load-balanced RPC (the main fix, epic item 7).**
    `index_once` (`packages/worker/src/indexer/mod.rs:376-417`) takes `latest` from
    `poller.get_latest_block()` (Stellar: `getLatestLedger`), polls `[cursor, end]` and commits
    `end + 1`. `StellarEventPoller::poll` (`packages/worker/src/indexer/stellar/poller.rs:200` and `:297`)
@@ -21,11 +21,11 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
    never indexed. Two more defects in `StellarRpc::get_events` (`rpc.rs:70-93`) make this worse:
    - it combines `latestLedger` across the 25-id request chunks with `max`, which is the wrong direction;
    - a missing `latestLedger` silently falls back to `end_ledger` (`rpc.rs:129-132`).
-2. **Cursor below RPC retention.** `getEvents` returns an error when `startLedger < oldestLedger` (as
+2. [x] **Cursor below RPC retention.** `getEvents` returns an error when `startLedger < oldestLedger` (as
    documented by SDF). `index_loop` (`mod.rs:350-374`) logs the generic `"indexer error — retrying in 5s"`
    every poll interval forever. It does not say that the cursor fell out of retention, it does not report how
    many ledgers are lost, and it gives the operator no next step. `StellarRpc` has no `getHealth` call yet.
-3. **No HTTP timeouts.** These clients are built with `reqwest::Client::new()` or a plain alloy `on_http`,
+3. [x] **No HTTP timeouts.** These clients are built with `reqwest::Client::new()` or a plain alloy `on_http`,
    so they have no request or connect timeout:
    - `StellarRpc::new` (`indexer/stellar/rpc.rs:48`). This client is shared by the Stellar indexer, the
      price poller (`price_poller/stellar/poller.rs:27`) and the relayer whitelist
@@ -126,9 +126,11 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
   split cleanly into a follow-up issue.
 - **Is 30 s / 5 s the right budget for every client?** The plan uses one shared default.
 
+Resolved 2026-11-19: runbook + log only (no table); vendor and alloy timeouts stay in this issue; one 30 s / 5 s budget. Step 7 relayer check holds (EVM nonce from `eth_getTransactionCount(pending)`, Stellar fresh sequence per attempt, both pre-check the on-chain allow state). TD-194 (BitGo) and TD-195 (EVM head cap) filed.
+
 ## Implementation Steps
 
-1. **Cursor helpers (pure)** — new `packages/worker/src/indexer/cursor.rs`, declared `pub mod cursor;` in
+1. [x] **Cursor helpers (pure)** — new `packages/worker/src/indexer/cursor.rs`, declared `pub mod cursor;` in
    `indexer/mod.rs`:
    - `pub struct PolledRange { pub mappers: Vec<Box<dyn LogMapper>>, pub covered_to: u64 }`.
    - `pub fn commit_end(cursor: u64, requested_end: u64, covered_to: u64) -> Option<u64>`. It returns
@@ -136,7 +138,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
    - `pub fn covered_to(requested_end: u64, latest_ledgers: impl IntoIterator<Item = u64>) -> u64`. It
      returns `min(requested_end, min(latest_ledgers))`, or `requested_end` when the iterator is empty.
 
-2. **Trait and loop** — `packages/worker/src/indexer/chain_poller.rs`, `indexer/mod.rs`,
+2. [x] **Trait and loop** — `packages/worker/src/indexer/chain_poller.rs`, `indexer/mod.rs`,
    `indexer/poller.rs`:
    - Change `ChainEventPoller::poll` to return `anyhow::Result<PolledRange>`.
    - The EVM impl (`poller.rs:310`) wraps its result as `PolledRange { mappers, covered_to: to }`.
@@ -150,7 +152,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
      - `set_cursor(commit + 1)`;
      - log `to = commit` and `requested_to = end`.
 
-3. **RPC: `latestLedger` handling** — `packages/worker/src/indexer/stellar/rpc.rs`:
+3. [x] **RPC: `latestLedger` handling** — `packages/worker/src/indexer/stellar/rpc.rs`:
    - Add `pub struct EventsPage { pub events: Vec<RawEvent>, pub latest_ledger: u64, pub oldest_ledger:
      Option<u64>, pub cursor: Option<String>, pub page_size: usize }`.
    - Add `pub fn parse_get_events_page(resp: &Value, start: u64, end: u64) -> Result<EventsPage>`, moving
@@ -161,7 +163,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
    - Return type: `Result<(Vec<RawEvent>, u64)>`, where the `u64` is now that minimum. `get_events` has no
      other callers (`grep -rn "get_events(" packages`).
 
-4. **Stellar poll** — `packages/worker/src/indexer/stellar/poller.rs`:
+4. [x] **Stellar poll** — `packages/worker/src/indexer/stellar/poller.rs`:
    - Collect `latest` from the core `get_events` call (`:200`) and from the deal-token call (`:297`).
    - Compute `covered = cursor::covered_to(to, [latest_core, latest_tokens…])`.
    - Drop raw events with `ledger > covered` before building mappers. This is defensive, since `index_once`
@@ -170,7 +172,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
    - `DealTokenSet::absorb_deal_registered` stays as it is. It is idempotent, so a `DealRegistered` above
      `covered` that is absorbed now and re-read on the next poll is harmless.
 
-5. **Retention gap** — `rpc.rs`, plus a new `packages/worker/src/indexer/stellar/retention.rs`
+5. [x] **Retention gap** — `rpc.rs`, plus a new `packages/worker/src/indexer/stellar/retention.rs`
    (`pub mod retention;` in `stellar/mod.rs`):
    - `StellarRpc::get_health(&self) -> Result<RpcHealth>` calls `getHealth`, with
      `pub struct RpcHealth { pub latest_ledger: u64, pub oldest_ledger: u64, pub retention_window:
@@ -191,7 +193,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
        `from`.
    - The cursor is never advanced automatically.
 
-6. **Shared HTTP client builder** — new `packages/shared/src/http_client.rs` (`pub mod http_client;` in
+6. [x] **Shared HTTP client builder** — new `packages/shared/src/http_client.rs` (`pub mod http_client;` in
    `shared/src/lib.rs`):
    - `pub const REQUEST_TIMEOUT: Duration = 30 s`.
    - `pub const CONNECT_TIMEOUT: Duration = 5 s`.
@@ -205,7 +207,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
    - Leave `bitgo/client.rs` unchanged.
    - Leave `api/tests/*` unchanged; they are test fixtures.
 
-7. **alloy providers with timeouts** — new `packages/worker/src/evm_http.rs` (`pub mod evm_http;` in
+7. [x] **alloy providers with timeouts** — new `packages/worker/src/evm_http.rs` (`pub mod evm_http;` in
    `packages/worker/src/lib.rs`):
    - `pub fn evm_rpc_client(url: reqwest::Url) -> alloy::rpc::client::RpcClient<Http<reqwest::Client>>`,
      built as `RpcClient::new(Http::with_client(shared::http_client::http_client(), url), false)`.
@@ -219,7 +221,7 @@ All three problems in the issue body were checked against `origin/main` (`b75cf3
      send as non-fatal. If it does not, stop and raise it to the manager rather than changing relayer
      semantics here.
 
-8. **Comments and lint.**
+8. [x] **Comments and lint.**
    - Follow the comment-less rule: no new doc comments or body comments. New files get at most a 1-2 line
      `// spec: docs/references/backend.md#stellar-indexer-cursor-and-rpc-retention` header (and the
      `#http-client-timeouts` anchor for `http_client.rs` and `evm_http.rs`).

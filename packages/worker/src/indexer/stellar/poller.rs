@@ -19,6 +19,7 @@ use shared::{
 use crate::indexer::config::StellarIndexerSettings;
 use crate::indexer::{
     chain_poller::ChainEventPoller,
+    cursor::{self, PolledRange},
     index_loop,
     loan_mapper::LoanEventMapper,
     loan_metadata::{
@@ -37,6 +38,7 @@ use crate::indexer::{
         plusd_seed::{run_plusd_seed_loop, PlusdSeedCtx},
         pocket_parsers::dispatch_pocket,
         pocket_seed::run_pocket_seed_loop,
+        retention::retention_gap,
         rpc::{EventFilter, StellarRpc},
         security_registry_parsers::dispatch_security_registry,
         security_registry_sync::run_security_registry_sync_loop,
@@ -155,13 +157,32 @@ impl StellarEventPoller {
     }
 }
 
+impl StellarEventPoller {
+    async fn explain_get_events_error(&self, cursor: u64, err: anyhow::Error) -> anyhow::Error {
+        let Ok(health) = self.rpc.get_health().await else {
+            return err;
+        };
+        let Some(gap) = retention_gap(self.chain_id, cursor, health.oldest_ledger) else {
+            return err;
+        };
+        tracing::error!(
+            chain_id = gap.chain_id,
+            cursor = gap.cursor,
+            oldest_ledger = gap.oldest_ledger,
+            missing_ledgers = gap.missing_ledgers,
+            "stellar indexer cursor is below RPC retention; indexing halted until an operator resets the cursor"
+        );
+        anyhow::Error::new(gap).context(err)
+    }
+}
+
 #[async_trait]
 impl ChainEventPoller for StellarEventPoller {
     async fn get_latest_block(&self) -> Result<u64> {
         self.rpc.get_latest_ledger().await
     }
 
-    async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
+    async fn poll(&self, from: u64, to: u64) -> Result<PolledRange> {
         let mut contract_ids = vec![
             self.deposit_manager_id.clone(),
             self.withdrawal_queue_id.clone(),
@@ -197,7 +218,11 @@ impl ChainEventPoller for StellarEventPoller {
 
         let filter = EventFilter { contract_ids };
 
-        let (raw_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+        let (raw_events, latest_core) = match self.rpc.get_events(from, to, &filter).await {
+            Ok(r) => r,
+            Err(e) => return Err(self.explain_get_events_error(from, e).await),
+        };
+        let mut latest_seen = vec![latest_core];
 
         let mut mappers: Vec<Box<dyn LogMapper>> = Vec::new();
         for raw in raw_events {
@@ -294,7 +319,8 @@ impl ChainEventPoller for StellarEventPoller {
                 let filter = EventFilter {
                     contract_ids: token_ids,
                 };
-                let (token_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+                let (token_events, latest_tokens) = self.rpc.get_events(from, to, &filter).await?;
+                latest_seen.push(latest_tokens);
                 let logs = {
                     let set = self.deal_tokens.lock().expect("deal_tokens lock poisoned");
                     route_deal_token_events(&token_events, &set)
@@ -309,7 +335,12 @@ impl ChainEventPoller for StellarEventPoller {
             }
         }
 
-        Ok(mappers)
+        let covered = cursor::covered_to(to, latest_seen);
+        mappers.retain(|m| m.block_number() <= covered);
+        Ok(PolledRange {
+            mappers,
+            covered_to: covered,
+        })
     }
 
     async fn get_block_timestamp(
@@ -362,9 +393,11 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         let reader = Arc::new(StellarLoanRegistryReader::new(rpc.clone()));
         let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
 
-        let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
-            MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
-        ));
+        let fetcher: Arc<dyn LoanMetadataFetcher> =
+            Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(
+                shared::http_client::http_client(),
+                settings.ipfs_gateway_url.clone(),
+            )));
         let immutable_resolver: Arc<dyn ImmutableDataResolver<StellarAddress, u32>> =
             reader.clone();
         let mutable_resolver: Arc<dyn MutableDataResolver<StellarAddress, u32>> = reader.clone();

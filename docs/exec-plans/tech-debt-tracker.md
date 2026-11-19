@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-193.**
+**Next free number: TD-196.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2510,3 +2510,17 @@ line, whichever section it lands in.
 - **Impact:** The cost grows with chain age (about 7 200 blocks a day on Hoodi, so one more call about every week; about 81 calls from block 0, hence `VITE_EVM_START_BLOCK` must be the LoanRegistry deploy block). It depends on the RPC provider's `eth_getLogs` limits, and it is coupled to the Minter storage layout (a layout change breaks the read; the Minter must expose `extsload` where the legacy view is absent). It runs for every EVM loan in `Performing..Default` that opens the loan detail page.
 - **Hoodi Minter caveat (#1574), resolved by #2074 (2026-11-19):** the Hoodi Minter (source `f92d719`) has no `extsload`, so `readEvmMinterRepayment` used to revert there and the EVM recovery list failed on Hoodi. It now calls the legacy `repayment(uint256,uint256)` view first and reads `extsload` only when that view reverts with empty data (a `150631a` Minter), the pattern `readEvmMinterBankCash` / `readEvmRefHashSeen` use. The log scan stays (this entry's gap).
 - **Suggested fix:** Serve per-repayment rows from the indexed logs on an existing per-loan endpoint (the data is already in `contract_logs`), and read from the API instead of the chain.
+
+### TD-194: BitGo client has no HTTP timeout
+
+- **Location:** `packages/shared/src/bitgo/client.rs` (`reqwest::Client::new()`) — Issue #1739.
+- **Gap:** Every other outbound client uses `shared::http_client` (30 s request, 5 s connect). BitGo is left without a timeout because `POST /txrequests` carries no idempotency key: a client-side timeout after BitGo accepted the request would surface a slow success as an error, and a caller that retries could pay out twice.
+- **Impact:** A hung BitGo connection blocks the calling task indefinitely.
+- **Suggested fix:** Add a timeout together with an idempotency key (or a lookup of the txrequest by our own reference before any retry), then switch the client to `shared::http_client::http_client()`.
+
+### TD-195: EVM indexer commits the requested end, not the node's head
+
+- **Location:** `packages/worker/src/indexer/poller.rs` (`ChainEventPoller::poll` returns `covered_to: to`) — Issue #1739.
+- **Gap:** The Stellar poller caps the committed range at the minimum `latestLedger` the RPC reported. On EVM, `eth_getLogs` against a load-balanced node that is behind the head often clamps to its own head without an error, so a range can be committed with its last block unseen. `LOG_CONFIRMATIONS_DELAY` lowers the odds but does not remove them.
+- **Impact:** A log in the last block or blocks of a polled range can be skipped silently when the node serving `eth_getLogs` lags the node that served `eth_blockNumber`.
+- **Suggested fix:** Read `eth_blockNumber` from the same provider immediately after `eth_getLogs` and report `covered_to = min(to, that head)`.
