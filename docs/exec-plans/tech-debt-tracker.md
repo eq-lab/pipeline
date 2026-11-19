@@ -2533,3 +2533,11 @@ line, whichever section it lands in.
 - **Gap:** The Stellar poller caps the committed range at the minimum `latestLedger` the RPC reported. On EVM, `eth_getLogs` against a load-balanced node that is behind the head often clamps to its own head without an error, so a range can be committed with its last block unseen. `LOG_CONFIRMATIONS_DELAY` lowers the odds but does not remove them.
 - **Impact:** A log in the last block or blocks of a polled range can be skipped silently when the node serving `eth_getLogs` lags the node that served `eth_blockNumber`.
 - **Suggested fix:** Read `eth_blockNumber` from the same provider immediately after `eth_getLogs` and report `covered_to = min(to, that head)`.
+
+### TD-193: Standard-goods quote unit is a hard-coded precious-metal table
+
+- **Date:** 2026-11-19
+- **Location:** `packages/shared/src/collateral_valuation/mod.rs` (`quote_quantity`, `compute_collateral` StandardGoods arm) — Issue #2125.
+- **Gap:** The unit of a standard-goods price is not stored anywhere. `quote_quantity` hard-codes `XAU`, `XAG`, `XPT` and `XPD` as per troy ounce, separate from `security_marks::QuoteUnit`. Every other asset reads unpriced until a per-anchor quote unit exists. Submission does not reject a standard-goods asset with no known unit (follow-up next to TD-55 / #1328).
+- **Impact:** Standard-goods loans on non-precious assets (for example `XCU`, `KC`) show `collateral: null` and `missing_inputs: ["quote_unit"]` on `/valuations`.
+- **Suggested fix:** Persist a quote unit on the anchor (or reuse `QuoteUnit`), validate it at submission, and drop the table.

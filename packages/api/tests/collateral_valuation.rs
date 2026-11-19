@@ -370,17 +370,17 @@ fn standard_goods_anchor() -> CollateralValuationRow {
         submitted_loan_id: 1,
         commodity: "Coffee".to_owned(),
         valuation_mode: ValuationMode::StandardGoods,
-        asset: "KC".to_owned(),
+        asset: "XAU".to_owned(),
         price_provider: "ICE".to_owned(),
         haircut_pct: "0.20".parse().unwrap(),
-        quantity_dmt: "1000".parse().unwrap(),
+        quantity_dmt: "0.0311035".parse().unwrap(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
     }
 }
 
-fn kc_prices() -> HashMap<String, BigDecimal> {
-    HashMap::from([("KC".to_owned(), "1000".parse().unwrap())])
+fn xau_prices() -> HashMap<String, BigDecimal> {
+    HashMap::from([("XAU".to_owned(), "1000".parse().unwrap())])
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn no_snapshot_reports_loan_snapshot_missing() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         None,
         false,
     )
@@ -405,7 +405,7 @@ fn zero_outstanding_with_snapshot_does_not_report_loan_snapshot_missing() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         None,
         true,
     )
@@ -422,7 +422,7 @@ fn positive_outstanding_computes_ccr_without_missing_inputs() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         Some(&senior),
         true,
     )
@@ -508,4 +508,14 @@ fn repeated_penalty_elements_are_allowed() {
     let tier = o.penalty_schedule[0].clone();
     o.penalty_schedule.push(tier);
     assert!(validate_offtake(&o).is_ok());
+}
+
+#[test]
+fn unsupported_asset_reports_quote_unit_missing() {
+    let mut anchor = standard_goods_anchor();
+    anchor.asset = "KC".to_owned();
+    let prices = HashMap::from([("KC".to_owned(), "1000".parse().unwrap())]);
+    let resp = build_response(&anchor, None, None, &prices, None, true).unwrap();
+    assert!(resp.collateral_value.is_none());
+    assert_eq!(resp.missing_inputs, vec!["quote_unit".to_owned()]);
 }

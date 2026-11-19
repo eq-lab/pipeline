@@ -25,7 +25,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, same_name, to_pct, ConcentrateValuation,
+    asset_for_metal, ccr_bps, compute_collateral, quote_quantity, same_name, to_pct,
+    ConcentrateValuation,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -850,6 +851,12 @@ pub fn build_response(
     };
     if price_missing {
         missing.push("reference_price".to_owned());
+    }
+    if !is_concentrate
+        && headline_price.is_some()
+        && quote_quantity(&anchor.asset, &anchor.quantity_dmt).is_none()
+    {
+        missing.push("quote_unit".to_owned());
     }
     if is_concentrate {
         if assay.is_none() {
