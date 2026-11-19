@@ -33,7 +33,9 @@ function Stake() {
   // ── Chain view ────────────────────────────────────────────────────────
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
-  const { data: statsData } = useStats({ chainId: useActiveChain().chainId });
+  // Same source as Home (HomeStatsStrip / StakeCard): live APY from /v1/stats.
+  const { chainId } = useActiveChain();
+  const { data: statsData } = useStats({ chainId });
   const isStellar = kind === "stellar";
 
   // ── Toast ─────────────────────────────────────────────────────────────
@@ -263,8 +265,10 @@ function Stake() {
         ) : (
           <>
             {/* Section header */}
-            {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
-            <StakeHeader data-testid="stake-header" title={`Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`} />
+            <StakeHeader
+              data-testid="stake-header"
+              title={`Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`}
+            />
 
             {/* Combined conversion card: tab switcher + input + output/rates */}
             <Card
