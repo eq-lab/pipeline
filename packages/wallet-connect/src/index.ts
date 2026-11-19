@@ -361,6 +361,10 @@ export {
   readSecurityInspectors,
   securityReasonHash,
   isInspectorAddress,
+  isSecurityBenchmark,
+  decimal7ToI128,
+  buildCheckCoverageEnvelope,
+  checkCoverage,
   SECURITY_PAYMENT_TERMS,
   FLAG_OUTCOMES,
 } from "./stellar/contracts/securityRegistry";
@@ -372,6 +376,8 @@ export type {
   SecurityRegistryRelayParams,
   ReadSecurityRegistryScheduleParams,
   ReadSecurityInspectorsParams,
+  BuildCheckCoverageEnvelopeParams,
+  CheckCoverageParams,
 } from "./stellar/contracts/securityRegistry";
 
 // ── EVM Risk Council ──────────────────────────────────────────────────────────
@@ -408,6 +414,7 @@ export {
   evmSecurityErrorAbi,
   EVM_SECURITY_FUNCTION_NAMES,
   evmSecuritySelector,
+  type EvmSecurityFn,
   encodeEvmSecurityRegistryCalldata,
   evmSecurityTarget,
   relayEvmSecurityRegistry,

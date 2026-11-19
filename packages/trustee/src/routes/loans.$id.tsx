@@ -40,6 +40,7 @@ import {
 import type { SecurityCardView } from "./-loanSecurity";
 import { lastLoanBookSearch } from "./-loanBookSearch";
 import { SecurityRecordsCard } from "./-SecurityRecordsCard";
+import { SecurityActionsCard } from "./-SecurityActionsCard";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
@@ -1343,7 +1344,12 @@ function LoanDetail() {
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} />
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
@@ -1390,7 +1396,12 @@ function LoanDetail() {
               />
             )}
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} />
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
           <RegisterDebtTokenAction
             chainId={chain}
             loanId={debtLoanId}
@@ -1443,7 +1454,12 @@ function LoanDetail() {
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
             <RegistryCard registry={detail.registry} />
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} />
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
           {detail.variant === "disbursing" && (
             <DisbursementActionCard
               loanName={detail.hero.title}

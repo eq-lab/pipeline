@@ -44,6 +44,27 @@ export interface LoanSecurityRecordMark {
   value_per_unit?: string | null;
   at?: string | null;
   benchmark?: string | null;
+  report_hash?: string | null;
+}
+
+export interface LoanSecuritySuggestedMark {
+  value_per_unit?: string | null;
+  benchmark?: string | null;
+  source_price?: string | null;
+  source_at?: string | null;
+  asset?: string | null;
+  price_provider?: string | null;
+  quote_unit?: string | null;
+  mode?: string | null;
+  report_hash?: string | null;
+}
+
+export interface LoanSecurityExtensionConsent {
+  position?: number;
+  consent_hash?: string | null;
+  new_maturity?: string | null;
+  ledger?: number;
+  at?: string | null;
 }
 
 export interface LoanSecurityRecordValuation {
@@ -80,6 +101,12 @@ export interface LoanSecurityRecord {
   inspection_stale?: boolean | null;
   mark_stale?: boolean | null;
   mark?: LoanSecurityRecordMark | null;
+  suggested_mark?: LoanSecuritySuggestedMark | null;
+  suggestion_status?: string | null;
+  move_bps?: number | null;
+  mark_due?: boolean | null;
+  mark_due_reasons?: string[] | null;
+  mark_due_at?: string | null;
   valuation?: LoanSecurityRecordValuation | null;
   lot?: LoanSecurityRecordLot | null;
   release_reason_hash?: string | null;
@@ -105,6 +132,10 @@ export interface LoanSecurityMarginCall {
 
 export interface LoanSecurityPrices {
   price_stale?: boolean | null;
+  mark_age?: string | null;
+  mark_max_age?: string | null;
+  mark_move_bps?: number | null;
+  marks_due?: number | null;
 }
 
 export interface LoanSecurityResponse {
@@ -116,6 +147,7 @@ export interface LoanSecurityResponse {
   valuation?: LoanSecurityValuation | null;
   margin_call?: LoanSecurityMarginCall | null;
   prices?: LoanSecurityPrices | null;
+  extension_consents?: LoanSecurityExtensionConsent[];
   pending_operations?: PendingOperation[];
 }
 

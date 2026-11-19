@@ -14,6 +14,7 @@ import {
   evmRiskCouncilSelector,
   evmSecurityErrorAbi,
   evmSecuritySelector,
+  type EvmSecurityFn,
   evmSecurityTarget,
   executeEvmScheduledOperation,
   executeScheduledOperation,
@@ -208,7 +209,7 @@ function evmSelectorFor(
   fn: CouncilCall["fn"],
 ): ReturnType<typeof evmSecuritySelector> {
   return councilTarget(fn) === "security_registry"
-    ? evmSecuritySelector(fn as SecurityRegistryCall["fn"])
+    ? evmSecuritySelector(fn as EvmSecurityFn)
     : evmRiskCouncilSelector(fn as RiskCouncilCall["fn"]);
 }
 

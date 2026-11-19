@@ -224,8 +224,13 @@ export const evmSecurityErrorAbi: Abi = securityErrors.filter(
     securityErrors.findIndex((other) => other.name === item.name) === index,
 );
 
+export type EvmSecurityFn = Exclude<
+  SecurityRegistryCall["fn"],
+  "revalue" | "record_extension_consent"
+>;
+
 export const EVM_SECURITY_FUNCTION_NAMES: Readonly<
-  Record<SecurityRegistryCall["fn"], string>
+  Record<EvmSecurityFn, string>
 > = {
   set_terms: "setTerms",
   resolve_flag: "resolveFlag",
@@ -280,7 +285,7 @@ export function normalizeEvmAddress(value: string): string {
   return getAddress(value);
 }
 
-function evmSecurityItem(fn: SecurityRegistryCall["fn"]): AbiFunction {
+function evmSecurityItem(fn: EvmSecurityFn): AbiFunction {
   const abi =
     fn === "set_inspectors" ? evmSecurityRecordNftAbi : evmSecurityRegistryAbi;
   const name = EVM_SECURITY_FUNCTION_NAMES[fn];
@@ -292,7 +297,7 @@ function evmSecurityItem(fn: SecurityRegistryCall["fn"]): AbiFunction {
   return item;
 }
 
-export function evmSecuritySelector(fn: SecurityRegistryCall["fn"]): Hex {
+export function evmSecuritySelector(fn: EvmSecurityFn): Hex {
   return toFunctionSelector(evmSecurityItem(fn));
 }
 

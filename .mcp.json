@@ -9,6 +9,10 @@
     "BitGo Docs": {
       "type": "http",
       "url": "https://developers.bitgo.com/mcp"
+    },
+    "figma": {
+      "type": "http",
+      "url": "http://127.0.0.1:3845/mcp"
     }
   }
 }

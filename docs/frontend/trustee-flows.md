@@ -867,9 +867,85 @@ with a type check, so a partial 200 renders `—` and never throws.
 Test ids: `loan-detail-security-records`, `-records-empty`, `loan-detail-security-record`
 (`data-record-id`), `-record-chip`, `loan-detail-security-inspection`.
 
-Not shown here: mark suggestions (`suggested_mark`, `mark_due`, #1783, feed the #1859 revalue
-flow), extension consents, record documents, repayments, agent release, margin-call events and
-pending operations. Writes stay on `/risk-council/security/$id`.
+Mark suggestions, the Set price button and the "Security actions" card are specified in
+[Security marks (#1859)](#security-marks-1859). Not shown
+here: record documents, repayments, agent release, margin-call events and pending operations. Risk
+Council writes stay on `/risk-council/security/$id`.
+
+#### Security marks (#1859)
+
+Price marks, extension consent and the coverage check: three SecurityRegistry writes on the loan detail page, Stellar loans only. No Figma frames exist
+(no-design exception granted on the Issue): everything is built from the loan-detail primitives and
+the `DisburseAction` card and dialog pattern. No copy names a role; each action renders on the
+served `can_call` of the connected wallet (`useSecurityRegistryAccess`, `readCanCall` against
+`VITE_STELLAR_SECURITY_REGISTRY_ID` through the AccessManager `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`).
+The app computes nothing: every mark, move, due flag and consent is the served value, `—` when
+missing.
+
+**Records card additions** (`buildSecurityRecords`). A record is revaluable when `open === true`
+and it has a `suggestion_status` or an on-chain `mark.value_per_unit`. Such a record gains rows
+Suggested price (`{benchmark} · $x per {unit}` from `suggested_mark`; the status text instead when
+`suggestion_status` is not `ok`: `unmapped`, `unsupported_unit`, `no_price`, `inputs_missing`,
+`unreadable`), Move vs suggestion (`move_bps` as `N bps`), Mark due (the `mark_due_reasons`
+`missing` / `age` / `moved` as copy when `mark_due === true`, "No" when `false`) and Mark due at
+(`mark_due_at`), a "Mark due" attention chip on `mark_due === true`, and a "Set price" button
+(`loan-detail-revalue-button`). The button is hidden for an EVM loan or when the registry or
+executor id is unset, disabled with "Connect a Stellar wallet to set a price mark." without a
+wallet and with "This wallet is not allowed to set a price mark." when `can_call` is not
+`immediate` (`loan-detail-revalue-note`). A USD record's mark is stored on-chain but not used in
+the valuation; the contract has no status check on `revalue`.
+
+**Revalue** (`-RevalueDialog.tsx`, `revalue-dialog`). Contract: `revalue(record_id: u32,
+value_per_unit: i128, benchmark: Symbol, report_hash: BytesN<32>)`, `#[only_owner]`, reached by
+`AM.execute` (`relaySecurityRegistry`, `fn: "revalue"`). The dialog shows Current price, Suggested
+price, Move, Mark due and Mark due at (`revalue-context`) and prefills Price per unit with the
+served `suggested_mark.value_per_unit` string verbatim and Benchmark with `suggested_mark.benchmark`
+(else the current `mark.benchmark`). Validation is input-only: price is a non-negative decimal with
+at most 7 dp (zero allowed, negative rejected with "The price can't be negative."), benchmark
+matches `[A-Za-z0-9_]{1,32}` (a Soroban `Symbol`). The typed price is encoded to the i128 raw
+(`decimal7ToI128`, x 1e7).
+
+- **`report_hash`.** Value and benchmark unchanged from the suggestion: the served
+  `suggested_mark.report_hash` is sent verbatim. Changed, or nothing was suggested: "Price evidence"
+  text is required and `sha256(trimmed text)` (`securityReasonHash`) is sent. The hash that will be
+  sent is always shown (`revalue-hash`). The backend stores it opaquely
+  ([loan-security-state.md#mark-suggestions](../product-specs/loan-security-state.md#mark-suggestions)).
+- Submit label follows the relay stage (`stageLabel`). Errors go through `securityMarksErrorCopy`
+  (`1` "This record does not exist on-chain.", `14` "This loan has no security terms yet. Set them
+  first."; other codes keep the generic copy with the raw text behind "View details").
+- After success the records card shows the transaction hash (`loan-detail-revalue-result`).
+
+**Security actions card** (`-SecurityActionsCard.tsx`, `loan-detail-security-actions`, under the
+records card in every layout). Hidden whenever the summary Security card is not ready, for an EVM
+loan, without a numeric loan id, or when neither the registry nor the executor id is set. It holds
+the served coverage hints (`CURABLE_NOTE` on `margin_call.open_call_curable === true`,
+`ABOVE_RATIO_NO_CALL_NOTE` on `ltv_above_ratio_no_onchain_call === true`) and three parts:
+
+1. **Check coverage** (`check-coverage-button`). `check_coverage(loan_id: u32)` is permissionless and
+   invoked directly on the SecurityRegistry (`checkCoverage`, no AccessManager). It needs only a
+   connected Stellar wallet and `VITE_STELLAR_SECURITY_REGISTRY_ID`; without a wallet the button is
+   disabled with "Connect a Stellar wallet to check coverage." (`check-coverage-connect`). The
+   outcome (a margin call opened or cured) is read from the refetched card, not computed.
+2. **Extension consents** (`loan-detail-extension-consents`). `extension_consents[]` verbatim:
+   position, new maturity date, consent hash (truncated, full in the tooltip) and recorded date.
+   "No extension consents are recorded." when empty.
+3. **Record buyer consent** (`extension-consent-*`). `record_extension_consent(loan_id: u32,
+   new_maturity: u64, consent_hash: BytesN<32>)` via `AM.execute`. New maturity is a UTC date after
+   today, sent as 00:00 UTC of that day in unix seconds; the Buyer consent reference text is hashed
+   with `securityReasonHash` (as the Release-with-consent form) and the hash is shown
+   (`extension-consent-hash`). A wallet whose `can_call` is not `immediate` sees "This wallet is not
+   allowed to record an extension consent." and a disabled form. The extension itself stays the
+   Risk Council `amend_economics` ([risk-council-actions](#risk-council-actions)).
+
+After each success `loan-security`, `loan-book` and `audit-log` are invalidated immediately and at
+5 s and 15 s (`useSecurityMarks.ts`); the served data shows the write within one or two worker
+cycles. Config: `VITE_STELLAR_SECURITY_REGISTRY_ID` and `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`
+(already wired by #1858). Test ids: `loan-detail-revalue-button`, `-revalue-note`,
+`-revalue-result`, `revalue-dialog`, `revalue-value`, `revalue-benchmark`, `revalue-evidence`,
+`revalue-hash`, `revalue-validation`, `revalue-error`, `revalue-confirm`,
+`loan-detail-security-actions`, `check-coverage-button`, `-result`, `-error`, `-connect`,
+`loan-detail-extension-consent(s)`, `extension-consent-date`, `-reference`, `-hash`, `-submit`,
+`-result`, `-error`, `-no-role`, `-validation`.
 
 ### Registry state & derived (#852)
 

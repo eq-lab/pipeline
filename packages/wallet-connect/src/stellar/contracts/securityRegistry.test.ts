@@ -17,7 +17,9 @@ vi.mock("./accessManager", () => ({
 vi.mock("./simulateRead", () => ({ simulateRead: mockSimulateRead }));
 
 import {
+  decimal7ToI128,
   encodeSecurityRegistryArgs,
+  isSecurityBenchmark,
   readSecurityInspectors,
   readSecurityRegistrySchedule,
   relaySecurityRegistry,
@@ -299,5 +301,94 @@ describe("readSecurityInspectors", () => {
     await expect(
       readSecurityInspectors({ ...base, registryId: "" }),
     ).rejects.toThrow(/registryId/);
+  });
+});
+
+describe("encodeSecurityRegistryArgs revalue", () => {
+  const call = (valuePerUnit: string, extra = {}) => ({
+    fn: "revalue" as const,
+    recordId: 4,
+    valuePerUnit,
+    benchmark: "LME_Cu",
+    reportHash: HASH,
+    ...extra,
+  });
+
+  it("encodes u32 id, i128 raw at 7 dp, Symbol benchmark and bytes32 hash", () => {
+    const args = encodeSecurityRegistryArgs(call("1250.5"));
+    expect(args).toHaveLength(4);
+    expect(scValToNative(args[0]!)).toBe(4);
+    expect(args[1]!.switch().name).toBe("scvI128");
+    expect(scValToNative(args[1]!)).toBe(12505000000n);
+    expect(args[2]!.switch().name).toBe("scvSymbol");
+    expect(scValToNative(args[2]!)).toBe("LME_Cu");
+    expect(args[3]!.switch().name).toBe("scvBytes");
+  });
+
+  it("allows zero and 7 dp, rejects negatives, 8 dp, empty and text", () => {
+    expect(decimal7ToI128("0")).toBe(0n);
+    expect(decimal7ToI128("100.0000000")).toBe(1000000000n);
+    expect(decimal7ToI128("0.0000001")).toBe(1n);
+    for (const bad of ["-1", "1.12345678", "", "abc", "1e3", ".5"]) {
+      expect(() => decimal7ToI128(bad)).toThrow(/invalid value per unit/);
+    }
+  });
+
+  it("rejects a bad Symbol, a 33-char Symbol and a bad hash", () => {
+    expect(() =>
+      encodeSecurityRegistryArgs(call("1", { benchmark: "bad name" })),
+    ).toThrow(/benchmark/);
+    expect(() =>
+      encodeSecurityRegistryArgs(call("1", { benchmark: "a".repeat(33) })),
+    ).toThrow(/benchmark/);
+    expect(() =>
+      encodeSecurityRegistryArgs(call("1", { reportHash: "xyz" })),
+    ).toThrow(/reportHash/);
+    expect(isSecurityBenchmark("a".repeat(32))).toBe(true);
+  });
+});
+
+describe("encodeSecurityRegistryArgs record_extension_consent", () => {
+  const call = (newMaturity: number | string, extra = {}) => ({
+    fn: "record_extension_consent" as const,
+    loanId: 9,
+    newMaturity,
+    consentHash: HASH,
+    ...extra,
+  });
+
+  it("encodes u32 loan id, u64 maturity and bytes32 hash", () => {
+    const args = encodeSecurityRegistryArgs(call(1798675200));
+    expect(args).toHaveLength(3);
+    expect(scValToNative(args[0]!)).toBe(9);
+    expect(args[1]!.switch().name).toBe("scvU64");
+    expect(scValToNative(args[1]!)).toBe(1798675200n);
+    expect(args[2]!.switch().name).toBe("scvBytes");
+  });
+
+  it("enforces u64 bounds and a valid hash", () => {
+    expect(() =>
+      encodeSecurityRegistryArgs(call((2n ** 64n).toString())),
+    ).toThrow(/newMaturity/);
+    expect(() => encodeSecurityRegistryArgs(call(-1))).toThrow(/newMaturity/);
+    expect(() =>
+      encodeSecurityRegistryArgs(call(1, { consentHash: "zz" })),
+    ).toThrow(/consentHash/);
+  });
+
+  it("relays through the AccessManager with the registry as target", async () => {
+    mockRelay.mockResolvedValue({ hash: "h" });
+    await relaySecurityRegistry({
+      ...base,
+      mode: "execute",
+      caller: G1,
+      accessManagerId: "CAM",
+      signTransaction: vi.fn(),
+      call: call(1798675200),
+    });
+    expect(mockRelay.mock.calls[0]![0]).toMatchObject({
+      target: "CSEC",
+      fn: "record_extension_consent",
+    });
   });
 });

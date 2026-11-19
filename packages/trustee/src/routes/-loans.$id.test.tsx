@@ -149,6 +149,30 @@ vi.mock("./-DisburseAction", () => ({
   ),
 }));
 
+vi.mock("./-SecurityActionsCard", () => ({
+  SecurityActionsCard: (props: {
+    chainId: number;
+    loanId: number | null;
+    view: { state: string };
+  }) => (
+    <div
+      data-testid="security-actions-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-state={props.view.state}
+    />
+  ),
+}));
+
+vi.mock("@/api/useSecurityMarks", () => ({
+  securityMarksConfigured: () => false,
+  useSecurityRegistryAccess: () => ({ data: undefined }),
+}));
+
+vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: () => ({ address: null, isConnected: false }),
+}));
+
 import { Route } from "./loans.$id";
 import { rememberLoanBookSearch } from "./-loanBookSearch";
 
@@ -308,6 +332,7 @@ function makeResult(
     otherActions: PERFORMING_OTHER_ACTIONS,
     security: securityView(),
     securityRecords: RECORDS_VIEW,
+    securityActions: { state: "ready", consents: [], notes: [] },
     ...overrides,
   };
 }
@@ -691,6 +716,14 @@ describe("Loan detail route — Security records card (#1767)", () => {
       expect(records[1]).toHaveTextContent("No inspections.");
     },
   );
+
+  it("renders the security actions card under the records card with the chain and loan", () => {
+    renderRoute();
+    const stub = screen.getByTestId("security-actions-stub");
+    expect(stub).toHaveAttribute("data-chain", "99000001");
+    expect(stub).toHaveAttribute("data-loan", "4488");
+    expect(stub).toHaveAttribute("data-state", "ready");
+  });
 
   it("shows the empty line when no records are registered", () => {
     mockUseLoanDetail.mockReturnValue(

@@ -154,6 +154,10 @@ describe("buildSecurityRecords", () => {
       { label: "Value", value: "$11,400,600" },
       { label: "Price", value: "LME Copper · $9,500.5 per MT" },
       { label: "Price updated", value: "10 Jun 2026" },
+      { label: "Suggested price", value: "—" },
+      { label: "Move vs suggestion", value: "—" },
+      { label: "Mark due", value: "—" },
+      { label: "Mark due at", value: "—" },
       { label: "Attested", value: "1 Jun 2026" },
     ]);
     expect(record?.attestedBy).toBe(ADDR);
@@ -246,5 +250,84 @@ describe("buildSecurityRecords", () => {
     ).not.toThrow();
     const [record] = buildSecurityRecords(withRecords([{}])).records;
     expect(record?.title).toBe("Record #— · —");
+  });
+});
+
+describe("buildSecurityRecords mark suggestions (#1859)", () => {
+  const SUGGESTED: LoanSecurityRecord = {
+    ...GOODS,
+    suggested_mark: {
+      value_per_unit: "9600.0000000",
+      benchmark: "LME_Cu",
+      report_hash: "ab".repeat(32),
+    },
+    suggestion_status: "ok",
+    move_bps: 105,
+    mark_due: true,
+    mark_due_reasons: ["age", "moved"],
+    mark_due_at: T1,
+  };
+
+  function view(record: LoanSecurityRecord) {
+    return buildSecurityRecords(withRecords([record])).records[0]!;
+  }
+
+  function row(record: LoanSecurityRecord, label: string) {
+    return view(record).rows.find((r) => r.label === label)?.value;
+  }
+
+  it("shows the served suggestion, move, reasons and due date verbatim", () => {
+    expect(row(SUGGESTED, "Suggested price")).toBe("LME_Cu · $9,600 per MT");
+    expect(row(SUGGESTED, "Move vs suggestion")).toBe("105 bps");
+    expect(row(SUGGESTED, "Mark due")).toBe(
+      "Mark is older than the maximum age, Suggested price moved beyond the threshold",
+    );
+    expect(row(SUGGESTED, "Mark due at")).toBe("10 Jun 2026");
+    expect(view(SUGGESTED).chips).toContainEqual({
+      label: "Mark due",
+      tone: "attention",
+    });
+  });
+
+  it("builds the revalue seed from the served suggestion", () => {
+    expect(view(SUGGESTED).revalue).toEqual({
+      recordId: 7,
+      title: "Record #7 · warehouse_receipt",
+      suggestedValue: "9600.0000000",
+      suggestedBenchmark: "LME_Cu",
+      suggestedHash: "ab".repeat(32),
+      currentBenchmark: "LME Copper",
+    });
+  });
+
+  it("shows the status text instead of a price when the suggestion is not ok", () => {
+    const record = {
+      ...SUGGESTED,
+      suggested_mark: null,
+      suggestion_status: "no_price",
+    };
+    expect(row(record, "Suggested price")).toBe("No recent price is available");
+    expect(view(record).revalue?.suggestedHash).toBeNull();
+  });
+
+  it("dashes everything for an unmapped record and keeps the seed empty", () => {
+    const record = {
+      ...GOODS,
+      suggested_mark: null,
+      suggestion_status: "unmapped",
+      mark_due: null,
+    };
+    expect(row(record, "Suggested price")).toBe(
+      "No price source is configured for this commodity",
+    );
+    expect(row(record, "Mark due")).toBe("—");
+    expect(view(record).revalue?.suggestedValue).toBeNull();
+  });
+
+  it("offers no revalue seed for closed or non-goods records", () => {
+    expect(view({ ...SUGGESTED, open: false }).revalue).toBeNull();
+    expect(
+      view({ record_id: "1", protection: "cash_cover", open: true }).revalue,
+    ).toBeNull();
   });
 });

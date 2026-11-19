@@ -1,8 +1,15 @@
 // spec: docs/frontend/trustee-flows.md#security-records-card
+import { useState } from "react";
+import { useStellarWallet } from "@pipeline/wallet-connect";
+import {
+  securityMarksConfigured,
+  useSecurityRegistryAccess,
+} from "@/api/useSecurityMarks";
 import { AddressText } from "@/components/detail/AddressText";
 import { CardTitle } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
 import {
+  BRAND,
   CARD_CLASS,
   INK,
   INK_MUTED,
@@ -10,6 +17,13 @@ import {
   cardStyle,
   chipStyle,
 } from "@/components/detail/detailTokens";
+import {
+  REVALUE_NO_ROLE,
+  accessState,
+  type AccessState,
+} from "@/lib/securityMarks";
+import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { RevalueDialog, type RevalueResult } from "./-RevalueDialog";
 import {
   AWAITING_APPROVAL_TEXT,
   NO_RECORDS_TEXT,
@@ -134,7 +148,19 @@ function InspectionsTable({ rows }: { rows: SecurityInspectionRow[] }) {
   );
 }
 
-function RecordBlock({ record }: { record: SecurityRecordView }) {
+const REVALUE_CONNECT_WALLET = "Connect a Stellar wallet to set a price mark.";
+
+function RecordBlock({
+  record,
+  revalueNote,
+  revalueReady,
+  onRevalue,
+}: {
+  record: SecurityRecordView;
+  revalueNote: string | null;
+  revalueReady: boolean | null;
+  onRevalue: (record: SecurityRecordView) => void;
+}) {
   const lastIndex = record.rows.length - 1;
   return (
     <div
@@ -183,6 +209,29 @@ function RecordBlock({ record }: { record: SecurityRecordView }) {
           </KeyValueRow>
         )}
       </div>
+      {record.revalue && revalueReady !== null && (
+        <div className="flex flex-wrap items-center gap-[12px]">
+          <button
+            type="button"
+            data-testid="loan-detail-revalue-button"
+            disabled={!revalueReady}
+            onClick={() => onRevalue(record)}
+            className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            Set price
+          </button>
+          {revalueNote && (
+            <span
+              data-testid="loan-detail-revalue-note"
+              className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+              style={{ color: INK_MUTED }}
+            >
+              {revalueNote}
+            </span>
+          )}
+        </div>
+      )}
       <span
         className="font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
         style={{ color: INK_MUTED }}
@@ -194,7 +243,29 @@ function RecordBlock({ record }: { record: SecurityRecordView }) {
   );
 }
 
-export function SecurityRecordsCard({ view }: { view: SecurityRecordsView }) {
+function revalueNoteFor(
+  connected: boolean,
+  access: AccessState,
+): string | null {
+  if (!connected) return REVALUE_CONNECT_WALLET;
+  return access === "no-role" ? REVALUE_NO_ROLE : null;
+}
+
+export function SecurityRecordsCard({
+  view,
+  chainId,
+}: {
+  view: SecurityRecordsView;
+  chainId: number | null | undefined;
+}) {
+  const { address, isConnected } = useStellarWallet();
+  const stellar = stellarOnlyActionReason(chainId) === null;
+  const available = stellar && securityMarksConfigured();
+  const connected = isConnected && !!address;
+  const access = useSecurityRegistryAccess("revalue", available);
+  const state = accessState(access.data);
+  const [editing, setEditing] = useState<SecurityRecordView | null>(null);
+  const [result, setResult] = useState<RevalueResult | null>(null);
   if (view.state === "hidden") return null;
   return (
     <div
@@ -203,6 +274,23 @@ export function SecurityRecordsCard({ view }: { view: SecurityRecordsView }) {
       data-testid="loan-detail-security-records"
     >
       <CardTitle>Security records</CardTitle>
+      {result && (
+        <p
+          data-testid="loan-detail-revalue-result"
+          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] break-all"
+          style={{ color: INK }}
+        >
+          Price set for record #{result.recordId}. Transaction {result.hash}.
+          The records update once indexed.{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => setResult(null)}
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       {view.state === "empty" ? (
         <p
           data-testid="loan-detail-security-records-empty"
@@ -213,8 +301,26 @@ export function SecurityRecordsCard({ view }: { view: SecurityRecordsView }) {
         </p>
       ) : (
         view.records.map((record) => (
-          <RecordBlock key={record.key} record={record} />
+          <RecordBlock
+            key={record.key}
+            record={record}
+            revalueNote={revalueNoteFor(connected, state)}
+            revalueReady={available ? connected && state === "ok" : null}
+            onRevalue={setEditing}
+          />
         ))
+      )}
+      {editing?.revalue && (
+        <RevalueDialog
+          chainId={chainId}
+          seed={editing.revalue}
+          rows={editing.revalueRows}
+          onClose={() => setEditing(null)}
+          onDone={(done) => {
+            setResult(done);
+            setEditing(null);
+          }}
+        />
       )}
     </div>
   );

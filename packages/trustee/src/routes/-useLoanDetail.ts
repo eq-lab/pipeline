@@ -35,6 +35,10 @@ import {
   buildSecurityRecords,
   type SecurityRecordsView,
 } from "./-loanSecurityRecords";
+import {
+  buildSecurityActions,
+  type SecurityActionsView,
+} from "./-securityActions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,6 +115,7 @@ export interface UseLoanDetailResult {
   otherActions: OtherActions;
   security: SecurityCardView;
   securityRecords: SecurityRecordsView;
+  securityActions: SecurityActionsView;
   /** Rollover card (Matured only); `null` otherwise. */
   rollover: RolloverCard | null;
   /** Formatted maturity date (e.g. `"15 Jun 2026"`), for the Matured rollover-card title; `null` when absent. */
@@ -565,6 +570,7 @@ export function useLoanDetail(
     otherActions,
     security: buildSecurityCard(security),
     securityRecords: buildSecurityRecords(security),
+    securityActions: buildSecurityActions(security),
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
     documents: buildDocuments(entry),
