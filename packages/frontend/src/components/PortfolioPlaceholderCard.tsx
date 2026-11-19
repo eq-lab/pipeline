@@ -28,6 +28,7 @@ export interface PortfolioPlaceholderCardProps extends Omit<
 > {
   mobileHomeState?: MobileHomeState;
   balanceLabel?: string;
+  includesPlusd?: boolean;
   unrealizedPnlLabel?: string;
   activePeriodId?: string;
   onActivePeriodChange?: (id: string) => void;
@@ -92,6 +93,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     className,
     mobileHomeState,
     balanceLabel = "$0.00",
+    includesPlusd = false,
     unrealizedPnlLabel = "$0.00 unrealized",
     activePeriodId,
     onActivePeriodChange,
@@ -202,7 +204,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                 : "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
-            Total Balance
+            <span>Total Balance</span>
+            {includesPlusd ? (
+              <span data-testid="total-balance-includes-plusd">
+                {" "}
+                · incl. PLUSD
+              </span>
+            ) : null}
           </span>
 
           <div className="flex flex-col gap-1">

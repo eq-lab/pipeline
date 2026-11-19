@@ -367,16 +367,15 @@ slot: an underlined brand-coloured router `Link` reading "Get PLUSD to start"
 `/deposit?direction=deposit`, the same target the `"balance"` variant's caption link uses. Both
 compact variants render **no** unrealized-PnL caption, carry `data-variant`, and drop the PnL
 clause from the chart's `role="img"` aria-label; `"get-plusd"` ignores `mobileHomeState`. The
-balance heading is the route's served `balanceLabel`, so `$0.00` here is a formatted zero sPLUSD
-balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"balance"`),
+balance heading is the route's served `balanceLabel` (the latest served `total_balance`, #2057), so
+`$0.00` here is the documented zero of a wallet holding no PLUSD or sPLUSD, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"balance"`),
 `6701:97649` (`"connect-wallet"`), `6701:98528` (`"get-plusd"`).
 
 **`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
 same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
-eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
-(`formatBigintCurrency(splusdInPlusdActive, plusdDecimals)`, `$0.00` here since sPLUSD is zero — the Figma frame's
-`$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
-PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
+eyebrow) and binds the Total Balance heading to the served `balanceLabel` (#2057: the latest served
+composite `total_balance`, which includes the held PLUSD when `plusd_balance` is served, matching the
+Figma frame's `$1,000.00`; nothing is summed client-side). The subtitle slot swaps to the sentence
 "Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
 (`I6701:97451;1100:70504;6539:2331`) shows the **whole string** as one underlined brand-navy run,
 so rather than styling two link-like words inside plain text, all four pieces — a `Link` to
@@ -391,14 +390,16 @@ Like `"get-plusd"`, this variant renders no unrealized-PnL caption and ignores `
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
 period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
 7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily), maps the
-response with `buildSeries` (#1629: the served per-bucket `splusd_value` — whole USD, a 6-dp
-string from #1313 — parsed verbatim, no decimals scaling, never `shares_balance`), and
+response with `buildSeries` (#2057: the served per-bucket composite `total_balance` — whole USD, a
+6-dp string — parsed verbatim, no decimals scaling, never `shares_balance`, no `splusd_value` fallback), and
 passes `series` into the card — the card stays presentational. Non-empty series → one bar per
-served bucket (height ∝ `splusd_value`), tooltip shows the bucket's served value + timestamp.
-A bucket without `splusd_value` draws no bar (`data-missing`) and its tooltip reads `—`. The
-headline is the live on-chain `convertToAssets` read and the last bar is the closing price
-sample, so the two can differ slightly; both are served, neither is derived. The composite
-`total_balance` series is #1282's scope. Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
+served bucket (height ∝ `total_balance`), tooltip shows the bucket's served value + timestamp.
+A bucket without `total_balance` draws no bar (`data-missing`) and its tooltip reads `—`. The
+headline is the last served bucket's `total_balance` through the same `formatMoney` as the tooltip,
+so it equals the last bar's tooltip. `usePositionsHistory` keeps the previous response as
+placeholder data while only the window changes (same kind, address and chain), so a period-tab
+switch does not blank the headline or chart; a wallet or chain switch never carries data over.
+Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
 1m/3m = `Month D, YYYY` (never a time); 1y/all = `Month D, YYYY` plus `, HH:MM` only when the
 served timestamp carries a non-midnight time (e.g. the All tab's hourly rung) — never just the
 month. Empty/absent series → the zero placeholder below, unchanged.
@@ -428,10 +429,10 @@ timestamps; in placeholder mode they fall back to the active period window's tim
 (`slotTimestamps` — the same timestamps the hover tooltip already exposes, so no fabrication),
 updating with the period tab.
 
-**Y axis (#1234, #1629).** A `ChartValueAxis` from the served `splusd_value.max` `SeriesStat`
+**Y axis (#1234, #1629).** A `ChartValueAxis` from the served `total_balance.max` `SeriesStat`
 (parsed verbatim, no decimals scaling), passed in as `yAxis` plus the raw max as `yAxisDomainMax`
 for bar-height normalisation (the max over non-null bucket values is only a fallback when it is
-omitted/invalid). No axis when the stat is absent (any bucket lacks `splusd_value`). No axis renders in placeholder mode
+omitted/invalid). No axis when the stat is absent (any bucket lacks `total_balance`, see #1960). No axis renders in placeholder mode
 (`series === null`) even if `yAxis` is passed — the zero-value placeholder fabricates nothing.
 
 **Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
@@ -466,8 +467,8 @@ variant.
 **Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
 **Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
-`$0.00 unrealized`) are always real data. The chart itself is either the served `splusd_value`
-series (#1138, #1629) or, absent that, a constant-zero placeholder — in both cases every rendered value
+`$0.00 unrealized`) are always real data. The chart itself is either the served `total_balance`
+series (#1138, #1629, #2057) or, absent that, a constant-zero placeholder — in both cases every rendered value
 (bars, dates, Y axis) comes from served data or a documented zero default; nothing is
 client-side-derived beyond presentation formatting.
 
@@ -1615,13 +1616,14 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
-**Headline value is assets, not shares (#1658).** The route's `balanceLabel` (every variant, mobile
-and desktop) and `StakeCard.splusdUsdValue` both come from `splusdBalanceFormatted`, which formats
-`splusdInPlusdActive` — the on-chain `convertToAssets(shares)` read, served as-is at the PLUSD
-decimals — never the raw sPLUSD share count. While that read is unavailable for a non-zero share
-balance the value renders `—` (never a false `$0.00`); zero shares render `$0.00`. State
-derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares. The chart
-sections are unchanged (tracked in #1629).
+**Headline value (#1658, #2057).** `StakeCard.splusdUsdValue` comes from `splusdBalanceFormatted`, the
+on-chain `convertToAssets(shares)` read at the PLUSD decimals (`—` while unavailable for a non-zero
+share balance, never the raw share count). The card's `balanceLabel` (every variant, mobile and
+desktop) is the latest served `total_balance` formatted with `formatMoney`; `—` when that bucket
+lacks it; with no served bucket, `$0.00` only when the on-chain PLUSD and sPLUSD reads are both
+zero, else `—`. The card's eyebrow gains ` · incl. PLUSD` (`includesPlusd`) when that bucket carries
+`plusd_balance`. The headline can lag the on-chain reads by the indexer plus the 30 s poll. State
+derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares.
 
 **Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
 one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
@@ -1694,7 +1696,7 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
 
    | Slot            | Grid position                        | Content                                                                                                                      |
    | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served `$0.00` (sPLUSD binding unchanged) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served composite `total_balance` (`$0.00` for a zero wallet without history) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
    | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48). |
    | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`). |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
@@ -1718,7 +1720,7 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
 
    | Slot            | Grid position                        | Content                                                                                                                      |
    | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1 (`6701:97247`)        | `PortfolioPlaceholderCard` default variant with `mobileHomeState`, `balanceLabel={splusdBalanceFormatted}` (sPLUSD in PLUSD, #1658), `unrealizedPnlLabel` and the chart props — the same hero the `"legacy"` connected grid shows. |
+   | Portfolio       | col 1–4, row 1 (`6701:97247`)        | `PortfolioPlaceholderCard` default variant with `mobileHomeState`, `balanceLabel={totalBalanceFormatted}` (served composite, #2057), `unrealizedPnlLabel` and the chart props — the same hero the `"legacy"` connected grid shows. |
    | Recent activity | col 5–7, `row-span-2` starting row 1 (`6701:97315`) | `RecentActivityCard padding="md"`.                                                                                    |
    | Balances        | col 1–2, row 2 (`6701:97257`)        | `CompactBalances` — `compactVariant="balance"` + `compactBalanceLabel={plusdFormattedActive}` when PLUSD is display non-zero (Buy and Sell enabled), the default compact pair otherwise; the compact `StakeCard` keeps its marketing copy — the frame's compact "Staked PLUSD / Stake More / Unstake" card (`6701:97273`) is #1425's (TD-161). |
    | AddUsdCard      | col 3–4, row 2 (`6701:97288`)        | `AddUsdCard variant="unlocked" className="flex-1"` + `EarnedCard layout="compact" earnedPnlLabel={earnedPnlLabel}` (the stack's `earnedPnlLabel` prop) — `funded` (`6701:97289`) replaces `unlocked` here under #1820. |
@@ -1785,7 +1787,7 @@ Sell is disabled (`sellDisabled`,
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
-**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `splusd_value` history (#1138, #1629) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it parses `positionsHistory.data.splusd_value.max` verbatim (no decimals scaling) and passes `computeAxisTicks`'s result as `yAxis` plus the parsed max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
+**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `total_balance` history (#1138, #1629, #2057) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it parses `positionsHistory.data.total_balance.max` verbatim (no decimals scaling) and passes `computeAxisTicks`'s result as `yAxis` plus the parsed max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 

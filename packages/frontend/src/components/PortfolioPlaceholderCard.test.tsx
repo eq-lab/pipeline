@@ -14,6 +14,7 @@ import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
 import {
   slotTimestamps,
   buildSeries,
+  latestTotalBalance,
   seriesSpans,
   bucketCentreX,
   stepIndexAt,
@@ -295,36 +296,92 @@ describe("PortfolioPlaceholderCard — Y axis (#1234)", () => {
   });
 });
 
-describe("buildSeries (#1138, #1629)", () => {
-  it("parses served splusd_value verbatim, ignoring shares_balance and decimals", () => {
+describe("buildSeries (#1138, #1629, #2057)", () => {
+  it("parses served total_balance verbatim, ignoring splusd_value", () => {
     const s = buildSeries([
       {
         timestamp: "2026-07-20T00:00:00Z",
-        splusd_value: "1001.503214",
-        shares_balance: "999",
-      } as { timestamp: string; splusd_value?: string },
-      { timestamp: "2026-08-20T00:00:00Z", splusd_value: "2.5" },
+        total_balance: "1500.250000",
+        splusd_value: "7",
+      } as { timestamp: string; total_balance?: string },
+      { timestamp: "2026-08-20T00:00:00Z", total_balance: "2.5" },
     ]);
     expect(s).not.toBeNull();
-    expect(s!.values).toEqual([1001.503214, 2.5]);
+    expect(s!.values).toEqual([1500.25, 2.5]);
     expect(s!.timestamps[0]).toBe(Date.parse("2026-07-20T00:00:00Z"));
   });
 
-  it("maps a bucket without splusd_value to null and keeps its timestamp", () => {
+  it("maps a bucket without total_balance to null, with no splusd_value fallback", () => {
     const s = buildSeries([
       { timestamp: "2026-07-20T00:00:00Z" },
-      { timestamp: "2026-08-20T00:00:00Z", splusd_value: "abc" },
+      {
+        timestamp: "2026-08-20T00:00:00Z",
+        splusd_value: "5",
+      } as { timestamp: string; total_balance?: string },
+      { timestamp: "2026-09-20T00:00:00Z", total_balance: "abc" },
     ]);
-    expect(s!.values).toEqual([null, null]);
-    expect(s!.timestamps).toHaveLength(2);
+    expect(s!.values).toEqual([null, null, null]);
+    expect(s!.timestamps).toHaveLength(3);
   });
 
   it("returns null for empty or malformed history", () => {
     expect(buildSeries([])).toBeNull();
     expect(buildSeries(undefined)).toBeNull();
     expect(
-      buildSeries([{ timestamp: "not-a-date", splusd_value: "1" }]),
+      buildSeries([{ timestamp: "not-a-date", total_balance: "1" }]),
     ).toBeNull();
+  });
+});
+
+describe("latestTotalBalance (#2057)", () => {
+  it("returns null for absent or empty history", () => {
+    expect(latestTotalBalance(undefined)).toBeNull();
+    expect(latestTotalBalance([])).toBeNull();
+  });
+
+  it("reads only the last item verbatim", () => {
+    expect(
+      latestTotalBalance([
+        { total_balance: "1" },
+        { total_balance: "1500.250000", plusd_balance: "500.250000" },
+      ]),
+    ).toEqual({ totalBalance: "1500.250000", includesPlusd: true });
+  });
+
+  it("does not borrow total_balance from an earlier item", () => {
+    expect(latestTotalBalance([{ total_balance: "1" }, {}])).toEqual({
+      totalBalance: undefined,
+      includesPlusd: false,
+    });
+  });
+
+  it("includesPlusd is true for a zero plusd_balance", () => {
+    expect(
+      latestTotalBalance([{ total_balance: "0", plusd_balance: "0.000000" }])
+        ?.includesPlusd,
+    ).toBe(true);
+  });
+});
+
+describe("PortfolioPlaceholderCard — includes PLUSD label (#2057)", () => {
+  it("renders the suffix when includesPlusd is set and keeps the Total Balance text", () => {
+    renderCard({ includesPlusd: true });
+    expect(screen.getByText("Total Balance")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("total-balance-includes-plusd"),
+    ).toHaveTextContent("· incl. PLUSD");
+  });
+
+  it("renders no suffix by default or when false", () => {
+    const { unmount } = renderCard();
+    expect(
+      screen.queryByTestId("total-balance-includes-plusd"),
+    ).not.toBeInTheDocument();
+    unmount();
+    renderCard({ includesPlusd: false });
+    expect(
+      screen.queryByTestId("total-balance-includes-plusd"),
+    ).not.toBeInTheDocument();
   });
 });
 

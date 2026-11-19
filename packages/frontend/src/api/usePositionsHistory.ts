@@ -150,16 +150,27 @@ export function usePositionsHistory(
     getMockVersion,
   );
 
+  const queryKey = [
+    "positionsHistory",
+    kind,
+    address,
+    chainId,
+    window ? window.days : "all-auto",
+    window ? window.interval : "all-auto",
+    mockVer,
+  ];
+
   const query = useQuery<PositionHistoryResponse, Error>({
-    queryKey: [
-      "positionsHistory",
-      kind,
-      address,
-      chainId,
-      window ? window.days : "all-auto",
-      window ? window.interval : "all-auto",
-      mockVer,
-    ],
+    queryKey,
+    placeholderData: (previousData, previousQuery) => {
+      const prev = previousQuery?.queryKey;
+      return prev &&
+        prev[1] === queryKey[1] &&
+        prev[2] === queryKey[2] &&
+        prev[3] === queryKey[3]
+        ? previousData
+        : undefined;
+    },
     queryFn: () =>
       window
         ? fetchHistory(address ?? "", chainId, window.interval, window.days)
