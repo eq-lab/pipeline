@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useLoansTable,
   LOAN_TABS,
@@ -7,6 +7,7 @@ import {
   type LoanTableRow,
   type LoansSummaryView,
 } from "./-useLoansTable";
+import { parseLoanBookSearch, rememberLoanBookSearch } from "./-loanBookSearch";
 import { InlineError } from "@pipeline/ui";
 import { useServedTargetChains } from "@/api/useChains";
 import type { TargetChainOption } from "@/lib/targetChains";
@@ -450,12 +451,14 @@ function LtvFootnote() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function LoansIndex() {
-  // Tab + chain live in the URL (replace-navigated) so Back from a loan restores them.
   const search = Route.useSearch();
   const [activeTab, setActiveTabState] = useState<LoanTab>(search.tab ?? "All");
   const [chainFilter, setChainFilterState] = useState<number | null>(
     search.chain ?? null,
   );
+  useEffect(() => {
+    rememberLoanBookSearch({ tab: activeTab, chain: chainFilter ?? undefined });
+  }, [activeTab, chainFilter]);
   const navigate = useNavigate();
   const setActiveTab = (tab: LoanTab) => {
     setActiveTabState(tab);
@@ -556,14 +559,6 @@ function LoansIndex() {
 }
 
 export const Route = createFileRoute("/loans/")({
-  validateSearch: (
-    s: Record<string, unknown>,
-  ): { tab?: LoanTab; chain?: number } => {
-    const chain = Number(s.chain);
-    return {
-      tab: LOAN_TABS.find((t) => t === s.tab),
-      chain: Number.isInteger(chain) && chain > 0 ? chain : undefined,
-    };
-  },
+  validateSearch: parseLoanBookSearch,
   component: LoansIndex,
 });

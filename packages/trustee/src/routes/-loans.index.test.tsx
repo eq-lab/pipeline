@@ -21,6 +21,7 @@ import { useLoanBook } from "@/api/useLoanBook";
 vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
 import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./loans.index";
+import { lastLoanBookSearch, parseLoanBookSearch } from "./-loanBookSearch";
 const mockServed = vi.mocked(useServedTargetChains);
 const BOTH_CHAINS = {
   options: [
@@ -208,6 +209,30 @@ describe("Loans list route (ready)", () => {
       search: { tab: "Watchlist", chain: undefined },
       replace: true,
     });
+    expect(lastLoanBookSearch()).toEqual({
+      tab: "Watchlist",
+      chain: undefined,
+    });
+  });
+
+  it("remembers the restored filter for the detail page's back link", () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(lastLoanBookSearch()).toEqual({ tab: "Watchlist", chain: 560048 });
+  });
+
+  it("drops unknown tab and non-positive or non-integer chain values in validateSearch", () => {
+    expect(
+      parseLoanBookSearch({ tab: "Watchlist", chain: "560048" }),
+    ).toEqual({ tab: "Watchlist", chain: 560048 });
+    expect(parseLoanBookSearch({ tab: "Bogus", chain: "abc" })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: 1.5 })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: -1 }).chain).toBeUndefined();
   });
 
   it("offers only served chains in the filter, with All chains always present (#1667)", () => {

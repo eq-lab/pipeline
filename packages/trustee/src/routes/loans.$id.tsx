@@ -38,6 +38,7 @@ import {
   type TileTone,
 } from "./-loanDetailStatic";
 import type { SecurityCardView } from "./-loanSecurity";
+import { lastLoanBookSearch } from "./-loanBookSearch";
 import { SecurityRecordsCard } from "./-SecurityRecordsCard";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
@@ -118,6 +119,7 @@ function Hero({ hero }: { hero: HeroView }) {
   return (
     <DetailHero
       backTo="/loans"
+      backSearch={lastLoanBookSearch()}
       backLabel={hero.backLabel}
       title={hero.title}
       status={hero.status}
@@ -1305,6 +1307,7 @@ function LoanDetail() {
         <>
           <Link
             to="/loans"
+            search={lastLoanBookSearch()}
             className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
           >
             ‹ Loans
