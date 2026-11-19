@@ -33,7 +33,6 @@ function baseState(
       {
         commodity: "Copper Concentrate",
         principal: "$8.0M",
-        collateral: "—",
         ltv: "—",
         duration: "120d",
         rate: "11.2%",

@@ -83,6 +83,12 @@ export interface LoanBookEntry {
    * (TODO #706). Served ALREADY CORRECT — do NOT scale.
    */
   ltv: string | null;
+  /**
+   * SecurityRegistry LTV in bps (`debt / marked value`) — the figure the
+   * Operations Console shows. `null` without a valuation snapshot;
+   * `4294967295` (u32::MAX) = no value. Preferred over legacy `ltv` (#2077).
+   */
+  ltv_bps?: number | null;
   /** Original loan term in days (`maturity − origination`). */
   duration_days: number;
   /** Senior interest rate — decimal-fraction string (e.g. `"0.112000"` = 11.2%). */

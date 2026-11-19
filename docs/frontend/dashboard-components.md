@@ -1134,14 +1134,22 @@ origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#
 
 - `principal` — always defined when ready (`total_deployed` is non-null); displayed as served by the
   backend (issue #906 — no frontend rescaling).
-- `collateral` — defined only when `total_collateral` is non-null; `undefined` while TODO #706
-  (commodity price feed) is not yet merged. Also displayed as served (#906).
-- `ltv` — user-approved average LTV (null → 0), defined only when `loans.length > 0` (seam refs
-  #729/#765). Formula: `Σ(perRowLtv, null→0) / loans.length`, formatted as an integer percent
-  (e.g. `"85%"`). This is an approved exception to the "no frontend-computed metrics" rule.
+- `ltv` — average LTV over the active loans with a valid registry `ltv_bps` (a finite number that
+  is not the u32::MAX "no value" sentinel); `undefined` (label only) when no active loan has one
+  (seam refs #729/#765, #2077). Formula: `ceil(Σ valid ltv_bps / count)`, formatted with
+  `formatLtvBps`. Loans without a value (chain without a SecurityRegistry key, no snapshot,
+  sentinel) are left out rather than counted as 0%. Terminal rows (`status` `Default` / `Closed`)
+  still show their own LTV but are left out of the average, like the API's active-set summary
+  aggregates (a closed loan has debt 0, so its `ltv_bps` is 0). This is an approved exception to
+  the "no frontend-computed metrics" rule.
 
-Same-scale rule applies to `formatRow`'s `principal`/`collateral` fields (issue #906, displayed as
-served).
+Per-row LTV (#2077) is the SecurityRegistry `ltv_bps` that the Operations Console shows, formatted
+by `formatLtvBps` with the Console's rule (one decimal rounded up, trailing `.0` trimmed: `8123` →
+`"81.3%"`; sentinel → `"No security value"`; `null` → `"—"`). The legacy spot `ltv` and the
+spot-priced per-loan `collateral` are not shown: the Collateral column was removed (decision
+2026-11-12, #1907), so the LP table no longer pairs a marked LTV with a spot collateral value.
+
+Same-scale rule applies to `formatRow`'s `principal` field (issue #906, displayed as served).
 
 ### LoanBookSummary
 
@@ -1177,21 +1185,22 @@ horizontally with Commodity readable at the left end (no sticky pinning; per the
 plain scroll is the intended behavior). `OriginationTable` carries the same minimum.
 `LoanBookSummary` is a card strip, not a table — unaffected.
 
-Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
-Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the
+Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 6 columns:
+Commodity, Principal, LTV, Duration, Rate, Protection (the Figma Collateral column was removed,
+#1907 decision 2026-11-12 / #2077). The first column shows the
 commodity only — borrower identity is not displayed on the LP-facing protocol dashboard (issue
 #1058; the Figma header row's "Borrower / Commodity" label predates that decision). Wrapped in `overflow-x: auto` so it horizontally scrolls at mobile widths where the full
 1024px table exceeds the 370px content area (FRONTEND.md wide-content rule).
 
-The Figma XS mobile frame `3283-71053` renders the full 7-column table scrolling horizontally inside
+The Figma XS mobile frame `3283-71053` renders the full table scrolling horizontally inside
 the section — NOT stacked label/value cards. The previous `MobileCards` path (`block md:hidden`) was
 removed to match Figma exactly (resolved decision for issue #749) — this table now renders at every
 width, and `headerAggregates` populates the header row at all widths too.
 
 **Column widths** (Figma node `3283-14552`, Table container): Commodity is flexible (fills
-remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); Collateral 112px (`3704:1079`);
-LTV 112px (`3704:1082`); Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px
-(`3704:1091`) — fixed columns total 656px, remainder goes to Commodity. `table-layout: fixed`
+remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); LTV 112px (`3704:1082`);
+Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px (`3704:1091`) — fixed
+columns total 544px, remainder goes to Commodity (Figma's Collateral 112px `3704:1079` is removed). `table-layout: fixed`
 
 - `<colgroup>` enforces these widths so long strings in the commodity column don't push the
   numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
@@ -1217,8 +1226,8 @@ Figma also specifies `border-radius: 4px` on rows; unsupported on `<tr>` — log
 the In-Origination tab's new column set, rather than adopting the trustee's grid layout).
 
 `headerAggregates` — `undefined` means "render the plain label with no aggregate" (not `"—"`); this
-avoids rendering `Collateral · —` when `total_collateral` is null. When present, the Principal and
-Collateral headers render as `"Principal · $31.6M"` (label + middot + aggregate in one caption run).
+avoids rendering `LTV · —` when no loan has a registry LTV. When present, the Principal and LTV
+headers render as `"Principal · $31.6M"` (label + middot + aggregate in one caption run).
 
 Figma refs: desktop `node-id=3283-14431`, table container `node-id=3283-14552`, mobile XS
 `node-id=3283-71053`.
