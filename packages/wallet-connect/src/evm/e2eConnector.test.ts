@@ -12,7 +12,7 @@ import {
 import { foundry, mainnet, sepolia } from "viem/chains";
 import {
   erc20Abi,
-  type Hex,
+  type TransactionSerialized,
   parseTransaction,
   recoverMessageAddress,
   recoverTransactionAddress,
@@ -82,8 +82,8 @@ describe("e2eEvmConnector transactions", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   // A JSON-RPC node that answers what viem asks before sending and records every raw transaction.
-  function stubNode(): Hex[] {
-    const raw: Hex[] = [];
+  function stubNode(): TransactionSerialized[] {
+    const raw: TransactionSerialized[] = [];
     const answers: Record<string, unknown> = {
       eth_chainId: "0x7a69",
       eth_getTransactionCount: "0x0",
@@ -103,7 +103,7 @@ describe("e2eEvmConnector transactions", () => {
         method: string;
         params: unknown[];
       };
-      if (method === "eth_sendRawTransaction") raw.push(params[0] as Hex);
+      if (method === "eth_sendRawTransaction") raw.push(params[0] as TransactionSerialized);
       const result =
         method === "eth_sendRawTransaction"
           ? `0x${"ab".repeat(32)}`
