@@ -1561,7 +1561,6 @@ pub fn attach_security<S: std::hash::BuildHasher>(
             .copied()
             .unwrap_or_default();
         entry.ltv_bps = fields.ltv_bps;
-        // Resolved on close: the on-chain call stays open after close_loan.
         entry.margin_call_open = fields
             .margin_call_open
             .map(|o| o && entry.status != "Closed");

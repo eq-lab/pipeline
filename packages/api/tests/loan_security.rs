@@ -756,7 +756,6 @@ fn a_closed_loan_with_an_open_call_and_open_records_is_served_without_alarm() {
     assert_eq!(v["records"][0]["open"], true);
     assert_eq!(v["records"][0]["agent_release"], "allowed");
     assert_eq!(v["margin_call"]["cure_overdue"], false);
-    // Resolved on close: the on-chain call stays open, the API reports it not open.
     assert_eq!(v["margin_call"]["open"], false);
     assert_eq!(v["margin_call"]["open_call_curable"], false);
     assert_eq!(v["margin_call"]["ltv_above_ratio_no_onchain_call"], false);
