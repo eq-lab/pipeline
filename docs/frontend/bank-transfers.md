@@ -288,9 +288,9 @@ LP bank wire-out (#1757); behaviour in [withdrawals.md](../product-specs/withdra
 | `useWireOutList` | `components/withdraw/useWireOutList.ts` | Served ids merged with the just-submitted ids, contract reads per id, and `useKybPassed`. |
 | `useWireOutFlow` / `useWireOutGate` | `components/withdraw/useWireOutFlow.ts` | Steps (Stellar: Request wire-out; EVM: Allow Pipeline to use PLUSD, Request wire-out), `disabledReason` priority, errors via the `wireOut` context. Request step hint: the gate reason when blocked, else "The PLUSD moves into escrow until the Trustee settles or cancels the request." |
 | `renderWireOutRow` | `components/activity/renderWireOutRow.tsx` | `ActivityRow` title "Withdraw funds", time from the audit log, amount `TwoLineAmount` `−{amount} PLUSD` over `Bank transfer · {status}`. Pending: `clock-pending` / warning, muted; Settled: `check-circle` / success; Cancelled: `arrow-down-circle` / neutral, muted. Unresolved reads show "—". |
-| `useActivityFeed` | `components/activity/useActivityFeed.ts` | Merges `useRequests()` with `useWireOutRequests()` by served time (newest first, each list's order preserved, requests first on ties), slices after the merge, reads contract values once per list. |
+| `useActivityFeed` | `components/activity/useActivityFeed.ts` | Merges the served `requests[]`, `wire_ins[]` and `wire_outs[]` of `GET /v1/requests` by time (newest first), slices after the merge. See [dashboard-components.md#activity-feed](./dashboard-components.md#activity-feed). |
 
-Home `RecentActivityCard` and `/transactions` ("All" and "Sell" tabs) render the merged feed. Loading and error states stay driven by `useRequests`; a failed audit-log read just omits wire-out rows.
+Home `RecentActivityCard` and `/transactions` render the merged feed; bank wire-ins show under "All" and "Buy", wire-outs under "All" and "Sell". The withdraw page's own wire-out list still reads the audit log.
 
 ## Seams and who wires them
 

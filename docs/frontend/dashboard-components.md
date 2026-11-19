@@ -470,13 +470,13 @@ Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?no
 
 ### RecentActivityCard
 
-Right-column card on the home dashboard. Since #1757 the rows come from `useActivityFeed({ limit: 5 })`, which merges the requests with the connected wallet's bank wire-out rows (`renderWireOutRow`) by served time before slicing. Renders in two states:
+Right-column card on the home dashboard. Since #2058 the rows come from `useActivityFeed({ limit: 5 })`, which merges the `requests[]`, `wire_ins[]` and `wire_outs[]` served by `GET /v1/requests` newest first before slicing to the top 5 (see [Activity feed](#activity-feed)). An omitted wire list means on-chain rows only. Renders in two states:
 
-- **Connected + data** (Figma frame `1497:95119`): shows the top 3 most recent requests as
+- **Connected + data** (Figma frame `1497:95119`): shows the top 5 most recent activity rows as
   `ActivityRow` entries (identical visuals to `/transactions`) followed by a right-aligned "View
   All" button (node `1497:95216`) that navigates to `/transactions`. The button renders ~48px tall,
   padded 12px horizontally, rounded 8px corners, Body Semi Bold typography, muted-ink color, and a
-  right-chevron icon. Row rendering is delegated to the shared `renderRequestRow` helper so the
+  right-chevron icon. Row rendering is delegated to `renderActivityRow` (which dispatches to `renderRequestRow` and the bank-transfer renderers) so the
   home card and the transactions page always render rows from the same code path.
 - **Everything else** (active chain disconnected, loading, error, connected but no rows): shows the
   existing `ActivityEmptyIllustration` + caption empty state (Figma node `1497:94567`). No "View
@@ -924,6 +924,33 @@ Escape and scrim click both call `onDismiss`; on open, focus moves to the toggle
 restored to the element that triggered the modal (handled by the caller via `triggerRef`).
 
 ## Activity
+
+### Activity feed
+
+**Source:** `packages/frontend/src/components/activity/useActivityFeed.ts`
+
+`mergeActivityFeed(data)` merges `data.requests`, `data.wire_ins` and `data.wire_outs` of one `GET /v1/requests` response into a single newest-first list; omitted lists count as empty and nothing is filtered or derived. `useActivityFeed({ limit })` returns `{ items, requests }` with `limit` applied after the merge; loading and error stay driven by `requests` (`useRequests`).
+
+| Row kind | Time used for ordering and display |
+| -------- | ---------------------------------- |
+| request  | `created_at`                       |
+| wire-in  | `assigned_at ?? recorded_at`       |
+| wire-out | `requested_at`                     |
+
+Ties resolve requests, then wire-ins, then wire-outs, and a list's served order is kept for equal times; an unparseable time sorts as the oldest. The chain scope is the active view's `chain_id` (`useRequests`): the feed shows exactly what that query returns, with no cross-chain merge. EVM views are served neither wire list today, so they stay on-chain only.
+
+### renderBankTransferRow
+
+**Source:** `packages/frontend/src/components/activity/renderBankTransferRow.tsx`, `renderWireOutRow.tsx`
+
+Bank rows reuse `ActivityRow` + `TwoLineAmount`. The second line is `Bank transfer · {status}` with the served status verbatim (`—` when empty); amount and time show `—` when missing. Amounts are served decimal strings (e.g. `"986.301369"`) formatted to 2 fraction digits by `formatDecimalAmount` with no rescaling.
+
+| Row      | Title            | Primary line      | Icon / tone                                                                                                                   |
+| -------- | ---------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| wire-in  | `Add funds`      | `+{amount} USD`   | `Direct` / `Assigned`: `check-circle` / success; any other status: `clock-pending` / neutral, muted                           |
+| wire-out | `Withdraw funds` | `−{amount} PLUSD` | `Settled`: `check-circle` / success; `Cancelled`: `arrow-down-circle` / neutral, muted; else `clock-pending` / warning, muted |
+
+`renderActivityRow(entry, chainKind, testId, className, evmStakeDecimals)` is the single switch over the feed kinds. The Figma frame `6701:97136` was not readable at planning time; the rows follow the on-chain row pattern.
 
 ### renderRequestRow
 
@@ -1931,7 +1958,7 @@ Activity page wired to `GET /v1/requests`.
 
 **Visual structure, top → bottom:** centred content column (`max-w-[480px]`, `px-2 py-8` page padding) → `ActivityHeader` → `SegmentedTabs` (All / Buy / Sell / Stake / Unstake — "All" is first and the default (#1117) and shows every request unfiltered; selecting a type tab filters the in-memory array client-side with no re-fetch) → activity rows from `useRequests()`, filtered by the active tab.
 
-**Wire-out rows (#1757):** rows come from `useActivityFeed()`: requests merged with the wallet's bank wire-outs. Wire-outs appear under "All" and "Sell" only. The empty state counts the merged rows; the loading and error states stay driven by `useRequests`, and a failed audit-log read only omits wire-out rows.
+**Bank rows (#2058):** rows come from `useActivityFeed()`: requests merged with the served `wire_ins[]` and `wire_outs[]`. Under "Buy" a wire-in shows next to the Deposit requests, under "Sell" a wire-out next to the Withdraw requests, and "All" shows everything; "Stake" and "Unstake" show requests only. The empty state counts the merged rows; loading and error stay driven by `useRequests`.
 
 **Empty-state behavior:** the full `EmptyState` illustration + caption renders whenever the visible row count is zero — whether the wallet is disconnected, the API returned zero rows, or the active tab filter yields zero rows. The intent is a single consistent visual rather than a different treatment per cause (a deliberate reversal of part of #257). The empty state and the rows list are mutually exclusive: at most one of {loading, error, empty-state, rows} is visible at a time.
 

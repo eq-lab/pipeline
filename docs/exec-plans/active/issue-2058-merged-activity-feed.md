@@ -88,16 +88,16 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **Types** — `packages/frontend/src/api/useRequests.ts`:
+- [x] 1. **Types** — `packages/frontend/src/api/useRequests.ts`:
    - Add `export interface WireInItem { chain_id: number; id: number; status: string; amount: string; value_date: string; ref_hash: string; recorded_at: string; assigned_at?: string }`.
    - Add `export interface WireOutItem { chain_id: number; id: number; status: string; amount: string; requested_at: string; settled_at?: string; value_date?: string; ref_hash?: string; cancelled_at?: string }`.
    - Extend `RequestsResponse` with `wire_ins?: WireInItem[]; wire_outs?: WireOutItem[]`.
    - Export both types from `src/api/index.ts` next to `RequestItem`.
    - No change to the query, key or expectation polling (`activityRefresh.ts` reads only `requests`).
-2. **Formatter** — `packages/frontend/src/lib/format.ts`: add `formatDecimalAmount(value: string | undefined): string`
+- [x] 2. **Formatter** — `packages/frontend/src/lib/format.ts`: add `formatDecimalAmount(value: string | undefined): string`
    → `"—"` when `undefined` or `Number(value)` is not finite, else the existing module `tokenFormatter.format(Number(value))`.
    Shrink `scripts/lint-comments.baseline.json` for `format.ts` if the touched lines are listed; no new comments.
-3. **Merge** — new `packages/frontend/src/components/activity/useActivityFeed.ts` (one spec-pointer header to
+- [x] 3. **Merge** — new `packages/frontend/src/components/activity/useActivityFeed.ts` (one spec-pointer header to
    `docs/frontend/dashboard-components.md#activity-feed`):
    - `export type ActivityFeedItem = { kind: "request"; item: RequestItem } | { kind: "wireIn"; item: WireInItem } | { kind: "wireOut"; item: WireOutItem }`.
    - `export function activityTime(entry): string | undefined` → `created_at` / `assigned_at ?? recorded_at` / `requested_at`.
@@ -106,7 +106,7 @@ Out of scope:
      requests → wire-ins → wire-outs. Missing keys behave as empty arrays. No filtering, no derived fields.
    - `export function useActivityFeed({ limit }: { limit?: number } = {})` → `{ items, requests }` where
      `requests = useRequests()` and `items = mergeActivityFeed(requests.data)` sliced to `limit` after the merge.
-4. **Rows** — new `packages/frontend/src/components/activity/renderBankTransferRow.tsx` (one header pointing to
+- [x] 4. **Rows** — new `packages/frontend/src/components/activity/renderBankTransferRow.tsx` (one header pointing to
    `dashboard-components.md#renderbanktransferrow`), exporting `renderWireInRow(item, testId?, className?)` and
    `renderWireOutRow(item, testId?, className?)`:
    - Both: `ActivityRow` with `timestamp = formatActivityTime(activityTime)` (`—` when missing), amount
@@ -120,15 +120,15 @@ Out of scope:
    - Add `export function renderActivityRow(entry: ActivityFeedItem, chainKind, testId, className, evmStakeDecimals)`
      in the same file dispatching to `renderRequestRow` / `renderWireInRow` / `renderWireOutRow`, so both call sites
      use one switch.
-5. **Home card** — `packages/frontend/src/components/RecentActivityCard.tsx`: replace `useRequests()` with
+- [x] 5. **Home card** — `packages/frontend/src/components/RecentActivityCard.tsx`: replace `useRequests()` with
    `const { items, requests } = useActivityFeed({ limit: MAX_ROWS })`; `isLoading` / `error` from `requests`;
    `showList` uses `items.length`; map `items` through `renderActivityRow` keeping `home-activity-row-${i}` /
    `home-activity-row-inner-${i}` test ids and `"pb-4"`. Empty state, `View All`, layout untouched.
-6. **Activity page** — `packages/frontend/src/routes/transactions.tsx`: use `useActivityFeed()` (no limit); keep
+- [x] 6. **Activity page** — `packages/frontend/src/routes/transactions.tsx`: use `useActivityFeed()` (no limit); keep
    `data`, `isLoading`, `error`, `refetch` from `requests`; filter: `all` → everything; `buy` → `Deposit` requests +
    `wireIn`; `sell` → `Withdraw` requests + `wireOut`; `stake` / `unstake` → request types only. Rows via
    `renderActivityRow` with `transactions-row-${i}`. Loading/error/empty logic unchanged.
-7. **Lint/build** — `yarn workspace` lint + typecheck + `yarn build` for `packages/frontend`,
+- [x] 7. **Lint/build** — `yarn workspace` lint + typecheck + `yarn build` for `packages/frontend`,
    `npx tsx scripts/lint-docs.ts`, `npx tsx scripts/lint-comments.ts`.
 
 ## Test Strategy
