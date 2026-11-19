@@ -197,6 +197,7 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     assert.equal(check(["--tag", tag], [broken], checksPath), 2);
     assert.ok(!readResult().includes(SEED));
     assert.equal(await run(["--tag", "../escape"], [fakeJourney(100)]), 2);
+    assert.equal(check(["--tag", "../escape"], [fakeJourney(100)], checksPath), 2);
     assert.equal(await run(["--tag", tag, "--chains", "solana"], [fakeJourney(100)]), 2);
     assert.equal(await run(["--tag", tag, "--chains", "evm"], [fakeJourney(100)]), 2);
     assert.equal(await run(["--tag", tag], []), 2);

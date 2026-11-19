@@ -138,7 +138,7 @@ const CHECKS_JSON = join(dirname(fileURLToPath(import.meta.url)), "checks.json")
 
 export function check(argv: string[], journeys: Journey[] = registry, checksPath = CHECKS_JSON): number {
   const started = Date.now();
-  let failed: { tag: string; json?: boolean } | undefined;
+  let failed: { tag: string; dir: string; json?: boolean } | undefined;
   try {
     const { values } = parseArgs({
       args: argv,
@@ -150,11 +150,11 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
       },
     });
     if (!values.tag) throw new Error("--tag is required");
-    failed = { tag: values.tag, json: values.json };
+    const dir = stackDir(values.tag);
+    failed = { tag: values.tag, dir, json: values.json };
     const both = values.optional.filter((id) => values.require.includes(id));
     if (both.length) throw new Error(`both --optional and --require: ${both.join(", ")}`);
     validateIds(journeys, [...values.optional, ...values.require]);
-    const dir = stackDir(values.tag);
     if (!existsSync(dir)) throw new Error(`no stack ${dir}`);
     const result = buildResult({
       tag: values.tag,
@@ -184,10 +184,10 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
     const error = redact(errorMessage(e));
     console.error(`check: ${error}`);
     // Overwrite a stale result.json with a minimal failure, so a caller reading the file never sees an old ok:true.
-    // shortcut: a missing --tag or stack dir writes nothing (there is no file to go stale), upgrade if callers need one anyway.
-    if (failed && existsSync(stackDir(failed.tag))) {
+    // shortcut: a missing or invalid --tag or a missing stack dir writes nothing (there is no file to go stale), upgrade if callers need one anyway.
+    if (failed && existsSync(failed.dir)) {
       const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, tag: failed.tag, ok: false, error }, null, 2) + "\n";
-      writeFileSync(join(stackDir(failed.tag), "result.json"), json);
+      writeFileSync(join(failed.dir, "result.json"), json);
       if (failed.json) process.stdout.write(json);
     }
     return 2;
