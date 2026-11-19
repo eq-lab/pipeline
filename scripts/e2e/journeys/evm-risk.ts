@@ -29,6 +29,8 @@ const riskAbi = parseAbi([
   "function paused() view returns (bool)",
   "function pause()",
   "function unpause()",
+  // Declared so `revertName` decodes the AccessManager's refusal of `setDefault` ("default refused").
+  "error AccessManagedUnauthorized(address caller)",
 ]);
 
 type Entry = Record<string, any>;
