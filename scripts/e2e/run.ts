@@ -51,6 +51,7 @@ export async function run(argv: string[], journeys: Journey[] = registry): Promi
     const chains = list(values.chains, CHAINS, "chain");
     const names = list(values.journeys, [...new Set(journeys.map((j) => j.name))], "journey");
     selected = journeys.filter((j) => chains.includes(j.chain) && names.includes(j.name));
+    if (!selected.length) throw new Error("the selection matches no journey");
   } catch (e) {
     console.error(`run: ${errorMessage(e)}`);
     return 2;
