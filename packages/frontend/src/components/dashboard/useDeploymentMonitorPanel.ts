@@ -42,7 +42,6 @@ export interface DeploymentMonitorPanelState {
    * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (headerAggregates fields).
    */
   headerAggregates: LoanBookHeaderAggregates;
-  /** Live count of active loans (loans.length when ready; 0 otherwise). */
   activeLoansCount: number;
   errorMessage: string | undefined;
   refetch: () => void;
@@ -99,6 +98,9 @@ function validLtvBps(entry: LoanBookEntry): number | null {
 // shown but left out of the LTV average, like every API summary aggregate: a
 // closed loan has debt 0, so its `ltv_bps` 0 would pull the average down.
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["Default", "Closed"]);
+
+const isActiveLoan = (loan: LoanBookEntry): boolean =>
+  !TERMINAL_STATUSES.has(loan.status);
 
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
@@ -202,8 +204,8 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   // LTV aggregate calc — spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
   // Mean over active loans with a valid `ltv_bps` only: a chain without a
   // registry value (null) or the no-value sentinel must not count as 0%.
-  const validBps = loans
-    .filter((loan) => !TERMINAL_STATUSES.has(loan.status))
+  const activeLoans = loans.filter(isActiveLoan);
+  const validBps = activeLoans
     .map(validLtvBps)
     .filter((bps): bps is number => bps !== null);
   const ltvAggregate =
@@ -223,7 +225,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
         }
       : EMPTY_HEADER_AGGREGATES,
     rows: loans.map(formatRow),
-    activeLoansCount: loans.length,
+    activeLoansCount: activeLoans.length,
     errorMessage: undefined,
     refetch,
     ...originationCommon,

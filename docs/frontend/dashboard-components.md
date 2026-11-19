@@ -1063,7 +1063,9 @@ tooling.
 **Tabs (issue #755):** Active Loans / In Origination tab bar (Figma node `3283:14480`). Both tabs are
 selectable and carry a live count badge:
 
-- Active Loans → `loans.length` from `GET /v1/loan-book`.
+- Active Loans → count of loans from `GET /v1/loan-book` whose `status` is not terminal (`Default` /
+  `Closed`). Terminal rows stay listed after the active ones (served order) but are not counted
+  (#2128).
 - In Origination → **in-flight** submission count from `GET /v1/loan-book/submissions` (issue #1053 —
   see `useDeploymentMonitorPanel` below for the filter). The request carries no `chain_id`, so the
   tab shows submissions for all target chains regardless of the dashboard chain.
@@ -1421,16 +1423,19 @@ items, `PanelEmpty`; `ready` → formatted summary + rows available.
 
 **Row expand** (resolved Open Question 2): the first `WITHDRAWAL_QUEUE_DEFAULT_VISIBLE` (5) rows are
 visible by default; `expanded` toggles the "Show more" affordance. The hook owns this state so the
-view stays JSX-only.
+view stays JSX-only. The Active Loans count and the LTV mean use the same active (non-terminal) set;
+`rows` still include the terminal loans (#2128).
 
 **Liquid Cover calc** (`"5.6x"` or `"—"`) — frontend calc, user-approved: `(cash + tokenized-T-bills) /
 queue`.
 
-- `cash` = REST `assets.liquid.cash_stablecoins` (null/non-finite → 0).
-- `tbills` = REST `assets.liquid.tokenized_tbills` (null/non-finite → 0).
-- `queue` = `in_queue_usd` (null/non-finite → 0). Divide-by-zero → `"—"`.
-- Both `cash` and `tbills` are null in v1 (no commodity price feed, no USYC holding), so this reads
-  `"0.0x"` today. Seam: wire on-chain sources (USDC custody balance, USYC NAV) when available.
+- `cash` = REST `assets.liquid.cash_stablecoins`, `tbills` = REST `assets.liquid.tokenized_tbills`,
+  `queue` = `in_queue_usd`.
+- `cash` and `tbills` must both parse to finite numbers and `queue` to a finite number `> 0`;
+  otherwise the card reads `"—"` (#2128). A missing financial-position payload (loading or error)
+  counts as null.
+- Both liquid figures are `null` today (#770: no USDC custody source in the REST payload, no USYC
+  deployment), so the card reads `"—"` until both are served.
 
 ### WithdrawalQueueTable
 
