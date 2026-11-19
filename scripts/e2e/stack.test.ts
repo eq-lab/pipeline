@@ -20,6 +20,10 @@ const REPO = join(HERE, "../..");
 const TIMEOUT = 30_000;
 const home = mkdtempSync(join(tmpdir(), "e2e-stack-"));
 process.env.E2E_HOME = join(home, "e2e-home");
+// down() cleans docker by label machine-wide; a no-op docker keeps the fixed test tags (x, d, ...) from touching a real stack.
+mkdirSync(join(home, "bin"));
+writeFileSync(join(home, "bin", "docker"), "#!/bin/sh\n", { mode: 0o755 });
+process.env.PATH = `${join(home, "bin")}:${process.env.PATH}`;
 after(() => rmSync(home, { recursive: true, force: true }));
 
 const C = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
