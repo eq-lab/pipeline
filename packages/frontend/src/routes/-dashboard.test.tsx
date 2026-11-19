@@ -581,7 +581,7 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
     vi.clearAllMocks();
   });
 
-  it("Principal header shows aggregate, Collateral and LTV headers show label only when collateral is null", async () => {
+  it("Principal header shows aggregate and there is no Collateral header aggregate (#2077)", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL),
@@ -600,33 +600,10 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       screen.getByTestId("loan-book-header-principal-aggregate"),
     ).toHaveTextContent("$31.6K");
 
-    // Collateral subtitle is absent when total_collateral is null
+    // The spot Collateral column is gone (#2077, #1907 decision)
     expect(
       screen.queryByTestId("loan-book-header-collateral-aggregate"),
     ).toBeNull();
-  });
-
-  it("Principal and Collateral headers both show aggregates when collateral is non-null", async () => {
-    localStorage.setItem(
-      "pipeline.mock.api.GET./v1/loan-book",
-      JSON.stringify(FIXTURE_WITH_COLLATERAL),
-    );
-
-    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("loan-book-header-principal-aggregate"),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getByTestId("loan-book-header-principal-aggregate"),
-    ).toHaveTextContent("$31.6K");
-
-    expect(
-      screen.getByTestId("loan-book-header-collateral-aggregate"),
-    ).toHaveTextContent("$37.6K");
   });
 
   it("LTV column header shows the average-LTV marker (user-approved frontend calc)", async () => {
@@ -641,11 +618,11 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
     });
 
-    // Single loan with ltv "0.8511" → average = 0.8511 → "85%". The LTV marker
-    // is now computed client-side (Σ per-row LTV / count, null → 0).
+    // Single loan with ltv_bps 8511 → average 8511 bps → "85.2%" (Operations
+    // Console rule: one decimal, rounded up; #2077).
     expect(
       screen.getByTestId("loan-book-header-ltv-aggregate"),
-    ).toHaveTextContent("85%");
+    ).toHaveTextContent("85.2%");
   });
 
   it("loading state renders no aggregate subtitles — headers are label-only", () => {
@@ -656,9 +633,6 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
     // Panel is in loading state — no aggregate testids present
     expect(
       screen.queryByTestId("loan-book-header-principal-aggregate"),
-    ).toBeNull();
-    expect(
-      screen.queryByTestId("loan-book-header-collateral-aggregate"),
     ).toBeNull();
   });
 });
@@ -820,8 +794,7 @@ describe("DeploymentMonitorPanel — ready state", () => {
       expect(screen.getByTestId("loan-book-summary-cards")).toBeInTheDocument();
     });
 
-    // All five summary card labels must be present (use getAllByText because
-    // "Collateral" also appears in the table header column).
+    // All five summary card labels must be present.
     expect(screen.getAllByText("Collateral").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Yield").length).toBeGreaterThanOrEqual(1);
   });

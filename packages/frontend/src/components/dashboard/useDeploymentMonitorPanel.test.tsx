@@ -252,10 +252,11 @@ describe("useDeploymentMonitorPanel — panel state", () => {
     expect(result.current.rows[0]!.principal).toBe("$8.0K");
   });
 
-  // Issue #906: collateral and principal are both displayed exactly as
-  // served — verify the row, the summary card, and the table header
-  // aggregate all render the plain-formatted value, with no rescaling.
-  it("displays collateral and principal as served, in the row, summary, and header aggregate (#906)", async () => {
+  // Issue #906: total collateral is displayed exactly as served in the summary
+  // card. #2077: the row LTV is the registry `ltv_bps` in the Operations
+  // Console format, not the legacy spot `ltv`, and the spot per-loan
+  // collateral is no longer a row field or header aggregate.
+  it("shows the registry LTV per row and served total collateral only in the summary (#906, #2077)", async () => {
     const fixture: LoanBookResponse = {
       summary: {
         total_deployed: "31600.000000",
@@ -273,7 +274,7 @@ describe("useDeploymentMonitorPanel — panel state", () => {
           commodity: "Copper Concentrate",
           principal: "8000.000000",
           collateral: "20986.500000",
-          ltv: "0.5718",
+          ltv: "0.3812", // legacy spot figure — must not be shown
           ltv_bps: 5718,
           duration_days: 120,
           rate: "0.112000",
@@ -291,9 +292,10 @@ describe("useDeploymentMonitorPanel — panel state", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    expect(result.current.rows[0]!.collateral).toBe("$21.0K");
+    expect(result.current.rows[0]!.ltv).toBe("57.2%"); // Console: 5718 → 57.2%
+    expect(result.current.rows[0]).not.toHaveProperty("collateral");
     expect(result.current.summary.totalCollateral).toBe("$42.0K");
-    expect(result.current.headerAggregates.collateral).toBe("$42.0K");
+    expect(result.current.headerAggregates).not.toHaveProperty("collateral");
   });
 });
 
@@ -412,8 +414,9 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 // ── LTV header aggregate ────────────────────────────────────────────────────
 
 describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
-  it("computes average LTV with null → 0 for a single loan with null ltv", async () => {
-    // FIXTURE_LOAN_BOOK has one loan with ltv: null → null → 0, avg = 0/1 = 0 → "0%"
+  it("leaves the LTV aggregate undefined when no loan has a registry LTV", async () => {
+    // FIXTURE_LOAN_BOOK has one loan without ltv_bps (EVM / no registry key):
+    // it must not read as a 0% average.
     localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
     localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
 
@@ -423,11 +426,11 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    // ltv: null → 0 contribution. avg = 0 / 1 = 0 → formatLtv("0") = "0%"
-    expect(result.current.headerAggregates.ltv).toBe("0%");
+    expect(result.current.headerAggregates.ltv).toBeUndefined();
+    expect(result.current.rows[0]!.ltv).toBe("—");
   });
 
-  it("computes average LTV correctly for mixed null/valued ltv", async () => {
+  it("averages only valid ltv_bps: null and the no-value sentinel are left out (#2077)", async () => {
     const fixture = {
       summary: {
         total_deployed: "31600.000000",
@@ -444,7 +447,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           principal: "8000.000000",
           collateral: null,
           ltv: "0.8000",
-          ltv_bps: 8000, // → 0.8
+          ltv_bps: 8000,
           duration_days: 120,
           rate: "0.112000",
           protection: null,
@@ -456,7 +459,34 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           commodity: "Y",
           principal: "4000.000000",
           collateral: null,
-          ltv: null, // → 0
+          ltv: "0.5000",
+          ltv_bps: 6123,
+          duration_days: 60,
+          rate: "0.110000",
+          protection: null,
+          status: "Performing",
+        },
+        {
+          originator: "C",
+          borrower: "C",
+          commodity: "Z",
+          principal: "4000.000000",
+          collateral: null,
+          ltv: "0.4000", // spot value present, but no registry value
+          ltv_bps: null,
+          duration_days: 60,
+          rate: "0.110000",
+          protection: null,
+          status: "Performing",
+        },
+        {
+          originator: "D",
+          borrower: "D",
+          commodity: "W",
+          principal: "4000.000000",
+          collateral: null,
+          ltv: null,
+          ltv_bps: 4_294_967_295, // debt with no security value
           duration_days: 60,
           rate: "0.110000",
           protection: null,
@@ -473,8 +503,14 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    // avg = (0.8 + 0) / 2 = 0.4 → formatLtv("0.4") = "40%"
-    expect(result.current.headerAggregates.ltv).toBe("40%");
+    // ceil((8000 + 6123) / 2) = 7062 bps → "70.7%" (Console rule: round up)
+    expect(result.current.headerAggregates.ltv).toBe("70.7%");
+    expect(result.current.rows.map((r) => r.ltv)).toEqual([
+      "80%",
+      "61.3%",
+      "—",
+      "No security value",
+    ]);
   });
 
   it("leaves ltv aggregate undefined when there are no loans", async () => {

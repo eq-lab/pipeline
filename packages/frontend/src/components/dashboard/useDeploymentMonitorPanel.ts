@@ -22,7 +22,8 @@ import { toUserError } from "@/utils/userError";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
-  formatLtv,
+  formatLtvBps,
+  LTV_NO_VALUE_SENTINEL,
   formatCoverage,
   formatDurationDays,
 } from "@/utils/formatCompactUsd";
@@ -83,19 +84,22 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
 }
 
 // One LTV definition across apps (#2077): the SecurityRegistry `ltv_bps` the
-// Operations Console shows, as a 4-decimal fraction for `formatLtv`. u32::MAX
-// (no value) and missing snapshots are `null`.
-function registryLtv(entry: LoanBookEntry): string | null {
+// Operations Console shows, formatted with the Console's rule. The spot-priced
+// per-loan `collateral` is not shown (decision 2026-11-12, #1907).
+function validLtvBps(entry: LoanBookEntry): number | null {
   const bps = entry.ltv_bps;
-  return bps == null || bps >= 4_294_967_295 ? null : (bps / 10_000).toFixed(4);
+  return typeof bps === "number" &&
+    Number.isFinite(bps) &&
+    bps !== LTV_NO_VALUE_SENTINEL
+    ? bps
+    : null;
 }
 
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     commodity: entry.commodity,
     principal: formatCompactUsd(entry.principal),
-    collateral: formatCompactUsd(entry.collateral),
-    ltv: formatLtv(registryLtv(entry)),
+    ltv: formatLtvBps(entry.ltv_bps ?? null),
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
     protection: entry.protection ?? "—",
@@ -191,16 +195,17 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const loans = data?.loans ?? [];
 
   // LTV aggregate calc — spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
-  let ltvAggregate: string | undefined;
-  if (loans.length > 0) {
-    const sum = loans.reduce((acc, loan) => {
-      const l = registryLtv(loan);
-      const v = l !== null ? parseFloat(l) : 0;
-      return acc + (Number.isFinite(v) ? v : 0);
-    }, 0);
-    const avg = sum / loans.length;
-    ltvAggregate = formatLtv(String(avg));
-  }
+  // Mean over loans with a valid `ltv_bps` only: a chain without a registry
+  // value (null) or the no-value sentinel must not count as 0%.
+  const validBps = loans
+    .map(validLtvBps)
+    .filter((bps): bps is number => bps !== null);
+  const ltvAggregate =
+    validBps.length > 0
+      ? formatLtvBps(
+          Math.ceil(validBps.reduce((a, b) => a + b, 0) / validBps.length),
+        )
+      : undefined;
 
   return {
     state: "ready",
@@ -208,10 +213,6 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     headerAggregates: data
       ? {
           principal: formatCompactUsd(data.summary.total_deployed),
-          collateral:
-            data.summary.total_collateral == null
-              ? undefined
-              : formatCompactUsd(data.summary.total_collateral),
           ltv: ltvAggregate,
         }
       : EMPTY_HEADER_AGGREGATES,
