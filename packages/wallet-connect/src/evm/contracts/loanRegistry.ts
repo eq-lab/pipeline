@@ -227,7 +227,6 @@ export async function drawEvmLoan({
   return { hash, loanId: readEvmDrawnLoanId(receipt, registryAddress) };
 }
 
-
 export const evmLoanRegistryLifecycleAbi = [
   {
     type: "function",

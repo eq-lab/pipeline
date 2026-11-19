@@ -571,7 +571,6 @@ export async function readEvmRecoveryRepayments({
   );
 }
 
-
 export const evmRepayErrorAbi: Abi = [
   ...evmMinterErrorAbi,
   ...evmLoanRegistryErrorAbi,
@@ -655,7 +654,6 @@ export async function repayEvmLoan({
   });
   return { hash, repaymentId: readEvmRepaymentId(receipt, minterAddress) };
 }
-
 
 export const minterDisburseAbi = [
   {

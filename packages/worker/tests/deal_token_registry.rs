@@ -26,11 +26,35 @@ fn observe_registers_both_tokens_idempotently() {
 }
 
 #[test]
+fn observe_debt_only_registers_debt() {
+    let reg = DealTokenRegistry::new(FACTORY);
+    let log = deal_registered_debt_only(U256::from(4u64), DEBT, 10, 0);
+    assert_eq!(reg.observe(&log), vec![DEBT]);
+    let debt = reg.lookup(&DEBT).unwrap();
+    assert_eq!(debt.loan_id, "4");
+    assert_eq!(debt.kind, DealTokenKind::Debt);
+    assert!(reg.lookup(&CARGO).is_none());
+    assert!(reg.observe(&log).is_empty());
+    assert_eq!(reg.addresses().len(), 1);
+}
+
+#[test]
+fn observe_excludes_plusd_debt_only() {
+    let reg = DealTokenRegistry::new(FACTORY).excluding(Some(DEBT));
+    let log = deal_registered_debt_only(U256::from(4u64), DEBT, 10, 0);
+    assert!(reg.observe(&log).is_empty());
+    assert!(reg.addresses().is_empty());
+}
+
+#[test]
 fn observe_ignores_non_factory_emitter() {
     let reg = DealTokenRegistry::new(FACTORY);
     let mut log = deal_registered(U256::from(4u64), DEBT, CARGO, 10, 0);
     log.inner.address = SPLUSD;
     assert!(reg.observe(&log).is_empty());
+    let mut head = deal_registered_debt_only(U256::from(4u64), DEBT, 10, 1);
+    head.inner.address = SPLUSD;
+    assert!(reg.observe(&head).is_empty());
     assert!(reg.addresses().is_empty());
 }
 

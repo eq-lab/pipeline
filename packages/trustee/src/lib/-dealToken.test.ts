@@ -25,10 +25,23 @@ const REGISTERED = {
 const UNREGISTERED = { data: null, isPending: false, isError: false };
 
 describe("debtTokenView", () => {
-  it("blocks EVM loans with the Stellar-only reason", () => {
-    const view = debtTokenView(EVM, true, UNREGISTERED);
+  it("blocks a non-configured chain with the Stellar-only reason", () => {
+    const view = debtTokenView(1, true, UNREGISTERED);
     expect(view.kind).toBe("blocked");
     expect(view.kind === "blocked" && view.reason).toContain("Stellar only");
+  });
+
+  it("opens the configured EVM chain", () => {
+    expect(debtTokenView(EVM, true, UNREGISTERED)).toEqual({
+      kind: "unregistered",
+    });
+    expect(
+      debtTokenView(EVM, true, {
+        data: { debt: "0xDEBT" },
+        isPending: false,
+        isError: false,
+      }),
+    ).toEqual({ kind: "registered", debt: "0xDEBT" });
   });
 
   it("blocks an unconfigured environment", () => {
@@ -158,5 +171,62 @@ describe("registerDealError", () => {
     expect(registerDealError("execute", sim(99)).message).toMatch(
       /Could not verify this action on-chain/,
     );
+  });
+
+  describe("EVM errors", () => {
+    const evm = (name: string) =>
+      new Error(`registerEvmDeal: simulation error: reverted with ${name}`);
+
+    it("maps the factory names in execute mode", () => {
+      expect(
+        registerDealError(
+          "execute",
+          evm("DealTokenFactoryAlreadyRegistered(7)"),
+        ).message,
+      ).toMatch(/already registered/);
+      expect(
+        registerDealError("execute", evm("LoanRegistryNonExistentLoanId()"))
+          .message,
+      ).toMatch(/no loan with this id/);
+    });
+
+    it("falls back to the generic copy for factory names in schedule mode", () => {
+      expect(
+        registerDealError(
+          "schedule",
+          evm("DealTokenFactoryAlreadyRegistered(7)"),
+        ).message,
+      ).toMatch(/Could not verify this action on-chain/);
+    });
+
+    it("maps the AccessManager names", () => {
+      expect(
+        registerDealError("execute", evm("AccessManagerNotReady(0xab)"))
+          .message,
+      ).toMatch(/not ready yet/);
+      expect(
+        registerDealError(
+          "schedule",
+          evm("AccessManagerAlreadyScheduled(0xab)"),
+        ).message,
+      ).toMatch(/already scheduled/);
+    });
+
+    it("gives the generic copy with raw details for an unauthorised call", () => {
+      const err = registerDealError(
+        "execute",
+        evm("AccessManagerUnauthorizedCall(0xa, 0xb, 0x19da0d36)"),
+      );
+      expect(err.message).toMatch(/Could not verify this action on-chain/);
+      expect(err.details).toContain("AccessManagerUnauthorizedCall");
+    });
+
+    it("passes a wallet rejection through", () => {
+      const err = registerDealError(
+        "execute",
+        new Error("User rejected the request."),
+      );
+      expect(err.message).toMatch(/You cancelled the transaction/);
+    });
   });
 });

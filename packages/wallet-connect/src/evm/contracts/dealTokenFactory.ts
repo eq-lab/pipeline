@@ -1,13 +1,23 @@
-// spec: docs/frontend/trustee-flows.md#disburse-1898
+// spec: docs/frontend/trustee-flows.md#register-debt-token-1766
 import {
   BaseError,
   ContractFunctionRevertedError,
+  encodeFunctionData,
   getAddress,
   isAddress,
+  toFunctionSelector,
   type Abi,
+  type Address,
+  type Hex,
 } from "viem";
+import type {
+  RelayMode,
+  RelayStage,
+} from "../../stellar/contracts/accessManager";
 import type { DealRead } from "../../stellar/contracts/dealTokenFactory";
-import { readEvmContract } from "./write";
+import { accessManagerAbi } from "./accessManager";
+import { evmLoanRegistryErrorAbi } from "./riskCouncil";
+import { readEvmContract, sendEvmContractCallChecked } from "./write";
 
 export const evmDealNotRegisteredErrorAbi = [
   {
@@ -30,6 +40,27 @@ export const evmDealTokenFactoryAbi = [
       },
     ],
     stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "registerDeal",
+    inputs: [{ name: "loanId", type: "uint256" }],
+    outputs: [
+      {
+        name: "dealData",
+        type: "tuple",
+        components: [{ name: "debt", type: "address" }],
+      },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "DealRegistered",
+    inputs: [
+      { name: "loanId", type: "uint256", indexed: true },
+      { name: "debt", type: "address", indexed: false },
+    ],
   },
   {
     type: "error",
@@ -76,4 +107,73 @@ export async function readEvmDeal({
     if (isNotRegistered(err)) return null;
     throw err;
   }
+}
+
+export const evmRegisterDealErrorAbi: Abi = [
+  ...evmDealTokenFactoryAbi.filter((e) => e.type === "error"),
+  ...evmLoanRegistryErrorAbi,
+];
+
+export function evmRegisterDealSelector(): Hex {
+  const entry = evmDealTokenFactoryAbi.find(
+    (e) => e.type === "function" && e.name === "registerDeal",
+  )!;
+  return toFunctionSelector(entry);
+}
+
+export function encodeEvmRegisterDealCalldata(loanId: number): Hex {
+  if (!Number.isSafeInteger(loanId) || loanId < 0) {
+    throw new Error(`encodeEvmRegisterDealCalldata: invalid loanId ${loanId}`);
+  }
+  return encodeFunctionData({
+    abi: evmDealTokenFactoryAbi,
+    functionName: "registerDeal",
+    args: [BigInt(loanId)],
+  });
+}
+
+export interface RelayEvmRegisterDealParams {
+  mode: RelayMode;
+  accessManager: string;
+  factory: string;
+  caller: string;
+  loanId: number;
+  chainId: number;
+  onStageChange?: (stage: RelayStage) => void;
+}
+
+function requireAddress(name: string, value: string): Address {
+  if (!isAddress(value)) {
+    throw new Error(`registerEvmDeal: invalid ${name} ${value}`);
+  }
+  return value;
+}
+
+export async function relayEvmRegisterDeal({
+  mode,
+  accessManager,
+  factory,
+  caller,
+  loanId,
+  chainId,
+  onStageChange,
+}: RelayEvmRegisterDealParams): Promise<{ hash: Hex }> {
+  const managerAddress = requireAddress("accessManager", accessManager);
+  const factoryAddress = requireAddress("factory", factory);
+  requireAddress("caller", caller);
+  const calldata = encodeEvmRegisterDealCalldata(loanId);
+  const { hash } = await sendEvmContractCallChecked("registerEvmDeal", {
+    abi: [...accessManagerAbi, ...evmRegisterDealErrorAbi],
+    address: managerAddress,
+    functionName: mode,
+    args:
+      mode === "schedule"
+        ? [factoryAddress, calldata, 0]
+        : [factoryAddress, calldata],
+    ...(mode === "execute" ? { value: 0n } : {}),
+    account: caller,
+    chainId,
+    onStageChange,
+  });
+  return { hash };
 }
