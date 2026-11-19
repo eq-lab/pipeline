@@ -11,7 +11,7 @@ use bigdecimal::BigDecimal;
 use pipeline_api::error::ApiError;
 
 use pipeline_api::routes::waterfall::{
-    build_response, compute_waterfall, WaterfallDoc, ASSUMED_MAX_FEE_BPS,
+    build_response, compute_waterfall, fit_interest_to_fee_cap, WaterfallDoc, ASSUMED_MAX_FEE_BPS,
 };
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
@@ -938,14 +938,16 @@ fn standard_schedule_is_untouched_by_the_fee_cap() {
 }
 
 #[test]
-fn heavy_waiver_scales_fees_to_the_cap_and_frees_the_rest_to_equity() {
+fn heavy_waiver_shifts_capped_fees_to_the_coupon() {
     let mut s = snapshot("1000000", "0", 1200);
     s.interest_adjustment = dec("-100000");
     let b = run(&s, "5000000");
-    assert_eq!(b.senior_coupon_net, dec("8000"));
-    assert_eq!(b.management_fee, dec("6666"));
-    assert_eq!(b.performance_fee, dec("1333"));
+    assert_eq!(b.senior_coupon_net, dec("10000"));
+    assert_eq!(b.management_fee, dec("8334"));
+    assert_eq!(b.performance_fee, dec("1666"));
     assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("3980000"));
     assert_within_fee_cap(&b);
     let total = &b.senior_principal_returned
         + &b.senior_coupon_net
@@ -985,7 +987,9 @@ fn interest_adjustment_is_cumulative_against_recorded_interest() {
     );
     s.interest_adjustment = dec("-20000");
     let b = run(&s, "5000000");
-    assert_eq!(b.senior_coupon_net, dec("22000"));
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("8929"));
+    assert_eq!(b.performance_fee, dec("16071"));
 }
 
 #[test]
@@ -997,4 +1001,171 @@ fn stellar_raw_scale_interest_adjustment_is_not_normalised() {
     assert_eq!(b.performance_fee, dec("180000"));
     assert_eq!(b.senior_coupon_net, dec("720000"));
     assert_eq!(b.oet_allocation, dec("50000"));
+}
+
+// ── Fee cap binds: interest is not leaked (#2124) ────────────────────────────
+
+fn run_with(
+    s: &LoanSnapshot,
+    amount: &str,
+    as_of: i64,
+) -> pipeline_api::routes::waterfall::WaterfallBreakdown {
+    compute_waterfall(
+        s,
+        &dec(amount),
+        as_of,
+        &fees(300, 2000, 0),
+        &genesis(s),
+    )
+    .unwrap()
+}
+
+fn recorded(senior_interest: &str, mgmt: &str, perf: &str) -> RepaymentSnapshot {
+    RepaymentSnapshot {
+        offtaker_received: dec("0"),
+        senior_principal_repaid: dec("0"),
+        senior_interest: dec(senior_interest),
+        equity_distributed: dec("0"),
+        mgmt_fee: dec(mgmt),
+        perf_fee: dec(perf),
+        oet_alloc: dec("0"),
+    }
+}
+
+#[test]
+fn fee_cap_issue_2124_example_pays_all_headroom_as_interest() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "50000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_eq!(&b.management_fee + &b.performance_fee, dec("25000"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_issue_2124_full_repayment_leaks_nothing_to_principal_or_equity() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "1050000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert!(b.senior_principal_fully_repaid);
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_shortfall_pays_the_whole_amount_as_interest() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "30000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("15000"));
+    assert_eq!(b.management_fee, dec("13236"));
+    assert_eq!(b.performance_fee, dec("1764"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_next_call_after_a_leaked_payment_still_proposes_interest() {
+    let s = snapshot_with_repayment("1000000", recorded("16000", "14117", "1882"), 500);
+    let b = run_with(&s, "100000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("9001"));
+    assert_eq!(b.management_fee, dec("7942"));
+    assert_eq!(b.performance_fee, dec("1058"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("81999"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_second_year_pays_the_new_headroom_as_interest() {
+    let s = snapshot_with_repayment("1000000", recorded("25000", "22059", "2941"), 500);
+    let b = run_with(&s, "50000", ORIGINATION + 2 * CONTRACT_YEAR);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_binds_at_stellar_raw_scale() {
+    let mut s = snapshot("10000000000000", "0", 500);
+    s.original_offtaker_price = dec("100000000000000");
+    let b = run_with(&s, "500000000000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("250000000000"));
+    assert_eq!(b.management_fee, dec("220588235295"));
+    assert_eq!(b.performance_fee, dec("29411764705"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+fn fit(c: &str, m: &str, p: &str, bps: u32) -> (BigDecimal, BigDecimal, BigDecimal) {
+    let out = fit_interest_to_fee_cap(dec(c), dec(m), dec(p), bps);
+    let total = dec(c) + dec(m) + dec(p);
+    assert_eq!(&out.0 + &out.1 + &out.2, total);
+    assert!(out.1 <= dec(m));
+    assert!(out.2 <= dec(p));
+    let cap = (&total * BigDecimal::from(bps) / BigDecimal::from(10_000))
+        .with_scale_round(0, bigdecimal::RoundingMode::Down);
+    assert!(&out.1 + &out.2 <= cap || bps >= 10_000);
+    out
+}
+
+fn triple(c: &str, m: &str, p: &str) -> (BigDecimal, BigDecimal, BigDecimal) {
+    (dec(c), dec(m), dec(p))
+}
+
+#[test]
+fn fit_to_fee_cap_at_5000_bps() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 5000),
+        triple("25000", "22059", "2941")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_at_2000_bps() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 2000),
+        triple("40000", "8824", "1176")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_at_0_bps_moves_all_fees_to_the_coupon() {
+    assert_eq!(fit("16000", "30000", "4000", 0), triple("50000", "0", "0"));
+}
+
+#[test]
+fn fit_to_fee_cap_at_10000_bps_is_unchanged() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 10000),
+        triple("16000", "30000", "4000")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_not_binding_is_unchanged() {
+    assert_eq!(
+        fit("88000", "10000", "22000", 5000),
+        triple("88000", "10000", "22000")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_odd_total_floors_the_cap() {
+    assert_eq!(
+        fit("16001", "30000", "4000", 5000),
+        triple("25001", "22059", "2941")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_zero_fees_is_unchanged() {
+    assert_eq!(fit("500", "0", "0", 5000), triple("500", "0", "0"));
 }
