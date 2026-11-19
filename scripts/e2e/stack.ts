@@ -6,7 +6,7 @@ import { connect } from "node:net";
 import * as fs from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { toHex } from "viem";
+import { keccak256, toFunctionSelector, toHex } from "viem";
 import { english, generateMnemonic, generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { EVM_CONTRACTS, generateEnv, PORTS, SPACES, type Accounts, type Addresses, type EvmDeployment } from "./lib/env";
 import { EVM_CHAIN_ID, guard, STANDALONE_PASSPHRASE } from "./lib/guard";
@@ -324,16 +324,25 @@ async function deployEvmContracts(tag: string, contracts: string, mnemonic: stri
     addresses[key] = a;
   }
   const at = (role: keyof typeof EVM_ROLES) => accounts[EVM_ROLES[role]];
-  // The LP app's e2e test wallet starts with 100 ETH and 1000 USDC.
+  // shortcut: the pinned scripts give the risk actions to LoanRegistryManager and leave pause/unpause to the AccessManager admin; the stack moves them to the role of one generated key (a Safe on mainnet), drop this once the scripts have a risk council.
+  const riskCouncilKey = generatePrivateKey();
+  const riskCouncil = privateKeyToAccount(riskCouncilKey).address;
+  const roleId = String(BigInt(`0x${keccak256(toHex("RISK_COUNCIL_ROLE")).slice(2, 18)}`));
+  const cast = (...args: string[]) => logged(log, "cast", ["send", "--unlocked", "--from", deployer, "--rpc-url", `http://localhost:${PORTS.evm}`, addresses.AccessManager, ...args], { env });
+  const mapRole = (target: string, sigs: string[]) => cast("setTargetFunctionRole(address,bytes4[],uint64)", target, `[${sigs.map((s) => toFunctionSelector(s)).join(",")}]`, roleId);
+  mapRole(addresses.PipelineLoanRegistry, ["setDefault(uint256)", "writeDown(uint256,uint256)", "closeDefaulted(uint256,uint8)"]);
+  for (const c of ["PipelineDepositManager", "PipelineUSD", "StakedPipelineUSD", "PipelineWithdrawalQueue"] as const) mapRole(addresses[c], ["pause()", "unpause()"]);
+  cast("grantRole(uint64,address,uint32)", roleId, riskCouncil, "0");
+  // The LP app's e2e test wallet starts with 100 ETH and 1000 USDC; the risk council needs gas.
   const browserLpKey = generatePrivateKey();
   const browserLp = privateKeyToAccount(browserLpKey).address;
-  const fund: [string, unknown[]][] = [["anvil_setBalance", [browserLp, toHex(10n ** 20n)]], ["anvil_dealERC20", [browserLp, usdc, toHex(1_000_000_000n)]]];
+  const fund: [string, unknown[]][] = [["anvil_setBalance", [browserLp, toHex(10n ** 20n)]], ["anvil_setBalance", [riskCouncil, toHex(10n ** 20n)]], ["anvil_dealERC20", [browserLp, usdc, toHex(1_000_000_000n)]]];
   for (const [method, params] of fund)
     if ((await jsonRpc(`http://localhost:${PORTS.evm}`, method, params)) === undefined) throw new E2EError(`${method} failed for the LP app's e2e test wallet`);
   const pricePollerStartBlock = Number(await jsonRpc<string>(`http://localhost:${PORTS.evm}`, "eth_blockNumber", []));
   return {
     addresses,
-    accounts: { relayerKey: at("WhitelistManager").key, verifierKey: at("DepositManager__Verifier").key, capitalWallet: at("LoanRegistry__CapitalWallet").address, browserLpKey },
+    accounts: { relayerKey: at("WhitelistManager").key, verifierKey: at("DepositManager__Verifier").key, capitalWallet: at("LoanRegistry__CapitalWallet").address, browserLpKey, riskCouncilKey },
     pricePollerStartBlock,
   };
 }
@@ -347,7 +356,7 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
   const env = deployEnv(tag);
   const stellar = (...args: string[]) => sh("stellar", args, { env });
   stellar("network", "add", "e2e", "--rpc-url", `http://localhost:${PORTS.stellar}/rpc`, "--network-passphrase", STANDALONE_PASSPHRASE);
-  const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital", "lp-browser"] as const;
+  const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "risk-council", "capital", "lp-browser"] as const;
   const addr: Record<string, string> = {};
   for (const n of names) {
     // `keys generate --fund` exits 0 when friendbot is not up yet, so the probe asks Horizon whether the account exists.
@@ -385,11 +394,12 @@ async function deployContracts(tag: string, contracts: string, startLedger: numb
     access: {
       whitelist_admin: [...now(addr.deployer), ...now(addr.relayer)],
       trustee: now(addr.trustee),
-      risk_council: now(addr.trustee),
+      risk_council: now(addr["risk-council"]),
       security_agent: now(addr.trustee),
       cash_reporter: now(addr.trustee),
       guardian: now(addr.deployer),
-      pauser: now(addr.deployer),
+      // The risk council pauses (fast pause); the pinned justfile leaves `unpause` to ADMIN, so the deployer unpauses.
+      pauser: [...now(addr.deployer), ...now(addr["risk-council"])],
       upgrader: now(addr.deployer),
     },
   };

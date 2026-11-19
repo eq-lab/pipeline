@@ -24,8 +24,9 @@ const GATEWAY = `http://localhost:${PORTS.fakes}/ipfs`;
 
 let w: World;
 let trustee: Keypair;
+let council: Keypair;
 let loanId = 0;
-const ids = () => ({
+export const ids = () => ({
   am: w.env.VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
   registry: w.env.VITE_STELLAR_LOAN_REGISTRY_ID,
   minter: w.env.VITE_STELLAR_YIELD_MINTER_ID,
@@ -33,7 +34,7 @@ const ids = () => ({
   vault: w.env.VITE_STELLAR_STAKED_PLUSD_ID,
 });
 const me = () => trustee.publicKey();
-const chain = <T>(contract: string, fn: string, args: xdr.ScVal[] = []) => read<T>(me(), contract, fn, args);
+export const chain = <T>(contract: string, fn: string, args: xdr.ScVal[] = []) => read<T>(me(), contract, fn, args);
 const sym = (s: string) => xdr.ScVal.scvSymbol(s);
 const variant = (s: string) => xdr.ScVal.scvVec([sym(s)]);
 const hash32 = (hex: string) => xdr.ScVal.scvBytes(Buffer.from(hex, "hex"));
@@ -41,7 +42,7 @@ const sha256 = (b: string | Buffer) => createHash("sha256").update(b).digest("he
 const ref = () => randomBytes(32).toString("hex");
 const now = () => Math.floor(Date.now() / 1000);
 /** A privileged call relayed by the AccessManager, as the apps' `relay(mode: "execute")` does. */
-const execute = (signer: Keypair, target: string, fn: string, args: xdr.ScVal[]) =>
+export const execute = (signer: Keypair, target: string, fn: string, args: xdr.ScVal[]) =>
   invoke(signer, ids().am, "execute", [addr(target), sym(fn), xdr.ScVal.scvVec(args), addr(signer.publicKey())]);
 const str = (o: Record<string, unknown>) => JSON.parse(JSON.stringify(o, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
 const usd6 = (raw: bigint) => raw / 10n;
@@ -93,6 +94,7 @@ const journey: Journey = {
       run: async ({ tag, recorded }) => {
         w = await world(tag, recorded);
         trustee = stackKey(tag, "trustee");
+        council = stackKey(tag, "risk-council");
       },
     },
     {
@@ -201,7 +203,7 @@ const journey: Journey = {
         const { security } = ids();
         const docs = (recorded["loan.submission"] as Entry).documents as Entry[];
         const receipt = docs.find((d) => d.name === "Warehouse Receipt")!;
-        await execute(trustee, security, "set_terms", encodeSecurityRegistryArgs({
+        await execute(council, security, "set_terms", encodeSecurityRegistryArgs({
           fn: "set_terms",
           loanId,
           terms: { ...TERMS, curePeriod: 604_800, priceStaleAfter: 0, paymentTerm: "Lc", gracePeriod: 0, defaultRate: 0, attestationInterval: 0, inspectionInterval: 0, toleranceBps: 200, gradeToleranceBps: 100 },
@@ -219,7 +221,7 @@ const journey: Journey = {
           ["release_condition", hash32(sha256("e2e release on repayment"))],
           ["docs", xdr.ScVal.scvVec([scMap([["kind", variant("WarehouseReceipt")], ["sha256", hash32(receipt.sha256)]])])],
         ]);
-        // The trustee holds SECURITY_AGENT (register, perfect) and RISK_COUNCIL (set_terms) on the stack.
+        // The trustee holds SECURITY_AGENT (register, perfect); the risk council key holds RISK_COUNCIL (set_terms).
         const recordId = Number(await invoke(trustee, security, "register", [addr(me()), u32(loanId), u32(0), record]));
         await invoke(trustee, security, "perfect", [addr(me()), u32(recordId), hash32(sha256(`perfected ${recordId}`))]);
         const revalue = (perUnit: bigint) => execute(trustee, security, "revalue", [u32(recordId), i128(perUnit), sym("XAU"), hash32(sha256(`mark ${perUnit}`))]);

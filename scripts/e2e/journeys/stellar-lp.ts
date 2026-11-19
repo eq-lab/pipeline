@@ -31,13 +31,13 @@ export function units(s: string, places: number): bigint {
 /** Stellar raw (7 decimals) in the API's 6-decimal USD unit, truncated the way the API normalizes. */
 const usd6 = (raw: bigint) => raw / 10n;
 
-async function voucher(kind: "deposits" | "withdrawals", id: bigint) {
+export async function voucher(kind: "deposits" | "withdrawals", id: bigint) {
   return until(`the ${kind} voucher of request ${id}`, async () => {
     const r = await http("GET", `/v1/${kind}/${id}/voucher?wallet=${me()}&${CHAIN}`);
     return r.status === 403 || r.status === 404 ? undefined : (ok(r, `${kind} voucher`) as { amount: string; user: string; signature: string; deadline: string });
   });
 }
-const claimArgs = (id: bigint, v: { signature: string; deadline: string }) => [u128(id), bytes(v.signature), u64(BigInt(v.deadline))];
+export const claimArgs =(id: bigint, v: { signature: string; deadline: string }) => [u128(id), bytes(v.signature), u64(BigInt(v.deadline))];
 
 async function plusdSupply(): Promise<bigint> {
   const r = await fetch(`http://localhost:${PORTS.stellar}/assets?asset_code=PLUSD&asset_issuer=${w.plusd.getIssuer()}`);

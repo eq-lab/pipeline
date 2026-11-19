@@ -83,7 +83,7 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 - **LP:** `POST /v1/auth/signup`, the passcode read from `logs/api.log` (`EMAIL_DEV_LOG=true`; it stays in the process), `POST /v1/auth/verify-otp`, `POST /v1/lps/me`, and the settlement address linked through the SEP-53 wallet challenge (`/v1/lps/me/link-address/challenge` and `/verify`).
 - **Operators:** `auth_users` rows for the stack's `trustee` key (`{trustee}`), an originator (`{originator}`) and a team member (no role: the API has no `team` role); the trustee and the originator sign in through `/v1/auth/challenge` and `/v1/auth/verify`.
 - **KYC** (`passKyc`, after the LP's first deposit request, from which the relayer creates its profile): the applicant through the Sumsub stub, a signed `GREEN` webhook, then a wait until the relayer has authorized the LP on PLUSD.
-- **Contract roles:** granted by `up.sh` (`deploy-all`); the `trustee` key holds `TRUSTEE`, risk council and cash reporter.
+- **Contract roles:** granted by `up.sh` (`deploy-all`); the `trustee` key holds `TRUSTEE`, security agent and cash reporter; the generated `risk-council` key (in `stacks/<tag>/stellar`, like `trustee`) holds `RISK_COUNCIL` and `PAUSER`; the `deployer` holds `PAUSER` and the AccessManager's `ADMIN`.
 
 ## Stellar LP journey
 
@@ -124,7 +124,7 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 
 ## Stellar loan journey
 
-`scripts/e2e/journeys/stellar-loan.ts` (`--journeys loan`; in a full run after LP, on the same world). Contract calls are encoded with the apps' encoders from `packages/wallet-connect/src/stellar/contracts/` (`loanRegistry.ts`, `minter.ts`, `securityRegistry.ts`); privileged ones go through the AccessManager's `execute`, signed by the stack's `trustee` key (trustee, risk council and Cash reporter).
+`scripts/e2e/journeys/stellar-loan.ts` (`--journeys loan`; in a full run after LP, on the same world). Contract calls are encoded with the apps' encoders from `packages/wallet-connect/src/stellar/contracts/` (`loanRegistry.ts`, `minter.ts`, `securityRegistry.ts`); privileged ones go through the AccessManager's `execute`, signed by the stack's `trustee` key (trustee, security agent and Cash reporter); `set_terms` is the risk council's, signed by the `risk-council` key.
 
 1. **Submit and approve.** Two documents and the loan metadata JSON are stored in MinIO under `ipfs/<cid>` and served by the IPFS stub. The originator submits a 1000 USDC facility (800 senior, 200 equity, 12 %, offtaker price 1100) with a `StandardGoods` XAU anchor of quantity 1 and no haircut (`POST /v1/loan-book/loan`); the trustee approves it (`/review`).
 2. **Draw.** `draw_loan` with the `draw_loan` args the API serves on the approved submission; the API links the submission to the loan id.
@@ -135,7 +135,7 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 7. **Repay** through the minter (`repay`, as Cash reporter): the outstanding principal and the interest accrued so far; the interest is minted to sPLUSD.
 8. **Close** (`close_loan`, `EarlyRepayment`) and the **loan book after close**.
 
-The stack grants the `trustee` `SECURITY_AGENT` (`register`, `perfect`) and `RISK_COUNCIL` (`set_terms`), so the journey signs every security registry call with it. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
+The stack grants the `trustee` `SECURITY_AGENT` (`register`, `perfect`) and the `risk-council` key `RISK_COUNCIL` (`set_terms`), so the journey signs the security registry calls with them. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
 
 | Check | What it compares |
 |-------|------------------|
@@ -219,6 +219,23 @@ The same as on Stellar: play it once per stack, after the EVM LP journey, whose 
 | `evm.loan-book.summary` | while the loan is active: `weighted_rate` and `loan_book_yield` against the loan's rate; `deployed_senior` against `outstandingTotal()`; `/v1/financial-position` secured loans and `outstanding_in_loans` against Σ facility of the registry's active loans |
 | `evm.loan-book.closed` | after close: status `Closed`, `repaid_to_date` against Σ `PaymentRecorded` offtaker receipts, `deployed_senior` and secured loans as above |
 | `evm.loan-book.yield` | `/v1/dashboard/summary` `cumulative_yield_total` against Σ `CashRepaid.interestMinted` |
+
+## Risk Council
+
+`scripts/e2e/journeys/stellar-risk.ts` and `evm-risk.ts` (`--journeys risk`; in a full run after the chain's loan journey, which also gives the LP its KYC; the loan journey's steps that reach Performing run again for a second loan, on a scratch record). One generated key holds the role on the local stack (the real 3-of-5 and 2-of-5 Safes and the browser are out of scope).
+
+- **Stack:** Stellar: `up.sh` generates the `risk-council` key and grants it `RISK_COUNCIL` (`set_default`, `write_down`, `close_defaulted`, `set_terms`, …) and `PAUSER`; the `trustee` no longer holds the risk council role, which is what makes the refusal check mean something. EVM: the pinned scripts have no risk council (`setDefault`, `writeDown` and `closeDefaulted` belong to `LoanRegistryManager`; `pause` and `unpause` to the AccessManager admin), so `up.sh` maps those functions, and `pause`/`unpause` of the deposit manager, PLUSD, sPLUSD and the withdrawal queue, to a `RISK_COUNCIL_ROLE` granted to a generated key (`E2E_EVM_RISK_COUNCIL_KEY` in the generated env, 100 ETH); `cast send` from the admin, see the shortcut note in `stack.ts`.
+- **Pause:** the LP gets PLUSD (a deposit claim) and an unclaimed withdrawal request; the council pauses the deposit manager, sPLUSD and the withdrawal queue (EVM also PLUSD; the Stellar PLUSD is a classic asset and has no pause: its mint path is the deposit manager). While paused the LP's deposit request, stake, unstake, withdrawal request and withdrawal claim are all rejected; then the same calls succeed after unpause. On Stellar `unpause` is not mapped to `PAUSER` by the pinned `setup-access`, so the deployer (admin) unpauses; on EVM the council does. The API exposes no paused state of these contracts (only the security registry's `paused`), so none is compared.
+- **Default:** a second loan is submitted, approved, drawn and disbursed as in the loan journey. The trustee-side key (Stellar `trustee`; EVM: the former `LoanRegistryManager`) and a fresh originator key are refused `set_default` and the loan stays Performing. The council moves it to Default; the loan book, `GET /v1/loan-book/{id}/financials` and `/v1/attention-counts` (`loans.defaulted`) show it; a 15 s wait then shows nothing moved in the vault assets, the loan's minted yield or the cumulative yield, and the weighted rate has no active loan. The council writes the whole outstanding down and `close_defaulted` closes it with reason `Default`; the API shows Closed and the defaulted count drops it. The contract's `accrued_interest` view of a defaulted loan is not compared.
+
+| Check | What it compares |
+|-------|------------------|
+| `stellar.risk.pause`, `evm.risk.pause` | each contract's `paused()` is true and every LP call is rejected |
+| `stellar.risk.unpause`, `evm.risk.unpause` | each `paused()` is false and every LP call succeeds |
+| `stellar.risk.default-refused`, `evm.risk.default-refused` | the trustee-side and originator keys are rejected on chain and the loan keeps `Performing`; fails if the role sits on the wrong key (`yarn test:e2e-scripts`) |
+| `stellar.risk.default`, `evm.risk.default` | status Default on chain, in the loan book and in the loan detail; the defaulted attention count up by one; `at_risk_wl_and_default_senior` against the outstanding |
+| `stellar.risk.no-yield`, `evm.risk.no-yield` | vault assets, minted yield and cumulative yield unchanged after Default; no active loan in the weighted rate |
+| `stellar.risk.close`, `evm.risk.close` | after `write_down` and `close_defaulted`: Closed with reason Default on chain, Closed in the API, the defaulted count back |
 
 ## Result contract
 
