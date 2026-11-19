@@ -558,14 +558,16 @@ fn offtaker_ceiling_accounts_for_amounts_already_received() {
             1200,
         )
     };
-    assert!(compute_waterfall(
+    let over = compute_waterfall(
         &s,
         &dec("100001"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
-        &genesis(&s)
-    )
-    .is_err());
+        &genesis(&s),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("exceeds the loan's outstanding offtaker balance"))
+    );
     // Exactly the remaining headroom is fine.
     assert!(compute_waterfall(
         &s,
@@ -613,11 +615,11 @@ fn already_over_received_loan_rejects_every_further_amount_including_zero() {
 
 fn qp_snapshot() -> LoanSnapshot {
     LoanSnapshot {
-        original_offtaker_price: dec("13372557.24"),
+        original_offtaker_price: dec("13372557"),
         ..snapshot_with_repayment(
             "1000000",
             RepaymentSnapshot {
-                offtaker_received: dec("12275866.32"),
+                offtaker_received: dec("12275866"),
                 senior_principal_repaid: dec("1000000"),
                 senior_interest: dec("0"),
                 equity_distributed: dec("0"),
@@ -635,48 +637,7 @@ fn qp_repriced_settlement_above_offtaker_price_is_rejected() {
     let s = qp_snapshot();
     let over = compute_waterfall(
         &s,
-        &dec("1764807.37"),
-        ORIGINATION,
-        &fees(0, 0, 0),
-        &genesis(&s),
-    );
-    assert!(matches!(over, Err(ApiError::BadRequest(_))));
-
-    let b = compute_waterfall(
-        &s,
-        &dec("1096690.92"),
-        ORIGINATION,
-        &fees(0, 0, 0),
-        &genesis(&s),
-    )
-    .unwrap();
-    assert!(b.offtaker_fully_received);
-    assert_eq!(b.senior_principal_returned, dec("0"));
-    assert_eq!(b.equity_distributed, dec("1096690"));
-    assert_eq!(build_response(99_000_001, &b).chain_id, 99_000_001);
-}
-
-#[test]
-fn issue_2123_repro_quotational_overpayment_is_rejected() {
-    let s = LoanSnapshot {
-        original_offtaker_price: dec("1000000"),
-        ..snapshot_with_repayment(
-            "1000000",
-            RepaymentSnapshot {
-                offtaker_received: dec("900000"),
-                senior_principal_repaid: dec("1000000"),
-                senior_interest: dec("0"),
-                equity_distributed: dec("0"),
-                mgmt_fee: dec("0"),
-                perf_fee: dec("0"),
-                oet_alloc: dec("0"),
-            },
-            1200,
-        )
-    };
-    let over = compute_waterfall(
-        &s,
-        &dec("150000"),
+        &dec("1764807"),
         ORIGINATION,
         &fees(0, 0, 0),
         &genesis(&s),
@@ -685,27 +646,101 @@ fn issue_2123_repro_quotational_overpayment_is_rejected() {
         matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("exceeds the loan's outstanding offtaker balance"))
     );
 
-    let ok = compute_waterfall(
+    let b = compute_waterfall(
         &s,
-        &dec("100000"),
+        &dec("1096691"),
         ORIGINATION,
         &fees(0, 0, 0),
         &genesis(&s),
     )
     .unwrap();
-    assert!(ok.offtaker_fully_received);
+    assert!(b.offtaker_fully_received);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("1096691"));
+}
+
+#[test]
+fn fractional_amount_is_rounded_down_before_the_offtaker_ceiling() {
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1000000"),
+        ..snapshot("1000000", "0", 1200)
+    };
+    let b = compute_waterfall(
+        &s,
+        &dec("1000000.9"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s),
+    )
+    .unwrap();
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert!(b.offtaker_fully_received);
+
+    let short = compute_waterfall(
+        &s,
+        &dec("999999.9"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s),
+    )
+    .unwrap();
+    assert!(!short.offtaker_fully_received);
+
+    assert!(compute_waterfall(
+        &s,
+        &dec("1000001"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s)
+    )
+    .is_err());
+}
+
+fn default_snapshot(offtaker_price: &str) -> LoanSnapshot {
+    LoanSnapshot {
+        original_offtaker_price: dec(offtaker_price),
+        status: "Default".to_owned(),
+        ..snapshot("1000000", "0", 1200)
+    }
 }
 
 #[test]
 fn default_loan_rejects_amount_above_offtaker_price() {
-    let s = LoanSnapshot {
-        original_offtaker_price: dec("500000"),
-        status: "Default".to_owned(),
-        ..snapshot("1000000", "0", 1200)
-    };
+    let s = default_snapshot("500000");
     let over = compute_waterfall(
         &s,
         &dec("600000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("outstanding offtaker balance"))
+    );
+}
+
+#[test]
+fn default_loan_accepts_amount_equal_to_outstanding_offtaker() {
+    let s = default_snapshot("500000");
+    let b = compute_waterfall(
+        &s,
+        &dec("500000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+    )
+    .unwrap();
+    assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert!(b.offtaker_fully_received);
+}
+
+#[test]
+fn default_loan_offtaker_ceiling_wins_over_headroom_rejection() {
+    let s = default_snapshot("500000");
+    let over = compute_waterfall(
+        &s,
+        &dec("5000000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
         &genesis(&s),
@@ -747,8 +782,9 @@ fn response_maps_the_components() {
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &genesis(&s)).unwrap();
-    let resp = build_response(1, &b);
+    let resp = build_response(99_000_001, &b);
 
+    assert_eq!(resp.chain_id, 99_000_001);
     assert_eq!(resp.senior_principal_returned, "1000000");
     assert_eq!(resp.senior_coupon_net, "88000");
     assert_eq!(resp.management_fee, "10000");

@@ -31,9 +31,7 @@
 //!    repayment for this loan) to get what's *newly* due since the last repayment, clamped
 //!    at 0 so a prior over-record can't surface as a negative "still owed" figure:
 //!    `target_x = max(0, x_cum − repayment.x)`.
-//! 3. **Bound the offtaker leg.** `outstanding_offtaker = original_offtaker_price −
-//!    repayment.offtaker_received`. An `amount` above it is a `400` on every loan and in every
-//!    status, as both LoanRegistries enforce it (`OfftakerExceedsPrice`). Not clamped at 0.
+//! 3. **Bound the offtaker leg** (`400` above `original_offtaker_price − repayment.offtaker_received`).
 //! 4. **Cascade `amount` through the tiers** in priority order — the interest tier
 //!    (senior coupon + management fee + performance fee) → OET → senior principal →
 //!    Equity residual — capping each tier at its step-2 target so a shortfall shrinks
@@ -153,16 +151,6 @@ pub struct WaterfallResponse {
     /// `senior_principal_returned` brings outstanding senior principal
     /// (`disbursed − repaid − written_down`) to zero — the senior debt is fully retired.
     pub senior_principal_fully_repaid: bool,
-    /// `true` when this payment's `amount` brings cumulative `offtaker_received` to
-    /// `original_offtaker_price` — the
-    /// offtaker has now paid the full contracted price for the cargo.
-    ///
-    /// Surfaced independently from `senior_principal_fully_repaid` rather than collapsed
-    /// into one "fully repaid" flag: a payment that closes out the senior debt while this
-    /// is still `false` means the loan is being closed from a smaller offtaker settlement
-    /// than genesis contracted for (a discount, a renegotiation, an early payoff from other
-    /// capital, ...) — worth a second look before closing the loan, but not necessarily
-    /// invalid, so it is surfaced for the Trustee to weigh rather than rejected outright.
     pub offtaker_fully_received: bool,
 }
 
@@ -332,9 +320,6 @@ fn trunc(v: &BigDecimal) -> BigDecimal {
 /// raw (un-normalised) outstanding- and rate-changing events in chain order, already cut
 /// off at `as_of` by the caller (`ContractLogsRepo::list_loan_rate_events_for_loan`).
 /// Pure and unit-testable — no DB, no clock.
-///
-/// `Err(BadRequest)` when `as_of` precedes the loan's origination (negative accrual span), or when
-/// `amount` exceeds the outstanding offtaker balance (stage 3).
 pub fn compute_waterfall(
     s: &LoanSnapshot,
     amount: &BigDecimal,
@@ -342,6 +327,7 @@ pub fn compute_waterfall(
     fees: &FeeScheduleRow,
     rate_events: &[LoanRateEventRow],
 ) -> Result<WaterfallBreakdown, ApiError> {
+    let amount = &trunc(amount);
     if as_of < s.origination_date {
         return Err(ApiError::BadRequest(format!(
             "as_of ({as_of}) is before loan origination ({})",
@@ -462,9 +448,8 @@ fn default_breakdown(
     headroom: &BigDecimal,
     outstanding_offtaker: &BigDecimal,
 ) -> Result<WaterfallBreakdown, ApiError> {
-    let amount = trunc(amount);
     let senior_principal_returned = outstanding.clone().min(amount.clone());
-    let senior_coupon_net = &amount - &senior_principal_returned;
+    let senior_coupon_net = amount - &senior_principal_returned;
     if &senior_coupon_net > headroom {
         return Err(ApiError::BadRequest(format!(
             "loan is in Default: a payment may only repay senior principal ({outstanding}) plus \
@@ -482,7 +467,7 @@ fn default_breakdown(
         oet_allocation: BigDecimal::zero(),
         equity_distributed: BigDecimal::zero(),
         senior_principal_fully_repaid,
-        offtaker_fully_received: outstanding_offtaker - &amount <= BigDecimal::zero(),
+        offtaker_fully_received: outstanding_offtaker - amount <= BigDecimal::zero(),
     })
 }
 
