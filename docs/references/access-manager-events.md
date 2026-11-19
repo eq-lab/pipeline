@@ -108,12 +108,29 @@ Setting the key without a rewind indexes only from the current cursor.
 
 ## API read
 
-`GET /v1/loan-book` and `GET /v1/loan-book/{loan_id}/security` serve `pending_operations` from this table (#1922); fields and states in [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations). One statement per Stellar chain (one loan on `/security`):
+`GET /v1/loan-book` and `GET /v1/loan-book/{loan_id}/security` serve `pending_operations` from this table (#1922, EVM #1941); fields and states in [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations). One statement per chain with a configured target, Stellar or EVM (one loan on `/security`):
 
-- `status = 'pending'` only, `target` equal to the API LoanRegistry, Minter or SecurityRegistry address, `args_xdr` and `args_json` set.
+- `status = 'pending'` only, `target` equal to the API LoanRegistry, Minter or SecurityRegistry address, `args_xdr` or `calldata` set, and `args_json` set. EVM addresses are EIP-55 strings on both sides (the indexer and the API config both use `to_checksum(None)`) and are compared exactly, so no `lower()` is applied and the index is used.
 - Loan is `COALESCE(loan_id, record lookup)`; the lookup (same three sources as [Loan id](#loan-id)) runs only for SecurityRegistry rows with `loan_id` `NULL` and `record_id` set. Rows still without a loan are not served.
 - A row is dropped when a later schedule of the same `(chain_id, contract_address, operation_id)` exists, compared by `(schedule_ledger, source_log_id)`, not by `nonce`: the contract nonce restarts at 1 after the temporary entry lapses.
 - `expired` is derived at read time (`now >= expires_at`); the table never closes an expired row.
+
+### Function names per chain
+
+The API serves `function` and `args` as stored and adds no mapping. Consumers (the Trustee) map the name per chain from this table (#1941).
+
+| Owner contract | Stellar | EVM |
+|---|---|---|
+| LoanRegistry | `set_default` | `setDefault` |
+| LoanRegistry | `cure` | `cure` |
+| LoanRegistry | `amend_economics` | `amendEconomics` |
+| LoanRegistry | `adjust_interest` | `adjustInterest` |
+| LoanRegistry | `write_down` | `writeDown` |
+| LoanRegistry | `close_defaulted` | `closeDefaulted` |
+| Minter | `reverse_repay` | `reverseRepay` |
+| SecurityRegistry | `set_terms` | `setTerms` |
+| SecurityRegistry | `resolve_flag` | `resolveFlag` |
+| SecurityRegistry | `release_with_consent` | `releaseWithConsent` |
 
 ## Known limitations
 
@@ -196,7 +213,7 @@ Rollout, per chain:
 2. Stop the worker, set `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`, rewind `log_collector_state.last_indexed_block` in the same step, to the AccessManager deploy block or earlier than the earliest relevant schedule, start. Replays of other contracts dedupe on the `contract_logs` unique key. The sync loop starts at watermark 0 and catches up.
 3. Check: `contract_logs` has the AccessManager rows, `access_manager_sync_state.last_log_id` equals the highest AccessManager row id for the EIP-55 address, and each indexed schedule has a row with `calldata` set.
 
-Setting the key without a rewind indexes only from the current cursor, and a deeper rewind later is not safe (see above). The API does not serve EVM rows until #1941: `LIST_PENDING_LOAN_OPS_SQL` requires `args_xdr IS NOT NULL`.
+Setting the key without a rewind indexes only from the current cursor, and a deeper rewind later is not safe (see above). The API serves them (#1941); see [API read](#api-read).
 
 ### EVM known limitations
 
@@ -224,3 +241,6 @@ Setting the key without a rewind indexes only from the current cursor, and a dee
 | 13 | Allow-listed events | 8 snake_case topics. | 9 OpenZeppelin topic0 values. | Different event sets. |
 | 14 | Config validation | `StellarIndexerSettings::from_chain_env` distinct-role loop. | Parse in `IndexerJobSettings::from_chain_env`; clash check in `run_indexer_job`. | The EVM indexer checks optional-key clashes there. |
 | 15 | Retention and re-projection | RPC retention of about 7 days (TD-187). | None; the rewind must be done when the key is first enabled (the projection runs in `contract_logs.id` order). | `eth_getLogs` keeps full history. |
+| 16 | API args filter | `args_xdr IS NOT NULL` (absent means out of retention) | `(args_xdr IS NOT NULL OR calldata IS NOT NULL)` (absent means the operation id did not verify); `args_json IS NOT NULL` on both. | Different native encodings. |
+| 17 | API Minter target key | `CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` (also enables the cash book) | `CHAIN_<id>_EVM_API_MINTER_ADDRESS` in the same map; every Stellar-shaped Minter reader reads the map through `routes::common::stellar_minter`, which returns nothing for an EVM chain, so it scopes `pending_operations` only. | EVM has no cash book. |
+| 18 | Expired, then canceled | The schedule lapses about a day after expiry and can no longer be canceled. | `cancel` works on an expired schedule at any time; the row closes and leaves the API. | OpenZeppelin `cancel` checks only that the schedule exists. |

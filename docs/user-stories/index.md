@@ -266,6 +266,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1426 Home state 6: KYB not verified due to a problem](https://github.com/eq-lab/pipeline/issues/1426) | [1426-home-kyb-problem-state.md](./epic-1419/1426-home-kyb-problem-state.md) | Initial |
 | [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
 | [#1459 Add email screen for a wallet-connected visitor — email + password, then OTP, then session](https://github.com/eq-lab/pipeline/issues/1459) | [1459-add-email-screen.md](./epic-1419/1459-add-email-screen.md) | Initial |
+| [#2054 Add email screen: 'Already have an account? Sign in' link for visitors who already have an email account](https://github.com/eq-lab/pipeline/issues/2054) | [2054-add-email-sign-in-link.md](./epic-1419/2054-add-email-sign-in-link.md) | Initial |
 | [#1460 Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0](https://github.com/eq-lab/pipeline/issues/1460) | [1460-home-wallet-only-state.md](./epic-1419/1460-home-wallet-only-state.md) | Initial |
 | [#1475 Account page opens on the connected wallet's tab; LP home heading reads "Welcome back" whenever the header shows the account icon](https://github.com/eq-lab/pipeline/issues/1475) | [1475-account-entry-tab-welcome-back.md](./epic-1419/1475-account-entry-tab-welcome-back.md) | Initial |
 | [#1577 Home: collapse the desktop home-grid branches into one shared layout](https://github.com/eq-lab/pipeline/issues/1577) | [1577-home-grid-shared-layout.md](./epic-1419/1577-home-grid-shared-layout.md) | Initial |
@@ -367,6 +368,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1731 Trustee (staging): white screen after wallet sign-in and after logout](https://github.com/eq-lab/pipeline/issues/1731) | [1731-trustee-auth-transition-white-screen.md](./epic-1521/1731-trustee-auth-transition-white-screen.md) | Initial |
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
 | [#1667 Trustee: hide target-chain options the API does not serve](https://github.com/eq-lab/pipeline/issues/1667) | [1667-trustee-served-chains.md](./epic-1521/1667-trustee-served-chains.md) | Initial |
+| [#1573 Trustee: EVM draw_loan path so Approve works for EVM-targeted submissions](https://github.com/eq-lab/pipeline/issues/1573) | [1573-trustee-evm-draw-loan.md](./epic-1521/1573-trustee-evm-draw-loan.md) | Initial |
+| [#1574 Trustee: EVM write paths for rollover / update lifecycle / record payment / close loan (TD-152)](https://github.com/eq-lab/pipeline/issues/1574) | [1574-trustee-evm-lifecycle-writes.md](./epic-1521/1574-trustee-evm-lifecycle-writes.md) | Initial |
 
 ---
 
@@ -387,6 +390,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 | [#1858 Trustee: Risk Council security actions — set terms, resolve flag, release with consent, inspector panel (SecurityRegistry, scheduled 24 h)](https://github.com/eq-lab/pipeline/issues/1858) | [1858-risk-council-security-actions.md](./epic-1795/1858-risk-council-security-actions.md) | Initial |
 | [#1767 Trustee: loan detail security registry card — cure period, margin call, security records and inspections](https://github.com/eq-lab/pipeline/issues/1767) | [1767-trustee-security-registry-card.md](./epic-1795/1767-trustee-security-registry-card.md) | Initial |
+| [#1892 Trustee: EVM arm of debt-token registration (PipelineDealTokenFactory.registerDeal after drawLoan)](https://github.com/eq-lab/pipeline/issues/1892) | [1892-trustee-evm-register-deal.md](./epic-1795/1892-trustee-evm-register-deal.md) | Initial |
 
 ---
 
@@ -438,4 +442,15 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1938 EVM SecurityRegistry indexer: records, terms, marks, margin calls, inspections (SecurityRegistry + RecordNft)](https://github.com/eq-lab/pipeline/issues/1938) | [1938-evm-security-registry-indexer.md](./epic-1937/1938-evm-security-registry-indexer.md) | Initial |
 | [#1939 EVM AccessManager indexer: scheduled / canceled / executed operations with calldata](https://github.com/eq-lab/pipeline/issues/1939) | [1939-evm-access-manager-indexer.md](./epic-1937/1939-evm-access-manager-indexer.md) | Initial |
+| [#1940 API: /security and loan-book LTV fields for EVM chains](https://github.com/eq-lab/pipeline/issues/1940) | [1940-evm-security-api.md](./epic-1937/1940-evm-security-api.md) | Initial |
+| [#1941 API: pending_operations for EVM chains (calldata args)](https://github.com/eq-lab/pipeline/issues/1941) | [1941-evm-pending-operations-api.md](./epic-1937/1941-evm-pending-operations-api.md) | Initial |
+| [#1942 Trustee: Risk Council security page and inspectors on EVM loans](https://github.com/eq-lab/pipeline/issues/1942) | [1942-trustee-evm-security-page.md](./epic-1937/1942-trustee-evm-security-page.md) | Initial |
+| [#1943 Trustee: Risk Council hub, escalate, reterm, writedown and repayment recovery on EVM loans](https://github.com/eq-lab/pipeline/issues/1943) | [1943-trustee-evm-rc-pages.md](./epic-1937/1943-trustee-evm-rc-pages.md) | Initial |
 
+
+## Epic #2029 — Frontend tech debt
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1329 Add a Foundation/Tokens Storybook story for design-token visual review](https://github.com/eq-lab/pipeline/issues/1329) | [1329-tokens-storybook-story.md](./epic-2029/1329-tokens-storybook-story.md) | Initial |
+| [#2049 LP formatCompactUsd renders values just under a unit boundary as $1000.0K](https://github.com/eq-lab/pipeline/issues/2049) | [2049-compact-usd-rounding.md](./epic-2029/2049-compact-usd-rounding.md) | Initial |

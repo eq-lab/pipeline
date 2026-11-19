@@ -8,7 +8,7 @@ import {
   writeDownPrefill,
 } from "./-risk-council-writedown";
 import { chainStateRows } from "./-risk-council-shared";
-import { loanState, STELLAR } from "./-riskCouncilFixtures";
+import { EVM, loanState, STELLAR } from "./-riskCouncilFixtures";
 
 describe("writeDownPrefill", () => {
   it("formats the raw chain outstanding verbatim", () => {
@@ -20,14 +20,35 @@ describe("writeDownPrefill", () => {
 
 describe("buildWriteDownCall", () => {
   it("converts the USD input to base units and rejects empty or zero", () => {
-    expect(buildWriteDownCall(4, "$1,840,000.00")).toEqual({
+    expect(buildWriteDownCall(4, "$1,840,000.00", STELLAR)).toEqual({
       fn: "write_down",
       loanId: 4,
       amount: "18400000000000",
     });
-    expect(buildWriteDownCall(4, "")).toBeNull();
-    expect(buildWriteDownCall(4, "$0.00")).toBeNull();
-    expect(buildWriteDownCall(null, "5")).toBeNull();
+    expect(buildWriteDownCall(4, "", STELLAR)).toBeNull();
+    expect(buildWriteDownCall(4, "$0.00", STELLAR)).toBeNull();
+    expect(buildWriteDownCall(null, "5", STELLAR)).toBeNull();
+  });
+});
+
+describe("buildWriteDownCall on EVM", () => {
+  it("converts to 6-decimal base units", () => {
+    expect(buildWriteDownCall(4, "$1,000.000001", EVM)).toEqual({
+      fn: "write_down",
+      loanId: 4,
+      amount: "1000000001",
+    });
+    expect(buildWriteDownCall(4, "$1,000.000001", STELLAR)).toEqual({
+      fn: "write_down",
+      loanId: 4,
+      amount: "10000000010",
+    });
+    expect(buildWriteDownCall(4, "$0.00", EVM)).toBeNull();
+  });
+
+  it("prefills the chain outstanding at 6 dp", () => {
+    expect(writeDownPrefill("1840000000000", EVM)).toBe("$1,840,000.00");
+    expect(writeDownPrefill("1000000001", EVM)).toBe("$1,000.000001");
   });
 });
 

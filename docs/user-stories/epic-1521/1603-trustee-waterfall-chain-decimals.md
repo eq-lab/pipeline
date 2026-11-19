@@ -20,7 +20,7 @@ Trustee app (`packages/trustee`) against staging with one active loan on Stellar
 
 - The request is `GET /v1/loan-book/<id>/waterfall?amount=123450000&chain_id=560048` (10^6 units), not `1234500000`.
 - The previewed rows (senior principal returned, net coupon, fees) match the server's base-unit figures divided by 10^6 — the same magnitude as the entered amount, not 10× smaller.
-- "Record on the ledger" stays disabled with the Stellar-only line (TD-152) — the preview is read-only here.
+- "Record on the ledger" is enabled for a wallet with the Cash reporter role (#1574) and signs the same 6-decimal served values; without the role the page shows the role reason.
 
 ---
 

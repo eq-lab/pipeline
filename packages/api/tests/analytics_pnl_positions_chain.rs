@@ -10,7 +10,7 @@ use pipeline_api::routes::analytics::{
     self, degrade_minter_list, lp_wire_in_items, minter_chains_in_scope, AnalyticsDoc,
     RequestsResponse,
 };
-use pipeline_api::routes::common::ChainScope;
+use pipeline_api::routes::common::{stellar_minter, ChainScope};
 use pipeline_api::routes::pnl::{self, PnlDoc};
 use pipeline_api::AppState;
 use shared::chains::ChainKind;
@@ -56,6 +56,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
@@ -317,6 +318,21 @@ fn no_minter_chain_is_in_scope_for_evm_unconfigured_or_minterless_stellar() {
 }
 
 #[test]
+fn an_evm_chain_with_the_minter_key_set_is_still_out_of_the_minter_series() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    let mut with_evm = minters();
+    with_evm.insert(
+        EVM.chain_id,
+        "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+    );
+    assert!(minter_chains_in_scope(ChainScope::One(EVM), &all, &with_evm).is_empty());
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::All, &all, &with_evm),
+        minter_chains_in_scope(ChainScope::All, &all, &minters())
+    );
+}
+
+#[test]
 fn only_minter_chains_are_in_scope_for_all_and_one() {
     let all = [EVM, STELLAR, STELLAR_B];
     let expected = vec![(STELLAR.chain_id, STELLAR_MINTER.to_owned())];
@@ -475,4 +491,17 @@ fn openapi_exposes_wire_ins_as_optional() {
         .iter()
         .any(|v| v == "wire_ins"));
     assert!(doc["components"]["schemas"]["LpWireInItem"].is_object());
+}
+
+#[test]
+fn pnl_wire_out_minter_is_stellar_only_even_with_an_evm_minter_key_set() {
+    let minters = HashMap::from([
+        (1_i64, "0xEvmMinter".to_owned()),
+        (2_i64, "CMINTER".to_owned()),
+    ]);
+    assert_eq!(stellar_minter(ChainKind::Evm, &minters, 1), None);
+    assert_eq!(
+        stellar_minter(ChainKind::Stellar, &minters, 2).map(String::as_str),
+        Some("CMINTER")
+    );
 }

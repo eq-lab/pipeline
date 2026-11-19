@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   render,
   screen,
@@ -9,11 +9,15 @@ import {
 } from "@testing-library/react";
 import {
   DELAYED,
+  EVM,
+  EVM_LOAN_REGISTRY,
+  EVM_SCHEDULER,
   IMMEDIATE,
   NO_ROLE,
   SCHEDULED,
   STELLAR,
   accessResult,
+  evmLoanRegistryOp,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
@@ -57,13 +61,21 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  const { LOAN_REGISTRY } = await import("./-riskCouncilFixtures");
+  const { LOAN_REGISTRY, EVM_LOAN_REGISTRY } =
+    await import("./-riskCouncilFixtures");
   return {
     ...actual,
-    ENV: { ...actual.ENV, STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY },
+    ENV: {
+      ...actual.ENV,
+      STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY,
+      EVM_LOAN_REGISTRY_ADDRESS: EVM_LOAN_REGISTRY,
+    },
   };
 });
-const walletState = vi.hoisted(() => ({ address: null as string | null }));
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
 
 const HASH = "cd".repeat(32);
 vi.mock("@pipeline/wallet-connect", () => ({
@@ -71,6 +83,10 @@ vi.mock("@pipeline/wallet-connect", () => ({
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   riskCouncilReasonHash: vi.fn(async () => "cd".repeat(32)),
   useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
@@ -153,6 +169,7 @@ beforeEach(() => {
   relay = relayResult();
   pendingExecute = pendingExecuteResult();
   walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
   _resetRiskCouncilOpsForTests();
 });
 
@@ -495,6 +512,8 @@ describe("Amend economics — scheduled operations", () => {
       paused: false,
       fn: "amend_economics",
       argsXdr: "AMENDXDR",
+      calldata: null,
+      targetKind: "loan_registry",
     });
   });
 
@@ -535,5 +554,117 @@ describe("Amend economics — scheduled operations", () => {
       within(screen.getByTestId(PENDING)).queryAllByRole("button"),
     ).toHaveLength(0);
     expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Amend economics — EVM loan", () => {
+  const useChain = (chain: number) => {
+    (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+      () => ({ chain });
+  };
+
+  beforeEach(() => {
+    useChain(EVM);
+    walletState.evmAddress = EVM_SCHEDULER;
+  });
+
+  afterEach(() => useChain(STELLAR));
+
+  function setupEvm(
+    access: Parameters<typeof accessResult>[0],
+    pending?: ReturnType<typeof pendingOp>[],
+  ) {
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({ chain_id: EVM, pending_operations: pending }),
+      ]),
+    );
+    mockPendingExecute.mockReturnValue(pendingExecute as never);
+    mockSecurity.mockReturnValue(securityResult());
+    mockAccess.mockReturnValue(accessResult(access) as never);
+    mockLoanState.mockReturnValue({
+      data: loanState({ status: "WatchList", interestAdjustment: "-12000000" }),
+    } as never);
+    mockRelay.mockReturnValue(relay as never);
+  }
+
+  it("shows the current terms from the EVM read and schedules an amendment on the EVM chain", () => {
+    setupEvm(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-coupon")).toHaveTextContent(
+      "14.5%",
+    );
+    expect(
+      screen.getByTestId("risk-council-reterm-adjustment"),
+    ).toHaveTextContent("-$12.00");
+    fillAmend();
+    const button = screen.getByTestId("risk-council-reterm-amend-button");
+    expect(button).toBeEnabled();
+    expect(mockAccess).toHaveBeenCalledWith(
+      EVM,
+      expect.objectContaining({ fn: "amend_economics" }),
+      "amend_economics",
+    );
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "amend_economics",
+        loanId: 4471,
+        rateBps: 1450,
+        maturity: 1_797_292_800,
+      },
+      chainId: EVM,
+    });
+  });
+
+  it("converts the adjust delta at 6 decimals", async () => {
+    setupEvm(DELAYED);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-reterm-delta"), {
+      target: { value: "-1,000.5" },
+    });
+    fireEvent.change(screen.getByTestId("risk-council-reterm-reason"), {
+      target: { value: "Waiver agreed" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("risk-council-reterm-reason-hash")).toHaveValue(
+        HASH,
+      ),
+    );
+    fireEvent.click(screen.getByTestId("risk-council-reterm-adjust-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "adjust_interest",
+        loanId: 4471,
+        delta: "-1000500000",
+        reasonHash: HASH,
+      },
+      chainId: EVM,
+    });
+  });
+
+  it("lists an EVM amendEconomics row with Execute against the configured LoanRegistry", () => {
+    const row = evmLoanRegistryOp("amendEconomics", {
+      args: ["4471", 145_000, "1816128000"],
+    });
+    setupEvm(DELAYED, [row]);
+    renderRoute();
+    const button = screen.getByTestId(
+      `risk-council-reterm-pending-${row.operation_id}-button`,
+    );
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chainId: EVM,
+        target: EVM_LOAN_REGISTRY,
+        expectedTarget: EVM_LOAN_REGISTRY,
+        fn: "amend_economics",
+        calldata: row.calldata,
+        argsXdr: null,
+      }),
+    );
   });
 });

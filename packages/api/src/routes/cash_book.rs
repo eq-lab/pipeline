@@ -20,7 +20,7 @@ use crate::minter_cash_book::{
     build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string, CashBookFold,
     CashBookWireOut, WireOutStatus,
 };
-use crate::routes::common::{parse_required_chain, require_trustee, RequiredChain};
+use crate::routes::common::{parse_required_chain, require_trustee, stellar_minter, RequiredChain};
 use crate::routes::lps::SettlementBankAccountDetails;
 use crate::AppState;
 
@@ -193,8 +193,7 @@ pub fn resolve_minter<S: std::hash::BuildHasher>(
     chain: ConfiguredChain,
     minter_addresses: &HashMap<i64, String, S>,
 ) -> Result<&str, ApiError> {
-    minter_addresses
-        .get(&chain.chain_id)
+    stellar_minter(chain.kind, minter_addresses, chain.chain_id)
         .map(String::as_str)
         .ok_or_else(|| ApiError::NotFound("minter_not_configured".to_owned()))
 }

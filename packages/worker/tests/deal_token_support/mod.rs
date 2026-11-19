@@ -14,6 +14,13 @@ sol! {
     event WireInRecorded(uint256 indexed id, address indexed receiver, uint256 amount, uint64 valueDate, bytes32 refHash);
 }
 
+mod head {
+    use alloy::sol;
+    sol! {
+        event DealRegistered(uint256 indexed loanId, address debt);
+    }
+}
+
 pub const FACTORY: Address = address!("fa00000000000000000000000000000000000001");
 pub const DEBT: Address = address!("de00000000000000000000000000000000000001");
 pub const CARGO: Address = address!("ca00000000000000000000000000000000000001");
@@ -38,6 +45,11 @@ pub fn deal_registered(loan: U256, debt: Address, cargo: Address, block: u64, id
         debt,
         cargo,
     };
+    make_log(FACTORY, ev.encode_log_data(), block, idx)
+}
+
+pub fn deal_registered_debt_only(loan: U256, debt: Address, block: u64, idx: u64) -> Log {
+    let ev = head::DealRegistered { loanId: loan, debt };
     make_log(FACTORY, ev.encode_log_data(), block, idx)
 }
 

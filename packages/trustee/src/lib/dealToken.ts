@@ -1,8 +1,13 @@
 // spec: docs/frontend/trustee-flows.md#register-debt-token-1766
 import type { CanCall } from "@pipeline/wallet-connect";
 import { toUserError, type UserFacingError } from "@/utils/userError";
-import { amErrorCode, riskCouncilErrorCopy } from "./accessManagerAction";
-import { stellarOnlyActionReason } from "./targetChains";
+import {
+  EVM_AM_ERROR_COPY,
+  amErrorCode,
+  evmErrorName,
+  riskCouncilErrorCopy,
+} from "./accessManagerAction";
+import { loanActionChainReason } from "./targetChains";
 
 export const DEBT_TOKEN_NOT_CONFIGURED =
   "Debt token registration isn't configured for this environment.";
@@ -16,6 +21,11 @@ export const REGISTER_DEAL_ERROR_COPY: Readonly<Record<string, string>> = {
   "2": "This loan id is too large for a debt token.",
   "3": "This loan's debt token is already registered.",
   "5": "The debt token issuer has not made the factory the admin of the token yet. Ask the issuer to sign set_admin, then try again.",
+};
+
+export const REGISTER_DEAL_EVM_ERROR_COPY: Readonly<Record<string, string>> = {
+  DealTokenFactoryAlreadyRegistered: REGISTER_DEAL_ERROR_COPY["3"]!,
+  LoanRegistryNonExistentLoanId: REGISTER_DEAL_ERROR_COPY["1"]!,
 };
 
 export interface DealReadState {
@@ -35,7 +45,7 @@ export function debtTokenView(
   configured: boolean,
   deal: DealReadState,
 ): DebtTokenView {
-  const chainReason = stellarOnlyActionReason(chainId);
+  const chainReason = loanActionChainReason(chainId);
   if (chainReason) return { kind: "blocked", reason: chainReason };
   if (!configured) {
     return { kind: "blocked", reason: DEBT_TOKEN_NOT_CONFIGURED };
@@ -93,10 +103,17 @@ export function registerDealError(
     return mapped;
   }
   const code = amErrorCode(mapped.details);
+  const evmName = evmErrorName(mapped.details);
   const copy =
     riskCouncilErrorCopy(mode, mapped.details) ??
     (mode === "execute" && code != null
       ? REGISTER_DEAL_ERROR_COPY[code]
+      : undefined) ??
+    (evmName != null ? EVM_AM_ERROR_COPY[evmName] : undefined) ??
+    (mode === "execute"
+      ? Object.entries(REGISTER_DEAL_EVM_ERROR_COPY).find(([name]) =>
+          mapped.details.includes(name),
+        )?.[1]
       : undefined);
   return copy
     ? { message: copy, details: mapped.details, isSpecific: true }

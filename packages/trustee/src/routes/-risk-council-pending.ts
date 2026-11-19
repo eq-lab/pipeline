@@ -3,17 +3,17 @@ import { useEffect, useMemo } from "react";
 import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
-  useStellarWallet,
   type FlagOutcome,
   type RiskCouncilCall,
   type RiskCouncilClosureReason,
   type SecurityPaymentTerm,
   type SecurityRegistryCall,
 } from "@pipeline/wallet-connect";
-import type {
-  PendingOperation,
-  PendingOperationState,
-  PendingTargetKind,
+import {
+  canonicalPendingFunction,
+  type PendingOperation,
+  type PendingOperationState,
+  type PendingTargetKind,
 } from "@/api/pendingOperations";
 import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
 import type { LoanSecurityTerms } from "@/api/useLoanSecurity";
@@ -26,9 +26,11 @@ import {
   type CouncilCall,
 } from "@/api/useRiskCouncil";
 import {
+  evmCouncilErrorCopy,
   formatReadyAt,
   NO_LONGER_SCHEDULED,
   otherWalletCopy,
+  REGISTRY_PAUSED_COPY,
   riskCouncilErrorCopy,
   securityRegistryErrorCopy,
   stageLabel,
@@ -43,12 +45,21 @@ import {
   type ExecutedOperation,
   type ScheduledOp,
 } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { useChainWallet } from "@/lib/chainWallet";
+import {
+  isStellarTarget,
+  riskCouncilChainReason,
+  sameChainAddress,
+} from "@/lib/targetChains";
 import { truncateAddress } from "@/lib/truncateAddress";
 import { formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { toUserError, type UserFacingError } from "@/utils/userError";
-import { formatChainAmount, recoveryErrorCopy } from "./-repayment-recovery";
+import {
+  evmRecoveryErrorCopy,
+  formatChainAmount,
+  recoveryErrorCopy,
+} from "./-repayment-recovery";
 import {
   formatSignedChainAmount,
   type ActionView,
@@ -63,8 +74,7 @@ export const PENDING_SESSION_NOTE =
 export const PENDING_ARGS_MISMATCH =
   "The served arguments do not match this operation on chain. Reload the page.";
 export const PENDING_EXECUTED = "Executed";
-export const PENDING_PAUSED =
-  "The SecurityRegistry is paused. Executing is blocked until it resumes.";
+export const PENDING_PAUSED = REGISTRY_PAUSED_COPY;
 export const SET_TERMS_PENDING_NOTICE =
   "A terms change is already scheduled — see above. Scheduling again creates a second operation with a new 24 h wait.";
 
@@ -151,6 +161,24 @@ const TERMS_KEYS = [
   "tolerance_bps",
 ] as const;
 
+const EVM_TERMS_KEYS = [
+  "advanceRatioBps",
+  "marginCallRatioBps",
+  "defaultRatioBps",
+  "curePeriod",
+  "priceStaleAfter",
+  "paymentTerm",
+  "gracePeriod",
+  "defaultRate",
+  "originatorFeeRate",
+  "attestationInterval",
+  "inspectionInterval",
+  "toleranceBps",
+  "gradeToleranceBps",
+  "marginCallAt",
+  "defaultBreachAt",
+] as const;
+
 export interface ReverseRepayCall {
   fn: "reverse_repay";
   loanId: number;
@@ -166,7 +194,8 @@ export interface PendingOpItem {
   caller: string;
   target: string;
   fn: string;
-  argsXdr: string;
+  argsXdr: string | null;
+  calldata: string | null;
   readyAt: number;
   expiresAt: number;
   state: PendingOperationState;
@@ -297,6 +326,195 @@ export function decodeSecurityCall(
   }
 }
 
+function evmId(value: unknown): number | null {
+  if (typeof value !== "string" || !U64_DECIMAL.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id <= U32_MAX ? id : null;
+}
+
+function enumOrdinal<T>(value: unknown, allowed: readonly T[]): T | null {
+  return Number.isInteger(value) ? (allowed[value as number] ?? null) : null;
+}
+
+function decodeEvmTerms(
+  value: unknown,
+): Extract<SecurityRegistryCall, { fn: "set_terms" }>["terms"] | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const terms = value as Record<string, unknown>;
+  if (
+    Object.keys(terms).length !== EVM_TERMS_KEYS.length ||
+    !EVM_TERMS_KEYS.every((key) => key in terms)
+  ) {
+    return null;
+  }
+  const paymentTerm = enumOrdinal<SecurityPaymentTerm>(
+    terms.paymentTerm,
+    SECURITY_PAYMENT_TERMS,
+  );
+  const u32s = [
+    terms.advanceRatioBps,
+    terms.marginCallRatioBps,
+    terms.defaultRatioBps,
+    terms.defaultRate,
+    terms.originatorFeeRate,
+    terms.toleranceBps,
+    terms.gradeToleranceBps,
+  ];
+  const u64s = [
+    terms.curePeriod,
+    terms.priceStaleAfter,
+    terms.gracePeriod,
+    terms.attestationInterval,
+    terms.inspectionInterval,
+  ];
+  if (
+    paymentTerm === null ||
+    !u32s.every(isU32) ||
+    !u64s.every(isU64) ||
+    terms.marginCallAt !== "0" ||
+    terms.defaultBreachAt !== "0"
+  ) {
+    return null;
+  }
+  return {
+    advanceRatioBps: terms.advanceRatioBps as number,
+    marginCallRatioBps: terms.marginCallRatioBps as number,
+    defaultRatioBps: terms.defaultRatioBps as number,
+    curePeriod: terms.curePeriod as string,
+    priceStaleAfter: terms.priceStaleAfter as string,
+    paymentTerm,
+    gracePeriod: terms.gracePeriod as string,
+    defaultRate: terms.defaultRate as number,
+    originatorFeeRate: terms.originatorFeeRate as number,
+    attestationInterval: terms.attestationInterval as string,
+    inspectionInterval: terms.inspectionInterval as string,
+    toleranceBps: terms.toleranceBps as number,
+    gradeToleranceBps: terms.gradeToleranceBps as number,
+  };
+}
+
+export function decodeEvmSecurityCall(
+  fn: string,
+  args: unknown,
+): SecurityRegistryCall | null {
+  if (!Array.isArray(args)) return null;
+  const id = evmId(args[0]);
+  if (id === null) return null;
+  switch (fn) {
+    case "set_terms": {
+      const terms = args.length === 2 ? decodeEvmTerms(args[1]) : null;
+      return terms !== null ? { fn: "set_terms", loanId: id, terms } : null;
+    }
+    case "resolve_flag": {
+      const outcome = enumOrdinal<FlagOutcome>(args[1], FLAG_OUTCOMES);
+      return args.length === 3 && outcome !== null && isHash(args[2])
+        ? {
+            fn: "resolve_flag",
+            recordId: id,
+            outcome,
+            reasonHash: args[2],
+          }
+        : null;
+    }
+    case "release_with_consent":
+      return args.length === 2 && isHash(args[1])
+        ? { fn: "release_with_consent", recordId: id, consentHash: args[1] }
+        : null;
+    default:
+      return null;
+  }
+}
+
+const EVM_CLOSURE_ORDINALS: Readonly<Record<number, RiskCouncilClosureReason>> =
+  { 4: "Default", 5: "OtherWriteDown" };
+
+export function decodeEvmLoanRegistryCall(
+  fn: string,
+  args: unknown,
+): RiskCouncilCall | null {
+  if (!Array.isArray(args)) return null;
+  const loanId = evmId(args[0]);
+  if (loanId === null) return null;
+  switch (fn) {
+    case "set_default":
+      return args.length === 1 ? { fn: "set_default", loanId } : null;
+    case "cure":
+      return args.length === 1 ? { fn: "cure", loanId } : null;
+    case "amend_economics": {
+      const rate = args[1];
+      const maturity = Number(args[2]);
+      if (
+        args.length !== 3 ||
+        !isU32(rate) ||
+        rate % RATE_SCALE !== 0 ||
+        rate / RATE_SCALE < 1 ||
+        rate / RATE_SCALE > MAX_RATE_BPS ||
+        !isU64(args[2]) ||
+        !Number.isSafeInteger(maturity) ||
+        maturity <= 0
+      ) {
+        return null;
+      }
+      return {
+        fn: "amend_economics",
+        loanId,
+        rateBps: rate / RATE_SCALE,
+        maturity,
+      };
+    }
+    case "adjust_interest": {
+      const delta = args[1];
+      return args.length === 3 &&
+        typeof delta === "string" &&
+        SIGNED_DECIMAL.test(delta) &&
+        isHash(args[2])
+        ? { fn: "adjust_interest", loanId, delta, reasonHash: args[2] }
+        : null;
+    }
+    case "write_down":
+      return args.length === 2 && isU64(args[1])
+        ? { fn: "write_down", loanId, amount: args[1] }
+        : null;
+    case "close_defaulted": {
+      const reason =
+        typeof args[1] === "number" ? EVM_CLOSURE_ORDINALS[args[1]] : undefined;
+      return args.length === 2 && reason !== undefined
+        ? { fn: "close_defaulted", loanId, reason }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+export function decodeEvmReverseRepayCall(
+  fn: string,
+  args: unknown,
+): ReverseRepayCall | null {
+  if (fn !== "reverse_repay" || !Array.isArray(args)) return null;
+  const loanId = evmId(args[0]);
+  const repaymentId = evmId(args[1]);
+  return args.length === 3 &&
+    loanId !== null &&
+    repaymentId !== null &&
+    isHash(args[2])
+    ? { fn: "reverse_repay", loanId, repaymentId, refHash: args[2] }
+    : null;
+}
+
+export function decodeEvmPendingCall(
+  fn: string,
+  args: unknown,
+): PendingCall | null {
+  return (
+    decodeEvmSecurityCall(fn, args) ??
+    decodeEvmLoanRegistryCall(fn, args) ??
+    decodeEvmReverseRepayCall(fn, args)
+  );
+}
+
 export function decodeLoanRegistryCall(
   fn: string,
   args: unknown,
@@ -398,14 +616,20 @@ export function fromServed(
   op: PendingOperation,
   loanId?: number | null,
 ): PendingOpItem {
-  const call = decodePendingCall(op.function, op.args);
+  const fn = canonicalPendingFunction(op.function);
+  const calldata = op.calldata ?? null;
+  const call =
+    calldata !== null
+      ? decodeEvmPendingCall(fn, op.args)
+      : decodePendingCall(fn, op.args);
   return {
     key: op.operation_id,
     operationId: op.operation_id,
     caller: op.caller,
     target: op.target,
-    fn: op.function,
-    argsXdr: op.args_xdr,
+    fn,
+    argsXdr: op.args_xdr ?? null,
+    calldata,
     readyAt: toUnix(op.ready_at),
     expiresAt: toUnix(op.expires_at),
     state: op.state,
@@ -431,14 +655,14 @@ export function fromSession(
   op: ScheduledOp,
   nowSec: number,
 ): PendingOpItem | null {
-  const { operationId, readyAt, caller, target, argsXdr } = op;
+  const { operationId, readyAt, caller, target, argsXdr, calldata } = op;
   if (
     operationId == null ||
     readyAt == null ||
     readyAt <= 0 ||
     caller == null ||
     target == null ||
-    argsXdr == null
+    (argsXdr == null && calldata == null)
   ) {
     return null;
   }
@@ -449,7 +673,8 @@ export function fromSession(
     caller,
     target,
     fn: op.call.fn,
-    argsXdr,
+    argsXdr: argsXdr ?? null,
+    calldata: calldata ?? null,
     readyAt,
     expiresAt,
     state: stateAt(readyAt, expiresAt, nowSec),
@@ -596,16 +821,21 @@ function isExecutedHere(
   );
 }
 
+function rawIdOf(item: PendingOpItem, value: unknown): number | null {
+  if (isU32(value)) return value;
+  return item.calldata !== null ? evmId(value) : null;
+}
+
 export function recordNumberOf(item: PendingOpItem): number | null {
   if (item.call != null && "recordId" in item.call) return item.call.recordId;
   const first = Array.isArray(item.rawArgs) ? item.rawArgs[0] : null;
-  return isU32(first) ? first : null;
+  return rawIdOf(item, first);
 }
 
 export function repaymentNumberOf(item: PendingOpItem): number | null {
   if (item.call?.fn === "reverse_repay") return item.call.repaymentId;
   const second = Array.isArray(item.rawArgs) ? item.rawArgs[1] : null;
-  return isU32(second) ? second : null;
+  return rawIdOf(item, second);
 }
 
 export function pendingActionLabel(item: PendingOpItem): string {
@@ -659,6 +889,8 @@ function termsForRows(
     inspection_interval: String(terms.inspectionInterval),
     tolerance_bps: terms.toleranceBps,
     grade_tolerance_bps: terms.gradeToleranceBps,
+    default_ratio_bps: terms.defaultRatioBps,
+    originator_fee_rate: terms.originatorFeeRate,
   };
 }
 
@@ -735,9 +967,10 @@ export function pendingStateText(item: PendingOpItem): string {
 export function callerText(
   item: PendingOpItem,
   address: string | null | undefined,
+  chainId: number,
 ): string {
   const short = truncateAddress(item.caller);
-  return address != null && address === item.caller
+  return address != null && sameChainAddress(chainId, address, item.caller)
     ? `${short} · this wallet`
     : short;
 }
@@ -745,7 +978,13 @@ export function callerText(
 function executeErrorCopy(
   kind: PendingTargetKind,
   details: string,
+  chainId: number,
 ): string | null {
+  if (!isStellarTarget(chainId)) {
+    return kind === "minter"
+      ? (evmRecoveryErrorCopy(details) ?? evmCouncilErrorCopy(details, kind))
+      : evmCouncilErrorCopy(details, kind);
+  }
   switch (kind) {
     case "minter":
       return (
@@ -773,12 +1012,13 @@ export function usePendingOperationView({
   executeGate: string | null;
   expectedTarget: string;
 }): ActionView {
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
   const execute = usePendingOperationExecute();
 
-  const blocked = stellarOnlyActionReason(chainId);
-  const isCaller = address != null && address === item.caller;
-  const wrongTarget = item.target !== expectedTarget;
+  const blocked = riskCouncilChainReason(chainId);
+  const isCaller =
+    address != null && sameChainAddress(chainId, address, item.caller);
+  const wrongTarget = !sameChainAddress(chainId, item.target, expectedTarget);
   const contract = PENDING_CONTRACT_NAMES[item.targetKind];
   const isExecuted = item.executed !== null;
   const ready = item.state === "ready" && !isExecuted;
@@ -816,7 +1056,7 @@ export function usePendingOperationView({
       };
     } else {
       const mapped = toUserError(error, "The Risk Council action failed.");
-      const copy = executeErrorCopy(item.targetKind, mapped.details);
+      const copy = executeErrorCopy(item.targetKind, mapped.details, chainId);
       userError = copy
         ? { ...mapped, message: copy, isSpecific: true }
         : mapped;
@@ -855,6 +1095,8 @@ export function usePendingOperationView({
             item.targetKind === "security_registry" && executeGate != null,
           fn: item.fn,
           argsXdr: item.argsXdr,
+          calldata: item.calldata,
+          targetKind: item.targetKind,
         })
         .catch(() => {});
     },

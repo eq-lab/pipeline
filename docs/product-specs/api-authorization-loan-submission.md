@@ -90,20 +90,21 @@ carry a contract-ready `draw_loan` block, derived at read time from `loan_data`:
 }
 ```
 
-The `economics` keys are exactly the 8 fields of the Stellar loan-registry
-`ImmutableLoanData`; `draw_loan(metadata_uri, economics)` is called through
-`access_manager.execute`.
+The `economics` keys are exactly the 8 fields of the loan-registry `ImmutableLoanData`.
+Stellar calls `draw_loan(metadata_uri, economics)` through `access_manager.execute`; EVM calls
+`drawLoan(metadataURI, economics)` through `AccessManager.execute`, and the keys map to the
+`ImmutableLoanData` struct in camelCase.
 
 | Field | Served as | Unit |
 |-------|-----------|------|
-| `original_*` money | plain integer string | u128, 7-decimal base units (USDC-SAC / PLUSD scale): human amount × 10^7, never rounded |
+| `original_*` money | plain integer string | u128 base units: 7 decimals on Stellar (USDC-SAC / PLUSD), 6 decimals on EVM (PLUSD): human amount × 10^7 or × 10^6, never rounded |
 | `senior_interest_rate` | JSON number | u32 fixed point with `ONE = 1_000_000` = 100 %/yr, i.e. `senior_interest_rate_bps × 100` |
 | `origination_date`, `original_maturity_date` | JSON number | u64 unix seconds |
 | `borrower_ref` | 64 lowercase hex, no `0x` | `sha256(UTF-8 bytes of the trimmed data_room_id)`, computed at read time and never stored |
 
-- **Stellar targets only.** The block is `null` for an EVM target until #1573 decides the EVM shape, and `null` when the submission's `target_chain_id` is not in `CHAINS`.
-- **`missing_inputs`.** Any input that is absent or not representable in the contract type (a negative or non-numeric amount, more than 7 fractional digits, above `u128::MAX`, a rate overflowing `u32`) is served as `null` and its name is listed, in this order: `metadata_uri`, `data_room_id`, `economics.original_facility_size`, `economics.original_senior_tranche`, `economics.original_equity_tranche`, `economics.original_offtaker_price`, `economics.senior_interest_rate_bps`, `economics.origination_date`, `economics.original_maturity_date`. The names are the input keys the submitter must fix.
-- **Amount format.** An amount must match `^\d+(\.\d+)?$` (no sign, exponent, underscore, leading dot or trailing dot) with at most 39 integer digits and at most 7 fractional digits to be served; `POST /loan` and `POST /resubmit` reject an amount with more than 6 fractional digits or outside that format (`400`, naming the field).
+- **Stellar and EVM targets.** The block is served for both, identical except the money scale (`STELLAR_LOAN_MONEY_DECIMALS = 7`, `EVM_LOAN_MONEY_DECIMALS = 6`); it is `null` when the submission's `target_chain_id` is not in `CHAINS`.
+- **`missing_inputs`.** Any input that is absent or not representable in the contract type (a negative or non-numeric amount, more than 7 (Stellar) / 6 (EVM) fractional digits, above `u128::MAX`, a rate overflowing `u32`) is served as `null` and its name is listed, in this order: `metadata_uri`, `data_room_id`, `economics.original_facility_size`, `economics.original_senior_tranche`, `economics.original_equity_tranche`, `economics.original_offtaker_price`, `economics.senior_interest_rate_bps`, `economics.origination_date`, `economics.original_maturity_date`. The names are the input keys the submitter must fix.
+- **Amount format.** An amount must match `^\d+(\.\d+)?$` (no sign, exponent, underscore, leading dot or trailing dot) with at most 39 integer digits and at most 7 (Stellar) / 6 (EVM) fractional digits to be served; `POST /loan` and `POST /resubmit` reject an amount with more than 6 fractional digits or outside that format (`400`, naming the field).
 - **Drawn or rejected.** `draw_loan` in `GET /submissions` is `null` once the submission is drawn (`loan_id` set) or `Rejected`.
 - **Do not draw while `missing_inputs` is non-empty.** Economics of rows submitted before #1620 may be in base units; such rows carry no `data_room_id`, report `missing_inputs`, and must be resubmitted through the current UI.
 - **Existing rows are not migrated.** Rows without `data_room_id` serve `borrower_ref: null` and `missing_inputs: ["data_room_id"]`.

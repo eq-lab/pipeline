@@ -238,8 +238,8 @@ and the dialog shell of `MintConfirmDialog` (`useLpReviewDialog`).
 Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session), shown
 as a chip (`cash-management-escrow-chain`) and the sub-line "Unmatched incoming wires held by the minter
 on {chain} — assign each to its lender or return it." An EVM session renders "Escrowed wires on {chain}
-are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book and the
-app has no EVM write client, #1573).
+are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book; the
+EVM write client from #1942 has no cash-management bindings yet).
 
 ### Data sourcing
 
@@ -321,7 +321,7 @@ Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` on
 shown as a chip (`cash-management-wireouts-chain`) and the sub-line "Lender bank withdrawals held in
 escrow by the minter on {chain} — settle once the wire is sent, or cancel to return the PLUSD." An EVM
 session renders "Bank wire-outs on {chain} are not available in the Trustee app yet." and fetches nothing
-(no EVM cash book is served and the app has no EVM write client, #1573).
+(no EVM cash book is served; the EVM write client from #1942 has no cash-management bindings yet).
 
 ### Data sourcing
 
@@ -421,8 +421,8 @@ this section. Custody accounts sign their own USDC moves; the console never co-s
 Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session),
 shown as a chip (`cash-management-conversions-chain`). An EVM session renders "Conversions and bank
 charges on {chain} are not available in the Trustee app yet." and sends no `/v1/cash-book` request and
-makes no `pool_state`, `paused` or `ramp` read (no EVM cash book is served and the app has no EVM write
-client, #1573).
+makes no `pool_state`, `paused` or `ramp` read (no EVM cash book is served; the EVM write client from
+#1942 has no cash-management bindings yet).
 
 ### Pool summary
 
@@ -594,8 +594,8 @@ Figma details with no backend field are dropped, not invented:
 - Stage cell: the served `status` label only (`Performing` displays as **Active**, #1119) — no
   "· Risk Council" / "· feed stale" qualifier.
 - LTV cell: the served `ltv_bps` only. A Stellar row with no snapshot, or a loan-book that does not
-  carry the key yet, shows `—`; an EVM row is blank (no `—`, no placeholder). Nothing is computed
-  from other columns.
+  carry the key yet, shows `—`; an EVM row renders its served value like a Stellar row (#1942).
+  Nothing is computed from other columns.
 
 Every field is read defensively → `—`, never fabricated.
 
@@ -603,15 +603,14 @@ Every field is read defensively → `—`, never fabricated.
 
 - **LTV column** (#1906, replaces the CCR and Collateral columns and the Spot sub-line). Backend
   #1786 phase 1 adds three flat fields to every `loans[]` entry, always present and `null` when not
-  served (EVM rows, Stellar chains without a SecurityRegistry, no snapshot yet): `ltv_bps`
+  served (chains without a SecurityRegistry, no snapshot yet): `ltv_bps`
   (verbatim from the stored snapshot; `4294967295`, the `u32::MAX` sentinel, means debt with no
   counted value and shows as "No security value"), `margin_call_open`
   (`security_terms.margin_call_at != 0`) and `price_stale` (the contract's snapshot flag). The
   frontend reads each with `?? null`, so it also works while the keys are absent (this issue
-  deploys before #1786). The column is **Stellar only** and **hidden** unless at least one
-  Stellar row has a non-null `ltv_bps` or `margin_call_open === true`; the footnote shows only with
-  the column. EVM rows are decided by `isStellarTarget(chain_id)`, never by key presence, and are
-  blank. The cell value is red when `margin_call_open`; the sub-line shows "Margin call" (red)
+  deploys before #1786). The column is **hidden** unless at least one
+  row, Stellar or EVM (#1942), has a non-null `ltv_bps` or `margin_call_open === true`; the footnote
+  shows only with the column. The cell value is red when `margin_call_open`; the sub-line shows "Margin call" (red)
   and/or "Price stale" (amber). There are no frontend bands or thresholds and no per-loan ratios in
   the list — the loan-detail Security card shows the ratios from `/security`.
 - **Tab → status mapping:** an unfiltered **All** tab is first and the landing default (#1121) —
@@ -777,14 +776,14 @@ served. The Figma hero corridor (`Colombia → Italy`) has no backend source and
 
 `useLoanSecurity` — `GET /v1/loan-book/{loan_id}/security?chain_id=<id>` (spec
 [loan-security-state.md](../product-specs/loan-security-state.md)), 30 s poll (stopped once the registry is known to be not configured), query key
-`["loan-security", chainId, loanId]`. It is enabled only for Stellar loans with a numeric loan id
-(`isStellarTarget(chainId)`); it hand-mirrors only the fields the Trustee uses, all optional
+`["loan-security", chainId, loanId]`. It is enabled for every chain with a numeric loan id (EVM since #1942, served by
+[loan-security-state-evm.md](../product-specs/loan-security-state-evm.md)); it hand-mirrors only the fields the Trustee uses, all optional
 (`LoanSecurityResponse` subset of `packages/api/src/security_state.rs`, TD-42). `LoanDetail`
 invalidation keys use `loan-security` (formerly `loan-valuation`); the Risk Council actions and Record payment invalidate it too.
 
 Its own state, independent of the page-level `state` (`buildSecurityCard`, `routes/-loanSecurity.ts`):
 
-- **hidden** — an EVM loan, or a `404` whose error code is `security_registry_not_configured`
+- **hidden** — a `404` whose error code is `security_registry_not_configured`
   (an unknown loan answers `200` with `terms: null`; the code is matched on the error text like
   `minter_not_configured` in `lib/wireEscrow.ts`). No card and no placeholder row. Any other `404`
   is an error.
@@ -838,7 +837,7 @@ result as the summary card, full width below the Security / Registry row in ever
 No Figma frame exists: it is built from the loan-detail primitives (`CARD_CLASS`, `CardTitle`,
 `KeyValueRow`, `chipStyle`, `AddressText`) with the Loans table tokens.
 
-States: **hidden** whenever the summary card is not ready (EVM, registry not configured, loading,
+States: **hidden** whenever the summary card is not ready (registry not configured, loading,
 error, `terms: null`), with no placeholder; **empty** for `records: []` or a missing `records`
 ("No security records are registered for this loan."); **ready** otherwise, records in served
 order (no client sort).
@@ -953,15 +952,17 @@ every variant today.
   to integer bps by `percentToBps` (`@/utils/rateUnits`) and echoed live as `= N bps`; anything
   else shows the inline rate error and keeps Roll over disabled — #1625, which replaced a
   `parseInt` on a "bps" field that turned `14.5` into 14 bps) + new maturity, then submits the
-  on-chain `LoanRegistry.rollover` via `useRollover` (bps; the Stellar encoder scales ×100). The
-  mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
+  on-chain `LoanRegistry.rollover` via `useRollover` (bps; both encoders scale ×100). Stellar goes
+  through the executor; EVM calls `rollover(uint256,uint32,uint64)` through
+  `AccessManager.execute` ([EVM (#1574)](#evm-1574)). The mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
   on-chain at rollover, avoiding a fabricated transaction-effect number.
 - **Update lifecycle** (S10, Figma node `4116:14087`, #872, #1893) — collects the target status and
   the metadata URI only, then submits the on-chain `LoanRegistry.update_mutable(loan_id: u32,
-  status: LoanStatus, metadata_uri: String)` through the executor via `useUpdateLifecycle`. There is
+  status: LoanStatus, metadata_uri: String)` through the executor via `useUpdateLifecycle` (EVM:
+  `updateMutable(uint256,uint8,string)` through `AccessManager.execute`, [EVM (#1574)](#evm-1574)). There is
   no CCR or location argument on-chain, so the dialog has no such inputs.
   **Source of truth (#1893, TD-183)** — status and metadata URI come from one on-chain
-  `mutable_loan_data` read (`useLoanMutableState` → `readLoanChainState`), not from the loan-book
+  `mutable_loan_data` read (`useLoanMutableState` → `readLoanChainState` / `readEvmLoanChainState`), not from the loan-book
   entry: `GET /v1/loan-book` serves neither the current `metadata_uri` (it serves the submission's
   `draw_loan` URI, which a later `update_mutable` replaces) nor a status free of indexer lag. The
   dialog shows a loading line while the read is pending and the mapped read error if it fails;
@@ -982,17 +983,19 @@ every variant today.
   The banner body reads "Maturity has passed. If the payment arrived, record it. If it didn't,
   escalate the loan to the Risk Council. Default is never automatic." and offers Record payment /
   Escalate to Risk Council (#1767), wired to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
-- **Stellar-only gate (#1537, TD-152)** — Roll over, Update lifecycle, Record coupon and Close loan
-  are trustee-wallet Stellar signatures (`LoanRegistry.*` via the executor, and `Minter.repay` for the two Record pages, via `@pipeline/wallet-connect`). For a
-  loan whose `chain_id` is not `ENV.STELLAR_CHAIN_ID`, `useLoanDetail` returns
-  `onChainBlockedReason` (`stellarOnlyActionReason`, `lib/targetChains.ts`): the actions card
-  disables those four buttons (`ON_CHAIN_ACTIONS`) and prints the reason
+- **Chain gate (#1537, #1574)** — Roll over, Update lifecycle, Record coupon and Close loan are
+  trustee-wallet signatures (`LoanRegistry.*` through the executor on Stellar and through
+  `AccessManager.execute` on EVM; `Minter.repay` for the two Record pages, via
+  `@pipeline/wallet-connect`). `loanActionChainReason(chainId)` (`lib/targetChains.ts`) is `null` for
+  Stellar (and a missing id) and for `ENV.EVM_CHAIN_ID`; any other chain id gets
+  `stellarOnlyActionReason`. `useLoanDetail` returns it as `onChainBlockedReason`: when set, the
+  actions card disables those four buttons (`ON_CHAIN_ACTIONS`) and prints the reason
   (`loan-detail-onchain-blocked`), the Matured rollover button is disabled, `onOtherAction` is a
   no-op for them, and the Record Coupon / Record Repayment pages null their
-  `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
-  (navigation to the Risk Council pages, which carry their own Stellar-only gate, TD-152) and
-  Disbursement complete (DB-only) stay available. The Disbursement card (#1898) shows the same
-  Stellar-only line for an EVM loan.
+  `recordPaymentInput` / `closureReason` and print the same line. Each mutation input carries the
+  loan's `chainId` and the hook picks the arm (`pickChainWallet`). Register debt token uses the same
+  gate ([Register debt token](#register-debt-token-1766), #1892). Escalate to Risk Council
+  and Disbursement complete (DB-only) stay available. The Disbursement card (#1898) uses the same gate.
 
 ### Repayment recovery (#1711)
 
@@ -1001,8 +1004,8 @@ Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-spe
 - **Card** (`loan-detail-repayment-recovery`, `RepaymentRecoveryCard` in `loans.$id.tsx`): "Repayment recovery" with one muted line and an "Open recovery" button, rendered after the Other-actions card in the Performing and Watchlist layouts. States from `recoveryCardState` (`-repayment-recovery.ts`):
   - `eligible`: `/financials.offtaker_outstanding` is `0`, loan-book `senior_outstanding` is `> 0`, and `onchain_status` is `Performing`, `WatchList` or `Default` (string comparisons on the served values, no arithmetic);
   - `awaiting-corrected-repayment`: the latest repayment id (`next_repayment_id - 1`) has `is_repayment_reversed = true`. The card stays after step 1 even though the loan is no longer "eligible" (offtaker outstanding is back above `0`);
-  - `blocked-evm`: eligible but not a Stellar loan; the button is disabled and shows `onChainBlockedReason` (TD-152);
-  - `hidden` otherwise. The on-chain reads run only for Stellar loans in `Performing..Default`, under one React Query key (`["repayment-recovery", chainId, loanId]`, `staleTime` 15 s).
+  - `blocked-evm`: eligible but the loan's chain is an EVM chain other than `ENV.EVM_CHAIN_ID` (the configured EVM chain is `eligible`, #1943); the button is disabled and shows `riskCouncilChainReason`;
+  - `hidden` otherwise. The on-chain reads run only for loans on Stellar or `ENV.EVM_CHAIN_ID` in `Performing..Default`, under one React Query key (`["repayment-recovery", chainId, loanId]`; Stellar `staleTime` 15 s; EVM `staleTime` 60 s, `refetchOnWindowFocus: false` and no interval, so a tab refocus never re-scans the RPC).
 - **Dialog** (`-RepaymentRecoveryDialog.tsx`, state in `-useRepaymentRecoveryDialog.ts`, on-chain hooks in `api/useRepaymentRecovery.ts`):
   - Step 1: a radio list of the non-reversed repayments (registry `repayment_data`, formatted from raw units by `chainAmountDecimals`, never rescaled). A repayment with `senior_principal_repaid = 0` and `equity_distributed != 0` is listed first and preselected. For the selection the dialog shows the Minter `repayment(...)` effects verbatim: cash removed from bank, capital wallet fee shares burned (raw share units), and either the vault interest absorbed or, for a carved-out loan, the Pocket principal / interest unrelease. Nothing is summed client-side.
   - Reload behaviour: when the latest repayment is already reversed, it is preselected and step 1 shows "reversed on-chain" so step 2 is reachable without local state.
@@ -1017,16 +1020,22 @@ Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-spe
 - **Step 2 gate** (all required): the repayment is reversed on chain (registry flag), the original `value_date` was found, `/financials.offtaker_outstanding` is above `0` (the backend has indexed the reversal), and the waterfall query resolved. Mutations invalidate `repayment-recovery`, `repayment-recovery-access`, `loan-book`, `loan-financials`, `loan-waterfall` and `audit-log` immediately and again at 5 s and 15 s.
 - **Errors:** generic `toUserError` plus dialog-local copy for AccessManager `#6` (not scheduled), `#7` (not ready), `#8` (expired, or the Minter's bank cash below the repayment's cash), `#9` (already scheduled) and Minter `#25` (already reversed). It is local because Soroban codes collide across contracts and the global map stays empty.
 - **Config and roles:** `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` (the AccessManager), `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives the "not configured for this environment" copy. The Risk Council wallet must also be a trustee in the API's `auth_users`, or step 1 cannot run from the app (deployment fact).
-- **EVM:** gated by `stellarOnlyActionReason`. `@pipeline/wallet-connect` exports pure calldata encoders (`encodeEvmReverseRepayCalldata`, `encodeEvmRepayCalldata`); there is no EVM send path (TD-152, #1573).
+- **EVM (#1943).** Step 1 runs on `ENV.EVM_CHAIN_ID` with the same dialog, card and copy. The target is `ENV.EVM_MINTER_ADDRESS` and the AccessManager `ENV.EVM_ACCESS_MANAGER_ADDRESS`; a missing address gives "On-chain repayment recovery is not configured for this environment." Reads and signing go through `useChainWallet` and `pickChainWallet`:
+  - Access: `canCall(wallet, minter, selector)` for `reverseRepay(uint256,uint256,bytes32)` and for `repay(...)` (`evmReverseRepaySelector`, `evmRepaySelector`, from the ABI). The UI follows `canCall`; on Hoodi `reverseRepay` shares `MINTER_OPS_ROLE` with the other Minter operations (#1944) and the copy is unchanged.
+  - Reverse: `reverseRepay(loanId, repaymentId, refHash)` through `relayEvmReverseRepay` (`AccessManager.schedule(minter, data, 0)` or `AccessManager.execute(minter, data)`). `refHash = 0x + sha256("pipeline:reverse_repay:{EIP-55 minter}:{loanId}:{repaymentId}")` (`evmReverseRepayRefHash`, the Stellar preimage with the checksummed address), so the schedule is found again after a reload. It is never the zero hash (the Minter keeps single-use hashes, `MinterRefHashSeen`).
+  - Candidates (`readEvmRecoveryRepayments`): the head block is read once and pinned: `nextRepaymentId` from `PipelineLoanRegistry.mutableLoanData` and the Minter `extsload` reads use `blockNumber: head`, then one chunked `eth_getLogs` pass (`scanEvmLogs`, 50 000 blocks per call, concurrency 4, to the same head; each call retries a transient failure, see wallet-flows) from `ENV.EVM_START_BLOCK` (`VITE_EVM_START_BLOCK`, the LoanRegistry deploy block; default 0) over the LoanRegistry and Minter for `PaymentRecorded`, `PaymentUnrecorded` and `CashRepaid` of the loan. `repayment` is the seven `PaymentRecorded.repayment` fields as decimal strings and `reversed` is true when a `PaymentUnrecorded` exists for the id. Every id below `nextRepaymentId` needs a `PaymentRecorded` and a `CashRepaid` log; a missing one throws "Repayment #N was not found on chain from block {from}; check VITE_EVM_START_BLOCK." and the dialog shows "Failed to load the repayments." with the details, never a fabricated row. A malformed `VITE_EVM_START_BLOCK` (not a non-negative integer) fails at startup in `lib/env.ts` with a config error, and an invalid `VITE_EVM_MINTER_ADDRESS` is refused before any RPC call ("VITE_EVM_MINTER_ADDRESS is not a valid EVM address"). No EVM view holds the full `RepaymentData` or the reversed flag, hence the log scan (TD-190).
+  - Effects: `cash`, `interestMinted`, `feeShares` and `saleId` come from the `CashRepaid` log; `carvedOut` and `principal` come from the Minter's own `Repayment` record read through `Minter.extsload` (`readEvmMinterRepayment`): the record sits in the ERC-7201 namespace `pipeline.storage.Minter` (base `0x1cb61fb8…5cc100`, field 19 `repayments`, `keccak256(repaymentId . keccak256(loanId . (base + 19)))`), word 2 is `released` (the amount `Pocket.unrelease` restores, shown as "principal") and word 3's low byte is `carvedOut`. This needs the Minter from contracts PR #54 or later (`extsload`); on an older Minter the read reverts and the dialog shows the load error. Nothing is summed client-side.
+  - Errors by custom-error name (`evmRecoveryErrorCopy`): `AccessManagerNotScheduled` / `NotReady` the `#6` / `#7` copy, `AccessManagerExpired` and `MinterInsufficientBankCash` the `#8` copy, `LoanRegistryRepaymentAlreadyReversed` and `MinterAlreadyReversed` the `#25` copy, `AccessManagerAlreadyScheduled` the `#9` copy. The call's ABI carries the Minter and LoanRegistry errors (`evmRecoveryErrorAbi`), because `reverseRepay` bubbles `unrecordPayment` reverts. `EnforcedPause` (the LoanRegistry's `unrecordPayment` is `whenNotPaused`) "The LoanRegistry is paused. Executing is blocked until it resumes."
+  - Step 2 (the corrected `Minter.repay`, #1574) runs on EVM through the `useRecordPayment` EVM arm ([Recording a payment](#recording-a-payment--minterrepay-1712)). `loanActionChainReason(chainId)` sits right after "Reverse the repayment first." and before the other step 2 checks: `null` on Stellar and `ENV.EVM_CHAIN_ID`, the Stellar-only line for any other chain, where the record mutation is never called. `record()` passes `chainId`; the `value_date` comes from the indexed EVM `CashRepaid` row.
 - Not in the app: cancelling a scheduled reversal (`AM.cancel`, TD-159).
 
 ### Disburse (#1898)
 
 Resolves TD-157. Contract: Minter `disburse(loan_id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)` is `#[only_owner]`, so it is reached through `AM.execute(minter, "disburse", args, caller)` by a `TRUSTEE` wallet (`relay`, `disburse` in `@pipeline/wallet-connect`). It books bank cash out, calls `registry.disburse` (the first call opens epoch 0 and moves `Approved` to `Performing`) and `factory.sync_debt`. No Figma: the card and dialog reuse the loan-detail card and the shared dialog shell.
 
-- **Card** (`loan-detail-disburse`, `-DisburseAction.tsx`, mounted after the Debt token card on every layout). Visible for a Stellar loan whose on-chain status is `Approved`, `Performing` or `WatchList`, that is not carved out, and where `disbursed < original_senior_tranche`; a fully disbursed loan shows nothing. Rows, verbatim from chain: Senior tranche, Disbursed on-chain, Booked bank cash (minter `pool_state().bank_cash`); "—" while loading or on error. Nothing is computed client-side, and no "remaining" figure is shown.
+- **Card** (`loan-detail-disburse`, `-DisburseAction.tsx`, mounted after the Debt token card on every layout). Visible for a loan on Stellar or `ENV.EVM_CHAIN_ID` (the [EVM (#1574)](#evm-1574-disburse) block below) whose on-chain status is `Approved`, `Performing` or `WatchList`, that is not carved out, and where `disbursed < original_senior_tranche`; a fully disbursed loan shows nothing. Rows, verbatim from chain: Senior tranche, Disbursed on-chain, Booked bank cash (minter `pool_state().bank_cash`); "—" while loading or on error. Nothing is computed client-side, and no "remaining" figure is shown.
 - **Pre-flight order** (`disburseView`, `lib/disburse.ts`; the first failing check is the reason, `loan-detail-disburse-blocked`, and the button stays disabled):
-  1. Not a Stellar loan: the Stellar-only line.
+  1. Chain gate (`loanActionChainReason`): another chain gets the Stellar-only line.
   2. A required id is unset (minter, executor, registry, factory): not configured.
   3. Loan read (registry `mutable_loan_data` + `immutable_loan_data`) pending hides the card; an error gives "Could not read this loan on-chain."
   4. `deal(loan_id)`: none gives "Register this loan's debt token first." ([Register debt token](#register-debt-token-1766)).
@@ -1036,10 +1045,23 @@ Resolves TD-157. Contract: Minter `disburse(loan_id: u32, amount: i128, value_da
 - **Dialog** (`disburse-dialog`): Amount (USD, up to 7 decimals), Value date (UTC, `type="date"`, defaults to today, not in the future) and Bank reference (trimmed, 1 to 140 characters), a read-only `ref_hash` line, and the same three read-only rows. The only client checks are plain comparisons: amount above 0 and not above the on-chain `bank_cash`. The tranche cap is the contract's (`#13`). Escape and backdrop cancel are ignored while pending.
 - **`ref_hash` and idempotency.** `ref_hash = sha256(reference.trim())` (`bankReferenceRefHash`), the convention shared with the other cash bookings (the minter's consumed set is shared). The zero hash is rejected by the encoder because the contract skips the replay check for it. Before any signature the mutation reads `ref_hash_seen` and refuses a consumed reference, then re-reads `paused()`; the confirm button is disabled while pending; a retry after an unknown outcome reuses the reference, so `#7` refuses a double booking.
 - **Errors** (`disburseErrorCopy`, local because Soroban codes collide across contracts): `1000` paused, `7` reused reference, `8` bank cash below the amount, `6` / `25` amount, `13` senior tranche exceeded (shown with the on-chain disbursed and tranche values verbatim; the trustline was already verified, so the SAC collision is not shown), `3` / `2` status, `21` carved out. `#4` is left generic (minter `Unauthorized` and factory `NotRegistered` collide).
-- **After success** the card shows the transaction hash and "The loan book updates once indexed" (the relay returns only the hash). `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-security`, `loan-waterfall`, `cash-book`, the minter pool state, `deal-token`, `debt-trustline` and `audit-log` are invalidated immediately and again at 5 s and 15 s; `CashDisbursed` is already indexed into the cash book and audit log.
+- **After success** the card shows the transaction hash and "The loan book updates once indexed" (the relay returns only the hash). `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-security`, `loan-waterfall`, `cash-book`, the minter pool state, `deal-token`, `evm-deal-token`, `debt-trustline` and `audit-log` are invalidated immediately and again at 5 s and 15 s; `CashDisbursed` is already indexed into the cash book and audit log.
 - **Complete off-ramp is separate.** Disburse never calls `POST …/disbursement/complete`; the served display status stays `Disbursing` until that DB flag is flipped, while the card itself keys off the on-chain status.
 - **Testnet caveat.** Disburse succeeds only after ops deploys the DEBT SAC and adds the capital-wallet trustline (`just new-deal <id>`) and `register_deal` has run; until then the card shows the matching reason. The minter's booked bank cash must cover the amount.
 - **Config:** `VITE_STELLAR_YIELD_MINTER_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
+
+#### EVM (#1574, Disburse)
+
+Same card, dialog, test ids, copy, form rules and success line; the differences are rows 23 to 33 of the [differences table](#evm-1574).
+
+- **Call:** `AccessManager.execute(minter, disburse(uint256,uint256,uint64,bytes32))`, `value 0`, through `disburseEvmLoan` (`sendEvmContractCallChecked("disburseEvmLoan", …)`). The role is `MINTER_OPS_ROLE`, read with `canCall(wallet, minter, 0x1d492b02)` (`useDisburseAccess(chainId, …)`, `readEvmCanCall`); the copy still says "Trustee role".
+- **Pre-flight order** is the Stellar order without step 5: the DEBT trustline is skipped (`trustline: null`), because the EVM `DealToken` is an ERC-20 that only the factory mints, so `syncDebt` has no trustline precondition. Step 3 is `readEvmLoanDisbursementState` (`mutableLoanData` + `immutableLoanData.originalSeniorTranche`); step 4 is `readEvmDeal` (`DealTokenFactory.deal(uint256)`, a `DealTokenFactoryNotRegistered` revert is `null`) through `useEvmDeal`, keyed `["evm-deal-token", chainId, loanId]` (its own cache, so the Stellar `useDeal` observer on the same loan never shares or overwrites its query function); step 6 is `readEvmMinterPaused` (`useEvmMinterPaused`, key `["evm-minter-paused", minter]`). The card's bank cash is `useEvmMinterBankCash` (key `["evm-minter-bank-cash", minter]`, refetch 30 s). `useDeal` keeps the separate `["deal-token", chainId, loanId]` cache; Register debt token and the "Debt token" row read both caches through `useLoanDeal` (#1892).
+- **Minter reads (Hoodi vs the frozen source).** `readEvmMinterBankCash` and `readEvmRefHashSeen` call the legacy views (`bankCash()`, `refHashSeen(bytes32)`, present on the Hoodi Minter). On a revert with empty data (the function does not exist, as on a `150631a` Minter) they fall back to `Minter.extsload` at the `PipelineMinterReader` layout: `bankCash` at `MINTER_STORAGE_SLOT + 8`, `refHashesSeen` at `keccak256(refHash . (MINTER_STORAGE_SLOT + 20))`. Any other error propagates. `paused()` exists on both.
+- **Units:** the card, dialog and form use `chainAmountDecimals(chainId)` (6 on EVM): amounts are parsed strictly (`parseDisburseAmount`, no truncation), formatted with `rawToDecimal`, and the form error reads "Enter the amount disbursed (up to 6 decimals)." Stellar output stays byte-identical at 7 dp.
+- **`ref_hash`:** `0x` + `sha256(reference.trim())`; the zero hash is rejected by `encodeEvmDisburseCalldata`. The hook refuses a seen hash (`readEvmRefHashSeen`) and a paused Minter (`readEvmMinterPaused`) before the signature.
+- **Errors** (`disburseErrorCopy`, EVM names matched in the details): `EnforcedPause` paused; `MinterRefHashSeen` reused reference; `MinterInsufficientBankCash` bank cash; `MinterInvalidAmount` / `LoanRegistryInvalidAmount` amount; `LoanRegistryDisbursementExceedsTranche` tranche (values at the chain's decimals); `LoanRegistryWrongCurrentStatus` / `LoanRegistryNonExistentLoanId` status; `LoanRegistryCarvedOut`; `DealTokenFactoryNotRegistered` "Register this loan's debt token first."
+- **Config:** `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS` and the new `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` (Hoodi `0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC`, equal to the worker's `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS`). Until the factory key is set the card shows "Disbursement isn't configured for this environment."
+- **Testnet caveat.** On Hoodi the registry holds no loans yet and `bankCash() = 0`. Disburse needs, in contract order, an unused non-zero `ref_hash`, booked bank cash at least the amount (EVM bank cash rises through `recordWireIn`, #1501, not bookable from the Trustee app on EVM), the loan `Approved..WatchList` within its tranche, and a registered deal: `drawLoan` does not register one, so until the Trustee runs [Register debt token](#register-debt-token-1766) (`registerDeal`, #1892, on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`) the card shows "Register this loan's debt token first."; a successful registration invalidates `evm-deal-token`, which clears it without a reload.
 
 ### Figma → token / px mapping (`4116:10549`)
 
@@ -1127,18 +1149,67 @@ Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's
 - The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the capital wallet). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
 - The trustee wallet must hold `CASH_REPORTER` with delay 0. The page reads `can_call` first (#1762, [Cash reporter bookings](#cash-reporter-bookings)) and disables the submit with the role reason, so a Trustee-only wallet never reaches simulation or a signature request. A loan not yet disbursed on chain fails with registry `#3`; disburse it from the loan detail ([Disburse](#disburse-1898)).
 - Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
-- EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
+- **EVM arm (#1574).** `useRecordPayment` takes the loan's `chainId`. On `ENV.EVM_CHAIN_ID` it reads `readEvmNextRepaymentId({ registry, loanId })`, derives `evmRepaymentRefHash` (`0x` + `sha256("pipeline:repay:{EIP-55 registry}:{loanId}:{next_repayment_id}")`, the Stellar preimage with the checksummed address) and calls `repayEvmLoan`: a direct `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, 0)` from the wallet, the mirror of Stellar's direct `Minter.repay` (user decision 2026-11-19). The Minter's `restricted` checks `canCall(msg.sender, minter, repay)` (`MINT_CALLER_ROLE`, delay 0), so a wallet without it fails with `AccessManagedUnauthorized`. The repayment id comes from the Minter's `CashRepaid` receipt log (a receipt has no return value). Config: `VITE_EVM_MINTER_ADDRESS` and `VITE_EVM_LOAN_REGISTRY_ADDRESS`, same "not configured" copy. `repay` is `whenNotPaused` and needs the registered deal (`DealTokenFactoryNotRegistered` otherwise); both show in the details under the generic simulate copy. Amounts are the served 6-dp fields, never scaled in the browser. Other chain ids keep the Stellar-only gate.
 
 ### Cash reporter bookings
 
 Spec: [cash-reporter-bookings.md](../product-specs/cash-reporter-bookings.md) (#1762). The minter's `record_wire_in`, `repay` and `record_income` are Cash reporter functions, separate from the Trustee role.
 
-- `useCashReporterAccess(fn, enabled)` reads `AccessManager.can_call(wallet, minter, fn)` (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `ENV.STELLAR_YIELD_MINTER_ID`), key `["cash-reporter-access", wallet, fn]`, `staleTime` 30 s, no retry. `enabled` is false on EVM sessions, so no read runs there. It returns `reason` from `cashReporterReason` (`lib/cashReporter.ts`); `null` only when `immediate` is true.
+- `useCashReporterAccess(fn, enabled, chainId?)` reads `AccessManager.can_call(wallet, minter, fn)` on Stellar (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `ENV.STELLAR_YIELD_MINTER_ID`), and `canCall(wallet, minter, selector)` on `ENV.EVM_CHAIN_ID` (`readEvmCanCall`, `ENV.EVM_ACCESS_MANAGER_ADDRESS`, `ENV.EVM_MINTER_ADDRESS`; the selector comes from `EVM_CASH_REPORTER_SELECTORS`, today only `repay` = `0x87d2050a`, `MINT_CALLER_ROLE`). A function with no EVM selector stays unconfigured and callers pass `enabled = false` on EVM. Key `["cash-reporter-access", wallet, fn]`, `staleTime` 30 s, no retry. It returns `reason` from `cashReporterReason` (`lib/cashReporter.ts`); `null` only when `immediate` is true.
 - Reasons: pending "Checking this wallet's Cash reporter role…"; read error "Could not verify this wallet's Cash reporter role." (details stay in the console); `immediate: false` with `delay > 0` "This wallet holds the Cash reporter role with a {h} h delay; the minter accepts only immediate calls."; otherwise the per-function copy: `record_wire_in` "Only the Cash reporter can book incoming wires.", `repay` "Only the Cash reporter can book repayments.", `record_income` "Only the Cash reporter can book bank income."
 - Mint PLUSD: the role reason sits after the wallet and minter-configured reasons and before the receiver reasons. The capital-wallet fallback receiver is unchanged.
-- Record Coupon / Record Repayment: `roleBlockedReason` is rendered as `record-coupon-role-blocked` / `record-repayment-role-blocked` beside the on-chain reason, and `recordPaymentInput` is `null` while it is set. An EVM loan shows only the Stellar-only reason (no read). Close-loan (Trustee role) is not gated by it.
+- Record Coupon / Record Repayment: `roleBlockedReason` is rendered as `record-coupon-role-blocked` / `record-repayment-role-blocked` beside the on-chain reason, and `recordPaymentInput` is `null` while it is set. The role read runs for the loan's chain (Stellar and `ENV.EVM_CHAIN_ID`); an unknown chain shows only the Stellar-only reason (no read). Close-loan (Trustee role) is not gated by it.
 - Bank income: see [Bank income tab](#bank-income-tab-1762).
 - Two-signer (2-of-2) Cash reporter signing is deferred to a follow-up issue; on both testnets the role is held by single accounts.
+
+### EVM (#1574)
+
+Rollover, Update lifecycle, Close loan, Record coupon / repayment (and recovery step 2) and Disburse run on `ENV.EVM_CHAIN_ID` with the same hooks, pages, dialogs, test ids and copy as on Stellar; the human directive is "everything must be the same as on Stellar, the same approach". The arm is picked by the loan's `chain_id` (`pickChainWallet`), each mutation input carries `chainId`, and `loanActionChainReason` is the one gate ([Chain gate](#wired-actions)). EVM-arm guards run before any RPC call, in this order: chain reason, config ("not configured for this environment", unchanged copy), then "EVM wallet not connected." (mapped by `toUserError` to "Connect your trustee wallet to approve on-chain."). The signing chain is `ENV.EVM_CHAIN_ID`; stages, return shape, invalidations and the 5 s / 15 s re-invalidation are unchanged.
+
+- **Lifecycle writes** go through `AccessManager.execute(registry, calldata)`, `value 0`, with `sendEvmContractCallChecked` (`rolloverEvmLoan`, `updateEvmMutable`, `closeEvmLoan`): `rollover(uint256,uint32,uint64)` `0x0971a074` (rate bps × 100), `updateMutable(uint256,uint8,string)` `0x206293ef` (status ordinal from `EVM_LOAN_STATUSES`, URI verbatim), `closeLoan(uint256,uint8)` `0xd0cdfd5a` (`ScheduledMaturity` 1, `EarlyRepayment` 2). Role: `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, delay 0; no `canCall` pre-read and no schedule path, as on Stellar. `useLoanMutableState` reads `readEvmLoanChainState` (same `{ status, metadataUri }`, same key).
+- **Simulate before sign.** `sendEvmContractCallChecked(label, params)` rethrows a contract revert raised before `awaiting-signature` as `"<label>: simulation error: <message>"`; wallet rejections, switch-chain rejections, RPC errors and receipt reverts pass through. `toUserError` maps it to the same copy as Stellar's `"<fn> simulation error"`: "Could not verify this action on-chain. No signature was requested — safe to retry."; the details carry the decoded custom-error name.
+- **Encoders validate before any RPC call** (`<encoder>: invalid <field> <value>`): safe non-negative ids, `newRateBps` 1 to 10 000, `newMaturity` above 0, status and reason names from the enums (`None` refused), `valueDate` positive, `saleId` non-negative, `RepaymentData` fields digit strings within `uint256`, `refHash` `0x` + 64 hex and not zero.
+- **Hoodi check (2026-11-19, read only, nothing submitted).** The three registry selectors and `repay` are present in the live implementations (LoanRegistry impl `0x5996682A…6bfCE`, Minter impl `0x0DaC8ed8…74eBf`); `AM.execute(registry, …)` from the trustee wallet `0x96ef…c04e4` passes the AccessManager and reaches the registry (`LoanRegistryNonExistentLoanId`, the registry has no loans); `repay` from a wallet without `MINT_CALLER_ROLE` reverts `AccessManagedUnauthorized`; `AM.execute(minter, disburse(...))` reaches `MinterInsufficientBankCash` (`bankCash() = 0`). `0x96ef…c04e4` holds `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, `MINT_CALLER_ROLE` and `MINTER_OPS_ROLE`; `0xd3b9…a57c` holds only the first.
+
+**Differences from Stellar** (everything not listed is identical):
+
+| # | Area | Stellar | EVM (#1574) |
+|---|---|---|---|
+| 1 | Chain gate | none (Stellar always open) | `loanActionChainReason`: open on `ENV.EVM_CHAIN_ID`; another non-Stellar id keeps the Stellar-only copy |
+| 2 | Lifecycle call | `executor.execute(registry, "rollover" \| "update_mutable" \| "close_loan", args, caller)` | `AccessManager.execute(registry, calldata)`, `value 0`, caller = `msg.sender` |
+| 3 | Repay call | direct `Minter.repay(caller, …)`; the Minter checks `can_call(caller)` | direct `PipelineMinter.repay(…)`; `restricted` checks `canCall(msg.sender)`; no `caller` arg (user decision 2026-11-19) |
+| 4 | Rollover args | `[u32 id, u32 bps×100, u64 maturity]` | `(uint256, uint32 bps×100, uint64)` |
+| 5 | Update-mutable args | `[u32, LoanStatus scvVec([symbol]), String]` | `(uint256, uint8 ordinal, string)` |
+| 6 | Close-loan args | `[u32, ClosureReason scvVec([symbol])]` | `(uint256, uint8)`; `ScheduledMaturity` 1, `EarlyRepayment` 2 (EVM has `Cancelled` at 3) |
+| 7 | Repay args | `[Address caller, u32, RepaymentData map (sorted keys, u128), u64, BytesN<32>, u32 sale_id]` | `(uint256, tuple in struct order 7×uint256, uint64, bytes32, uint256 saleId)` |
+| 8 | Money units | `RepaymentData` 7-dp base units | 6-dp base units, both served by `/waterfall` at `chainAmountDecimals`, never scaled in the browser |
+| 9 | Input validation | only `encodeRepayArgs` validates | the repay rules plus `uint256` bounds; lifecycle encoders validate id, `rateBps` 1 to 10 000, maturity, enum names |
+| 10 | Simulate-failure message | `"<fn> simulation error: <Soroban error>"` | a revert before `awaiting-signature` becomes `"<fnEvm>: simulation error: <viem message>"`; same user copy |
+| 11 | Stages / button label | `awaiting-signature` during simulate, then `submitting`, `confirming` | no stage during simulate, then `awaiting-signature`, `confirming`; no `submitting` (one EVM call signs and broadcasts) |
+| 12 | Signing | Stellar wallet `signTransaction`, tx source = caller | EVM wallet; wrong network switches to `ENV.EVM_CHAIN_ID` first; mock wallets refused |
+| 13 | Next repayment id | Soroban `mutable_loan_data(u32).next_repayment_id` | `readEvmNextRepaymentId` |
+| 14 | `ref_hash` | `sha256("pipeline:repay:{registryId}:{loanId}:{next}")`, 64 hex | `0x` + `sha256("pipeline:repay:{EIP-55 registry}:{loanId}:{next}")` |
+| 15 | Repayment id result | return value, then the `cash_repaid` event | `CashRepaid` log of the configured Minter in the receipt; `uint256` to `number` if safe, else `null` |
+| 16 | Record-page role read | `can_call(wallet, minter, "repay")` (`CASH_REPORTER`) | `canCall(wallet, minter, 0x87d2050a)` (`MINT_CALLER_ROLE`); same copy |
+| 17 | Lifecycle role | `TRUSTEE`, immediate | `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, delay 0 on Hoodi; no pre-read on either chain |
+| 18 | Pause | Stellar `repay` has no pause check | `repay` and the registry functions are `whenNotPaused`; `EnforcedPause` shows in the details |
+| 19 | Update-lifecycle chain read | `readLoanChainState` | `readEvmLoanChainState` (ordinals mapped to the same names) |
+| 20 | Error decoding | Soroban codes, no code-specific copy for these | custom-error names in the details, no name-specific copy (Disburse is the exception, row 32) |
+| 21 | Config | `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_YIELD_MINTER_ID` | `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS` |
+| 22 | Wallet guard (raw) | "Stellar wallet not connected." | "EVM wallet not connected." (same mapped copy) |
+| 23 | Disburse call | `AM.execute(minter, "disburse", [u32, i128, u64, BytesN<32>], caller)` (Minter is `only_owner`) | `AccessManager.execute(minter, disburse(uint256,uint256,uint64,bytes32))`, `value 0` |
+| 24 | Disburse role | `TRUSTEE` via `can_call(caller, minter, "disburse")` | `MINTER_OPS_ROLE` via `canCall(wallet, minter, 0x1d492b02)`; copy still says "Trustee role" |
+| 25 | Disburse `ref_hash` | `sha256(reference.trim())`, 64 hex; zero rejected | `0x` + the same digest; zero rejected |
+| 26 | Disburse amount units | 7 dp | 6 dp via `chainAmountDecimals`; "up to 6 decimals" |
+| 27 | Disburse loan read | Soroban `mutable_loan_data` + `immutable_loan_data` | `mutableLoanData` + `immutableLoanData` (ordinal to name) |
+| 28 | Deal read | `readDeal`; `useDeal` | `readEvmDeal`; a separate `useEvmDeal` with its own `["evm-deal-token", …]` cache, used by Disburse, Register debt token and the Debt token row (through `useLoanDeal`, #1892) |
+| 29 | DEBT trustline step | `owner_of` + SAC `authorized(holder)` | skipped (`trustline: null`) |
+| 30 | Bank cash / ref-seen reads | `readMinterPoolState` / `readRefHashSeen` | `readEvmMinterBankCash` / `readEvmRefHashSeen`: legacy views, `extsload` fallback on a `150631a` Minter |
+| 31 | Paused read | `readMinterPaused` | `paused()` view on the Minter |
+| 32 | Disburse errors | Soroban codes (`1000`, `7`, `8`, `6`/`25`, `13`, `3`/`2`, `21`) | the same copy keyed by custom-error name, plus `DealTokenFactoryNotRegistered` |
+| 33 | Disburse config | the four `VITE_STELLAR_*` ids | `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, new `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` |
+
+Not in the app: booking EVM bank cash (#1501), scheduling a lifecycle write.
 
 ### Scale handling (both flows; verified against `-useLoanDetail.ts` / `useLoanWaterfall.ts`)
 
@@ -1148,8 +1219,7 @@ Spec: [cash-reporter-bookings.md](../product-specs/cash-reporter-bookings.md) (#
   `chainAmountDecimals(chainId)` in `lib/targetChains.ts`). Both presenters resolve the decimals
   from the route's `chain`: `usdToBaseUnits(input, decimals)` multiplies the entered USD amount by
   10^decimals before calling the endpoint; `baseUnitsToUsd(value, decimals)` divides response
-  fields the same way for display. The preview renders for an EVM loan even though its on-chain
-  write is gated (TD-152), so it must use the right scale. The `Minter.repay` payload uses backend
+  fields the same way for display. The EVM write signs the same served fields (6 dp), so the browser never rescales. The `Minter.repay` payload uses backend
   raw fields unchanged.
 - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding` (`useLoanFinancials`) are
   displayed **exactly as the backend serves them** — no client-side rescaling (issue #906; the
@@ -1809,13 +1879,12 @@ render `—`, never fabricated.
 
 **`draw_loan` block (#1805).** The on-chain write does not read `loan_data`. Each `SubmissionView`
 carries `draw_loan` (`DrawLoanArgs | null`, optional on stale router-state copies), the API's
-contract-ready Stellar `draw_loan(metadata_uri, economics)` arguments (`loan_book.rs`
+contract-ready `draw_loan` / `drawLoan(metadata_uri, economics)` arguments (`loan_book.rs`
 `draw_loan_args`): `metadata_uri`, the 8 `ImmutableLoanData` fields (`borrower_ref` = sha256 of the
-trimmed `data_room_id` as 64 lowercase hex, the four amounts as 7-decimal base-unit `u128`
-strings, `senior_interest_rate` as bps × 100 `u32`, two unix-second `u64` dates) and
+trimmed `data_room_id` as 64 lowercase hex, the four amounts as base-unit `u128`
+strings (7 decimals for a Stellar target, 6 for an EVM target), `senior_interest_rate` as bps × 100 `u32`, two unix-second `u64` dates) and
 `missing_inputs`. Each field is `null` when its input is absent or not representable. The block is
-`null` once the loan is drawn, on `Rejected`, for an EVM target and for an unconfigured target
-chain. The browser neither scales nor hashes: `@pipeline/wallet-connect` encodes the served values
+`null` once the loan is drawn, on `Rejected` and for an unconfigured target chain. The browser neither scales nor hashes: `@pipeline/wallet-connect` encodes the served values
 verbatim (see "Chain-first Approve ordering"). The block shape is hand-mirrored in three places
 (API Rust, `useLoanSubmissions.ts`, wallet-connect `DrawLoanArgs`; TD-42).
 
@@ -2075,7 +2144,7 @@ shape, `ValuationDisplay`/`ValuationInputRow`/`WaterfallRow`, `mapValuation`, `m
 ### Approve & mint confirmation dialog (#838, Figma node `4116:13943`)
 
 `transactionPreview` formats the served `draw_loan` block — the values actually signed — as the
-dark code block shown inside the confirmation dialog, under `LoanRegistry.draw_loan(`: `metadata_uri`,
+dark code block shown inside the confirmation dialog, under `LoanRegistry.draw_loan(` (`LoanRegistry.drawLoan(` for an EVM target): `metadata_uri`,
 the shortened `borrower_ref`, and an `economics` summary in base units as served (amounts, raw
 `senior_interest_rate`, formatted dates). Fields are read defensively (never fabricate; `—` when
 `draw_loan` is null or a field is missing). The four green mint-invariant checklist rows the Figma
@@ -2099,7 +2168,7 @@ Approve runs the trustee-wallet-signed on-chain `draw_loan` mint (`useDrawLoan`,
 `@pipeline/wallet-connect`) **before** the DB review call (`useReviewSubmission`, `POST
 .../review {decision:"Approved"}`):
 
-1. `useDrawLoan().mutateAsync({ args })`, with `args` built from the live `submission.draw_loan`
+1. `useDrawLoan().mutateAsync({ args, chainId })`, with `args` built from the live `submission.draw_loan`
    (#1805) — build → simulate (the "verify the loan" step) →
    wallet signature → submit → poll to a terminal status.
 2. Only once that resolves does `useReviewSubmission` fire.
@@ -2110,15 +2179,55 @@ and a mapped, retryable error message renders. **No signature is ever requested 
 step fails.** An already-`Approved` submission's `approve()` is a no-op (defensive — the
 InReview-only footer shouldn't normally allow this call, but guards a stale render/race).
 
-**Target-chain gate (#1536).** The draw above runs on Stellar only. A submission whose
-`target_chain_id` is not `ENV.STELLAR_CHAIN_ID` (`isStellarTarget`, `lib/targetChains.ts`) gets
+**Target-chain gate (#1536, opened for EVM by #1573).** `drawChainReason(target_chain_id)`
+(`lib/targetChains.ts`, built like `riskCouncilChainReason`) is `null` for Stellar, for a missing id
+(the pre-#1529 default) and for `ENV.EVM_CHAIN_ID`. For any other chain id it returns
 `approveBlockedReason` — "Approve & draw runs on Stellar only — drawing on `<chain>` from the
 Trustee app is not supported yet. Reject or request changes instead." — rendered as a muted line
 above the footer buttons (`origination-detail-approve-blocked`); Approve is disabled and both
-`openApprove()` and `approve()` are no-ops, so neither the dialog nor the Stellar draw can run
-against an EVM-targeted submission. Reject and Request changes are unaffected. A missing
-`target_chain_id` is treated as Stellar (the pre-#1529 default). The Deal Details card shows the
-target as its first row ("Target chain"). An EVM draw from the Trustee app is TD-151.
+`openApprove()` and `approve()` are no-ops. `approveBlockedReason = drawChainReason(target) ??
+drawLoanBlockedReason(draw_loan)`, bypassed by the review-only state. Reject and Request changes
+are unaffected. The Deal Details card shows the target as its first row ("Target chain").
+
+**EVM draw (#1573).** The EVM path mirrors the Stellar one; the dialog, footer, banners, copy,
+the draw → review ordering, the idempotency guard (and its accepted reload residual), the
+review-only path, the draw-inputs gate and the `mapMintError` table are identical. The
+differences:
+
+- `useDrawLoan().mutateAsync({ args, chainId })` picks the arm with `pickChainWallet(chainId,
+  useStellarWallet(), useEvmWallet())`; a missing chain id takes the Stellar arm. The EVM arm
+  checks, before any RPC call and in order, `drawChainReason(chainId)` (thrown as the error),
+  `VITE_EVM_LOAN_REGISTRY_ADDRESS` / `VITE_EVM_ACCESS_MANAGER_ADDRESS` ("On-chain minting is not
+  configured for this environment.") and the EVM wallet ("EVM wallet not connected."). The
+  signing chain is `ENV.EVM_CHAIN_ID`; there is no `canCall` pre-read, so a missing role surfaces
+  as a failed simulate with the decoded error name in the details.
+- Call: `drawEvmLoan` (`evm/contracts/loanRegistry.ts`) sends `AccessManager.execute(registry,
+  drawLoan calldata)` with `value 0` through `sendEvmContractCall` (switch chain, simulate, gas
+  estimate, sign, receipt), as every immediate EVM call. The ABI holds the AccessManager and
+  `LoanRegistry*` / `EnforcedPause` errors, so reverts decode by name.
+- Encoding: `drawLoan(string metadataURI, (bytes32 borrowerRef, uint256 originalFacilitySize,
+  uint256 originalSeniorTranche, uint256 originalEquityTranche, uint256 originalOfftakerPrice,
+  uint32 seniorInterestRate, uint64 originationDate, uint64 originalMaturityDate) economics)
+  returns (uint256 loanId)` (selector `0x675ebc7d`, `pipeline-contracts@150631a`). The served
+  values are encoded verbatim: `borrowerRef` = `0x` + the 64 hex, amounts and dates as `BigInt`,
+  the rate as a number. Invalid input throws `drawEvmLoan: invalid draw_loan input <field>` before
+  any RPC call.
+- Simulate wrap: `sendEvmContractCall` simulates and estimates gas before the wallet prompt. A
+  contract revert before the `awaiting-signature` stage is rethrown as `drawEvmLoan: simulation
+  error: <original message>`, so the existing copy "Could not verify the loan on-chain. No
+  signature was requested — safe to retry." applies and the decoded error (e.g.
+  `LoanRegistryInvalidTranches`, `AccessManagerUnauthorizedCall`, `EnforcedPause`) is in the
+  details. Other failures (chain switch rejection, RPC failure, receipt revert) propagate unchanged.
+- Stages: there is no stage during the simulate (the button reads "Registering on-chain…"), then
+  `awaiting-signature` and `confirming`; an EVM wallet signs and broadcasts in one call, so there is
+  no `submitting`.
+- Loan id (#876): read from the receipt's `LoanDrawn(uint256 indexed loanId, string metadataURI)`
+  log emitted by the configured registry (`readEvmDrawnLoanId`). `AccessManager.execute` returns the
+  nonce, not the id. A `uint256` above `Number.MAX_SAFE_INTEGER` gives `null` (the draw succeeded,
+  there is no deep link); `0` is a valid id.
+- Role: the trustee's EVM wallet needs `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` with delay 0 (the role
+  that holds `drawLoan`). A delayed role fails the immediate `execute` at simulate
+  (`AccessManagerNotScheduled`); scheduling a draw is not supported, as on Stellar.
 
 #### Draw-inputs gate (#1805)
 
@@ -2126,7 +2235,7 @@ Approve needs a complete served `draw_loan` block
 (`lib/drawLoanArgs.ts`: `readyDrawLoanArgs` is non-null only when the block is present,
 `missing_inputs` is empty and every field is non-null and well-formed: 64-hex `borrower_ref`, digit-only amounts within `u128`,
 `u32` rate, non-negative integer dates, non-blank `metadata_uri` — the same formats
-`encodeDrawLoanArgs` enforces). For a Stellar target, `approveBlockedReason`
+`encodeDrawLoanArgs` enforces). For a Stellar or configured EVM target, `approveBlockedReason`
 (checked after the target-chain gate) is `drawLoanBlockedReason(submission.draw_loan)`: a missing
 or `null` block reads "On-chain draw inputs are not available for this submission. Reject or
 request changes instead."; `data_room_id` in `missing_inputs` reads "Data room ID missing — this
@@ -2176,14 +2285,50 @@ follow-up backend issue — see `docs/exec-plans/tech-debt-tracker.md`.
 
 ### Register debt token (#1766)
 
-A drawn loan has no debt token until `DealTokenFactory.register_deal(loan_id: u32)` runs (Stellar only; the EVM `registerDeal` arm is #1892, so an EVM loan shows the Stellar-only reason and no button). It is a separate, explicit signature, never chained into Approve. `register_deal` is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(factory, "register_deal", [loan_id], caller)` by a `TRUSTEE` wallet (`relay`, #1761); the factory id is `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
+A drawn loan has no debt token until `DealTokenFactory.register_deal(loan_id: u32)` runs (Stellar; the EVM arm is [below](#evm-1892)). It is a separate, explicit signature, never chained into Approve. `register_deal` is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(factory, "register_deal", [loan_id], caller)` by a `TRUSTEE` wallet (`relay`, #1761); the factory id is `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
 
 - **Placement.** One shared control, `-RegisterDebtTokenAction.tsx`: a "Debt token" card on every loan-detail layout (performing, watchlist, matured), and an inline block under the "Approved & drawn" banner on the origination detail once the drawn loan id is known. Registered loans render nothing on the loan page; the origination block swaps in "Debt token registered · <address>".
 - **Source of truth.** Registered or not is decided by `deal(loan_id)` only (`readDeal`): `Error(Contract, #4)` means not registered, any other failure is a read error and renders no action and "—". `debt_address(loan_id)` is never used for this: it returns a deterministic address even for unregistered loans. `Deal` is `{ debt }` (a legacy `cargo` field is ignored); `loan_id` is u32.
 - **Debt token row.** "Registry state & derived" gains `Debt token`, tag `chain`, showing `Deal.debt` verbatim, or "—" when not registered or the read fails.
 - **Gating.** `can_call(caller, factory, "register_deal")` mapped by `accessAction`: immediate role signs `execute` in one step; a delayed role schedules, then executes after the ready time (the Risk Council flow, `riskCouncilRoleLine`); no role disables the button with "Only the Trustee role can register a loan's debt token." An unset factory id shows "Debt token registration isn't configured for this environment."
 - **Errors** (`lib/dealToken.ts`, codes from `DealTokenFactoryError`): `#2` loan id too large, `#3` already registered, `#5` the issuer has not made the factory the DEBT admin (`set_admin`); `#1` (registry `NonExistentLoanId`, propagated by the factory) reads as "The registry has no loan with this id." AccessManager codes win for schedule/execute (`#6`-`#9`). Factory codes are mapped in execute mode only; anything else gets the generic simulation copy with the raw text behind "View details".
-- **After success** the `deal-token`, `register-deal-access` and `audit-log` queries are invalidated (and again after 5 s); the worker already indexes `DealRegistered`.
+- **After success** the `deal-token`, `evm-deal-token`, `register-deal-access` and `audit-log` queries are invalidated (and again after 5 s); the worker already indexes `DealRegistered` on both chains (EVM since #1892, BUG-39).
+
+#### EVM (#1892)
+
+An EVM loan on `ENV.EVM_CHAIN_ID` uses the same component, mount points, test ids, copy, `accessAction` states and invalidation as Stellar ("everything the same as on Stellar, the same approach"); the arm is picked by the loan's `chain_id`. The gate is `loanActionChainReason`: another non-Stellar chain id keeps the Stellar-only reason and no button.
+
+- **Call.** `AccessManager.execute(factory, registerDeal(uint256))`, `value 0` (or `schedule(factory, data, 0)` for a delayed role), through `relayEvmRegisterDeal` and `sendEvmContractCallChecked`; selector `0x19da0d36`. The caller is `msg.sender`. `registerDeal` is `restricted` on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` (`0x536b6c688f09d8f7`, the role that holds `drawLoan`); `drawLoan` never calls it. The copy still says "Trustee role" (as Disburse, #1574 row 24).
+- **Access read.** `readEvmCanCall(wallet, factory, 0x19da0d36)`, then `readEvmOperationSchedule` (`hashOperation(caller, factory, calldata)` + `getSchedule`) when `!immediate && delay > 0`; key `["register-deal-access", chainId, address, loanId]`.
+- **Deal read.** `readEvmDeal` through `useEvmDeal`, key `["evm-deal-token", chainId, loanId]`; `useLoanDeal(chainId, loanId)` calls both `useDeal` and `useEvmDeal` and picks one by chain, so the two caches never share a key (the #1574 shared-key bug). The row and the inline line print the EIP-55 `Deal.debt` verbatim.
+- **Errors** (`registerDealError`): custom-error names in the decoded details. `LoanRegistryNonExistentLoanId` reads as the `#1` copy and `DealTokenFactoryAlreadyRegistered` as the `#3` copy, in execute mode only; `AccessManagerNotScheduled` / `NotReady` / `Expired` / `AlreadyScheduled` read as the `#6`-`#9` copy; anything else (including `AccessManagerUnauthorizedCall`) gets the generic simulation copy with the raw text behind "View details". There is no `#2` (uint256 ids) or `#5` (no issuer) analogue.
+- **No trustline and no issuer step.** `registerDeal` deploys the per-loan `DealToken` itself (CREATE2, salt = loan id); the token is an ERC-20 that only the factory mints, so its holder needs no trustline (Disburse already skips it, `trustline: null`).
+- **Config.** `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` and `VITE_EVM_ACCESS_MANAGER_ADDRESS`; either unset shows the same not-configured copy.
+- **Indexing.** The EVM worker accepts both `DealRegistered(uint256 indexed loanId, address debt)` (topic0 `0xc272178e…`, Hoodi v5 and contracts #51 and later) and the legacy `(…, address cargo)` (`0x32ae7784…`) per log; the DEBT-only row carries `cargo: null` and the DEBT token is tracked alone ([backend](../references/backend.md#evm-dealtokenfactory-1485)).
+- **Hoodi check (2026-11-19, read only, nothing submitted).** Factory proxy `0xCf54…eCDC`; `registerDeal(uint256)` and `deal(uint256)` are in the implementation; `getTargetFunctionRole` is `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`; both trustee wallets (`0x96ef…c04e4`, `0xd3b9…a57c`) have `canCall = (true, 0)`, so the schedule path is not reachable there and is covered by unit tests only; `AM.execute(factory, registerDeal(0))` from `0x96ef…c04e4` reaches the factory and reverts `LoanRegistryNonExistentLoanId` (the registry holds no loans), and from a wallet without the role reverts `AccessManagerUnauthorizedCall`.
+
+**Differences from Stellar** (everything not listed is identical):
+
+| # | Area | Stellar (#1766) | EVM (#1892) |
+|---|---|---|---|
+| 1 | Chain gate | `stellarOnlyActionReason` | `loanActionChainReason`: open on `ENV.EVM_CHAIN_ID`; another non-Stellar id keeps the Stellar-only copy |
+| 2 | Call | `AM.execute(factory, "register_deal", [u32], caller)` / `AM.schedule(…)` via `relay` | `AccessManager.execute(factory, registerDeal(uint256))`, `value 0` / `schedule(factory, data, 0)`; caller = `msg.sender` |
+| 3 | Selector / encoding | symbol `register_deal`, `u32` arg | `0x19da0d36`, `uint256` arg; ids that are not safe non-negative integers are refused before any RPC call |
+| 4 | Role / access read | `TRUSTEE`, `can_call(caller, factory, "register_deal")` | `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, `canCall(wallet, factory, 0x19da0d36)`; copy still says "Trustee role" |
+| 5 | Schedule lookup | `readOperationSchedule` | `readEvmOperationSchedule` (operation id over calldata) |
+| 6 | Deal read | `readDeal` via `useDeal`, `["deal-token", …]`, `Error(Contract, #4)` is `null` | `readEvmDeal` via `useEvmDeal`, `["evm-deal-token", …]`, `DealTokenFactoryNotRegistered` is `null`; consumers use `useLoanDeal` |
+| 7 | Debt address shown | Soroban `C…` verbatim | EIP-55 `0x…` verbatim |
+| 8 | Error mapping | Soroban codes `#1`/`#2`/`#3`/`#5` (execute), AM `#6`-`#9` | error names: `LoanRegistryNonExistentLoanId` is the `#1` copy, `DealTokenFactoryAlreadyRegistered` the `#3` copy (execute only); AM names map to `#6`-`#9`; no `#2` / `#5` analogue |
+| 9 | Issuer precondition | the DEBT issuer must `set_admin(factory)` first (`#5`) | none: `registerDeal` deploys the `DealToken` |
+| 10 | DEBT trustline | not part of registration (Disburse step 5; ops `just new-deal <id>`) | none anywhere |
+| 11 | Simulate failure | `"<mode> simulation error: <Soroban error>"` | `"registerEvmDeal: simulation error: <viem message>"`; same user copy |
+| 12 | Stages | `awaiting-signature` during simulate, then `submitting`, `confirming` | no stage during simulate, then `awaiting-signature`, `confirming` |
+| 13 | Signing | Stellar wallet `signTransaction` | EVM wallet; a wrong network switches to `ENV.EVM_CHAIN_ID`; mock wallets refused |
+| 14 | Wallet guard (raw) | "Stellar wallet not connected." | "EVM wallet not connected." (same mapped copy) |
+| 15 | Config | `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` | `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS` |
+| 16 | Invalidation | `deal-token`, `register-deal-access`, `audit-log` | the same plus `evm-deal-token` (both arms invalidate all four) |
+| 17 | Access key | `["register-deal-access", address, loanId]` | `["register-deal-access", chainId, address, loanId]` (both arms) |
+| 18 | Indexed event | `deal_registered` map `{debt}` or legacy `{cargo, debt}`, told apart by map keys (#1788) | `DealRegistered(uint256,address)` or legacy `(…,address)`, told apart per log by topic0 (#1892, BUG-39); same row (`cargo: null`), same audit-log text |
 
 ### Review error copy
 
@@ -2225,7 +2370,7 @@ latter was redundant with the confirmation dialog's copy.
 
 ## Risk Council actions
 
-**Sources:** user docs [risk-committee](../user-docs/governance/risk-committee.md), [multisig-roles](../user-docs/governance/multisig-roles.md), [fiduciary-trustee](../user-docs/governance/fiduciary-trustee.md) §"Independence", [protocol-layer](../user-docs/how-it-works/protocol-layer.md) §"Roles", [default-management](../user-docs/risks/default-management.md) (closure table, §"Declaration", §"Write-down", §"Cure"), [emergency-response](../user-docs/security/emergency-response.md). Code: `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`; trustee `api/useRiskCouncil.ts`, `lib/accessManagerAction.ts`, `lib/riskCouncilOps.ts`, `routes/-risk-council-shared.ts` (presenter base and action view), `routes/-RiskCouncilParts.tsx`, `routes/-risk-council-pending.ts` (served pending operations, shared by the hub and every per-loan surface), then per page `-risk-council-{escalate,reterm,writedown,hub}.ts` with `risk-council.{escalate,reterm,writedown}.$id.tsx` and `risk-council.index.tsx`. Issues #782 (shells), #1761 (AccessManager model, epic #1795). Product spec: [trustee-dashboard.md](../product-specs/trustee-dashboard.md) §"Type 3"; escalation context: [trustee-risk-watchlist.md](../product-specs/trustee-risk-watchlist.md). User stories: [1761](../user-stories/epic-1795/1761-risk-council-access-manager.md). SecurityRegistry functions: [Risk Council security actions](#risk-council-security-actions).
+**Sources:** user docs [risk-committee](../user-docs/governance/risk-committee.md), [multisig-roles](../user-docs/governance/multisig-roles.md), [fiduciary-trustee](../user-docs/governance/fiduciary-trustee.md) §"Independence", [protocol-layer](../user-docs/how-it-works/protocol-layer.md) §"Roles", [default-management](../user-docs/risks/default-management.md) (closure table, §"Declaration", §"Write-down", §"Cure"), [emergency-response](../user-docs/security/emergency-response.md). Code: `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`, EVM (#1943, epic #1937) `packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts` against `pipeline-contracts@150631a` (`PipelineLoanRegistry` `setDefault` / `cure` / `amendEconomics` / `adjustInterest` / `writeDown` / `closeDefaulted`, `PipelineMinter.reverseRepay` / `extsload`); trustee `api/useRiskCouncil.ts`, `lib/targetChains.ts` (`riskCouncilChainReason`, `riskCouncilTargetId`), `lib/accessManagerAction.ts`, `lib/riskCouncilOps.ts`, `routes/-risk-council-shared.ts` (presenter base and action view), `routes/-RiskCouncilParts.tsx`, `routes/-risk-council-pending.ts` (served pending operations, shared by the hub and every per-loan surface), then per page `-risk-council-{escalate,reterm,writedown,hub}.ts` with `risk-council.{escalate,reterm,writedown}.$id.tsx` and `risk-council.index.tsx`. Issues #782 (shells), #1761 (AccessManager model, epic #1795), #1943 (EVM, epic #1937). Product spec: [trustee-dashboard.md](../product-specs/trustee-dashboard.md) §"Type 3"; escalation context: [trustee-risk-watchlist.md](../product-specs/trustee-risk-watchlist.md). User stories: [1761](../user-stories/epic-1795/1761-risk-council-access-manager.md). SecurityRegistry functions: [Risk Council security actions](#risk-council-security-actions).
 
 ### Model
 
@@ -2267,15 +2412,54 @@ The page-local store (`lib/riskCouncilOps.ts`, in memory, `useSyncExternalStore`
 
 Per-loan pages validate the `chain` search param (`parseLoanRouteSearch`) and reuse the shells, cards and tokens of #782 for styling. Each action card has: role line, button, stage text ("Waiting for wallet signature…", "Submitting on-chain…", "Confirming…"), inline error, and the submitted hash.
 
-- **Escalate to Default** (`/risk-council/escalate/$id`, flow 10). Left: the ledger card (facility / senior, Principal repaid from chain `loan_money.repaid`, then on Stellar the security rows from `/security` — Security value, LTV line ("{ltv} — margin call open" / "above the {n}% margin-call ratio" / "margin call at {n}%", coloured by the Security card's tone rule), Advance / margin-call ratio and, only when true, Price stale — then days on watchlist, at-risk %, concentration). The security rows are omitted entirely (no "—" placeholder) for an EVM loan, a not-configured registry or `terms: null`; while `/security` loads they show "Loading…" and when it fails with no data they show "Couldn't load" (never a bare "—", which would look like EVM). With no valuation the LTV line reads "No valuation yet — margin call at {n}%". There are no CCR or Collateral rows and no CCR trend (#1906). Right, in order: the "Scheduled operations" card (all of the loan's pending operations; `set_default` rows get Execute, other rows a link to the page that owns them), then "Declare default" with the effects text from default-management §"Declaration" and the chain-state rows (Status, Outstanding principal, Written down, Pocket opened). Enabled when chain status is `Performing` or `WatchList`; a `Default` loan shows "This loan is in Default." with a link to the resolution page; `Closed`/`Approved` show "Not available for a {status} loan." Buttons: "Declare default" / "Schedule default" / "Execute default"; the primary button opens a confirm dialog ("Declare default on Loan #{id}? The pocket opens on the first default.", `role="dialog"`, Escape and backdrop cancel). No-role copy: "Declaring a default belongs to the Risk Council."
-- **Amend economics** (`/risk-council/reterm/$id`, flow 11). Current terms from chain (coupon from `current_rate`, maturity, accrued interest, interest adjustment, signed) plus, on Stellar, an LTV row from `/security` (same line as Escalate; omitted when hidden, not configured or `terms: null`; "Loading…" while `/security` loads and "Couldn't load" when it fails with no data) instead of the former CCR from the loan book. Amend card: new rate % (live "= N bps" echo, same rules as the rollover dialog) and a date input (`dateInputToUnixUtc`, UTC midnight), buttons "Amend economics" / "Schedule amendment" / "Execute amendment". Adjust-interest card: signed USD delta (optional leading `-`) and reason, with the hash; buttons "Adjust interest" / "Schedule adjustment" / "Execute adjustment". Available for any chain status except `Closed` and `Approved`. The first card of the right column is "Scheduled operations" (`amend_economics` and `adjust_interest` rows get Execute, other rows a link). No-role copy: "Changing loan economics belongs to the Risk Council."
+- **Escalate to Default** (`/risk-council/escalate/$id`, flow 10). Left: the ledger card (facility / senior, Principal repaid from chain `loan_money.repaid`, then the security rows from `/security` — Security value, LTV line ("{ltv} — margin call open" / "above the {n}% margin-call ratio" / "margin call at {n}%", coloured by the Security card's tone rule), Advance / margin-call ratio and, only when true, Price stale — then days on watchlist, at-risk %, concentration). The security rows are omitted entirely (no "—" placeholder) for a not-configured registry or `terms: null`; while `/security` loads they show "Loading…" and when it fails with no data they show "Couldn't load" (never a bare "—", which would look like EVM). With no valuation the LTV line reads "No valuation yet — margin call at {n}%". There are no CCR or Collateral rows and no CCR trend (#1906). Right, in order: the "Scheduled operations" card (all of the loan's pending operations; `set_default` rows get Execute, other rows a link to the page that owns them), then "Declare default" with the effects text from default-management §"Declaration" and the chain-state rows (Status, Outstanding principal, Written down, Pocket opened). Enabled when chain status is `Performing` or `WatchList`; a `Default` loan shows "This loan is in Default." with a link to the resolution page; `Closed`/`Approved` show "Not available for a {status} loan." Buttons: "Declare default" / "Schedule default" / "Execute default"; the primary button opens a confirm dialog ("Declare default on Loan #{id}? The pocket opens on the first default.", `role="dialog"`, Escape and backdrop cancel). No-role copy: "Declaring a default belongs to the Risk Council."
+- **Amend economics** (`/risk-council/reterm/$id`, flow 11). Current terms from chain (coupon from `current_rate`, maturity, accrued interest, interest adjustment, signed) plus an LTV row from `/security` (same line as Escalate; omitted when hidden, not configured or `terms: null`; "Loading…" while `/security` loads and "Couldn't load" when it fails with no data) instead of the former CCR from the loan book. Amend card: new rate % (live "= N bps" echo, same rules as the rollover dialog) and a date input (`dateInputToUnixUtc`, UTC midnight), buttons "Amend economics" / "Schedule amendment" / "Execute amendment". Adjust-interest card: signed USD delta (optional leading `-`) and reason, with the hash; buttons "Adjust interest" / "Schedule adjustment" / "Execute adjustment". Available for any chain status except `Closed` and `Approved`. The first card of the right column is "Scheduled operations" (`amend_economics` and `adjust_interest` rows get Execute, other rows a link). No-role copy: "Changing loan economics belongs to the Risk Council."
 - **Default resolution** (`/risk-council/writedown/$id`, flow 12). Left: chain state (Status, Outstanding principal, Disbursed, Repaid, Written down, Pocket opened, Closure reason). Right, in order: **Scheduled operations** (`write_down`, `close_defaulted` and `cure` rows get Execute, other rows a link); **Write down** (USD amount, initial value from chain `outstanding` via `formatChainAmount`, editable, converted with `usdInputToSacBaseUnits`); **Close defaulted loan** (radio `Default` / `OtherWriteDown`, each with "Risk Council only · 24 hours" from the closure table); **Cure** (effects: "The loan returns to WatchList. The pocket stays open; later repayments still go to the pocket holders."). All three need chain status `Default`; otherwise the page shows "This loan is not in Default." with a link back to Escalate. No-role copy: "Writing down, closing a defaulted loan and curing belong to the Risk Council."
 - **Close-defaulted split.** Scheduling is not closing, so **Schedule close** is allowed whenever the status is `Default` and can run in parallel with the write-down delay. **Execute close** (immediate or scheduled) is enabled only when chain `loan_money.outstanding` is the string `"0"`; otherwise "Executable once the outstanding principal is zero." A close scheduled too early can expire (7 days after its ready time).
 - **Hub** (`/risk-council`, `-risk-council-hub.ts`). Chain: `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID` (chain-scope rule). It shows the docs sentence ("The Risk Council acts through the access manager. Declaring a default executes at once; every other Risk Council action waits 24 hours, and the Guardian or the Admin can cancel it during the wait."), a "Scheduled operations" table and a per-loan action index. Scheduled rows are the `pending_operations` of every `GET /v1/loan-book?chain_id=` row (`useLoanBook(chainId)`, 30 s poll), plus operations this console scheduled in this session whose id the API does not serve yet (the session bridge, merged per loan with `mergePendingOps`; an operation executed here is hidden, and a bridge row whose id the API served and then stopped serving is dropped). Columns: Loan, Action (`pendingActionLabel`), Arguments (the shared `pendingArgRows` joined as "Label: value", for example "New rate: 14.50% (1450 bps) · New maturity: …", "Closure reason: Other write-down"; "Arguments: <raw JSON>" when the shape does not decode; "—" when there are none), Scheduled by (short address, "· this wallet" for the connected wallet), Executable from (UTC), State ("Waiting", "Ready" or "Expired"; expired rows are listed) and a link. There is no Execute on the hub: the link opens the page that owns the function (`set_default` → Escalate, `amend_economics` and `adjust_interest` → Amend economics, `write_down`, `close_defaulted` and `cure` → Default resolution, `set_terms`, `resolve_flag` and `release_with_consent` → Security, `reverse_repay` → the loan detail page, where the Repayment recovery dialog lives). Every wallet sees the rows, with or without the Risk Council role and without a connected wallet, because the API is not per caller. Empty state "No scheduled operations found."; footnote: "Inspector panel changes are not tied to a loan and are not listed here; open the Inspector panel to check one." (`set_inspectors` is not loan-scoped and is not served). A no-role wallet sees "Risk Council actions belong to the Risk Council." Loan index: `Performing`/`WatchList` → Declare default, Amend economics; `Default` → Resolve default, Amend economics; `Closed` → none. Links carry `chain`.
 
 ### EVM
 
-Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence still renders, the chain-state card shows "—", and every action card is disabled and prints `stellarOnlyActionReason(chainId)` (TD-152). On the hub, when the session chain is not Stellar, only the header and the same reason line render. There are no EVM reads and no EVM encoders for these actions (#1573, #1574). The security LTV rows (Escalate) and the LTV row (Amend economics) are omitted for an EVM loan (#1906).
+The hub and the three per-loan pages run the same model on `ENV.EVM_CHAIN_ID` (#1943), one-to-one with Stellar: `canCall`, then one `AccessManager.execute`, or `schedule`, wait, `execute`. Everything not listed in the table below is identical: routes, page layout and test ids, cards, copy (including "Risk Council only · 24 hours" in the closure table), the `accessAction` model, the session bridge and its dedup by `operation_id`, ownership and link rules of the pending rows, the executed-row behaviour, the status gates, the close-defaulted split, invalidation keys and timings, the confirm dialogs, and the recovery dialog structure ([Repayment recovery](#repayment-recovery-1711)). The write client, stages, wrong-network switch, `canCall` selector, operation id, schedule and execute calls, verbatim `calldata`, camelCase `function`, ABI `args`, address comparison and wallet are the [security page's](#evm-1942) (rows 1 to 9, 15 and 17 of its table).
+
+The one chain gate for the Risk Council is `riskCouncilChainReason(chainId)`: `null` for Stellar and for `ENV.EVM_CHAIN_ID`, otherwise `stellarOnlyActionReason(chainId)`. It replaces the #1942 per-function and per-`target_kind` gates. So an EVM chain id other than the configured one keeps the old behaviour: read-only pages with the Stellar-only reason, and on the hub only the header and the reason line. `stellarOnlyActionReason` stays for every non-Risk-Council caller; recovery step 2 uses `loanActionChainReason` (#1574). The hooks pick the arm by chain (`isStellarTarget`). The logical calls stay chain-neutral (`RiskCouncilCall`, snake_case `fn`, `ReverseRepayCall`); the Solidity names come from `EVM_RISK_COUNCIL_FUNCTION_NAMES` and the selectors from the ABI (`evmRiskCouncilSelector`, never hard-coded).
+
+| Function (`PipelineLoanRegistry`, `restricted`, `whenNotPaused`) | Selector | Logical call | Notes |
+|---|---|---|---|
+| `setDefault(uint256)` | `0xe0da6b66` | `set_default` | |
+| `cure(uint256)` | `0xb7e5262a` | `cure` | |
+| `amendEconomics(uint256,uint32,uint64)` | `0x00b14774` | `amend_economics` | `newRate = rateBps * 100` (the `ONE = 1e6` scale, as Stellar), `uint64` maturity |
+| `adjustInterest(uint256,int256,bytes32)` | `0x6d10dec4` | `adjust_interest` | signed delta in 6 dp, non-zero, within `int256`; `bytes32` hash sent as `0x` + the 64 hex of `riskCouncilReasonHash` |
+| `writeDown(uint256,uint256)` | `0x5bd45aa1` | `write_down` | amount in 6 dp |
+| `closeDefaulted(uint256,uint8)` | `0x7892936e` | `close_defaulted` | `ClosureReason` ordinal: `Default` is 4, `OtherWriteDown` is 5 |
+
+The target is `ENV.EVM_LOAN_REGISTRY_ADDRESS` and the AccessManager `ENV.EVM_ACCESS_MANAGER_ADDRESS`; a missing address gives "On-chain Risk Council actions are not configured for this environment." The encoder (`encodeEvmRiskCouncilCalldata`) applies the Stellar encoder's validation rules: a safe non-negative id, `rateBps` an integer from 1 to 10 000, `maturity` above 0, `delta` and `amount` decimal strings, the hash `/^[0-9a-f]{64}$/`, and only `Default` or `OtherWriteDown` as closure reasons. Enums are `uint8` ordinals: `LoanStatus` is `Approved, Performing, WatchList, Default, Closed`, `ClosureReason` is `None, ScheduledMaturity, EarlyRepayment, Cancelled, Default, OtherWriteDown`; the EVM enum has `Cancelled` at 3, the Stellar one does not. Selectors, ordinals and the Minter storage slot are pinned in the wallet-connect tests against `forge inspect` output of the 150631a build.
+
+**Reads.** `useRiskCouncilLoanState` runs `mutableLoanData(loanId)` and `loanMoney(loanId)` on `ENV.EVM_LOAN_REGISTRY_ADDRESS` (`readEvmLoanChainState`, `readEvmLoanMoney`) and maps them to the Stellar shapes: `status` and `closureReason` from ordinals to the enum names (a closure reason can read `Cancelled`), `currentRate` and `currentMaturity` directly, `interestAdjustment` (signed), `writtenDown`, `disbursed`, `repaid`, `outstanding` and `accruedInterest` as decimal strings, `carvedOut`. An out-of-range ordinal throws. Nothing is computed.
+
+**Amounts.** Write-down and adjust-interest inputs convert with `usdInputToSacBaseUnits(input, chainAmountDecimals(chainId))`: 6 dp on EVM, 7 on Stellar. The prefill and every display already format by chain (`formatChainAmount`). The rate and maturity conversions are unchanged.
+
+**Errors.** `evmCouncilErrorCopy(details, kind)` keys by custom-error name: the four AccessManager names (`EVM_AM_ERROR_COPY`) for every target kind; the SecurityRegistry names and the SecurityRegistry `EnforcedPause` (`EVM_SECURITY_ERROR_COPY`) only for `security_registry`. `EnforcedPause` for `loan_registry` and `minter` is `LOAN_REGISTRY_PAUSED_COPY` ("The LoanRegistry is paused. Executing is blocked until it resumes.": all six LoanRegistry Risk Council functions are `whenNotPaused`, and `Minter.reverseRepay` reaches the paused LoanRegistry through `unrecordPayment`). Other LoanRegistry errors have no copy and go through `toUserError`, as on Stellar. `EVM_ERROR_NAME` also matches `LoanRegistry[A-Za-z]+` and `Minter[A-Za-z]+`. The relay's ABI carries `evmRiskCouncilErrorAbi` (the `LoanRegistry*` errors and `EnforcedPause`).
+
+**Differences from Stellar** (#1761, #1924, #1711 versus #1943):
+
+| # | Area | Stellar | EVM |
+|---|---|---|---|
+| 1 | Chain gate | none (Stellar is the only chain) | `riskCouncilChainReason(chainId)`: open on `ENV.EVM_CHAIN_ID`, another EVM chain id keeps the Stellar-only copy |
+| 2 | LoanRegistry args | `u32` id, `u32` rate, `u64` maturity, `i128` delta, `u128` amount, `BytesN<32>` hash, `ClosureReason` as `scvVec([scvSymbol])` | `uint256` id, `uint32` rate (same bps × 100), `uint64` maturity, `int256` delta, `uint256` amount, `bytes32` hash (`0x` + hex), `ClosureReason` ordinal 4 / 5 |
+| 3 | Amount input units | 7 dp | 6 dp via `chainAmountDecimals(chainId)` in write-down and adjust-interest |
+| 4 | Chain-state reads | `simulateRead` `mutable_loan_data` / `loan_money`, enum tags | `readContract` `mutableLoanData` / `loanMoney`, ordinals mapped to the same names; `closureReason` can read `Cancelled` |
+| 5 | Pending `args` decode (LoanRegistry, Minter) | `[u32, …]`, `amend_economics` rate number, maturity string, `close_defaulted` `["Default"]`, `reverse_repay` `[u32, u32, hash]` | ids and `repaymentId` decimal strings within `u32`, rate number, maturity / amount / delta decimal strings, `closeDefaulted` ordinal 4 / 5, hashes lowercase hex without `0x` |
+| 6 | Recovery candidates | registry views `repayment_data`, `is_repayment_reversed`, `mutable_loan_data.next_repayment_id` | `mutableLoanData.nextRepaymentId` plus `PaymentRecorded` / `PaymentUnrecorded` / `CashRepaid` logs scanned from `VITE_EVM_START_BLOCK` in 50 000-block chunks (TD-190) |
+| 7 | Reversal effects | Minter view `repayment(...)` | `CashRepaid` log plus the Minter `Repayment` record via `extsload` (`carvedOut`, `released` shown as the Pocket-unrelease principal) |
+| 8 | Reverse `refHash` | `sha256("pipeline:reverse_repay:{minterId}:{loan}:{repayment}")`, 64 hex | the same preimage with the EIP-55 Minter address, sent as `0x` + 64 hex |
+| 9 | Recovery role | `RISK_COUNCIL` through the AM (`reverse_repay`) | `MINTER_OPS_ROLE` (shared with other Minter operations, #1944); the UI follows `canCall`, copy unchanged |
+| 10 | Recovery step 2 | `useRecordPayment` (Stellar `repay`) | `useRecordPayment` EVM arm (#1574, [EVM (#1574)](#evm-1574)) |
+| 11 | Error copy | Soroban codes per target kind | custom-error names: `evmCouncilErrorCopy(details, kind)`, `evmRecoveryErrorCopy` |
+| 12 | Config | `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_YIELD_MINTER_ID` | `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_START_BLOCK` (`.env.example`, `docker/trustee/entrypoint.sh`) |
+| 13 | Live data | Stage chain 99000001 has Risk Council schedules | none on Hoodi until #1944; there a Trustee wallet holding `LOAN_REGISTRY_MANAGER_ADMIN_ROLE` gets `execute-now` for the Risk Council functions, and the Minter must expose `extsload` (contracts #54) |
+
+Live data: QA runs in #1945 after #1944 and the stage env. Not in this issue: `default_breach` (TD-189). Rollover, Update lifecycle, Record coupon / repayment, Close loan and Disburse on EVM are [#1574](#evm-1574).
 
 ### Errors, config and roles
 
@@ -2286,7 +2470,7 @@ Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence st
 
 ## Risk Council security actions
 
-**Sources:** contract `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry/src/lib.rs` (`set_terms` 594, `resolve_flag` 518, `release_with_consent` 505, `set_inspectors` 555, `inspectors` 720), `types.rs` (`Terms`, `FlagOutcome`), `error.rs`. Code: `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` and `scval.ts`; trustee `api/useRiskCouncil.ts` (`CouncilCall`, `useSecurityInspectors`), `lib/riskCouncilOps.ts` (`councilTarget`), `lib/accessManagerAction.ts` (`SECURITY_REGISTRY_ERROR_COPY`), `utils/securityTermsUnits.ts`, `routes/-risk-council-security.ts` with `risk-council.security.$id.tsx`, `routes/-risk-council-terms.ts` (`formatTermsRows`, `PAYMENT_TERM_LABELS`), `routes/-risk-council-inspectors.ts` with `risk-council.inspectors.tsx`. Issue #1858 (epic #1795); pending operations: #1923 (epic #1920). Served state: [loan-security-state.md](../product-specs/loan-security-state.md). User stories: [1858](../user-stories/epic-1795/1858-risk-council-security-actions.md).
+**Sources:** contract `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry/src/lib.rs` (`set_terms` 594, `resolve_flag` 518, `release_with_consent` 505, `set_inspectors` 555, `inspectors` 720), `types.rs` (`Terms`, `FlagOutcome`), `error.rs`. Code: `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` and `scval.ts`; trustee `api/useRiskCouncil.ts` (`CouncilCall`, `useSecurityInspectors`), `lib/riskCouncilOps.ts` (`councilTarget`), `lib/accessManagerAction.ts` (`SECURITY_REGISTRY_ERROR_COPY`), `utils/securityTermsUnits.ts`, `routes/-risk-council-security.ts` with `risk-council.security.$id.tsx`, `routes/-risk-council-terms.ts` (`formatTermsRows`, `PAYMENT_TERM_LABELS`), `routes/-risk-council-inspectors.ts` with `risk-council.inspectors.tsx`. EVM (#1942, epic #1937): contract `pipeline-contracts@150631a` (`SecurityRegistryUpgradeable.setTerms` / `resolveFlag` / `releaseWithConsent`, `PipelineSecurityRecordNft.setInspectors` / `inspectors`, OpenZeppelin `AccessManager`); `packages/wallet-connect/src/evm/contracts/{write,accessManager,securityRegistry}.ts` (client: [Trustee EVM contract client](wallet-flows.md#trustee-evm-contract-client)); trustee `lib/chainWallet.ts` (`useChainWallet`) and `lib/targetChains.ts` (`riskCouncilChainReason`, `sameChainAddress`). Issue #1858 (epic #1795); pending operations: #1923 (epic #1920). Served state: [loan-security-state.md](../product-specs/loan-security-state.md). User stories: [1858](../user-stories/epic-1795/1858-risk-council-security-actions.md).
 
 The same model as [Risk Council actions](#risk-council-actions): `can_call` then one `execute`, or `schedule`, wait, `execute`. The AccessManager is the same contract (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`); the target is the SecurityRegistry (`ENV.STELLAR_SECURITY_REGISTRY_ID`, stored as `collateral_registry` in `addresses.json`). All four functions are `#[only_owner]` and `#[when_not_paused]`; the AM maps them to `RISK_COUNCIL`. The hooks take a `CouncilCall` (`RiskCouncilCall | SecurityRegistryCall`); `councilTarget(call)` picks the target from the function name (the names are disjoint) and the query keys include it.
 
@@ -2313,15 +2497,15 @@ Validates `chain` with `parseLoanRouteSearch`. Built on `useRiskCouncilLoanBase`
 
 - **Scheduled operations.** The first card of the right column, above Set terms, lists all of the loan's pending operations: the `/security` rows plus the `GET /v1/loan-book` rows of the loan, de-duplicated by `operation_id` with the `/security` copy kept. `set_terms`, `resolve_flag` and `release_with_consent` rows get Execute; LoanRegistry and Minter rows get a link to the page that owns them. See [Risk Council pending operations](#risk-council-pending-operations). Set terms shows "A terms change is already scheduled — see above. Scheduling again creates a second operation with a new 24 h wait." while a `set_terms` row is `waiting` or `ready`; the form stays usable.
 - **Current security terms.** The served terms verbatim (ratios as %, durations as d/h/s, payment term, default rate as %), the LTV line, a paused notice when `paused === true` ("The SecurityRegistry is paused. Executing is blocked until it resumes." — execute is disabled, schedule stays possible) and a refresh note while `refresh_pending`. With `terms: null`: "No security terms are set for this loan." When `/security` fails with no data the page shows the error (friendly message with details) in place of the cards, never the empty-terms state or an enabled form.
-- **Set terms.** 10 numeric inputs and a payment-term select, prefilled from served terms when present. Units: ratios and tolerances in % (at most 2 decimals, to bps, at most 1000%), `default_rate` in % (at most 4 decimals, times 10 000, the loan registry scale `ONE = 1e6`), `cure_period`, `grace_period`, `attestation_interval`, `inspection_interval` in days and `price_stale_after` in hours (decimals allowed when the result is whole seconds). Each field echoes its raw contract value live ("= 7000 bps", "= 20000 (1e6 scale)", "= 604800 s"). A served duration that is not exactly representable in the unit is left empty. Buttons "Set terms" / "Schedule terms" / "Execute terms". No-role copy: "Setting security terms belongs to the Risk Council."
+- **Set terms.** 10 numeric inputs (12 on EVM, see [EVM](#evm-1942)) and a payment-term select, prefilled from served terms when present. Units: ratios and tolerances in % (at most 2 decimals, to bps, at most 1000%), `default_rate` in % (at most 4 decimals, times 10 000, the loan registry scale `ONE = 1e6`), `cure_period`, `grace_period`, `attestation_interval`, `inspection_interval` in days and `price_stale_after` in hours (decimals allowed when the result is whole seconds). Each field echoes its raw contract value live ("= 7000 bps", "= 20000 (1e6 scale)", "= 604800 s"). A served duration that is not exactly representable in the unit is left empty. Buttons "Set terms" / "Schedule terms" / "Execute terms". No-role copy: "Setting security terms belongs to the Risk Council."
 - **Flagged records.** One row per served record with `flagged_by != null`: protection, lot, commodity, and the flagging inspection (the record's inspection whose `inspection_id` equals `flagged_by`, so it still shows after an `Escalated` resolution: kind, inspector, quantity, grade, the three variances in bps, verbatim). Outcome radio with the contract's effect text (Accepted: "The variance is explained: the flagging inspection's quantity and grade become the record's reference. Clears the flag."; TopUpRequired: "Opens a margin call if LTV is above the advance ratio. Clears the flag."; Escalated: "Suspected fraud or missing goods. The flag stays."), a reason text with its sha256, buttons "Resolve flag" / "Schedule resolution" / "Execute resolution". Empty: "No flagged records." No-role copy: "Settling an inspection flag belongs to the Risk Council."
 - **Release with consent.** A select among served records with `open === true` (starts on "Select a record…"; no record is ever auto-selected, so the button stays disabled until one is picked and a consent text is entered; after an executed release the record and the consent text are cleared, a scheduled one keeps them so the operation can be found again), a "Consent reference" text with its sha256, buttons "Release with consent" / "Schedule release" / "Execute release". The primary button opens a confirm dialog ("Release record #{id}? This burns the record NFT and cannot be undone.", `role="dialog"`, Escape and backdrop cancel). Empty: "No open records." No-role copy: "Releasing a record with the lenders' consent belongs to the Risk Council."
 - `resolve_flag` and `release_with_consent` are keyed by `record_id`; the loan is carried as context (`ScheduledOp.loanId`) for the session bridge, not derived from the args.
-- The loan detail Security card links here ("Security actions", or "Set security terms" when `terms: null`) on Stellar loans.
+- The loan detail Security card links here ("Security actions", or "Set security terms" when `terms: null`).
 
 ### Inspector panel (`/risk-council/inspectors`)
 
-Chain is the session chain. The current list is read on chain with `simulateRead` of the SecurityRegistry `inspectors()` view (`useSecurityInspectors`, key `["risk-council-inspectors", chainId]`, `staleTime` 15 s); this is contract configuration, not a computed metric (TD-186). The page shows the current panel, an add field (Strkey validation, duplicates refused), remove/keep per current entry, the resulting full list, a warning when it is empty, "No changes to the current panel." when it equals the current one, and the note "Applies to inspections entered from now on." After an executed change the pending edits are cleared (a scheduled one keeps them); the resulting list is de-duplicated, so the refetched panel never lists an address twice. Buttons "Set inspectors" / "Schedule inspector panel" / "Execute inspector panel". No-role copy: "Setting the inspector panel belongs to the Risk Council."
+Chain is the session chain. The current list is read on chain with `simulateRead` of the SecurityRegistry `inspectors()` view (`useSecurityInspectors`, key `["risk-council-inspectors", chainId]`, `staleTime` 15 s); this is contract configuration, not a computed metric (TD-186). On EVM the panel is the RecordNft's (see [EVM](#evm-1942)). The page shows the current panel, an add field (Strkey validation, duplicates refused), remove/keep per current entry, the resulting full list, a warning when it is empty, "No changes to the current panel." when it equals the current one, and the note "Applies to inspections entered from now on." After an executed change the pending edits are cleared (a scheduled one keeps them); the resulting list is de-duplicated, so the refetched panel never lists an address twice. Buttons "Set inspectors" / "Schedule inspector panel" / "Execute inspector panel". No-role copy: "Setting the inspector panel belongs to the Risk Council."
 
 ### Hub additions
 
@@ -2332,25 +2516,77 @@ The hub lists the four functions' loan-scoped rows from the API like every other
 - `SECURITY_REGISTRY_ERROR_COPY`, applied only when the target is the SecurityRegistry (Soroban codes collide across contracts): `#12` the record's status does not allow this, `#14` no security terms yet, `#15` margin call ratio below advance ratio, `#32` no flag to resolve. Everything else goes through `toUserError`. Served state lags the chain by up to a fold (30 s, `refresh_pending`), so a gate from served state can be stale at execute time and the contract stays the authority.
 - Config: `VITE_STELLAR_SECURITY_REGISTRY_ID` (trustee `env.ts`, `docker/trustee/entrypoint.sh`, `.env.example`) plus the existing AM id. A missing one gives "On-chain SecurityRegistry actions are not configured for this environment." The argocd value lives in the separate `argocd` repo (`argocd/pipeline/test.yaml`, then `prod.yaml` once deployed).
 - Delay: 24 h on test and prod; until #1756 the whole role may be delayed, so all four take the schedule path there. A scheduled operation expires 7 days after its ready time.
-- EVM: read-only with `stellarOnlyActionReason`, as the other Risk Council pages.
+- EVM: enabled for these four functions, see the next section.
+
+### EVM (#1942)
+
+The security page and the inspector panel run the same model on EVM, one-to-one with Stellar: `canCall`, then one `AccessManager.execute`, or `schedule`, wait, `execute`. The routes, page layout, test ids, cards, copy, `accessAction` model, session bridge and its dedup by `operation_id`, ownership and link rules, invalidation keys and timings, and the release confirm dialog are the same. The hooks pick the arm by chain: `isStellarTarget(chainId)` is Stellar, otherwise the EVM arm. The chain gate is `riskCouncilChainReason(chainId)`: `null` for Stellar and for `ENV.EVM_CHAIN_ID`, otherwise `stellarOnlyActionReason` (#1943 replaced the #1942 per-function `riskCouncilBlockedReason` and per-`target_kind` `pendingRowBlockedReason`, so the LoanRegistry functions and rows are open on EVM too). `stellarOnlyActionReason` stays for every non-Risk-Council caller.
+
+| Function | Target (`ENV`) | Logical call |
+|---|---|---|
+| `setTerms(uint256, Terms)` | SecurityRegistry (`EVM_SECURITY_REGISTRY_ADDRESS`) | `set_terms` |
+| `resolveFlag(uint256, uint8, bytes32)` | SecurityRegistry | `resolve_flag` |
+| `releaseWithConsent(uint256, bytes32)` | SecurityRegistry | `release_with_consent` |
+| `setInspectors(address[])` | RecordNft (`EVM_SECURITY_RECORD_NFT_ADDRESS`) | `set_inspectors` |
+
+The AccessManager is `EVM_ACCESS_MANAGER_ADDRESS`. Nothing is read from `authority()` or `recordNft()`; a missing address gives "On-chain SecurityRegistry actions are not configured for this environment." The logical calls stay chain-neutral (`SecurityRegistryCall`, snake_case `fn`), so `CouncilCall`, `councilTarget`, `riskCouncilCallKey`, the session store and the labels are reused. `SecurityTermsInput` gains the optional `defaultRatioBps` and `originatorFeeRate`: the Stellar encoder throws when either is present, the EVM encoder throws when either is missing. Solidity names come from `EVM_SECURITY_FUNCTION_NAMES`, selectors from the ABI (`evmSecuritySelector`, never hard-coded).
+
+**Encoding** (`encodeEvmSecurityRegistryCalldata`):
+
+- `Terms` is the 15-field tuple in declaration order: `advanceRatioBps`, `marginCallRatioBps`, `defaultRatioBps` (`u32`), `curePeriod`, `priceStaleAfter` (`u64`), `paymentTerm` (`uint8`), `gracePeriod` (`u64`), `defaultRate`, `originatorFeeRate` (`u32`), `attestationInterval`, `inspectionInterval` (`u64`), `toleranceBps`, `gradeToleranceBps` (`u32`), `marginCallAt`, `defaultBreachAt` (`u64`). `marginCallAt` and `defaultBreachAt` are always `0`: the contract keeps its own. Ids are `uint256` encoded from the same safe integer (the API keeps loan ids to `u32`).
+- Enums are `uint8` ordinals in declaration order: `PaymentTerm` is `Lc, Dp, Da, OpenAccount`; `FlagOutcome` is `Accepted, TopUpRequired, Escalated`. Hashes are `bytes32` from `/^[0-9a-f]{64}$/` sent as `0x` + hex (sha256 of the trimmed text, as on Stellar).
+- `setInspectors` takes EIP-55 addresses, no duplicates (case-insensitive). The RecordNft stores an `EnumerableSet`: duplicates are dropped silently and `inspectors()` returns insertion order.
+- `setTerms` reverts `SecurityRegistryInvalidRatio` unless `advance ≤ margin call ≤ default`; the form checks both before encoding.
+
+**Form.** Set terms adds "Default ratio (%)" (bps, after "Margin call ratio (%)", placeholder "e.g. 90") and "Originator fee rate (%)" (1e6 scale like the default rate, after "Default rate (%)", placeholder "e.g. 1"), each prefilled from `terms.default_ratio_bps` and `terms.originator_fee_rate` and echoed ("= 9000 bps", "= 10000 (1e6 scale)"). The second ratio rule has its own inline error: "The default ratio must be at least the margin call ratio." (the first keeps "The margin call ratio must be at least the advance ratio."; the view shows the first failing one). The current-terms card and the pending rows show the two extra rows when the value is served. `termsFieldsFor(chainId)` gives the field list; the view iterates `view.setTerms.fields`.
+
+**Inspector panel.** Reads `RecordNft.inspectors()` on chain (`readEvmSecurityInspectors`, EIP-55 strings), the EVM counterpart of the Stellar read (TD-186). The add field reads "Add inspector (EVM address)" with placeholder "0x…" and the validation copy "Enter a valid EVM address (0x…)."; an added address is normalised to EIP-55 and duplicates are caught case-insensitively.
+
+**Errors.** viem decodes custom errors when the ABI passed to `simulateContract` holds their `error` entries, so the AccessManager call's ABI also carries the SecurityRegistry and RecordNft errors and `EnforcedPause` (OpenZeppelin `execute` bubbles the target's revert data). `EVM_AM_ERROR_COPY` and `EVM_SECURITY_ERROR_COPY`, keyed by name through `evmCouncilErrorCopy(details, kind)` (the security names and `EnforcedPause` apply to `security_registry` only): `AccessManagerNotScheduled` / `NotReady` / `Expired` use the `execute:6/7/8` copy, `AccessManagerAlreadyScheduled` the `schedule:9` copy, `SecurityRegistryWrongRecordStatus` / `NoTerms` / `NotFlagged` the `#12` / `#14` / `#32` copy, `SecurityRegistryInvalidRatio` "The ratios must be in order: advance ≤ margin call ≤ default.", `EnforcedPause` the paused copy. Anything else goes through `toUserError`. A missing `error` entry degrades to the generic message, never to a wrong one.
+
+**Pending operations and Execute** are in [Risk Council pending operations](#risk-council-pending-operations). Live data: none on Hoodi until #1944 (role delays are 0 there) and the redeploy of the pre-#55 SecurityRegistry (12-field `Terms`), so QA runs in #1945. `default_breach` is served but not shown (TD-189).
+
+**Differences from Stellar.**
+
+| # | Area | Stellar (#1858, #1923) | EVM (#1942) | Reason |
+|---|---|---|---|---|
+| 1 | Write client | `relay`: Soroban envelope, simulate and assemble, wallet kit `signTransaction`, `sendTransaction`, poll | `sendEvmContractCall`: `simulateContract`, `estimateContractGas` (+20 %, capped), `writeContract({ chainId })`, receipt must be `success` | Different transaction models |
+| 2 | Stages | `awaiting-signature`, `submitting`, `confirming` | `awaiting-signature`, `confirming`; no `submitting` | One `eth_sendTransaction` signs and broadcasts |
+| 3 | Wrong network | none | `switchChain(ENV.EVM_CHAIN_ID)` first; `chainId` also passed as backstop | EVM wallets can be on any chain |
+| 4 | `can_call` input | `fn: Symbol` | `bytes4` selector from the ABI | OpenZeppelin keys roles by selector |
+| 5 | Operation id | `hash_operation(caller, target, fn, args)`, sha256 of XDR | `hashOperation(caller, target, data)`, keccak of `abi.encode`; compared as `0x` + the served 64 hex | Different preimage, same stored form |
+| 6 | Calls | `schedule(target, fn, args, 0, caller)`, `execute(target, fn, args, caller)` | `schedule(target, data, 0)`, `execute(target, data)` (value 0); caller is `msg.sender` | OpenZeppelin takes the calldata |
+| 7 | Native args | `args_xdr`, decoded and re-wrapped | `calldata` sent verbatim; the bridge stores `calldata` | Calldata is the exact `execute` argument |
+| 8 | `function` | snake_case | camelCase, mapped to canonical; unknown or `0x<selector>` passes through | Each chain stores its native name |
+| 9 | `args` display | XDR shapes | ABI shapes: `uint256` ids and `uint64` decimal strings, `uint32` numbers, enums as ordinals, tuple keyed by camelCase names, hashes as hex without `0x` | Type systems |
+| 10 | `Terms` | 12-key map, `margin_call_at = 0` | 15-field tuple, `marginCallAt = defaultBreachAt = 0` | #55 added three fields |
+| 11 | Terms form | 10 fields | 12 fields, second ratio rule | `defaultRatioBps`, `originatorFeeRate` only exist on EVM |
+| 12 | Ids and enums | `u32`, `scvVec([scvSymbol])` | `uint256`, `uint8` ordinals | ABI types |
+| 13 | Inspectors | `set_inspectors` and `inspectors()` on the SecurityRegistry, Strkey, exact match | on the RecordNft, `0x` EIP-55, case-insensitive | Address format; `EnumerableSet` |
+| 14 | Contract errors | `Error(Contract, #N)`, copy per target kind | custom-error names, one name-keyed map | Soroban codes vs Solidity errors |
+| 15 | Address comparison | exact Strkey | case-insensitive (`sameChainAddress`) | Hex is case-insensitive |
+| 16 | Config | `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_SECURITY_REGISTRY_ID` | `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_SECURITY_REGISTRY_ADDRESS`, `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` (`.env.example`, `docker/trustee/entrypoint.sh`); the loan's chain must be `ENV.EVM_CHAIN_ID` | Separate contracts |
+| 17 | Wallet | `useStellarWallet` (`signTransaction`) | `useEvmWallet` address; signing inside the wallet-connect client; the mock wallet cannot sign | Different stacks |
+| 18 | Amounts | 7 dp | 6 dp served strings; these pages convert none | PLUSD has 6 decimals |
+| 19 | `default_breach` | not served | served, not shown (TD-189) | EVM-only concept |
 
 ## Risk Council pending operations
 
-**Sources:** [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations) (`pending_operations`, #1922), [access-manager-events.md](../references/access-manager-events.md) (`args` display form). Code: `packages/wallet-connect/src/stellar/contracts/scheduledOperation.ts` and `riskCouncil.ts` (`riskCouncilArgsXdr`); trustee `api/pendingOperations.ts`, `api/useLoanBook.ts` (`LoanBookEntry.pending_operations`), `api/useRiskCouncil.ts` (`usePendingOperationExecute`), `lib/riskCouncilOps.ts`, `routes/-risk-council-pending.ts`, `PendingOperationsCard` and `PendingOperationsList` in `routes/-RiskCouncilParts.tsx`. Issues #1923 and #1924 (epic #1920). User stories: [1923](../user-stories/epic-1920/1923-rc-security-pending-ops.md), [1924](../user-stories/epic-1920/1924-rc-hub-pending-ops.md).
+**Sources:** [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations) (`pending_operations`, #1922), [access-manager-events.md](../references/access-manager-events.md) (`args` display form). Code: `packages/wallet-connect/src/stellar/contracts/scheduledOperation.ts` and `riskCouncil.ts` (`riskCouncilArgsXdr`), EVM `packages/wallet-connect/src/evm/contracts/accessManager.ts` (#1942; calldata rows: [access-manager-events.md](../references/access-manager-events.md#evm-args-and-operation-id)); trustee `api/pendingOperations.ts`, `api/useLoanBook.ts` (`LoanBookEntry.pending_operations`), `api/useRiskCouncil.ts` (`usePendingOperationExecute`), `lib/riskCouncilOps.ts`, `routes/-risk-council-pending.ts`, `PendingOperationsCard` and `PendingOperationsList` in `routes/-RiskCouncilParts.tsx`. Issues #1923 and #1924 (epic #1920). User stories: [1923](../user-stories/epic-1920/1923-rc-security-pending-ops.md), [1924](../user-stories/epic-1920/1924-rc-hub-pending-ops.md).
 
-The Risk Council hub and five per-loan surfaces list scheduled operations and let the scheduling wallet execute one with the exact arguments that were scheduled. The source is `pending_operations` on every `GET /v1/loan-book` row (always an array, `[]` on EVM or without the AccessManager indexer key; absent on an older API, read as empty), sorted by `ready_at`, with expired rows included. The Security page also reads `pending_operations` from `GET /v1/loan-book/{id}/security`, de-duplicated by `operation_id`.
+The Risk Council hub and five per-loan surfaces list scheduled operations and let the scheduling wallet execute one with the exact arguments that were scheduled. The source is `pending_operations` on every `GET /v1/loan-book` row (always an array, `[]` without the AccessManager indexer key; absent on an older API, read as empty), sorted by `ready_at`, with expired rows included. The Security page also reads `pending_operations` from `GET /v1/loan-book/{id}/security`, de-duplicated by `operation_id`.
 
 Each surface lists all of the loan's operations. A row whose function the surface owns gets Execute. A row owned by another surface shows the state line and a link to that surface instead, and never executes: no wallet, gate or target check runs for it. A function with no owner shows the state line only. A row is owned only when its served `target_kind` also matches the owner's contract.
 
 | Surface | Owns | Target (`ENV`) |
 |---|---|---|
-| `/risk-council/escalate/$id` | `set_default` | LoanRegistry (`STELLAR_LOAN_REGISTRY_ID`) |
+| `/risk-council/escalate/$id` | `set_default` | LoanRegistry (`STELLAR_LOAN_REGISTRY_ID` / `EVM_LOAN_REGISTRY_ADDRESS`) |
 | `/risk-council/reterm/$id` | `amend_economics`, `adjust_interest` | LoanRegistry |
 | `/risk-council/writedown/$id` | `write_down`, `close_defaulted`, `cure` | LoanRegistry |
-| `/risk-council/security/$id` | `set_terms`, `resolve_flag`, `release_with_consent` | SecurityRegistry (`STELLAR_SECURITY_REGISTRY_ID`) |
-| Repayment recovery dialog on `/loans/$id` | `reverse_repay` | Minter (`STELLAR_YIELD_MINTER_ID`) |
+| `/risk-council/security/$id` | `set_terms`, `resolve_flag`, `release_with_consent` | SecurityRegistry (`STELLAR_SECURITY_REGISTRY_ID` / `EVM_SECURITY_REGISTRY_ADDRESS`) |
+| Repayment recovery dialog on `/loans/$id` | `reverse_repay` | Minter (`STELLAR_YIELD_MINTER_ID` / `EVM_MINTER_ADDRESS`) |
 
-Link labels: "Open Escalate to Default", "Open Amend economics", "Open Default resolution", "Open Security", "Open loan · Repayment recovery". The AccessManager is `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID` for every contract. The hub lists the rows without Execute ([Risk Council actions](#risk-council-actions), Hub). A deployment without the field renders the empty card.
+Link labels: "Open Escalate to Default", "Open Amend economics", "Open Default resolution", "Open Security", "Open loan · Repayment recovery". The AccessManager is `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID` for every Stellar contract and `ENV.EVM_ACCESS_MANAGER_ADDRESS` on EVM. The hub lists the rows without Execute ([Risk Council actions](#risk-council-actions), Hub). A deployment without the field renders the empty card.
 
 ### Rows
 
@@ -2366,13 +2602,15 @@ The card "Scheduled operations" always renders; with no rows it reads "No schedu
   - `set_default` and `cure` `[loan_id]`: no argument rows;
   - `set_terms`, `resolve_flag` and `release_with_consent`: the ratios and tolerances in %, durations as d / h / s (`formatServedDuration`), default rate in %, payment term label, outcome and hashes as before (`margin_call_at = "0"`).
   A shape that does not decode shows the raw `args` JSON under "Arguments" and Execute stays allowed: the on-chain pre-check guarantees the executed bytes are the scheduled ones.
-- "Scheduled by": short address, plus "· this wallet" when it is the connected Stellar wallet.
+- **EVM rows (#1942).** A served row with `calldata` has `args_xdr: null`. `function` is the Solidity camelCase name, mapped to the canonical name by `canonicalPendingFunction` with the table in [access-manager-events.md](../references/access-manager-events.md#function-names-per-chain) (`EVM_PENDING_FUNCTIONS`; an unknown name or `0x<selector>` passes through raw), so owners, labels and links are the Stellar ones. `args` decodes with `decodeEvmSecurityCall`, strictly, for `set_terms`, `resolve_flag` and `release_with_consent`: ids are decimal strings within `u32`, the `Terms` tuple has exactly the 15 camelCase keys with `u32` numbers and `u64` decimal strings, `paymentTerm` is an ordinal 0 to 3, the outcome an ordinal 0 to 2, hashes are 64 lowercase hex without `0x`, and `marginCallAt` and `defaultBreachAt` are `"0"`. Anything else is `null` and shows the raw JSON with Execute still allowed. The pending rows of `set_terms` add "Default ratio" and "Originator fee rate".
+- **EVM LoanRegistry and Minter rows (#1943).** They decode with `decodeEvmLoanRegistryCall` and `decodeEvmReverseRepayCall`, strictly, and the owners, labels and links are the Stellar ones: ids and `repaymentId` are decimal strings within `u32`; `amendEconomics` is `[id, rate, "maturity"]` with `rate` an integer number that is a multiple of 100 from 100 to 1 000 000 and `maturity` a positive decimal string within safe integers; `adjustInterest` is `[id, "delta", hash]` with a signed decimal string; `writeDown` is `[id, "amount"]`; `closeDefaulted` is `[id, 4 | 5]`, shown as `Default` or `Other write-down`; `reverseRepay` is `[id, "repaymentId", hash]`; hashes are 64 lowercase hex without `0x`. Anything else is `null` and shows the raw JSON with Execute still allowed (the label of a raw `reverseRepay` row still reads the repayment number from a decimal-string id when the row has `calldata`). Amounts show at 6 dp.
+- "Scheduled by": short address, plus "· this wallet" when it is the connected wallet of the loan's chain (Stellar exact match, EVM case-insensitive).
 - Executed rows: after an execute from this console the row stays, with the state line "Executed", a disabled button and "Submitted · {hash}", for as long as the API still serves that schedule. It disappears once a fetch made after the execution no longer serves it.
 - State line: "Waiting · executable from {YYYY-MM-DD HH:MM UTC}", "Ready · expires {YYYY-MM-DD HH:MM UTC}" or "Expired — schedule it again". The state is the served one (API clock, refreshed by the 30 s `useLoanBook` poll), so the button can lag a `waiting` to `ready` flip by up to 30 s; the contract stays the authority (`execute:7` / `execute:8` copy).
 
 ### Execute
 
-Enabled only for an owned row when all hold: state `ready`, the connected wallet equals `caller`, the chain is Stellar, `target` equals the owner's configured id, the page's status gate (below) is clear, the SecurityRegistry is not paused (security rows), and no execute is in flight. `usePendingOperationExecute` repeats the target and paused checks as hard guards before any RPC call or signature (input `expectedTarget`, `paused`; the paused guard applies to SecurityRegistry rows only): a mismatch throws `PendingTargetMismatchError` and a paused registry throws `RegistryPausedError`; the disabled button is the UI half of the same rule. Notices, first match wins: the Stellar-only reason, "Only the scheduling wallet ({short}) can execute this.", "This operation targets another {LoanRegistry|Minter|SecurityRegistry} ({short}) than this console is configured for.", then the gate (ready rows only).
+Enabled only for an owned row when all hold: state `ready`, the connected wallet equals `caller`, the row is executable on the chain (`riskCouncilChainReason(chainId)` is `null`: Stellar or `ENV.EVM_CHAIN_ID`), `target` equals the owner's configured id, the page's status gate (below) is clear, the SecurityRegistry is not paused (security rows), and no execute is in flight. `usePendingOperationExecute` repeats the target and paused checks as hard guards before any RPC call or signature (input `expectedTarget`, `paused`; the paused guard applies to SecurityRegistry rows only): a mismatch throws `PendingTargetMismatchError` and a paused registry throws `RegistryPausedError`; the disabled button is the UI half of the same rule. Notices, first match wins: the Stellar-only reason, "Only the scheduling wallet ({short}) can execute this.", "This operation targets another {LoanRegistry|Minter|SecurityRegistry} ({short}) than this console is configured for.", then the gate (ready rows only).
 
 Status gates for `ready` owned rows, as in the forms (an unknown on-chain status, read pending or failed, does not block):
 
@@ -2390,13 +2628,15 @@ The arguments are never rebuilt from the form. `usePendingOperationExecute` take
 - `readyAt = 0` aborts and shows "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session.", with nothing sent
 - otherwise `executeScheduledOperation` calls `AM.execute(target, function, args, caller)`
 
+**EVM (#1942, #1943).** The same card runs `usePendingOperationExecute`'s EVM arm and sends the served `calldata` verbatim, with no decode and no re-encode. Pre-checks, in order, before any wallet prompt: the chain gate (`riskCouncilChainReason`); the row target equals the owner's configured EVM address (`riskCouncilTargetId(chainId, kind)`: SecurityRegistry, LoanRegistry or Minter; `PendingTargetMismatchError`, case-insensitive); the served registry is not paused (`RegistryPausedError`); `ENV.EVM_ACCESS_MANAGER_ADDRESS` is set; the EVM wallet is connected and equals `caller` (case-insensitive); the row has `calldata` (else `PendingArgsMismatchError`); `hashOperation(caller, target, calldata)` equals `0x` + the served `operation_id` (`PendingArgsMismatchError`); `getSchedule(id)` is not 0 (`NoLongerScheduledError`, also what an expired row reads). Then `AccessManager.execute(target, calldata)` through `sendEvmContractCall`, with the error ABI chosen by `target_kind` (`evmSecurityErrorAbi`, `evmRiskCouncilErrorAbi` or `evmRecoveryErrorAbi`; `other` gets none) so a revert shows its name. Copy: Minter rows try `evmRecoveryErrorCopy` first, then `evmCouncilErrorCopy(details, kind)`. The immediate path of a form's Execute is also `AccessManager.execute`, never a direct target call, so a matching pending schedule is consumed and the indexer closes it.
+
 The AccessManager id is `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`; a console and an indexer pointed at different AccessManagers fail the pre-check and never execute anything else. Error copy is chosen by the row's `target_kind` (Soroban codes collide across contracts): Minter rows use the repayment-recovery copy first (`#8` the Minter's bank cash below the repayment's cash, `#25` already reversed) and then `RISK_COUNCIL_AM_ERROR_COPY` (`execute:6/7/8`); SecurityRegistry rows use `RISK_COUNCIL_AM_ERROR_COPY` then `SECURITY_REGISTRY_ERROR_COPY`; LoanRegistry rows use `RISK_COUNCIL_AM_ERROR_COPY` then `toUserError`. Success invalidates `loan-book`, `loan-security` and the other Risk Council keys, plus `repayment-recovery`, `repayment-recovery-access` and `loan-waterfall`, now, at 5 s and at 15 s.
 
 ### Session bridge
 
 The page-local store bridges the indexer lag, deduplicated by `operation_id`:
 
-- After a successful `schedule` of a LoanRegistry or SecurityRegistry call, the relay reads the schedule once and stores `operationId`, `readyAt`, `caller`, `target` and `argsXdr` on the `ScheduledOp`. A failing read stores the op without an id and it is not listed. LoanRegistry ops carry no `loanId` in the store; the loan comes from the call.
+- After a successful `schedule` of a LoanRegistry or SecurityRegistry call, the relay reads the schedule once and stores `operationId`, `readyAt`, `caller`, `target` and `argsXdr` (on EVM, `calldata` in place of `argsXdr`, #1942) on the `ScheduledOp`. A failing read stores the op without an id and it is not listed. LoanRegistry ops carry no `loanId` in the store; the loan comes from the call.
 - A stored op for this chain and loan whose id is not yet served is shown as a row (state derived locally from `readyAt`, expiry `readyAt + 604800`) with "Scheduled from this console. The list catches up within a minute." It disappears when the API serves the same id, and it never comes back: once an id has been served in this session (any loan-book or `/security` fetch of the chain; `recordServedOperations`, `useServedOperationIds`), a stored op whose id is no longer served is dropped (cancelled by the Guardian or the Admin, or executed elsewhere), so it cannot become executable again. The hub merges the same rows per loan of the book; `set_inspectors` ops are not listed.
 - There is no bridge for `reverse_repay`: its schedule path is outside the store, and the dialog's own role line ("Scheduled. Executable from …") covers the scheduler until the indexer serves the row.
 - An operation executed here, from the row or from a form's Execute button, is recorded as executed (`operationId`, tx hash, `readyAt` of the executed schedule) and every stored op with that id is marked `executedHere`, so a form's "No longer scheduled" line does not fire. The row stays visible as "Executed" with its hash while the API serves the same schedule (it is hidden on the hub). The record is dropped once a loan-book (or `/security`) fetch made after the execution no longer serves the id, or serves it with another `ready_at`; a re-scheduled operation with the same arguments (same id, new `ready_at`) therefore shows as a normal row again. A form's Execute (`useRiskCouncilRelay`, `execute` mode) reads the operation's schedule (`get_schedule`) before it sends the transaction and records `{operationId, hash, readyAt}` afterwards, so it hides a served row even when the operation was scheduled from another session; an unreadable or empty (`readyAt = 0`) pre-read records nothing and never blocks the execute. The recovery dialog's "Execute reversal" does the same for the matching `reverse_repay` operation (`readReverseRepaySchedule` before `executeReverseRepay`; the dialog passes the chain id).
@@ -2548,7 +2788,7 @@ Two groups, both defensively read (`loan_data` is `serde_json::Value` on the wir
   "Watchlist"; past-maturity (`Past Due`, legacy `Matured`) → "Matured". A loan with the served
   `margin_call_open === true` is also listed (#1767): "Margin call open", or "{label} · margin call
   open" when it is Watchlist / Matured; `Closed` and `Default` are skipped and a loan yields one
-  row, matching `GET /v1/attention-counts` `loans.margin_call_open`. Links to `/loans/$id`
+  row, matching `GET /v1/attention-counts` `loans.margin_call_open`. EVM loans are included by design (#1942, N2): the row agrees with the loans table LTV column, the Security card and the security page, and its subtitle names the chain. Links to `/loans/$id`
   with `search: { chain: row.chainId }`; the subtitle ends with the chain label and the row key is
   `${chain_id}:${loan_id}` (#1537).
 

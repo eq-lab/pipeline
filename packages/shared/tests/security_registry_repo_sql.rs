@@ -348,7 +348,7 @@ fn the_log_watermarks_are_scoped_to_the_chain_loan_and_contract_list() {
         &[
             "FROM contract_logs",
             "chain_id = $1",
-            "MAX(id) FILTER (WHERE contract_address = $2)",
+            "MAX(id) FILTER (WHERE contract_address = ANY($2))",
             "contract_address = ANY($4)",
             "params @> jsonb_build_object('loan_id', $3::text)",
         ],

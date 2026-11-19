@@ -18,7 +18,7 @@ interface ILoanRegistry {
         string calldata initialLocation
     ) external returns (uint256 loanId);
 
-    // TRUSTEE, no timelock. Non-economic fields only. Performing <-> WatchList; same-status
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE through AccessManager.execute; status is a uint8 ordinal Approved 0 .. Closed 4). Non-economic fields only. Performing <-> WatchList; same-status
     // metadata-only on Approved/Default; Closed reverts. metadata_uri is replaced on every call.
     function updateMutable(
         uint256 loanId,
@@ -43,10 +43,10 @@ interface ILoanRegistry {
         uint256 equityAmount
     ) external;
 
-    // TRUSTEE, no timelock. Reverts unless now >= currentMaturityDate and status not in
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE; `newRate` is bps x 100, `newMaturityTimestamp`). Reverts unless now >= currentMaturityDate and status not in
     // {Default, Closed}. Appends an epoch from the prior maturity (continuous accrual),
     // sets currentMaturityDate, returns status to Performing. Emits LoanRolledOver.
-    function rollover(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate) external;
+    function rollover(uint256 loanId, uint32 newRate, uint64 newMaturityTimestamp) external;
 
     // RISK_COUNCIL, 24h timelock. Re-terms outside the rollover fast-path (default penalty
     // rate, off-cycle maturity). Appends an epoch from now. Emits EconomicsAmended.
@@ -55,7 +55,7 @@ interface ILoanRegistry {
     // RISK_COUNCIL, immediate per the user docs. May fire before or after maturity. Blocks loan-tied mints.
     function setDefault(uint256 loanId) external;
 
-    // TRUSTEE (no timelock) for {ScheduledMaturity, EarlyRepayment};
+    // TRUSTEE (no timelock; EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE, ClosureReason ordinals ScheduledMaturity 1, EarlyRepayment 2) for {ScheduledMaturity, EarlyRepayment};
     // RISK_COUNCIL (24h) for {Default, OtherWriteDown}.
     function closeLoan(uint256 loanId, ClosureReason reason) external;
 
@@ -192,4 +192,5 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
   from genesis economics minus the mutable counters, auditable by any third party. A mis-split repayment is corrected by Minter `reverseRepay` then `repay` ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
 - The registry is informational. sPLUSD share price moves on the yield minted by `Minter.repay`, within the Minter budget; a mis-split repayment is reversible ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
 - Stellar `DealTokenFactory` (per-loan DEBT token): `register_deal(loan_id: u32) -> Deal` is `#[only_owner]` (owner = the AccessManager, `TRUSTEE` role), `deal(loan_id: u32) -> Deal` fails with `Error(Contract, #4)` for an unregistered loan, `debt_address(loan_id: u32)` is deterministic for any id (not a registration signal), `Deal` is `{ debt }` (legacy deployments also carry `cargo`). Trustee UI: [trustee-flows.md](../frontend/trustee-flows.md#register-debt-token-1766).
+- EVM `PipelineDealTokenFactory` (per-loan DEBT token, #1892): `registerDeal(uint256) restricted` on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, not called by `drawLoan`; `deal(uint256)` reverts `DealTokenFactoryNotRegistered(loanId)` when unregistered; `debtAddress` is deterministic (CREATE2, salt = loan id) and is not a registration signal; `Deal` is `{ debt }`; the event is `DealRegistered(uint256 indexed loanId, address debt)`; `registerDeal` reverts `LoanRegistryNonExistentLoanId()` for an unknown id and `DealTokenFactoryAlreadyRegistered(loanId)` on a repeat.
 - The Stellar minter's `record_wire_in(caller, receiver, amount: i128, value_date: u64, ref_hash: BytesN<32>) -> u32` is a direct, self-authorising invocation gated by `CASH_REPORTER` at execution delay 0, with a single-use `ref_hash` and 7-decimal amounts — it is not a LoanRegistry write and mints only against a recorded bank deposit; see [deposits.md](./deposits.md).

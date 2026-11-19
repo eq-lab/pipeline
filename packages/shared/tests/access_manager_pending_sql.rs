@@ -21,11 +21,17 @@ fn the_filters_pin_status_chain_targets_and_args() {
         "o.status = 'pending'",
         "o.chain_id = $1",
         "o.target = ANY($2)",
-        "o.args_xdr IS NOT NULL",
+        "(o.args_xdr IS NOT NULL OR o.calldata IS NOT NULL)",
         "o.args_json IS NOT NULL",
         "r.loan_id IS NOT NULL",
         "$4::bigint IS NULL OR r.loan_id = $4",
     ]);
+}
+
+#[test]
+fn the_select_list_carries_both_encodings_and_no_stellar_only_filter_is_left() {
+    assert_has(&["o.args_xdr, o.calldata, o.args_json"]);
+    assert!(!normalized().contains("AND o.args_xdr IS NOT NULL AND"));
 }
 
 #[test]

@@ -364,3 +364,35 @@ describe("Cure period row and margin-call notes", () => {
     expect(() => card({ terms: TERMS })).not.toThrow();
   });
 });
+
+describe("buildSecurityCard on an EVM /security payload (#1942)", () => {
+  it("builds a ready card from 6 dp strings", () => {
+    const card = buildSecurityCard(
+      securityResult({
+        data: {
+          paused: false,
+          terms: {
+            advance_ratio_bps: 7000,
+            margin_call_ratio_bps: 8000,
+            default_ratio_bps: 9000,
+            originator_fee_rate: 10000,
+          },
+          valuation: {
+            value: "2106000.000000",
+            debt: "1710000.000000",
+            ltv_bps: 8123,
+            price_stale: false,
+          },
+          margin_call: { open: true },
+        },
+      }),
+    );
+    expect(card.state).toBe("ready");
+    expect(
+      ltvRowText(card, {
+        valuation: { ltv_bps: 8123 },
+        margin_call: { open: true },
+      }),
+    ).toContain("81.3%");
+  });
+});

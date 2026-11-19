@@ -31,11 +31,13 @@ export const FLAG_OUTCOMES: readonly FlagOutcome[] = [
 export interface SecurityTermsInput {
   advanceRatioBps: number;
   marginCallRatioBps: number;
+  defaultRatioBps?: number;
   curePeriod: number | string;
   priceStaleAfter: number | string;
   paymentTerm: SecurityPaymentTerm;
   gracePeriod: number | string;
   defaultRate: number;
+  originatorFeeRate?: number;
   attestationInterval: number | string;
   inspectionInterval: number | string;
   toleranceBps: number;
@@ -85,6 +87,12 @@ function variant(name: string): xdr.ScVal {
 }
 
 function encodeTerms(terms: SecurityTermsInput): xdr.ScVal {
+  if (terms.defaultRatioBps !== undefined) {
+    fail("defaultRatioBps (EVM only)", terms.defaultRatioBps);
+  }
+  if (terms.originatorFeeRate !== undefined) {
+    fail("originatorFeeRate (EVM only)", terms.originatorFeeRate);
+  }
   if (terms.marginCallRatioBps < terms.advanceRatioBps) {
     fail(
       "marginCallRatioBps (below advanceRatioBps)",

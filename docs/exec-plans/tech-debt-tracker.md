@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-189.**
+**Next free number: TD-191.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -106,13 +106,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
 - **Resolution (2026-10-28, #1671):** `git check-ignore packages/frontend/tsconfig.tsbuildinfo` matches and the file is not tracked.
 
-### TD-6: No Foundation/Tokens Storybook story
+### TD-6: No Foundation/Tokens Storybook story [RESOLVED 2026-11-18 / #1329]
 
 - **Date:** 2026-05-12
-- **Location:** packages/ui/src/stories/
+- **Location:** packages/ui/src/foundation/
 - **Gap:** There is no Storybook story that previews every `--color-pipeline-*`, `--text-pipeline-*`, `--radius-pipeline-*` token so reviewers can compare values to Figma visually. Deferred from Issue #41 to keep that issue tightly scoped to the `@theme` declaration.
 - **Impact:** Token verification is manual (DevTools console); visual regression is invisible until a consuming component breaks.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
+- **Resolution (2026-11-18, #1329):** `packages/ui/src/foundation/Tokens.stories.tsx` (`Foundation/Tokens`: `Colors`, `TypeRamp`, `Radii`) enumerates the tokens from the `@theme` block of `theme.css`.
 
 ### TD-100: Same-tab mock bridge not testable in jsdom [RESOLVED-BY-DECISION 2026-11-18 / #1680]
 
@@ -2037,13 +2038,13 @@ line, whichever section it lands in.
 - **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
 - **Follow-up (#1595):** `YieldMinted` is no longer indexed, so the Dashboard's `cumulative_yield_total` and `/v1/dashboard/yield-history` froze; they now add Minter `CashRepaid` mints (net of `CashRepaymentReversed`) to the historical `YieldMinted` rows (#1533), as the LoanBook `minted_yield` does (#1525). The portfolio `GET /v1/stats/yield` is a separate gross-accrual estimate and is unaffected.
 
-### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
+### TD-131: No Ethereum mainnet deployment of the reworked contracts, and no prod environment mapping for EVM [PARTIALLY RESOLVED 2026-11-18 / #1503]
 
-- **Date:** 2026-10-08
-- **Location:** `pipeline-contracts/deployments/` (4 months stale, pre-rework), `argocd/pipeline/test.yaml`, `argocd/pipeline/prod.yaml` (both: `CHAINS` is Stellar-only, zero `CHAIN_*_ETH_RPC_URL`/EVM keys) — Issue #1434, finding F9.
-- **Gap:** `pipeline-contracts` has no deploy CI job and no docs naming which deployment serves which environment; the only configured chain anywhere (`script/base/ChainValues.sol`) is Hoodi, whose deployment JSONs are pre-rework and un-configured in either argocd environment.
-- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
-- **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
+- **Date:** 2026-10-08 (narrowed 2026-11-18)
+- **Location:** `pipeline-contracts/deployments/` (only `hoodi-v5.json` is post-rework; no mainnet file), `argocd/pipeline/prod.yaml` (`CHAINS="99000002"`, zero `VITE_*` EVM addresses) — Issue #1434, finding F9.
+- **Gap:** A post-rework Hoodi deployment exists (`hoodi-v5.json`, contracts #50/#53) and stage (`argocd/pipeline/test.yaml`) runs it: `CHAINS="99000001,560048"`, API/worker `CHAIN_560048_*` and LP/Trustee `VITE_EVM_*` addresses are mapped (argocd #498–#501). What remains is mainnet only: no Ethereum mainnet deployment of the reworked contracts, so there are no addresses or deploy block to put in `prod.yaml`, and `pipeline-contracts` still has no deploy CI job or doc naming which deployment serves which environment.
+- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance. Prod EVM stays dark by design. The exact variables to flip once a mainnet deployment exists are in the #1436 comment; the repo-side env docs (`.env.example`, `docs/FRONTEND.md`) are current for Hoodi v5 (#1503).
+- **Suggested fix:** Deploy the reworked contracts to mainnet, then follow #1436; stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` has for `test.yaml`'s deployment-id references.
 
 ### TD-132: `outstanding` is defined two ways between the EVM contract and the API [PARTIALLY RESOLVED 2026-10-15 / #1524]
 
@@ -2168,23 +2169,26 @@ line, whichever section it lands in.
 - **Impact:** After a redeploy on the same chain, a reused `loan_id` collides with the old registry's link. `link_drawn` skips it, the indexer logs a `warn`, and the new submission stays unlinked until an operator unlinks the stale row.
 - **Suggested fix:** #1545 adds the registry address to the link and the unique index.
 
-### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions
+### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions [RESOLVED 2026-11-18 / #1573]
 
+- **Resolved (#1573):** `useDrawLoan` has an EVM arm (`drawEvmLoan`, `AccessManager.execute(registry, drawLoan)`), the API serves the EVM `draw_loan` block at 6 decimals, and Approve opens on `ENV.EVM_CHAIN_ID` (`drawChainReason`); other chain ids keep the gate.
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useOriginationReview.ts` (`approveBlockedReason`), `packages/trustee/src/api/useDrawLoan.ts`
 - **Gap:** Submissions can now target an EVM chain (#1529 backend, #1536 form), but the trustee's chain-first Approve (#831) only knows the Stellar executor → `draw_loan` path. #1536 therefore disables Approve for a non-Stellar target with an explanatory line; Reject / Request changes still work.
 - **Impact:** An EVM-targeted submission cannot be approved from the Trustee app until an EVM draw path exists (the LoanRegistry `mintLoan`/draw call signed by the trustee's EVM wallet, plus the same simulate-then-sign ordering and idempotency guard). Until then such submissions sit `InReview` or are drawn out-of-band and linked by the indexer.
 - **Suggested fix:** An EVM `useDrawLoan` arm selected by `target_chain_id`, reusing the `@pipeline/wallet-connect` EVM wallet; drop the gate once it lands.
 
-### TD-152: Trustee on-chain loan actions are Stellar-only — gated for non-Stellar loans
+### TD-152: Trustee on-chain loan actions are Stellar-only — gated for non-Stellar loans [PARTIALLY RESOLVED 2026-11-19 / #1574 / #1892]
 
 - **Date:** 2026-10-16
-- **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
-- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carry the same gate: every action card is disabled with `stellarOnlyActionReason`, the chain-state card shows `—`, and the hub shows only the reason for a non-Stellar session.
+- **Location:** `packages/trustee/src/lib/targetChains.ts` (`loanActionChainReason`, the gate since #1574), `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carried the same gate until #1943, which opened them (and recovery step 1) on the configured EVM chain.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 - **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
-- **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
+- **Repayment recovery (#1711):** step 1 (`MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` through the EVM AccessManager, `MINTER_OPS_ROLE`) runs on EVM since #1943, with the candidates read as described in TD-190. Step 2, the corrected `Minter.repay` (`MINT_CALLER_ROLE`), runs on EVM since #1574 through the `useRecordPayment` EVM arm.
+- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573 reused it (`sendEvmContractCall` now also returns the receipt); #1574 reuses it and `evm/contracts/loanRegistry.ts` for the lifecycle writes, adds `sendEvmContractCallChecked` (simulate-before-sign wrap) and a direct `PipelineMinter.repay` / `AccessManager.execute(minter, disburse)` in `minter.ts`; the LP app's `wallet/evm` hooks keep their own pipeline.
+- **Status (#1943, #1574):** the Risk Council hub, Escalate, Amend economics, Default resolution and the recovery card and dialog run on the configured EVM chain (`packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts`). Since #1574, Roll over, Update lifecycle, Record coupon / Record repayment (including recovery step 2), Close loan and Disburse run on the configured EVM chain too (`loanActionChainReason`; any other non-Stellar chain id keeps the Stellar-only copy). Register debt token runs on the configured EVM chain since #1892 (`AccessManager.execute(factory, registerDeal(uint256))`, `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, a separate trustee signature after Approve), and registering clears the Disbursement card's "Register this loan's debt token first.". What remains for EVM is the cash reporter bookings above (`record_wire_in`, #1501; `record_income`).
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
@@ -2466,6 +2470,7 @@ line, whichever section it lands in.
 - **Gap:** The backend serves `inspectors` only inside the per-loan `GET /v1/loan-book/{id}/security`, so `/risk-council/inspectors` (contract-wide, no loan) reads the `inspectors()` view with `simulateRead`. Decided with the user on #1858 over reading it from any loan's `/security` or adding an endpoint.
 - **Impact:** The panel list is read from the chain directly (not the projection), so it can differ from the `inspectors` a loan's `/security` serves for up to one fold (30 s). One extra RPC read per page load.
 - **Suggested fix:** If a contract-wide security-registry state endpoint is ever added, serve `inspectors` and `paused` from `security_registry_state` and drop the RPC read.
+- **EVM (#1942):** the same read exists on the RecordNft: `packages/wallet-connect/src/evm/contracts/securityRegistry.ts` (`readEvmSecurityInspectors`), used by `useSecurityInspectors` on EVM.
 
 ### TD-187: AccessManager operations whose transaction left RPC retention lose their arguments or stay pending
 
@@ -2477,10 +2482,27 @@ line, whichever section it lands in.
 - **Known limitation (sub-call execute):** An `AM.execute` of a delayed operation made by a contract as a sub-call without an auth entry yields no candidate, so the row stays `pending` until it reads as expired.
 - **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state. This also resolves both limitations above.
 
-### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp
+### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp [RESOLVED 2026-11-18 / #1940]
 
 - **Date:** 2026-11-17
 - **Location:** `packages/shared/src/security_marks.rs` and the API's `/security` response builder — Issue #1938.
-- **Gap:** The SecurityRegistry indexer now stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assume the Stellar 7 dp scale.
-- **Impact:** None until the API serves EVM security data. Then a mark suggestion or an amount formatted at 7 dp would be off by a factor of 10 on EVM.
-- **Suggested fix:** Hand-off to #1940 (the `/security` route and loan-book fields) and #1942 (Trustee): take the decimals from the chain kind instead of a constant. Documented in `docs/references/security-registry-events.md#known-limitations`.
+- **Gap:** The SecurityRegistry indexer stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assumed the Stellar 7 dp scale.
+- **Resolution (shared and API scope):** `SecurityChainParams.decimals` (7 Stellar, 6 EVM) now drives the amount strings, the per-record value, `agent_release`, the mark suggestions and the report `value_per_unit=` line; Stellar output is unchanged. See `docs/product-specs/loan-security-state-evm.md`.
+- **Remaining (#1942):** the Trustee reads the `/security` strings as 7 dp; its EVM writes (`revalue`, inspections) must parse them at the chain's decimals.
+
+### TD-189: Trustee does not show the EVM `default_breach`
+
+- **Date:** 2026-11-18
+- **Location:** `packages/trustee/src/routes/-loanSecurity.ts` (Security card) and `-risk-council-security.ts` (security page) — Issue #1942.
+- **Gap:** `GET /v1/loan-book/{id}/security` serves `default_breach` for EVM loans (#1940), an EVM-only concept (`defaultBreachAt` in the 15-field `Terms`), and nothing in the Trustee renders it. The Trustee pages mirror Stellar, which has no breach.
+- **Impact:** An EVM loan past its default breach threshold shows no signal on the security page or the loan-detail Security card.
+- **Suggested fix:** Add a "Default breach" row and notes mirroring the margin-call row on the Security card and the security page.
+
+### TD-190: EVM repayment recovery reads repayments by scanning logs in the browser
+
+- **Date:** 2026-11-18
+- **Location:** `packages/wallet-connect/src/evm/contracts/{minter,logs}.ts` (`readEvmRecoveryRepayments`, `readEvmMinterRepayment`, `scanEvmLogs`), `packages/trustee/src/api/useRepaymentRecovery.ts` (`useRecoveryCandidates`) — Issue #1943.
+- **Gap:** No EVM view returns a recorded repayment's full `RepaymentData` or its reversed flag (`LoanRegistryStorage.repayments` and `reversedRepayments` are private). The Trustee therefore scans `eth_getLogs` for `PaymentRecorded`, `PaymentUnrecorded` and `CashRepaid` of the loan from `VITE_EVM_START_BLOCK` in 50 000-block chunks (the default publicnode RPC rejects wider ranges), and reads the Minter's stored record through `extsload` at the ERC-7201 slot of `pipeline.storage.Minter` (field 19, `repayments`).
+- **Impact:** The cost grows with chain age (about 7 200 blocks a day on Hoodi, so one more call about every week; about 81 calls from block 0, hence `VITE_EVM_START_BLOCK` must be the LoanRegistry deploy block). It depends on the RPC provider's `eth_getLogs` limits, and it is coupled to the Minter storage layout (a layout change breaks the read; the Minter must expose `extsload`, contracts PR #54). It runs for every EVM loan in `Performing..Default` that opens the loan detail page.
+- **Hoodi Minter caveat (#1574):** the Hoodi Minter (source `f92d719`) has no `extsload`, so `readEvmMinterRepayment` reverts there and the EVM recovery list fails until the Minter is upgraded to the contracts PR #54 build. #1574's `readEvmMinterBankCash` / `readEvmRefHashSeen` show the pattern: call the legacy view first and fall back to `extsload` on a revert with empty data.
+- **Suggested fix:** Serve per-repayment rows from the indexed logs on an existing per-loan endpoint (the data is already in `contract_logs`), and read from the API instead of the chain.

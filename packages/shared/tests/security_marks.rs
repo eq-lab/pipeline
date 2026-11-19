@@ -16,7 +16,7 @@ use shared::security_marks::{
     suggest, CommodityMap, MarkPolicy, MarkSettings, PriceMap, QuoteUnit, SuggestCtx,
     SuggestionStatus, TONNE_LB, TONNE_TROY_OZ,
 };
-use shared::security_state::format_7dp_i128;
+use shared::security_state::{format_7dp_i128, format_dp_i128};
 use sqlx::types::Json;
 
 const MAP_JSON: &str = r#"[
@@ -64,6 +64,7 @@ fn ctx<'a>(
         chain_id: 99_000_001,
         security_registry: REGISTRY,
         record_id: 3,
+        decimals: 7,
         map,
         prices,
         concentrate,
@@ -260,7 +261,7 @@ fn prices_beyond_seven_decimals_floor() {
 fn sqlx_negative_scale_prices_are_accepted() {
     let negative_scale = BigDecimal::new(BigInt::from(125), -8);
     assert_eq!(
-        standard_vpu_raw(&negative_scale, (1, 1)),
+        standard_vpu_raw(&negative_scale, (1, 1), 7),
         Some(125i128 * 10i128.pow(8) * 10i128.pow(7))
     );
     let m = map();
@@ -277,7 +278,7 @@ fn sqlx_negative_scale_prices_are_accepted() {
 fn a_zero_scale_exponent_form_is_accepted() {
     let price = BigDecimal::new(BigInt::from(5), -3);
     assert_eq!(
-        standard_vpu_raw(&price, (1, 1)),
+        standard_vpu_raw(&price, (1, 1), 7),
         Some(5i128 * 10i128.pow(10))
     );
 }
@@ -290,7 +291,7 @@ fn negative_prices_clamp_to_zero() {
 #[test]
 fn results_beyond_i128_are_unreadable() {
     let huge = BigDecimal::new(BigInt::from(1), -40);
-    assert_eq!(standard_vpu_raw(&huge, (1, 1)), None);
+    assert_eq!(standard_vpu_raw(&huge, (1, 1), 7), None);
     let m = map();
     let p: PriceMap = HashMap::from([(
         ("XZN".to_owned(), "metal_price".to_owned()),
@@ -460,7 +461,7 @@ fn hostile_assay_decimals_are_unreadable() {
         let mut a = assay();
         a.assays.0[0].grade_g_per_t = bad.to_owned();
         assert_eq!(
-            concentrate_vpu_raw(&a, &offtake(), &prices),
+            concentrate_vpu_raw(&a, &offtake(), &prices, 7),
             Err(SuggestionStatus::Unreadable),
             "{bad}"
         );
@@ -483,7 +484,7 @@ fn hostile_offtake_decimals_are_unreadable() {
         let mut o = offtake();
         mutate(&mut o);
         assert_eq!(
-            concentrate_vpu_raw(&assay(), &o, &prices),
+            concentrate_vpu_raw(&assay(), &o, &prices, 7),
             Err(SuggestionStatus::Unreadable)
         );
     }
@@ -495,7 +496,7 @@ fn a_zero_ppm_step_is_unreadable() {
     o.penalty_schedule.0[0].unit = "Ppm".to_owned();
     o.penalty_schedule.0[0].step = "0".to_owned();
     assert_eq!(
-        concentrate_vpu_raw(&assay(), &o, &asset_prices(&[("XAU", "4000")])),
+        concentrate_vpu_raw(&assay(), &o, &asset_prices(&[("XAU", "4000")]), 7),
         Err(SuggestionStatus::Unreadable)
     );
 }
@@ -510,7 +511,7 @@ fn oversized_stored_arrays_are_unreadable() {
         });
     }
     assert_eq!(
-        concentrate_vpu_raw(&assay(), &o, &asset_prices(&[("XAU", "4000")])),
+        concentrate_vpu_raw(&assay(), &o, &asset_prices(&[("XAU", "4000")]), 7),
         Err(SuggestionStatus::Unreadable)
     );
 }
@@ -519,9 +520,9 @@ fn oversized_stored_arrays_are_unreadable() {
 fn negative_scale_metal_prices_are_accepted_by_the_concentrate_path() {
     let mut prices = asset_prices(&[]);
     prices.insert("XAU".to_owned(), BigDecimal::new(BigInt::from(4), -3));
-    let via_neg = concentrate_vpu_raw(&assay(), &offtake(), &prices).unwrap();
+    let via_neg = concentrate_vpu_raw(&assay(), &offtake(), &prices, 7).unwrap();
     let via_plain =
-        concentrate_vpu_raw(&assay(), &offtake(), &asset_prices(&[("XAU", "4000")])).unwrap();
+        concentrate_vpu_raw(&assay(), &offtake(), &asset_prices(&[("XAU", "4000")]), 7).unwrap();
     assert_eq!(via_neg, via_plain);
 }
 
@@ -980,7 +981,7 @@ fn a_long_scale_price_is_truncated_not_rejected() {
     let got = bounded_dec(&price).unwrap();
     assert_eq!(got.as_bigint_and_exponent().1, 18);
     assert_eq!(plain(&got), "0.666666666666666666");
-    assert_eq!(standard_vpu_raw(&price, (1, 1)), Some(6_666_666));
+    assert_eq!(standard_vpu_raw(&price, (1, 1), 7), Some(6_666_666));
     let m = map();
     let p: PriceMap = HashMap::from([(
         ("XZN".to_owned(), "metal_price".to_owned()),
@@ -994,7 +995,7 @@ fn a_long_scale_price_is_truncated_not_rejected() {
 fn a_long_scale_negative_scale_mix_still_computes() {
     let price = BigDecimal::new(BigInt::from(125), -8);
     assert_eq!(
-        standard_vpu_raw(&price, (1, 1)),
+        standard_vpu_raw(&price, (1, 1), 7),
         Some(125i128 * 10i128.pow(15))
     );
 }
@@ -1006,11 +1007,12 @@ fn a_long_scale_metal_price_feeds_the_concentrate() {
         "XAU".to_owned(),
         BigDecimal::from_str(&format!("4000.{}", "1".repeat(95))).unwrap(),
     );
-    let via_long = concentrate_vpu_raw(&assay(), &offtake(), &px).unwrap();
+    let via_long = concentrate_vpu_raw(&assay(), &offtake(), &px, 7).unwrap();
     let via_plain = concentrate_vpu_raw(
         &assay(),
         &offtake(),
         &asset_prices(&[("XAU", "4000.111111111111111111")]),
+        7,
     )
     .unwrap();
     assert_eq!(via_long, via_plain);
@@ -1047,4 +1049,56 @@ fn the_commodity_map_parses_without_the_policy_keys() {
     let err = CommodityMap::parse_optional(Some("nope")).unwrap_err();
     assert!(err.to_string().contains("SECURITY_MARK_COMMODITIES"));
     assert!(MarkSettings::parse(Some(MAP_JSON), Some("abc"), None).is_err());
+}
+
+fn ctx6<'a>(map: &'a CommodityMap, prices: &'a PriceMap) -> SuggestCtx<'a> {
+    SuggestCtx {
+        decimals: 6,
+        ..ctx(map, prices, None)
+    }
+}
+
+#[test]
+fn the_standard_mark_floors_at_six_decimals() {
+    let want = 4_000i128 * 10i128.pow(16) / 311_035;
+    assert_eq!(
+        standard_vpu_raw(
+            &bd("4000"),
+            quote_factor("Mt", QuoteUnit::TroyOz).unwrap(),
+            6
+        ),
+        Some(want)
+    );
+    assert_eq!(standard_vpu_raw(&bd("0.6666666"), (1, 1), 6), Some(666_666));
+    assert_eq!(standard_vpu_raw(&bd("-1"), (1, 1), 6), Some(0));
+}
+
+#[test]
+fn the_concentrate_mark_floors_at_six_decimals() {
+    let (a, o) = (assay(), offtake());
+    let prices = asset_prices(&[("XAU", "4000")]);
+    let nsr = nsr_per_dmt(&a, &o, &prices).unwrap().unwrap();
+    let at6 = (nsr * BigDecimal::from(1_000_000))
+        .with_scale_round(0, RoundingMode::Down)
+        .as_bigint_and_exponent()
+        .0;
+    assert_eq!(
+        concentrate_vpu_raw(&a, &o, &prices, 6).unwrap(),
+        i128::try_from(at6).unwrap()
+    );
+}
+
+#[test]
+fn the_report_value_line_and_hash_follow_the_decimals() {
+    let m = map();
+    let p = prices(&[("XAU", "4000")]);
+    let s6 = suggest(&ctx6(&m, &p), "Gold", "Mt").unwrap();
+    let s7 = suggest(&ctx(&m, &p, None), "Gold", "Mt").unwrap();
+    assert_eq!(s6.value_per_unit, 4_000i128 * 10i128.pow(16) / 311_035);
+    let line6 = format!("value_per_unit={}", format_dp_i128(s6.value_per_unit, 6));
+    assert!(s6.report.lines().any(|l| l == line6), "{}", s6.report);
+    let line7 = format!("value_per_unit={}", format_7dp_i128(s7.value_per_unit));
+    assert!(s7.report.lines().any(|l| l == line7));
+    assert_ne!(s6.report_hash, s7.report_hash);
+    assert_eq!(s6.report_hash, report_hash(&s6.report));
 }

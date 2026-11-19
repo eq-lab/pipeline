@@ -7,15 +7,24 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  evmRepaySelector,
+  evmReverseRepayRefHash,
+  evmReverseRepaySelector,
+  executeEvmReverseRepay,
   executeReverseRepay,
   readCanCall,
+  readEvmCanCall,
+  readEvmRecoveryRepayments,
+  readEvmReverseRepaySchedule,
   readIsRepaymentReversed,
   readMinterRepayment,
   readNextRepaymentId,
   readRepaymentData,
   readReverseRepaySchedule,
   reverseRepayRefHash,
+  scheduleEvmReverseRepay,
   scheduleReverseRepay,
+  useEvmWallet,
   useStellarWallet,
   type CanCall,
   type MinterRepayment,
@@ -23,9 +32,10 @@ import {
   type OperationSchedule,
   type RelayStage,
 } from "@pipeline/wallet-connect";
+import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
 import { markOperationExecuted } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { isStellarTarget, riskCouncilChainReason } from "@/lib/targetChains";
 
 export type { RelayStage };
 
@@ -56,7 +66,7 @@ export interface ReverseRepayAccess {
 export interface ReverseRepayInput {
   loanId: number;
   repaymentId: number;
-  chainId?: number;
+  chainId: number;
 }
 
 export interface UseReverseRepayMutationResult {
@@ -71,12 +81,27 @@ export interface UseReverseRepayMutationResult {
 const NOT_CONFIGURED =
   "On-chain repayment recovery is not configured for this environment.";
 
-function recoveryConfig() {
+function recoveryConfig(chainId: number) {
+  if (!isStellarTarget(chainId)) {
+    const accessManager = ENV.EVM_ACCESS_MANAGER_ADDRESS;
+    const minter = ENV.EVM_MINTER_ADDRESS;
+    const registry = ENV.EVM_LOAN_REGISTRY_ADDRESS;
+    if (!accessManager || !minter || !registry) return null;
+    return {
+      kind: "evm" as const,
+      accessManager,
+      minter,
+      registry,
+      fromBlock: BigInt(ENV.EVM_START_BLOCK),
+      chainId: ENV.EVM_CHAIN_ID,
+    };
+  }
   const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
   const minterId = ENV.STELLAR_YIELD_MINTER_ID;
   const registryId = ENV.STELLAR_LOAN_REGISTRY_ID;
   if (!accessManagerId || !minterId || !registryId) return null;
   return {
+    kind: "stellar" as const,
     accessManagerId,
     minterId,
     registryId,
@@ -91,7 +116,7 @@ export function useRecoveryCandidates(
   onchainStatus: string | null | undefined,
 ) {
   const enabled =
-    stellarOnlyActionReason(chainId) === null &&
+    riskCouncilChainReason(chainId) === null &&
     onchainStatus != null &&
     RECOVERY_STATUSES.has(onchainStatus) &&
     loanId.length > 0;
@@ -99,12 +124,23 @@ export function useRecoveryCandidates(
   return useQuery<RecoveryCandidates, Error>({
     queryKey: ["repayment-recovery", chainId, loanId],
     enabled,
-    staleTime: 15_000,
+    staleTime: isStellarTarget(chainId) ? 15_000 : 60_000,
+    refetchOnWindowFocus: isStellarTarget(chainId),
     retry: false,
     queryFn: async () => {
-      const cfg = recoveryConfig();
+      const cfg = recoveryConfig(chainId);
       if (!cfg) throw new Error(NOT_CONFIGURED);
       const id = Number(loanId);
+      if (cfg.kind === "evm") {
+        const rows = await readEvmRecoveryRepayments({
+          registry: cfg.registry,
+          minter: cfg.minter,
+          loanId: id,
+          fromBlock: cfg.fromBlock,
+          chainId: cfg.chainId,
+        });
+        return { rows, latestReversed: rows.at(-1)?.reversed === true };
+      }
       const base = {
         rpcUrl: cfg.rpcUrl,
         networkPassphrase: cfg.networkPassphrase,
@@ -145,22 +181,68 @@ export function useRecoveryCandidates(
 }
 
 export function useReverseRepayAccess(
+  chainId: number,
   loanId: number,
   repaymentId: number | null,
   enabled: boolean,
 ) {
-  const { address } = useStellarWallet();
+  const { address } = useChainWallet(chainId);
 
   return useQuery<ReverseRepayAccess, Error>({
-    queryKey: ["repayment-recovery-access", address, loanId, repaymentId],
-    enabled: enabled && !!address && repaymentId !== null,
+    queryKey: [
+      "repayment-recovery-access",
+      chainId,
+      address,
+      loanId,
+      repaymentId,
+    ],
+    enabled:
+      enabled &&
+      riskCouncilChainReason(chainId) === null &&
+      !!address &&
+      repaymentId !== null,
     staleTime: 5_000,
     retry: false,
     queryFn: async () => {
-      const cfg = recoveryConfig();
+      const cfg = recoveryConfig(chainId);
       if (!cfg) throw new Error(NOT_CONFIGURED);
       if (!address || repaymentId === null) {
-        throw new Error("Stellar wallet not connected.");
+        throw new Error(
+          cfg.kind === "evm"
+            ? "EVM wallet not connected."
+            : "Stellar wallet not connected.",
+        );
+      }
+      if (cfg.kind === "evm") {
+        const callParams = {
+          accessManager: cfg.accessManager,
+          caller: address,
+          target: cfg.minter,
+        };
+        const [canReverse, canRepay] = await Promise.all([
+          readEvmCanCall({
+            ...callParams,
+            selector: evmReverseRepaySelector(),
+          }),
+          readEvmCanCall({ ...callParams, selector: evmRepaySelector() }),
+        ]);
+        let schedule: OperationSchedule | null = null;
+        if (!canReverse.immediate && canReverse.delay > 0) {
+          const refHash = await evmReverseRepayRefHash({
+            minter: cfg.minter,
+            loanId,
+            repaymentId,
+          });
+          schedule = await readEvmReverseRepaySchedule({
+            accessManager: cfg.accessManager,
+            minter: cfg.minter,
+            caller: address,
+            loanId,
+            repaymentId,
+            refHash,
+          });
+        }
+        return { canReverse, canRepay, schedule };
       }
       const base = {
         rpcUrl: cfg.rpcUrl,
@@ -214,7 +296,9 @@ function invalidateRecovery(queryClient: QueryClient) {
 function useReverseRepayMutation(
   mode: "schedule" | "execute",
 ): UseReverseRepayMutationResult {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellarWallet = useStellarWallet();
+  const evmWallet = useEvmWallet();
+  const { signTransaction } = stellarWallet;
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
@@ -223,10 +307,52 @@ function useReverseRepayMutation(
     Error,
     ReverseRepayInput
   >({
-    mutationFn: async ({ loanId, repaymentId }) => {
+    mutationFn: async ({ loanId, repaymentId, chainId }) => {
       setStage(null);
-      const cfg = recoveryConfig();
+      const cfg = recoveryConfig(chainId);
       if (!cfg) throw new Error(NOT_CONFIGURED);
+      const { address, isConnected } = pickChainWallet(
+        chainId,
+        stellarWallet,
+        evmWallet,
+      );
+      if (cfg.kind === "evm") {
+        if (!isConnected || !address) {
+          throw new Error("EVM wallet not connected.");
+        }
+        const refHash = await evmReverseRepayRefHash({
+          minter: cfg.minter,
+          loanId,
+          repaymentId,
+        });
+        const params = {
+          accessManager: cfg.accessManager,
+          minter: cfg.minter,
+          caller: address,
+          loanId,
+          repaymentId,
+          refHash,
+        };
+        if (mode === "schedule") {
+          return scheduleEvmReverseRepay({
+            ...params,
+            chainId: cfg.chainId,
+            onStageChange: setStage,
+          });
+        }
+        let schedule: OperationSchedule | undefined;
+        try {
+          schedule = await readEvmReverseRepaySchedule(params);
+        } catch {
+          schedule = undefined;
+        }
+        const { hash } = await executeEvmReverseRepay({
+          ...params,
+          chainId: cfg.chainId,
+          onStageChange: setStage,
+        });
+        return { hash, schedule };
+      }
       if (!isConnected || !address) {
         throw new Error("Stellar wallet not connected.");
       }
@@ -258,11 +384,7 @@ function useReverseRepayMutation(
       return { hash, schedule };
     },
     onSuccess: ({ hash, schedule }, { chainId }) => {
-      if (
-        chainId !== undefined &&
-        schedule?.operationId &&
-        schedule.readyAt > 0
-      ) {
+      if (schedule?.operationId && schedule.readyAt > 0) {
         markOperationExecuted(
           chainId,
           schedule.operationId,

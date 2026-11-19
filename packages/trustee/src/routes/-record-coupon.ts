@@ -16,10 +16,7 @@ import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
 import { findLoanEntry } from "@/lib/loanRoute";
 import { useCashReporterAccess } from "@/api/useCashReporterAccess";
-import {
-  chainAmountDecimals,
-  stellarOnlyActionReason,
-} from "@/lib/targetChains";
+import { chainAmountDecimals, loanActionChainReason } from "@/lib/targetChains";
 import {
   formatBpsRate,
   formatFullUsd,
@@ -279,12 +276,13 @@ export function useRecordCoupon(
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onChainBlockedReason = entry
-    ? stellarOnlyActionReason(entry.chain_id)
+    ? loanActionChainReason(entry.chain_id)
     : null;
 
   const roleAccess = useCashReporterAccess(
     "repay",
     entry != null && onChainBlockedReason === null,
+    chainId,
   );
   const roleBlockedReason =
     entry != null && onChainBlockedReason === null ? roleAccess.reason : null;

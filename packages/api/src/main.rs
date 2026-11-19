@@ -136,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
     let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
     let pocket_addresses = chains_config.pocket_addresses;
     let security_registry_addresses = chains_config.security_registry_addresses;
+    let security_record_nft_addresses = chains_config.security_record_nft_addresses;
     let plusd_addresses = chains_config.plusd_addresses;
     let security_marks = shared::security_marks::MarkSettings::from_env()?;
     tracing::info!(
@@ -175,6 +176,7 @@ async fn main() -> anyhow::Result<()> {
         withdrawal_queue_addresses,
         pocket_addresses,
         security_registry_addresses,
+        security_record_nft_addresses,
         plusd_addresses,
         security_marks,
         crystal_enabled,

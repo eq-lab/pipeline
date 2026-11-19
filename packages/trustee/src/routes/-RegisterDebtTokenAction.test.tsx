@@ -30,12 +30,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/env", () => ({
   ENV: { STELLAR_CHAIN_ID: 99_000_001, EVM_CHAIN_ID: 560_048 },
 }));
-vi.mock("@pipeline/wallet-connect", () => ({
-  useStellarWallet: () => mocks.wallet,
+vi.mock("@/lib/chainWallet", () => ({
+  useChainWallet: () => mocks.wallet,
 }));
 vi.mock("@/api/useDealToken", () => ({
   dealTokenConfigured: () => mocks.configured,
-  useDeal: () => mocks.deal,
+  useLoanDeal: () => mocks.deal,
   useRegisterDealAccess: () => mocks.access,
   useRegisterDeal: () => mocks.register,
 }));
@@ -168,8 +168,54 @@ describe("RegisterDebtTokenAction", () => {
     );
   });
 
-  it("blocks EVM loans with the Stellar-only reason and no button", () => {
+  it("registers an EVM loan through execute for an immediate role", async () => {
+    setAccess({ immediate: true, delay: 0 });
     renderAction({ chainId: EVM });
+    const button = screen.getByTestId("register-debt-token-button");
+    expect(button).toHaveTextContent("Register debt token");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(mocks.register.mutateAsync).toHaveBeenCalledWith({
+        mode: "execute",
+        loanId: 7,
+        chainId: 560_048,
+      }),
+    );
+  });
+
+  it("schedules, then executes, an EVM loan for a delayed role", () => {
+    setAccess(
+      { immediate: false, delay: 3600 },
+      { operationId: "a", readyAt: 0 },
+    );
+    const { unmount } = renderAction({ chainId: EVM });
+    expect(screen.getByTestId("register-debt-token-button")).toHaveTextContent(
+      "Schedule registration",
+    );
+    unmount();
+    setAccess(
+      { immediate: false, delay: 3600 },
+      { operationId: "a", readyAt: 1_800_000_000 },
+    );
+    renderAction({ chainId: EVM });
+    expect(screen.getByTestId("register-debt-token-button")).toHaveTextContent(
+      "Execute registration",
+    );
+  });
+
+  it("asks for the wallet on an EVM loan when disconnected", () => {
+    mocks.wallet.address = null;
+    mocks.wallet.isConnected = false;
+    renderAction({ chainId: EVM });
+    expect(screen.getByTestId("register-debt-token-button")).toBeDisabled();
+    expect(screen.getByTestId("register-debt-token-note")).toHaveTextContent(
+      "Connect your trustee wallet",
+    );
+  });
+
+  it("blocks a non-configured chain with the Stellar-only reason and no button", () => {
+    renderAction({ chainId: 1 });
     expect(screen.queryByTestId("register-debt-token-button")).toBeNull();
     expect(screen.getByTestId("register-debt-token-note")).toHaveTextContent(
       /Stellar only/,
@@ -211,5 +257,15 @@ describe("RegisterDebtTokenAction", () => {
       screen.getByTestId("register-debt-token-registered"),
     ).toHaveTextContent("Debt token registered · CDEBTADDRESS");
     expect(screen.queryByTestId("register-debt-token-button")).toBeNull();
+  });
+
+  it("inline variant shows the EVM debt address verbatim", () => {
+    mocks.deal.data = { debt: "0x00000000000000000000000000000000000000D1" };
+    renderAction({ chainId: EVM, variant: "inline" });
+    expect(
+      screen.getByTestId("register-debt-token-registered"),
+    ).toHaveTextContent(
+      "Debt token registered · 0x00000000000000000000000000000000000000D1",
+    );
   });
 });

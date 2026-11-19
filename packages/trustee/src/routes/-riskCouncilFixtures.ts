@@ -9,6 +9,7 @@ import type {
 } from "@/api/useRiskCouncil";
 
 export const STELLAR = 99_000_001;
+export const EVM = 560048;
 export const OTHER_CHAIN = 1;
 export const READY_AT = 1_800_000_000;
 
@@ -280,4 +281,93 @@ const OPERATION_FNS = [
 function fnOperationId(fn: string): string {
   const index = OPERATION_FNS.indexOf(fn as (typeof OPERATION_FNS)[number]);
   return (0x50 + index).toString(16).repeat(32);
+}
+
+export const EVM_SECURITY_REGISTRY =
+  "0xB51E7f13420D106946376A67Fe5921C63B09BE15";
+export const EVM_SCHEDULER = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
+export const EVM_ACCESS_MANAGER = "0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992";
+export const EVM_RECORD_NFT = "0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09";
+export const EVM_OPERATION_ID = "cd".repeat(32);
+export const EVM_CALLDATA = `0x45f225f5${"00".repeat(60)}`;
+
+export const EVM_SET_TERMS_ARGS = [
+  "7",
+  {
+    advanceRatioBps: 7000,
+    marginCallRatioBps: 8250,
+    defaultRatioBps: 9000,
+    curePeriod: "604800",
+    priceStaleAfter: "86400",
+    paymentTerm: 0,
+    gracePeriod: "259200",
+    defaultRate: 20000,
+    originatorFeeRate: 10000,
+    attestationInterval: "2592000",
+    inspectionInterval: "0",
+    toleranceBps: 50,
+    gradeToleranceBps: 25,
+    marginCallAt: "0",
+    defaultBreachAt: "0",
+  },
+];
+
+export function evmPendingOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: EVM_OPERATION_ID,
+    caller: EVM_SCHEDULER,
+    target: EVM_SECURITY_REGISTRY,
+    function: "setTerms",
+    args_xdr: null,
+    calldata: EVM_CALLDATA,
+    args: EVM_SET_TERMS_ARGS,
+    ...overrides,
+  });
+}
+
+export const EVM_LOAN_REGISTRY = "0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231";
+export const EVM_MINTER = "0x621BaAb0ced6b11f88019582183b081A118755f4";
+export const EVM_LOAN_CALLDATA = `0xe0da6b66${"00".repeat(32)}`;
+
+export const EVM_LOAN_REGISTRY_ARGS = {
+  setDefault: ["7"],
+  cure: ["7"],
+  amendEconomics: ["7", 145_000, "1767225600"],
+  adjustInterest: ["7", "-5000000", "ab".repeat(32)],
+  writeDown: ["7", "1000000"],
+  closeDefaulted: ["7", 4],
+} as const;
+
+export function evmLoanRegistryOp(
+  fn: keyof typeof EVM_LOAN_REGISTRY_ARGS,
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id:
+      `${(0x60 + Object.keys(EVM_LOAN_REGISTRY_ARGS).indexOf(fn)).toString(16)}`.repeat(
+        32,
+      ),
+    target: EVM_LOAN_REGISTRY,
+    target_kind: "loan_registry",
+    function: fn,
+    calldata: EVM_LOAN_CALLDATA,
+    args: EVM_LOAN_REGISTRY_ARGS[fn],
+    ...overrides,
+  });
+}
+
+export function evmMinterOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id: "7f".repeat(32),
+    target: EVM_MINTER,
+    target_kind: "minter",
+    function: "reverseRepay",
+    calldata: `0x0cff7536${"00".repeat(96)}`,
+    args: ["7", "2", "cd".repeat(32)],
+    ...overrides,
+  });
 }

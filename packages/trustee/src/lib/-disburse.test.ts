@@ -52,10 +52,44 @@ describe("disburseView", () => {
     expect(disburseView(input())).toEqual({ kind: "ready" });
   });
 
-  it("blocks an EVM loan with the Stellar-only line", () => {
-    expect(reason(disburseView(input({ chainId: EVM })))).toMatch(
+  it("blocks an unknown chain with the Stellar-only line", () => {
+    expect(reason(disburseView(input({ chainId: 1234 })))).toMatch(
       /Stellar only/,
     );
+  });
+
+  it("is ready on the EVM chain without a trustline step", () => {
+    expect(disburseView(input({ chainId: EVM, trustline: null }))).toEqual({
+      kind: "ready",
+    });
+  });
+
+  it("goes from the deal check straight to paused on EVM", () => {
+    expect(
+      reason(
+        disburseView(
+          input({
+            chainId: EVM,
+            trustline: null,
+            paused: { data: true, ...OK },
+          }),
+        ),
+      ),
+    ).toBe(MINTER_PAUSED);
+  });
+
+  it("blocks a null EVM deal with the register-first copy", () => {
+    expect(
+      reason(
+        disburseView(
+          input({
+            chainId: EVM,
+            trustline: null,
+            deal: { data: null, ...OK },
+          }),
+        ),
+      ),
+    ).toBe(DEBT_NOT_REGISTERED);
   });
 
   it("blocks when unconfigured", () => {
@@ -235,6 +269,29 @@ describe("disburseFormError", () => {
     }
   });
 
+  it("applies the chain's decimals to the amount and the bank cash copy", () => {
+    expect(disburseFormError({ ...ok, amountInput: "1.1234567" })).toBeNull();
+    expect(
+      disburseFormError({ ...ok, amountInput: "1.1234567", decimals: 6 }),
+    ).toBe("Enter the amount disbursed (up to 6 decimals).");
+    expect(
+      disburseFormError({
+        ...ok,
+        amountInput: "100.000001",
+        bankCashRaw: "100000000",
+        decimals: 6,
+      }),
+    ).toMatch(/booked bank cash \(\$100\) is below this amount/);
+    expect(
+      disburseFormError({
+        ...ok,
+        amountInput: "100",
+        bankCashRaw: "100000000",
+        decimals: 6,
+      }),
+    ).toBeNull();
+  });
+
   it("rejects an amount above the booked bank cash", () => {
     expect(disburseFormError({ ...ok, amountInput: "100.0000001" })).toMatch(
       /booked bank cash \(\$100\) is below this amount/,
@@ -295,6 +352,55 @@ describe("disburseErrorCopy", () => {
   it("maps status and carve-out codes", () => {
     expect(disburseErrorCopy(sim("3")).message).toMatch(/does not allow/);
     expect(disburseErrorCopy(sim("21")).message).toMatch(/carved out/);
+  });
+
+  describe("EVM revert names", () => {
+    const evm = (name: string) =>
+      new Error(
+        `disburseEvmLoan: simulation error: The contract function "execute" reverted. Error: ${name}()`,
+      );
+
+    it("maps each name to the Stellar copy", () => {
+      expect(disburseErrorCopy(evm("EnforcedPause")).message).toBe(
+        MINTER_PAUSED,
+      );
+      expect(disburseErrorCopy(evm("MinterRefHashSeen")).message).toBe(
+        REUSED_DISBURSE_REFERENCE,
+      );
+      expect(
+        disburseErrorCopy(evm("MinterInsufficientBankCash")).message,
+      ).toMatch(/bank cash/);
+      expect(disburseErrorCopy(evm("MinterInvalidAmount")).message).toMatch(
+        /greater than zero/,
+      );
+      expect(
+        disburseErrorCopy(evm("LoanRegistryInvalidAmount")).message,
+      ).toMatch(/greater than zero/);
+      expect(
+        disburseErrorCopy(evm("LoanRegistryWrongCurrentStatus")).message,
+      ).toMatch(/does not allow/);
+      expect(
+        disburseErrorCopy(evm("LoanRegistryNonExistentLoanId")).message,
+      ).toMatch(/does not allow/);
+      expect(disburseErrorCopy(evm("LoanRegistryCarvedOut")).message).toMatch(
+        /carved out/,
+      );
+      expect(
+        disburseErrorCopy(evm("DealTokenFactoryNotRegistered")).message,
+      ).toBe(DEBT_NOT_REGISTERED);
+    });
+
+    it("formats the tranche values at the chain's decimals", () => {
+      expect(
+        disburseErrorCopy(evm("LoanRegistryDisbursementExceedsTranche"), {
+          disbursed: "10000000000",
+          originalSeniorTranche: "50000000000",
+          decimals: 6,
+        }).message,
+      ).toBe(
+        "This exceeds the loan's senior tranche ($10,000 of $50,000 already disbursed).",
+      );
+    });
   });
 
   it("passes a wallet rejection through", () => {

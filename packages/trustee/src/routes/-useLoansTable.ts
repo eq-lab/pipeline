@@ -5,7 +5,7 @@ import type {
   LoanBookResponse,
   LoanBookSummary,
 } from "@/api/useLoanBook";
-import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
+import { targetChainLabel } from "@/lib/targetChains";
 import { loanRowKey } from "@/lib/loanRoute";
 import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
 import { formatFractionPct } from "@/utils/formatFractionPct";
@@ -129,7 +129,6 @@ export function formatNearestPayment(
 }
 
 export function mapLtvCell(entry: LoanBookEntry): LtvCell | null {
-  if (!isStellarTarget(entry.chain_id)) return null;
   return {
     text: formatLtvBps(entry.ltv_bps ?? null),
     marginCallOpen: entry.margin_call_open === true,
@@ -213,9 +212,7 @@ export function buildLoansView(
   const counts = countByStatus(allRows);
   const rows = allRows.filter((r) => tabMatches(activeTab, r.status));
   const showLtvColumn = data.loans.some(
-    (e) =>
-      isStellarTarget(e.chain_id) &&
-      ((e.ltv_bps ?? null) !== null || e.margin_call_open === true),
+    (e) => (e.ltv_bps ?? null) !== null || e.margin_call_open === true,
   );
   return { summary: mapSummary(data.summary), counts, rows, showLtvColumn };
 }

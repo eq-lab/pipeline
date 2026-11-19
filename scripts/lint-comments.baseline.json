@@ -575,10 +575,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/api/-useDrawLoan.test.tsx": {
-    "header": 15,
-    "nodeIds": 0
-  },
   "packages/trustee/src/api/-useLoanBook.test.tsx": {
     "header": 9,
     "nodeIds": 0
@@ -593,14 +589,6 @@
   },
   "packages/trustee/src/api/-useReviewSubmission.test.tsx": {
     "header": 13,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/api/-useRollover.test.tsx": {
-    "header": 12,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/api/-useUpdateLifecycle.test.tsx": {
-    "header": 5,
     "nodeIds": 0
   },
   "packages/trustee/src/api/client.ts": {
@@ -703,32 +691,16 @@
     "header": 35,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-origination-detail.ts": {
-    "header": 0,
-    "nodeIds": 1
-  },
   "packages/trustee/src/routes/-origination.index.test.tsx": {
     "header": 19,
     "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-record-coupon-page.test.tsx": {
-    "header": 17,
-    "nodeIds": 1
   },
   "packages/trustee/src/routes/-record-coupon.test.ts": {
     "header": 6,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-record-repayment-page.test.tsx": {
-    "header": 15,
-    "nodeIds": 1
-  },
   "packages/trustee/src/routes/-record-repayment.test.ts": {
     "header": 8,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-useOriginationReview.test.ts": {
-    "header": 36,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-useOriginationTable.test.ts": {
@@ -742,14 +714,6 @@
   "packages/trustee/src/routes/cash-management.tsx": {
     "header": 0,
     "nodeIds": 1
-  },
-  "packages/trustee/src/routes/loans.$id_.record-coupon.tsx": {
-    "header": 0,
-    "nodeIds": 2
-  },
-  "packages/trustee/src/routes/loans.$id_.record-repayment.tsx": {
-    "header": 0,
-    "nodeIds": 2
   },
   "packages/trustee/src/routes/origination.index.tsx": {
     "header": 0,

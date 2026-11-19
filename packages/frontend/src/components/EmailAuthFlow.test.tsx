@@ -502,6 +502,45 @@ describe("EmailAuthFlow — Add email (#1459)", () => {
     expect(readSession()?.token).toBe("jwt");
   });
 
+  it("add-email 'Sign in' link opens the sign-in screen with Forgot password reachable", async () => {
+    const user = userEvent.setup();
+    render(<EmailAuthFlow open initialScreen="add-email" onClose={vi.fn()} />);
+    expect(
+      screen.getByText(/Already have an account\?/).closest("p")?.textContent,
+    ).toBe("Already have an account? Sign in");
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByTestId("sign-in-modal")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(screen.getByTestId("forgot-password-modal")).toBeInTheDocument();
+  });
+
+  it("add-email -> Sign in -> login saves the session and closes (return to /account)", async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ token: "jwt", expires_in: 86400 });
+    const onClose = vi.fn();
+    const onAuthenticated = vi.fn();
+    render(
+      <EmailAuthFlow
+        open
+        initialScreen="add-email"
+        onClose={onClose}
+        onAuthenticated={onAuthenticated}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onAuthenticated).toHaveBeenCalledTimes(1);
+    expect(readSession()?.token).toBe("jwt");
+    expect(mockSignup).not.toHaveBeenCalled();
+  });
+
   it("the OTP back arrow from the add-email path returns to add-email-modal, not sign-in-modal", async () => {
     const user = userEvent.setup();
     mockSignup.mockResolvedValue(undefined);
