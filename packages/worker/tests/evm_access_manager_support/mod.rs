@@ -268,6 +268,48 @@ pub fn terms() -> Terms {
     }
 }
 
+pub mod f92d719 {
+    use alloy::sol;
+    sol! {
+        struct Terms {
+            uint32 advanceRatioBps;
+            uint32 marginCallRatioBps;
+            uint64 curePeriod;
+            uint64 priceStaleAfter;
+            uint8 paymentTerm;
+            uint64 gracePeriod;
+            uint32 defaultRate;
+            uint64 attestationInterval;
+            uint64 inspectionInterval;
+            uint32 toleranceBps;
+            uint32 gradeToleranceBps;
+            uint64 marginCallAt;
+        }
+        function setTerms(uint256 loanId, Terms newTerms) external;
+    }
+}
+
+pub fn set_terms_f92d719_data(loan: u64) -> Vec<u8> {
+    f92d719::setTermsCall {
+        loanId: U256::from(loan),
+        newTerms: f92d719::Terms {
+            advanceRatioBps: 6000,
+            marginCallRatioBps: 7500,
+            curePeriod: 259_200,
+            priceStaleAfter: 86_400,
+            paymentTerm: 1,
+            gracePeriod: 432_000,
+            defaultRate: 20_000,
+            attestationInterval: 604_800,
+            inspectionInterval: 2_592_000,
+            toleranceBps: 500,
+            gradeToleranceBps: 200,
+            marginCallAt: 0,
+        },
+    }
+    .abi_encode()
+}
+
 pub fn set_terms_data(loan: u64) -> Vec<u8> {
     setTermsCall {
         loanId: U256::from(loan),

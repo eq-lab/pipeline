@@ -3,7 +3,7 @@
 use alloy::primitives::{address, Address, LogData, B256, U256};
 use alloy::rpc::types::Log;
 use alloy::sol_types::SolEvent;
-use pipeline_worker::indexer::security_registry_parsers::sr;
+use pipeline_worker::indexer::security_registry_parsers::{sr, sr_f92d719};
 use shared::events::ContractLog;
 use shared::security_registry::SecurityEventRow;
 
@@ -104,6 +104,36 @@ pub fn terms_set(loan: u64, margin_call_at: u64, block: u64, ts: i64, seq: u64) 
         &sr::TermsSet {
             loanId: u(loan),
             terms: terms(margin_call_at, 0, 0),
+        },
+        block,
+        ts,
+        seq,
+    )
+}
+
+pub fn terms_f92d719(margin_call_at: u64, payment_term: u8) -> sr_f92d719::Terms {
+    sr_f92d719::Terms {
+        advanceRatioBps: 6000,
+        marginCallRatioBps: 7500,
+        curePeriod: 259_200,
+        priceStaleAfter: 86_400,
+        paymentTerm: payment_term,
+        gracePeriod: 432_000,
+        defaultRate: 20_000,
+        attestationInterval: 604_800,
+        inspectionInterval: 2_592_000,
+        toleranceBps: 500,
+        gradeToleranceBps: 200,
+        marginCallAt: margin_call_at,
+    }
+}
+
+pub fn terms_set_f92d719(loan: u64, margin_call_at: u64, block: u64, ts: i64, seq: u64) -> Ev {
+    ev(
+        REGISTRY,
+        &sr_f92d719::TermsSet {
+            loanId: u(loan),
+            terms: terms_f92d719(margin_call_at, 1),
         },
         block,
         ts,

@@ -4,7 +4,7 @@ How the worker indexes the SecurityRegistry on Stellar (issue #1779, epic #1775)
 
 Source of truth: `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry` (`event.rs`, `types.rs`, `lib.rs`, `storage.rs`, `error.rs`). Testnet deployment #42: `CDTUMAT6XMYRX6XWHXZF3RDSQIVMRUPFXXXO57NT4VTMUU2R77SWZLUX` (stored under the `collateral_registry` key of `addresses.json`; see the trap in [backend.md](./backend.md#stellar-contract-ids-and-signer-roles)), deployed around ledger 5 569 998. Contracts are frozen; the legacy CollateralRegistry parser stays as history ([collateral-registry-events.md](./collateral-registry-events.md)).
 
-EVM source of truth: `pipeline-contracts@150631a` (`src/securityRegistry/SecurityRegistryUpgradeable.sol`, `src/PipelineSecurityRecordNft.sol`, `src/PipelineSecurityRegistryReader.sol`, `src/interfaces/ISecurityRegistry.sol`, `src/interfaces/ISecurityRecordNft.sol`). Hoodi `deployments/hoodi-v5.json`: `PipelineSecurityRegistry` proxy `0xB51E7f13420D106946376A67Fe5921C63B09BE15`, `PipelineSecurityRecordNft` proxy `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`, `PipelineSecurityRegistryReader` `0x8e7078c73068F9F3d4e2210cfe5B4981eB7f1b6B`.
+EVM source of truth: `pipeline-contracts@150631a`; the deployed Hoodi SecurityRegistry and Reader are `pipeline-contracts@f92d719`, and both shapes are decoded (see [Deployed versions](#deployed-versions)) (`src/securityRegistry/SecurityRegistryUpgradeable.sol`, `src/PipelineSecurityRecordNft.sol`, `src/PipelineSecurityRegistryReader.sol`, `src/interfaces/ISecurityRegistry.sol`, `src/interfaces/ISecurityRecordNft.sol`). Hoodi `deployments/hoodi-v5.json`: `PipelineSecurityRegistry` proxy `0xB51E7f13420D106946376A67Fe5921C63B09BE15`, `PipelineSecurityRecordNft` proxy `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`, `PipelineSecurityRegistryReader` `0x8e7078c73068F9F3d4e2210cfe5B4981eB7f1b6B`.
 
 **Differences from Stellar** (everything not listed is identical):
 
@@ -100,7 +100,8 @@ The parser is table-driven (`security_registry_parsers.rs`): one spec per topic 
 | `MandateBreach(loanId, evidenceHash)` | registry | `SecurityMandateBreach` | |
 | `EnforcementStarted(loanId, recordId)` | registry | `SecurityEnforcementStarted` | |
 | `RecordEnforced(loanId, recordId, proceedsHash)` | registry | `SecurityRecordEnforced` | |
-| `TermsSet(loanId, Terms)` | registry | `SecurityTermsSet` | the 12 Stellar keys plus `default_ratio_bps` and `originator_fee_rate` (numbers) and `default_breach_at` (string) |
+| `TermsSet(loanId, Terms)` `150631a` shape, topic0 `0x35ef31a2…` | registry | `SecurityTermsSet` | the 12 Stellar keys plus `default_ratio_bps` and `originator_fee_rate` (numbers) and `default_breach_at` (string) |
+| `TermsSet(loanId, Terms)` `f92d719` shape, topic0 `0xafe2a37a…` | registry | `SecurityTermsSet` | the 12 Stellar keys only (no EVM extras; the three keys are absent, not `null`) |
 | `Revalued(loanId, recordId, valuePerUnit, benchmark, reportHash)` | registry | `SecurityRevalued` | |
 | `MarginCall(loanId, ltvBps, marginCallRatioBps, cureBy)` | registry | `SecurityMarginCall` | `cure_by` is a string |
 | `PriceStale(loanId, ltvBps, marginCallRatioBps)` | registry | `SecurityPriceStale` | |
@@ -116,7 +117,16 @@ The parser is table-driven (`security_registry_parsers.rs`): one spec per topic 
 | `LoanRegistrySet(address)` | registry | `SecurityLoanRegistrySet` | |
 | `Paused(address)` / `Unpaused(address)` | registry | `SecurityRegistryPaused` / `SecurityRegistryUnpaused` | `{}` (the account is not stored) |
 
-That is 25 stored events: 21 from the registry and 4 from the RecordNft. `DefaultBreachPriceStale` carries `defaultRatioBps` on chain, so it is stored with it (the history row keeps `default_ratio_bps`). Two topic0s are shared with the legacy EVM CollateralRegistry (`Revalued`, `DocAdded`), so the handler checks `log.address()` and is registered first.
+That is 26 decoders and 25 stored names (`SecurityTermsSet` has two decoders, one per `Terms` shape): 21 names from the registry and 4 from the RecordNft. `DefaultBreachPriceStale` carries `defaultRatioBps` on chain, so it is stored with it (the history row keeps `default_ratio_bps`). Two topic0s are shared with the legacy EVM CollateralRegistry (`Revalued`, `DocAdded`), so the handler checks `log.address()` and is registered first.
+
+### Deployed versions
+
+Hoodi runs the SecurityRegistry and Reader from `pipeline-contracts@f92d719`; `150631a` adds `defaultRatioBps`, `originatorFeeRate` and `defaultBreachAt` to `Terms`, `defaultBreachAt` to the Reader's `CoverageDetail`, and the three `DefaultBreach*` events. Contracts are never changed, so the worker accepts both:
+
+- **Events** pick the decoder by topic0 (the `Spec` table is keyed by `(emitter, topic0)`). The `f92d719` `TermsSet` stores only the 12 shared keys.
+- **Views** use one `eth_call` and a strict decode (`validate = true`): `150631a` first, then `f92d719`. `terms` is 480 bytes in the new shape and 384 in the old; `coverageDetail` has an 11-word head with records offset `0x160` in the new shape and a 10-word head with `0x140` in the old, so at most one shape accepts a payload. The `f92d719` shape stores `default_ratio_bps`, `originator_fee_rate` and `default_breach_at` as `NULL`, never a default. A payload that fits neither fails with an error naming both shapes.
+- `DefaultBreach*` events are never emitted on `f92d719`; the decoders stay for `150631a` deployments.
+- On `f92d719` the Reader's `debt` is the pool debt `outstanding + accrued_interest`, the debt that deployment's release check uses.
 
 ## Allow-listed topics
 

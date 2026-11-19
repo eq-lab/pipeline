@@ -8,9 +8,10 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use evm_security_support::*;
 use pipeline_worker::indexer::security_registry_parsers::dispatch_security_registry;
+use pipeline_worker::indexer::security_registry_views::{decode_coverage_detail, decode_terms};
 use shared::security_registry::{
-    fold_loan_report, DocView, InspectionView, LoanProjection, LoanView, MarkView, RecordRow,
-    RecordView, Snapshot, TermsView, EVM_SECURITY_PARAMS, ZERO_HASH,
+    fold_loan_report, valuation_row, DocView, InspectionView, LoanMoneyView, LoanProjection,
+    LoanView, MarkView, RecordRow, RecordView, Snapshot, TermsView, EVM_SECURITY_PARAMS, ZERO_HASH,
 };
 
 const WAREHOUSE: u8 = 1;
@@ -310,6 +311,84 @@ fn default_breach_sets_the_event_timestamp_until_it_is_cleared() {
     let terms = p.terms.unwrap();
     assert_eq!(terms.margin_call_at, BigDecimal::from(t(1)));
     assert_eq!(terms.default_breach_at, Some(BigDecimal::from(t(2))));
+}
+
+const HOODI_TERMS: &str = "00000000000000000000000000000000000000000000000000000000000017700000000000000000000000000000000000000000000000000000000000001d4c000000000000000000000000000000000000000000000000000000000003f4800000000000000000000000000000000000000000000000000000000000015180000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000697800000000000000000000000000000000000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000000093a800000000000000000000000000000000000000000000000000000000000278d0000000000000000000000000000000000000000000000000000000000000001f400000000000000000000000000000000000000000000000000000000000000c80000000000000000000000000000000000000000000000000000000000000000";
+const HOODI_COVERAGE: &str = "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000074a5ed5200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000000";
+
+fn assert_f92d719_terms(p: &LoanProjection) {
+    let terms = p.terms.as_ref().unwrap();
+    assert_eq!(terms.advance_ratio_bps, 6000);
+    assert_eq!(terms.margin_call_ratio_bps, 7500);
+    assert_eq!(terms.cure_period, bd("259200"));
+    assert_eq!(terms.price_stale_after, bd("86400"));
+    assert_eq!(terms.payment_term, "Dp");
+    assert_eq!(terms.grace_period, bd("432000"));
+    assert_eq!(terms.default_rate, 20_000);
+    assert_eq!(terms.attestation_interval, bd("604800"));
+    assert_eq!(terms.inspection_interval, bd("2592000"));
+    assert_eq!(terms.tolerance_bps, 500);
+    assert_eq!(terms.grade_tolerance_bps, 200);
+    assert_eq!(terms.default_ratio_bps, None);
+    assert_eq!(terms.originator_fee_rate, None);
+    assert_eq!(terms.default_breach_at, None);
+}
+
+#[test]
+fn f92d719_terms_fold_to_null_extras() {
+    let events = vec![
+        terms_set_f92d719(1, 0, 100, t(0), 1),
+        margin_call(1, 7600, 700_000, 101, t(1), 2),
+        cured(1, 7000, 102, t(2), 3),
+    ];
+    let p = replay(events, vec![], vec![], None);
+    assert_f92d719_terms(&p);
+    let kinds: Vec<&str> = p.margin_events.iter().map(|m| m.kind.as_str()).collect();
+    assert_eq!(kinds.len(), 2);
+    assert!(
+        kinds.iter().all(|k| !k.contains("default_breach")),
+        "{kinds:?}"
+    );
+
+    let view = decode_terms(&hex::decode(HOODI_TERMS).unwrap()).unwrap();
+    let loan = Snapshot {
+        as_of_ledger: 100,
+        view: LoanView {
+            terms: Some(view),
+            terms_ledger: 100,
+            consents: vec![],
+            consents_ledger: 100,
+        },
+    };
+    let p = replay(
+        vec![terms_set_f92d719(1, 0, 100, t(0), 1)],
+        vec![],
+        vec![],
+        Some(loan),
+    );
+    assert_f92d719_terms(&p);
+}
+
+#[test]
+fn f92d719_coverage_gives_a_valuation_without_default_breach() {
+    let detail = Snapshot {
+        as_of_ledger: 100,
+        view: decode_coverage_detail(&hex::decode(HOODI_COVERAGE).unwrap()).unwrap(),
+    };
+    let money = Snapshot {
+        as_of_ledger: 100,
+        view: LoanMoneyView {
+            disbursed: "0".into(),
+            repaid: "0".into(),
+            written_down: "0".into(),
+            outstanding: "0".into(),
+            accrued_interest: "0".into(),
+            carved_out: false,
+        },
+    };
+    let row = valuation_row(1, &detail, &money, "0x0", 1).unwrap();
+    assert_eq!(row.default_breach_at, None);
+    assert_eq!(row.debt, bd("501000000000"));
 }
 
 #[test]

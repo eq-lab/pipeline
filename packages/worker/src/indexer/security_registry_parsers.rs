@@ -68,6 +68,27 @@ pub mod sr {
     }
 }
 
+pub mod sr_f92d719 {
+    use alloy::sol;
+    sol! {
+        struct Terms {
+            uint32 advanceRatioBps;
+            uint32 marginCallRatioBps;
+            uint64 curePeriod;
+            uint64 priceStaleAfter;
+            uint8 paymentTerm;
+            uint64 gracePeriod;
+            uint32 defaultRate;
+            uint64 attestationInterval;
+            uint64 inspectionInterval;
+            uint32 toleranceBps;
+            uint32 gradeToleranceBps;
+            uint64 marginCallAt;
+        }
+        event TermsSet(uint256 indexed loanId, Terms terms);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecurityEmitter {
     Registry,
@@ -202,15 +223,49 @@ fn addr(v: &Address) -> Value {
     json!(v.to_checksum(None))
 }
 
+#[derive(Clone, Copy)]
+struct SharedTerms {
+    advance_ratio_bps: u32,
+    margin_call_ratio_bps: u32,
+    default_rate: u32,
+    tolerance_bps: u32,
+    grade_tolerance_bps: u32,
+    cure_period: u64,
+    price_stale_after: u64,
+    grace_period: u64,
+    attestation_interval: u64,
+    inspection_interval: u64,
+    margin_call_at: u64,
+    payment_term: u8,
+}
+
+fn shared_terms_keys(loan_id: alloy::primitives::U256, t: SharedTerms) -> Value {
+    json!({
+        "loan_id": id(loan_id),
+        "advance_ratio_bps": t.advance_ratio_bps,
+        "margin_call_ratio_bps": t.margin_call_ratio_bps,
+        "default_rate": t.default_rate,
+        "tolerance_bps": t.tolerance_bps,
+        "grade_tolerance_bps": t.grade_tolerance_bps,
+        "cure_period": t.cure_period.to_string(),
+        "price_stale_after": t.price_stale_after.to_string(),
+        "grace_period": t.grace_period.to_string(),
+        "attestation_interval": t.attestation_interval.to_string(),
+        "inspection_interval": t.inspection_interval.to_string(),
+        "margin_call_at": t.margin_call_at.to_string(),
+        "payment_term": payment_term_name(t.payment_term),
+    })
+}
+
 const REGISTRY: SecurityEmitter = SecurityEmitter::Registry;
 const NFT: SecurityEmitter = SecurityEmitter::RecordNft;
 
-pub const SECURITY_REGISTRY_EVENT_TOPICS: [(SecurityEmitter, B256, &str); 25] = derive_topics();
+pub const SECURITY_REGISTRY_EVENT_TOPICS: [(SecurityEmitter, B256, &str); 26] = derive_topics();
 
-const fn derive_topics() -> [(SecurityEmitter, B256, &'static str); 25] {
-    let mut out = [(REGISTRY, B256::ZERO, ""); 25];
+const fn derive_topics() -> [(SecurityEmitter, B256, &'static str); 26] {
+    let mut out = [(REGISTRY, B256::ZERO, ""); 26];
     let mut i = 0;
-    while i < 25 {
+    while i < 26 {
         out[i] = (SPECS[i].emitter, SPECS[i].topic, SPECS[i].name);
         i += 1;
     }
@@ -230,7 +285,7 @@ pub const SECURITY_REGISTRY_ALLOW_LISTED_TOPICS: [(SecurityEmitter, B256); 10] =
     (NFT, sr::ApprovalForAll::SIGNATURE_HASH),
 ];
 
-const SPECS: [Spec; 25] = [
+const SPECS: [Spec; 26] = [
     Spec {
         emitter: REGISTRY,
         topic: sr::RecordRegistered::SIGNATURE_HASH,
@@ -357,24 +412,57 @@ const SPECS: [Spec; 25] = [
         decode: |log| {
             let d = dec::<sr::TermsSet>(log)?;
             let t = d.terms;
-            Some(json!({
-                "loan_id": id(d.loanId),
-                "advance_ratio_bps": t.advanceRatioBps,
-                "margin_call_ratio_bps": t.marginCallRatioBps,
-                "default_rate": t.defaultRate,
-                "tolerance_bps": t.toleranceBps,
-                "grade_tolerance_bps": t.gradeToleranceBps,
-                "cure_period": t.curePeriod.to_string(),
-                "price_stale_after": t.priceStaleAfter.to_string(),
-                "grace_period": t.gracePeriod.to_string(),
-                "attestation_interval": t.attestationInterval.to_string(),
-                "inspection_interval": t.inspectionInterval.to_string(),
-                "margin_call_at": t.marginCallAt.to_string(),
-                "payment_term": payment_term_name(t.paymentTerm),
-                "default_ratio_bps": t.defaultRatioBps,
-                "originator_fee_rate": t.originatorFeeRate,
-                "default_breach_at": t.defaultBreachAt.to_string(),
-            }))
+            let mut v = shared_terms_keys(
+                d.loanId,
+                SharedTerms {
+                    advance_ratio_bps: t.advanceRatioBps,
+                    margin_call_ratio_bps: t.marginCallRatioBps,
+                    default_rate: t.defaultRate,
+                    tolerance_bps: t.toleranceBps,
+                    grade_tolerance_bps: t.gradeToleranceBps,
+                    cure_period: t.curePeriod,
+                    price_stale_after: t.priceStaleAfter,
+                    grace_period: t.gracePeriod,
+                    attestation_interval: t.attestationInterval,
+                    inspection_interval: t.inspectionInterval,
+                    margin_call_at: t.marginCallAt,
+                    payment_term: t.paymentTerm,
+                },
+            );
+            let o = v.as_object_mut()?;
+            o.insert("default_ratio_bps".into(), json!(t.defaultRatioBps));
+            o.insert("originator_fee_rate".into(), json!(t.originatorFeeRate));
+            o.insert(
+                "default_breach_at".into(),
+                json!(t.defaultBreachAt.to_string()),
+            );
+            Some(v)
+        },
+    },
+    Spec {
+        emitter: REGISTRY,
+        topic: sr_f92d719::TermsSet::SIGNATURE_HASH,
+        name: "SecurityTermsSet",
+        decode: |log| {
+            let d = dec::<sr_f92d719::TermsSet>(log)?;
+            let t = d.terms;
+            Some(shared_terms_keys(
+                d.loanId,
+                SharedTerms {
+                    advance_ratio_bps: t.advanceRatioBps,
+                    margin_call_ratio_bps: t.marginCallRatioBps,
+                    default_rate: t.defaultRate,
+                    tolerance_bps: t.toleranceBps,
+                    grade_tolerance_bps: t.gradeToleranceBps,
+                    cure_period: t.curePeriod,
+                    price_stale_after: t.priceStaleAfter,
+                    grace_period: t.gracePeriod,
+                    attestation_interval: t.attestationInterval,
+                    inspection_interval: t.inspectionInterval,
+                    margin_call_at: t.marginCallAt,
+                    payment_term: t.paymentTerm,
+                },
+            ))
         },
     },
     Spec {

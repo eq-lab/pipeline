@@ -208,6 +208,24 @@ fn the_evm_list_fields_equal_the_security_endpoint_values() {
     }
 }
 
+#[test]
+fn the_f92d719_evm_list_fields_equal_the_security_endpoint_values() {
+    for (mc, ltv, stale) in [(dec(0), 6400_i64, false), (dec(1_762_000_000), 9100, true)] {
+        let t = TermsRow {
+            default_ratio_bps: None,
+            originator_fee_rate: None,
+            default_breach_at: None,
+            ..terms(mc.clone())
+        };
+        let sec = security_json_on(EVM, &EVM_SECURITY_PARAMS, &t, &valuation(ltv, stale));
+        assert!(sec["default_breach"].is_null());
+        let f = loan_book_security_fields(&row(Some(mc), Some(ltv), Some(stale)));
+        assert_eq!(json!(f.ltv_bps), sec["valuation"]["ltv_bps"]);
+        assert_eq!(json!(f.margin_call_open), sec["margin_call"]["open"]);
+        assert_eq!(json!(f.price_stale), sec["valuation"]["price_stale"]);
+    }
+}
+
 fn make_loan(chain_id: i64, loan_id: i64) -> LoanSnapshotRow {
     let zero = || dec(0);
     LoanSnapshotRow {

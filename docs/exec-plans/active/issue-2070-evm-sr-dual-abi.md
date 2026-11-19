@@ -126,43 +126,37 @@ Events use the BUG-39 / #1892 pattern: one `sol!` module per version, with the s
 
 ## Open Questions
 
-1. **The Trustee and wallet-connect EVM `setTerms` against `f92d719`.** Affected code:
-   - `packages/wallet-connect/src/evm/contracts/securityRegistry.ts:102-160, 298-345` encodes the 15-field tuple.
-   - The Trustee form requires `defaultRatioBps` and `originatorFeeRate` on EVM (`routes/-risk-council-security.ts:293-322`).
-   - `routes/-risk-council-pending.ts:163-180, 340-395` accepts only the 15-key shape.
+All three were answered by the user on 2026-11-19 (latest comment on #2070).
 
-   On Hoodi, `setTerms` would revert, and a scheduled old-shape call would not be decoded in the Trustee. This is frontend work, outside this backend issue.
-   **Recommended default:** file a separate frontend issue under epic #1937: "Trustee/wallet-connect: EVM setTerms for the deployed f92d719 Terms (12 fields)". Keep this PR backend-only, and note in the argocd PR that terms cannot be set from the stage Trustee until that issue lands.
-2. **The rewind block.** The issue says "about 3955474", which is the AccessManager role setup. Both SR and RecordNft proxies were deployed, and emitted their first logs, at **3955455**.
-   **Recommended default:** `UPDATE log_collector_state SET last_indexed_block = 3955455 WHERE chain_id = 560048`. The cursor is the next block to poll (`index_once` polls `cursor..end` and stores `end + 1`), so 3955455 includes the deploy block.
-3. **When to set the Trustee `VITE_EVM_SECURITY_REGISTRY_ADDRESS` / `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS`.** Setting them enables the EVM Risk Council actions. `releaseWithConsent`, `resolveFlag` and `setInspectors` work, because their ABI is unchanged. `setTerms` reverts until Open Question 1 is resolved.
-   **Recommended default:** set them in the same argocd PR. The read pages work and the broken action fails visibly without harm.
+1. **The Trustee and wallet-connect EVM `setTerms` against `f92d719`.** Decision: this PR stays backend-only. The Trustee and wallet-connect `setTerms` for `f92d719` is a separate frontend issue; `packages/trustee` and `packages/wallet-connect` are not touched here. Affected code for that issue: `packages/wallet-connect/src/evm/contracts/securityRegistry.ts:102-160, 298-345`, `routes/-risk-council-security.ts:293-322` and `routes/-risk-council-pending.ts:163-180, 340-395`.
+2. **The rewind block.** Decision: 3955455 (the SR and RecordNft proxy deploy block), `UPDATE log_collector_state SET last_indexed_block = 3955455 WHERE chain_id = 560048`. The cursor is the next block to poll, so the deploy block is included.
+3. **When to set the Trustee `VITE_EVM_SECURITY_REGISTRY_ADDRESS` / `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS`.** Decision: all argocd keys (worker, API and Trustee) go in one PR after this one merges.
 
 ## Implementation Steps
 
-1. **Worker event parser: old `TermsSet`** (`packages/worker/src/indexer/security_registry_parsers.rs`).
+1. [x] **Worker event parser: old `TermsSet`** (`packages/worker/src/indexer/security_registry_parsers.rs`).
    - Add `pub mod sr_f92d719 { sol! { struct Terms { /* 12 fields, f92d719 order */ } event TermsSet(uint256 indexed loanId, Terms terms); } }` next to `pub mod sr`. Field order: `uint32 advanceRatioBps; uint32 marginCallRatioBps; uint64 curePeriod; uint64 priceStaleAfter; uint8 paymentTerm; uint64 gracePeriod; uint32 defaultRate; uint64 attestationInterval; uint64 inspectionInterval; uint32 toleranceBps; uint32 gradeToleranceBps; uint64 marginCallAt;`.
    - Add a `Spec` `{ emitter: REGISTRY, topic: sr_f92d719::TermsSet::SIGNATURE_HASH, name: "SecurityTermsSet", decode: … }`. It emits exactly the 12 shared keys (`loan_id`, `advance_ratio_bps`, `margin_call_ratio_bps`, `default_rate`, `tolerance_bps`, `grade_tolerance_bps`, `cure_period`, `price_stale_after`, `grace_period`, `attestation_interval`, `inspection_interval`, `margin_call_at`, `payment_term`) and **omits** `default_ratio_bps`, `originator_fee_rate` and `default_breach_at`. Do not write them as `null` or `0`; this is the Stellar shape.
    - Factor the 12 shared keys into one private helper used by both `TermsSet` specs, so the key names cannot drift.
    - Grow `SPECS`, `derive_topics()` and `SECURITY_REGISTRY_EVENT_TOPICS` from 25 to 26 entries.
    - `classify_security_topic`, `parse_security_event`, `dispatch_security_registry` and `is_security_only_topic` need no change: they key on `(emitter, topic0)`, and `is_security_only_topic` picks up the new spec automatically.
-2. **Worker view decoders: both shapes** (`packages/worker/src/indexer/security_registry_views.rs`).
+2. [x] **Worker view decoders: both shapes** (`packages/worker/src/indexer/security_registry_views.rs`).
    - Add `pub mod rd_f92d719 { sol! { … } }`. It defines the 12-field `Terms` (same order as Step 1), `CountedRecord` (unchanged, redeclared locally), the 10-field `CoverageDetail` (`value, staleValue, flaggedValue, debt, coverageBps, ltvBps, marginCallAt, cureBy, priceStale, CountedRecord[] records`), `function terms(uint256 loanId) external view returns (Terms memory);` and `function coverageDetail(uint256 loanId) external view returns (CoverageDetail memory);`.
    - `decode_terms(result)`: try `rd::termsCall::abi_decode_returns(result, true)` and map it as today. On `Err`, try `rd_f92d719::termsCall::abi_decode_returns(result, true)` and map the 12 fields with `default_ratio_bps: None`, `originator_fee_rate: None`, `default_breach_at: None`. If both fail, return an error whose context names both shapes ("decode terms return: neither the 150631a (15-field) nor the f92d719 (12-field) shape").
    - `decode_coverage_detail(result)`: the same pattern, with `default_breach_at: None` on the old shape. Share the `records` mapping (`CountedRecordView`) through a small generic or closure, so the u32 refusal stays in one place.
    - The encode side (`rd::termsCall { loanId }`, `rd::coverageDetailCall { loanId }`) stays as is: the selectors are identical.
    - `EvmSecurityViewSource` needs no change. Do not add a per-address cache (see Decision).
-3. **Worker AccessManager calldata: old `setTerms`** (`packages/worker/src/indexer/access_manager_evm_parsers.rs:266-295`).
+3. [x] **Worker AccessManager calldata: old `setTerms`** (`packages/worker/src/indexer/access_manager_evm_parsers.rs:266-295`).
    - In `#[sol(abi)] interface SecurityRegistryAbi`, add `struct TermsF92d719 { … 12 fields … }` and `function setTerms(uint256 loanId, TermsF92d719 newTerms) external;` next to the existing one. Use the fallback interface from "Assumptions and Risks" if the macro refuses the overload.
    - `decode_call` then returns `function = "setTerms"`, and `loan_ref` resolves `LoanRef::Loan(loanId)` for selector `0x36b14cd2` as well. `args_json` carries the 12 camelCase keys.
    - No change to `loan_ref`: it matches on the name `"setTerms"`.
-4. **API: `default_breach` on an `f92d719` deployment** (`packages/api/src/security_state.rs:1183-1185`).
+4. [x] **API: `default_breach` on an `f92d719` deployment** (`packages/api/src/security_state.rs:1183-1185`).
    - Gate it: `terms.filter(|t| params.has_default_breach && t.default_ratio_bps.is_some())`. `default_ratio_bps` is `None` on EVM only for `f92d719` data, from either the event fold or the view snapshot, and is never `None` for `150631a`. Serving `null` matches Stellar ("this deployment has no default-breach mechanism") and avoids an object of `null`s.
    - Update the `LoanSecurityResponse.default_breach` doc comment (`security_state.rs:312`) to "EVM `150631a`+ only; `null` on Stellar and on an EVM deployment whose `Terms` has no `defaultRatioBps` (`f92d719`, Hoodi)". It is the utoipa schema text, already present.
    - No other API change: `terms_dto`, `margin_call_dto`, `agent_release_of` (FacilityDebt via `valuation.debt`), the loan-book fields and `audit_log` already handle `None` (see Scope).
-5. **Lint.** `cargo clippy --all -- -D warnings`, `cargo fmt --all`, then `PATH=/opt/homebrew/opt/node@22/bin:$PATH npx tsx scripts/lint-docs.ts`. Keep to one spec-pointer header per file and no new comments (AGENTS.md "Comment-less code").
-6. **Tests.** See Test Strategy.
-7. **Docs.** See Docs to Update.
+5. [x] **Lint.** `cargo clippy --all -- -D warnings`, `cargo fmt --all`, then `PATH=/opt/homebrew/opt/node@22/bin:$PATH npx tsx scripts/lint-docs.ts`. Keep to one spec-pointer header per file and no new comments (AGENTS.md "Comment-less code").
+6. [x] **Tests.** See Test Strategy.
+7. [x] **Docs.** See Docs to Update.
 
 ## Test Strategy
 

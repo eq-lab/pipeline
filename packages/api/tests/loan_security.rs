@@ -1826,6 +1826,27 @@ fn evm_terms_carry_the_extra_fields() {
 }
 
 #[test]
+fn evm_f92d719_terms_serve_null_extras_and_no_default_breach() {
+    let f92 = |mut rows: LoanSecurityRows| {
+        let t = rows.terms.get_or_insert_with(evm_terms);
+        t.default_ratio_bps = None;
+        t.originator_fee_rate = None;
+        t.default_breach_at = None;
+        rows.margin_events = vec![margin_event(10, "open", 9000, Some(100))];
+        rows
+    };
+    let v = build_evm(&f92(facility_rows(900 * U6, 0, 700 * U6)), None);
+    assert!(v["terms"]["default_ratio_bps"].is_null());
+    assert!(v["terms"]["originator_fee_rate"].is_null());
+    assert!(v.get("default_breach").is_some());
+    assert!(v["default_breach"].is_null());
+    assert!(!v["margin_call"].is_null());
+    assert_eq!(v["records"][0]["agent_release"], "allowed");
+    let v = build_evm(&f92(facility_rows(700 * U6, 0, 900 * U6)), None);
+    assert_eq!(v["records"][0]["agent_release"], "needs_consent");
+}
+
+#[test]
 fn a_stellar_response_serializes_the_evm_only_keys_as_null() {
     let v = build(&base_rows(), None);
     assert!(v["terms"]["default_ratio_bps"].is_null());

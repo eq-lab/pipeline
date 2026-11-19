@@ -293,6 +293,12 @@ sol! {
     }
 
     #[sol(abi)]
+    interface SecurityRegistryF92d719Abi {
+        struct Terms { uint32 advanceRatioBps; uint32 marginCallRatioBps; uint64 curePeriod; uint64 priceStaleAfter; uint8 paymentTerm; uint64 gracePeriod; uint32 defaultRate; uint64 attestationInterval; uint64 inspectionInterval; uint32 toleranceBps; uint32 gradeToleranceBps; uint64 marginCallAt; }
+        function setTerms(uint256 loanId, Terms newTerms) external;
+    }
+
+    #[sol(abi)]
     interface RecordNftAbi {
         struct Control { uint8 kind; string ref; }
         struct Doc { uint8 kind; bytes32 hash; }
@@ -331,7 +337,11 @@ fn abi_tables() -> &'static AbiTables {
     TABLES.get_or_init(|| AbiTables {
         loan_registry: build_table(&LoanRegistryAbi::abi::contract()),
         minter: build_table(&MinterAbi::abi::contract()),
-        security_registry: build_table(&SecurityRegistryAbi::abi::contract()),
+        security_registry: {
+            let mut t = build_table(&SecurityRegistryAbi::abi::contract());
+            t.extend(build_table(&SecurityRegistryF92d719Abi::abi::contract()));
+            t
+        },
         record_nft: build_table(&RecordNftAbi::abi::contract()),
     })
 }
