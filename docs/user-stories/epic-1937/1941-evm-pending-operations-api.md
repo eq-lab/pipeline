@@ -10,7 +10,7 @@
 
 `GET /v1/loan-book` and `GET /v1/loan-book/{loan_id}/security` serve `pending_operations` for EVM chains as they do for Stellar (#1922), read from `access_manager_operations` (#1939). An EVM item carries `calldata` and `args_xdr: null`; a Stellar item the reverse. The Trustee pages that use them are #1942 and #1943. Spec: `docs/product-specs/loan-security-state.md#pending-operations`.
 
-Persona: API consumer (the Trustee console, `curl`). Both endpoints are public. Stories 2 to 5 need a Risk Council schedule on the EVM AccessManager, which Hoodi has only after #1944 gives the Risk Council roles a delay. Story 2 also needs the EVM SecurityRegistry key from #1940 (`CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS`). Both run in the epic QA pass #1945.
+Persona: API consumer (the Trustee console, `curl`). Both endpoints are public. Stories 2 to 5 need a Risk Council schedule on the EVM AccessManager, which needs a deployment with a delayed role; Hoodi role delays are 0, so Hoodi serves none (accepted difference, Stellar keeps 24 h) and these stories run on a local Anvil with a delayed role. Story 2 also needs the EVM SecurityRegistry key from #1940 (`CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS`). Both run in the epic QA pass #1945.
 
 ---
 

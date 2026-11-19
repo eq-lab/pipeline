@@ -10,7 +10,7 @@
 
 `/risk-council/security/$id` and `/risk-council/inspectors` work for EVM loans, one-to-one with the Stellar pages (#1858, #1923). The wallet-connect package gains a reusable EVM write client, the AccessManager bindings and the SecurityRegistry and RecordNft encoders. The Trustee hooks pick the arm by chain, the chain gate is lifted for the four SecurityRegistry functions only, and the EVM hides of the security data (Security card, loans table LTV column) are lifted. Spec: `docs/frontend/trustee-flows.md#risk-council-security-actions` and `#risk-council-pending-operations`, client: `docs/frontend/wallet-flows.md#trustee-evm-contract-client`.
 
-Persona: Risk Council member on the Trustee console, signed in on the EVM chain, with an EVM wallet. The stories need the EVM role delays from #1944, the redeploy of the pre-#55 SecurityRegistry (Hoodi still has the 12-field `Terms`), and the stage env with `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_SECURITY_REGISTRY_ADDRESS` and `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS`. They run in the epic QA pass #1945. Stage chain `99000001` (Stellar) is the regression reference: its pages must not change.
+Persona: Risk Council member on the Trustee console, signed in on the EVM chain, with an EVM wallet. The stories need the backend's dual-ABI support for the deployed pre-#55 SecurityRegistry (Hoodi has the 12-field `Terms`, #2070) and the stage env with `VITE_EVM_ACCESS_MANAGER_ADDRESS`, `VITE_EVM_SECURITY_REGISTRY_ADDRESS` and `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS`. They run in the epic QA pass #1945. Stage chain `99000001` (Stellar) is the regression reference: its pages must not change.
 
 ---
 
