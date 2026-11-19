@@ -138,6 +138,7 @@ const CHECKS_JSON = join(dirname(fileURLToPath(import.meta.url)), "checks.json")
 
 export function check(argv: string[], journeys: Journey[] = registry, checksPath = CHECKS_JSON): number {
   const started = Date.now();
+  let failed: { tag: string; json?: boolean } | undefined;
   try {
     const { values } = parseArgs({
       args: argv,
@@ -149,6 +150,7 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
       },
     });
     if (!values.tag) throw new Error("--tag is required");
+    failed = { tag: values.tag, json: values.json };
     const both = values.optional.filter((id) => values.require.includes(id));
     if (both.length) throw new Error(`both --optional and --require: ${both.join(", ")}`);
     validateIds(journeys, [...values.optional, ...values.require]);
@@ -179,7 +181,15 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
     }
     return exitCode(result);
   } catch (e) {
-    console.error(`check: ${redact(errorMessage(e))}`);
+    const error = redact(errorMessage(e));
+    console.error(`check: ${error}`);
+    // Overwrite a stale result.json with a minimal failure, so a caller reading the file never sees an old ok:true.
+    // shortcut: a missing --tag or stack dir writes nothing (there is no file to go stale), upgrade if callers need one anyway.
+    if (failed && existsSync(stackDir(failed.tag))) {
+      const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, tag: failed.tag, ok: false, error }, null, 2) + "\n";
+      writeFileSync(join(stackDir(failed.tag), "result.json"), json);
+      if (failed.json) process.stdout.write(json);
+    }
     return 2;
   }
 }

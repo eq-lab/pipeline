@@ -205,6 +205,15 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 2);
   });
 
+  it("a failing check.ts replaces a stale result.json with ok:false", async () => {
+    assert.equal(await run(["--tag", tag], [fakeJourney(100)]), 0);
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 0);
+    assert.equal(check(["--tag", tag, "--require", "stellar.nope.x"], [fakeJourney(100)], checksPath), 2);
+    const r = JSON.parse(readResult());
+    assert.deepEqual([r.ok, r.tag, r.schemaVersion], [false, tag, 1]);
+    assert.match(r.error, /unknown check id/);
+  });
+
   it("no secret reaches the result or a redacted log", async () => {
     const leaky = fakeJourney(99, ` signer ${SEED} privateKey=${EVM_KEY}`);
     writeFileSync(
