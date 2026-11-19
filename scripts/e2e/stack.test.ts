@@ -277,6 +277,13 @@ describe("down", { timeout: TIMEOUT }, () => {
     assert.equal(again.status, 0, again.stderr);
   });
 
+  it("keeps result.json under results/<tag>.json", () => {
+    mkdirSync(stackDir("r"), { recursive: true });
+    writeFileSync(join(stackDir("r"), "result.json"), '{"ok":true}\n');
+    down("r");
+    assert.equal(readFileSync(join(process.env.E2E_HOME!, "results", "r.json"), "utf8"), '{"ok":true}\n');
+  });
+
   it("leaves the lock of another tag alone", () => {
     acquireStackLock("keep", true);
     down("other");
