@@ -167,6 +167,11 @@ export const ENV = Object.freeze({
 
   EVM_ACCESS_MANAGER_ADDRESS: readString("VITE_EVM_ACCESS_MANAGER_ADDRESS", ""),
 
+  EVM_DEAL_TOKEN_FACTORY_ADDRESS: readString(
+    "VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS",
+    "",
+  ),
+
   EVM_START_BLOCK: readBlockNumber("VITE_EVM_START_BLOCK", 0),
 
   EVM_SECURITY_REGISTRY_ADDRESS: readString(

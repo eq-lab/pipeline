@@ -139,15 +139,15 @@ Persona: Risk Council member on the Trustee console, signed in on the EVM chain,
 
 ---
 
-## Story 10 — Step 2 on EVM shows a not-available-yet reason until #1574
+## Story 10 — Step 2 on EVM signs the corrected repayment (#1574)
 
-**Given** a repayment is reversed on an EVM loan
+**Given** a repayment is reversed on an EVM loan, the backend has indexed the reversal, and the wallet holds `MINT_CALLER_ROLE`
 
 **When** the member looks at step 2
 
 **Then:**
 
-- The record button is disabled and the reason reads "Recording the corrected repayment on EVM is not available yet. It arrives with the EVM record-repayment flow."; nothing is signed
+- The record button is enabled and signs `PipelineMinter.repay` with the corrected split and the original value date; for a loan on an unknown chain it stays disabled with the Stellar-only reason and nothing is signed
 
 ---
 

@@ -1,19 +1,17 @@
 // spec: docs/frontend/trustee-flows.md#disburse-1898
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, InlineError } from "@pipeline/ui";
-import {
-  bankReferenceRefHash,
-  parseUsdDollarsToI128,
-  useStellarWallet,
-} from "@pipeline/wallet-connect";
+import { bankReferenceRefHash } from "@pipeline/wallet-connect";
 import {
   disburseConfigured,
   useDebtTrustline,
   useDisburse,
   useDisburseAccess,
+  useEvmMinterBankCash,
+  useEvmMinterPaused,
   useLoanDisbursementState,
 } from "@/api/useDisburse";
-import { useDeal } from "@/api/useDealToken";
+import { useDeal, useEvmDeal } from "@/api/useDealToken";
 import { useMinterPaused, useMinterPoolState } from "@/api/useConversions";
 import { CardTitle } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
@@ -26,17 +24,16 @@ import {
   detailSecondaryButtonStyle,
 } from "@/components/detail/detailTokens";
 import { stageLabel } from "@/lib/accessManagerAction";
+import { useChainWallet } from "@/lib/chainWallet";
 import {
   disburseErrorCopy,
   disburseFormError,
   disburseView,
+  parseDisburseAmount,
+  rawToDecimal,
 } from "@/lib/disburse";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
-import {
-  rawToDecimal7,
-  todayUtcDateInput,
-  valueDateSeconds,
-} from "@/lib/wireOut";
+import { chainAmountDecimals, loanActionChainReason } from "@/lib/targetChains";
+import { todayUtcDateInput, valueDateSeconds } from "@/lib/wireOut";
 import { formatUsdExact } from "@/utils/formatUsd";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 import { DIALOG_CLASS, HINT_CLASS, INPUT_CLASS } from "./-WireOutsSection";
@@ -52,8 +49,8 @@ interface DisburseResult {
   hash: string;
 }
 
-function usd(raw: string | undefined): string {
-  return raw === undefined ? "—" : formatUsdExact(rawToDecimal7(raw));
+function usd(raw: string | undefined, decimals: number): string {
+  return raw === undefined ? "—" : formatUsdExact(rawToDecimal(raw, decimals));
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -74,20 +71,33 @@ export function DisburseAction({
   loanId: number | null;
   loanName: string;
 }) {
-  const { address, isConnected } = useStellarWallet();
+  const { kind, address, isConnected } = useChainWallet(chainId);
+  const stellar = kind === "stellar";
+  const active = loanActionChainReason(chainId) === null;
+  const configured = disburseConfigured(chainId);
+  const decimals = chainAmountDecimals(chainId);
   const loan = useLoanDisbursementState(chainId, loanId);
-  const deal = useDeal(chainId, loanId);
-  const trustline = useDebtTrustline(chainId, loanId, deal.data?.debt);
-  const stellar = stellarOnlyActionReason(chainId) === null;
-  const poolState = useMinterPoolState(stellar && disburseConfigured());
-  const paused = useMinterPaused(stellar && disburseConfigured());
-  const access = useDisburseAccess(stellar);
+  const stellarDeal = useDeal(chainId, loanId);
+  const evmDeal = useEvmDeal(chainId, loanId);
+  const deal = stellar ? stellarDeal : evmDeal;
+  const stellarTrustline = useDebtTrustline(
+    chainId,
+    loanId,
+    stellarDeal.data?.debt,
+  );
+  const trustline = stellar ? stellarTrustline : null;
+  const poolState = useMinterPoolState(active && stellar && configured);
+  const evmBankCash = useEvmMinterBankCash(active && !stellar && configured);
+  const stellarPaused = useMinterPaused(active && stellar && configured);
+  const evmPaused = useEvmMinterPaused(active && !stellar && configured);
+  const paused = stellar ? stellarPaused : evmPaused;
+  const access = useDisburseAccess(chainId, active);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<DisburseResult | null>(null);
 
   const view = disburseView({
     chainId,
-    configured: disburseConfigured(),
+    configured,
     connected: isConnected && !!address,
     loan,
     deal,
@@ -98,7 +108,7 @@ export function DisburseAction({
 
   if (view.kind === "hidden" && !result) return null;
 
-  const bankCash = poolState.data?.bankCash;
+  const bankCash = stellar ? poolState.data?.bankCash : evmBankCash.data;
   const approved = loan.data?.status === "Approved";
 
   return (
@@ -115,13 +125,13 @@ export function DisburseAction({
       </p>
       <div>
         <KeyValueRow label="Senior tranche">
-          {usd(loan.data?.originalSeniorTranche)}
+          {usd(loan.data?.originalSeniorTranche, decimals)}
         </KeyValueRow>
         <KeyValueRow label="Disbursed on-chain">
-          {usd(loan.data?.disbursed)}
+          {usd(loan.data?.disbursed, decimals)}
         </KeyValueRow>
         <KeyValueRow label="Booked bank cash" isLast>
-          {usd(bankCash)}
+          {usd(bankCash, decimals)}
         </KeyValueRow>
       </div>
       {view.kind === "blocked" && (
@@ -200,6 +210,7 @@ function DisburseDialog({
   onDone: (result: DisburseResult) => void;
 }) {
   const disburse = useDisburse();
+  const decimals = chainAmountDecimals(chainId);
   const today = todayUtcDateInput();
   const [amountInput, setAmountInput] = useState("");
   const [valueDateInput, setValueDateInput] = useState(today);
@@ -228,17 +239,19 @@ function DisburseDialog({
     valueDateInput,
     today,
     reference,
+    decimals,
   });
   const error = disburse.error
     ? disburseErrorCopy(disburse.error, {
         disbursed,
         originalSeniorTranche: tranche,
+        decimals,
       })
     : null;
 
   async function submit() {
     if (formError !== null || pending) return;
-    const amountRaw = parseUsdDollarsToI128(amountInput).toString();
+    const amountRaw = parseDisburseAmount(amountInput, decimals)!.toString();
     try {
       const { hash } = await disburse.mutateAsync({
         chainId,
@@ -248,7 +261,7 @@ function DisburseDialog({
         reference,
       });
       onDone({
-        amount: formatUsdExact(rawToDecimal7(amountRaw)),
+        amount: formatUsdExact(rawToDecimal(amountRaw, decimals)),
         valueDate: valueDateInput,
         hash,
       });
@@ -282,10 +295,14 @@ function DisburseDialog({
           Disburse {loanName}
         </h2>
         <div>
-          <KeyValueRow label="Senior tranche">{usd(tranche)}</KeyValueRow>
-          <KeyValueRow label="Disbursed on-chain">{usd(disbursed)}</KeyValueRow>
+          <KeyValueRow label="Senior tranche">
+            {usd(tranche, decimals)}
+          </KeyValueRow>
+          <KeyValueRow label="Disbursed on-chain">
+            {usd(disbursed, decimals)}
+          </KeyValueRow>
           <KeyValueRow label="Booked bank cash" isLast>
-            {usd(bankCash ?? undefined)}
+            {usd(bankCash ?? undefined, decimals)}
           </KeyValueRow>
         </div>
         <Field label="Amount (USD)">

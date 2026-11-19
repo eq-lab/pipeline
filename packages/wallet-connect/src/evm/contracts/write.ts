@@ -8,7 +8,14 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "@wagmi/core";
-import type { Abi, Address, Hex, TransactionReceipt } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  type Abi,
+  type Address,
+  type Hex,
+  type TransactionReceipt,
+} from "viem";
 import type { RelayStage } from "../../stellar/contracts/accessManager";
 import { initEvmWalletConnect } from "../config";
 import { parseAddress, readMock } from "../mock";
@@ -110,4 +117,33 @@ export async function sendEvmContractCall({
     throw new Error(`transaction reverted: ${hash}`);
   }
   return { hash, receipt };
+}
+
+export function isContractRevert(err: unknown): boolean {
+  return (
+    err instanceof BaseError &&
+    err.walk((e) => e instanceof ContractFunctionRevertedError) !== null
+  );
+}
+
+export async function sendEvmContractCallChecked(
+  label: string,
+  params: SendEvmContractCallParams,
+  send: typeof sendEvmContractCall = sendEvmContractCall,
+): Promise<SendEvmContractCallResult> {
+  let prompted = false;
+  try {
+    return await send({
+      ...params,
+      onStageChange: (stage) => {
+        if (stage === "awaiting-signature") prompted = true;
+        params.onStageChange?.(stage);
+      },
+    });
+  } catch (err) {
+    if (!prompted && isContractRevert(err)) {
+      throw new Error(`${label}: simulation error: ${(err as Error).message}`);
+    }
+    throw err;
+  }
 }

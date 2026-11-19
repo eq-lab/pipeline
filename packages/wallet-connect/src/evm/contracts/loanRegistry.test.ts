@@ -14,16 +14,30 @@ import {
 
 const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }));
 
-vi.mock("./write", () => ({
-  readEvmContract: vi.fn(),
-  sendEvmContractCall: mockSend,
-}));
+vi.mock("./write", async () => {
+  const actual = await vi.importActual<typeof import("./write")>("./write");
+  return {
+    readEvmContract: vi.fn(),
+    sendEvmContractCall: mockSend,
+    sendEvmContractCallChecked: (
+      label: string,
+      params: Parameters<typeof actual.sendEvmContractCallChecked>[1],
+    ) => actual.sendEvmContractCallChecked(label, params, mockSend),
+  };
+});
 
 import {
+  closeEvmLoan,
   drawEvmLoan,
+  encodeEvmCloseLoanCalldata,
   encodeEvmDrawLoanCalldata,
+  encodeEvmRolloverCalldata,
+  encodeEvmUpdateMutableCalldata,
   evmLoanRegistryDrawAbi,
+  evmLoanRegistryLifecycleAbi,
   readEvmDrawnLoanId,
+  rolloverEvmLoan,
+  updateEvmMutable,
 } from "./loanRegistry";
 import { accessManagerAbi } from "./accessManager";
 import { evmLoanRegistryErrorAbi } from "./riskCouncil";
@@ -307,5 +321,172 @@ describe("drawEvmLoan", () => {
     const err = new UserRejectedRequestError(new Error("denied"));
     mockSend.mockRejectedValue(err);
     await expect(drawEvmLoan(base)).rejects.toBe(err);
+  });
+});
+
+describe("lifecycle selectors", () => {
+  it.each([
+    [0, "0x0971a074", "rollover(uint256,uint32,uint64)"],
+    [1, "0x206293ef", "updateMutable(uint256,uint8,string)"],
+    [2, "0xd0cdfd5a", "closeLoan(uint256,uint8)"],
+  ])("pins %s", (i, selector, signature) => {
+    expect(toFunctionSelector(evmLoanRegistryLifecycleAbi[i]!)).toBe(selector);
+    expect(toFunctionSelector(signature)).toBe(selector);
+  });
+});
+
+describe("lifecycle encoders", () => {
+  it("rollover sends bps x 100", () => {
+    const data = encodeEvmRolloverCalldata(7, 1450, 1_900_000_000);
+    const decoded = decodeFunctionData({
+      abi: evmLoanRegistryLifecycleAbi,
+      data,
+    });
+    expect(decoded.functionName).toBe("rollover");
+    expect(decoded.args).toEqual([7n, 145000, 1_900_000_000n]);
+  });
+
+  it("updateMutable maps the status name and keeps the URI verbatim", () => {
+    for (const uri of ["", "  ipfs://x  ", "ipfs://Qm"]) {
+      const decoded = decodeFunctionData({
+        abi: evmLoanRegistryLifecycleAbi,
+        data: encodeEvmUpdateMutableCalldata(3, "WatchList", uri),
+      });
+      expect(decoded.args).toEqual([3n, 2, uri]);
+    }
+  });
+
+  it("closeLoan maps the reason name", () => {
+    const reason = (name: string) =>
+      decodeFunctionData({
+        abi: evmLoanRegistryLifecycleAbi,
+        data: encodeEvmCloseLoanCalldata(3, name),
+      }).args;
+    expect(reason("ScheduledMaturity")).toEqual([3n, 1]);
+    expect(reason("EarlyRepayment")).toEqual([3n, 2]);
+  });
+
+  it.each([
+    ["id -1", () => encodeEvmRolloverCalldata(-1, 1450, 1)],
+    ["id 1.5", () => encodeEvmUpdateMutableCalldata(1.5, "Performing", "")],
+    ["rate 0", () => encodeEvmRolloverCalldata(1, 0, 1)],
+    ["rate 10001", () => encodeEvmRolloverCalldata(1, 10_001, 1)],
+    ["maturity 0", () => encodeEvmRolloverCalldata(1, 1450, 0)],
+    ["status Matured", () => encodeEvmUpdateMutableCalldata(1, "Matured", "")],
+    ["reason None", () => encodeEvmCloseLoanCalldata(1, "None")],
+    ["reason Foo", () => encodeEvmCloseLoanCalldata(1, "Foo")],
+    ["close id -1", () => encodeEvmCloseLoanCalldata(-1, "EarlyRepayment")],
+  ])("rejects %s", (_n, run) => {
+    expect(run).toThrow(/: invalid /);
+  });
+});
+
+describe("lifecycle senders", () => {
+  const base = {
+    accessManager: AM,
+    registry: REGISTRY,
+    caller: CALLER,
+    chainId: 560048,
+  };
+  const senders = [
+    [
+      "rolloverEvmLoan",
+      () =>
+        rolloverEvmLoan({
+          ...base,
+          loanId: 7,
+          newRateBps: 1450,
+          newMaturity: 1_900_000_000,
+        }),
+      encodeEvmRolloverCalldata(7, 1450, 1_900_000_000),
+    ],
+    [
+      "updateEvmMutable",
+      () =>
+        updateEvmMutable({
+          ...base,
+          loanId: 7,
+          status: "Performing",
+          metadataUri: "ipfs://x",
+        }),
+      encodeEvmUpdateMutableCalldata(7, "Performing", "ipfs://x"),
+    ],
+    [
+      "closeEvmLoan",
+      () => closeEvmLoan({ ...base, loanId: 7, reason: "EarlyRepayment" }),
+      encodeEvmCloseLoanCalldata(7, "EarlyRepayment"),
+    ],
+  ] as const;
+
+  it.each(senders)(
+    "%s routes through AccessManager.execute",
+    async (_l, run, calldata) => {
+      await expect(run()).resolves.toEqual({ hash: HASH });
+      const call = mockSend.mock.calls[0]![0];
+      expect(call).toMatchObject({
+        address: AM,
+        functionName: "execute",
+        args: [REGISTRY, calldata],
+        value: 0n,
+        account: CALLER,
+        chainId: 560048,
+      });
+      const names = call.abi.map((i: { name?: string }) => i.name);
+      for (const name of [
+        "execute",
+        "AccessManagerUnauthorizedCall",
+        "LoanRegistryNotMatured",
+        "EnforcedPause",
+      ]) {
+        expect(names).toContain(name);
+      }
+    },
+  );
+
+  it.each(senders)(
+    "%s uses its own label in the simulation error",
+    async (label, run) => {
+      mockSend.mockRejectedValue(revertError());
+      await expect(run()).rejects.toThrow(
+        new RegExp(`^${label}: simulation error: `),
+      );
+    },
+  );
+
+  it("rejects empty addresses before any call", async () => {
+    await expect(
+      closeEvmLoan({
+        ...base,
+        accessManager: "",
+        loanId: 1,
+        reason: "EarlyRepayment",
+      }),
+    ).rejects.toThrow("closeEvmLoan: accessManager must not be empty");
+    await expect(
+      closeEvmLoan({
+        ...base,
+        registry: "nope",
+        loanId: 1,
+        reason: "EarlyRepayment",
+      }),
+    ).rejects.toThrow("closeEvmLoan: invalid registry nope");
+    await expect(
+      rolloverEvmLoan({
+        ...base,
+        caller: "",
+        loanId: 1,
+        newRateBps: 1,
+        newMaturity: 1,
+      }),
+    ).rejects.toThrow("rolloverEvmLoan: caller must not be empty");
+    await expect(
+      updateEvmMutable({
+        ...base,
+        loanId: -1,
+        status: "Performing",
+        metadataUri: "",
+      }),
+    ).rejects.toThrow("encodeEvmUpdateMutableCalldata: invalid loanId -1");
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });

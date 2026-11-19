@@ -748,3 +748,15 @@ Vitest only: co-located `*.test.ts` in wallet-connect, `-*.test.ts(x)` in the Tr
     - Hoodi `bankCash = 0` until wires are booked;
     - the AM and DTF addresses must be in the stage env.
   - Update the stale "(TD-152)" lines in `epic-1521/1603-…md:23`, `1711-repayment-recovery.md:113` and `1712-…md:75` where they describe EVM Record as blocked, and Story 10 of `epic-1937/1943-trustee-evm-rc-pages.md`.
+
+## Implementation notes (coder, 2026-11-19)
+
+All Implementation Steps 1 to 16 are done. None of the points below is a new difference from Stellar, so the Differences table is unchanged.
+
+- `sendEvmContractCallChecked(label, params, send = sendEvmContractCall)` takes an optional third argument so the wallet-connect tests can inject the mocked send; `isContractRevert` is exported from `write.ts`.
+- Disburse amounts: `usdInputToSacBaseUnits` truncates extra digits and `sacBaseUnitsToUsdDecimal` pads zeros, which would change the Stellar output and accept "1.1234567" at 6 dp. The form uses `parseDisburseAmount(input, decimals)` (strict, rejects over-precise input like `parseUsdDollarsToI128`) and `rawToDecimal(raw, decimals)` (trims trailing zeros like `rawToDecimal7`), both in `lib/disburse.ts`; at 7 dp the Stellar output is byte-identical.
+- `EVM_CASH_REPORTER_SELECTORS.repay` is `() => evmRepaySelector()` (lazy), so modules that mock `@pipeline/wallet-connect` without that export still load.
+- The shared `DealTokenFactoryNotRegistered` error entry is `evmDealNotRegisteredErrorAbi` in `dealTokenFactory.ts`, imported by `minter.ts`.
+- `useEvmDeal` shares the key `["deal-token", chainId, loanId]` with `useDeal`, as planned: once the Disbursement card has read an EVM deal, the disabled `useDeal` observer on the loan detail page sees that cached value.
+- TD-190 got a Hoodi-Minter bullet instead of a new TD (it already covers the `extsload` recovery reads).
+- `scripts/lint-comments.baseline.json` shrank by six entries (the touched Rollover, Update-lifecycle and Record page tests and the two Record route files).

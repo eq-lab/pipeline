@@ -18,7 +18,7 @@ interface ILoanRegistry {
         string calldata initialLocation
     ) external returns (uint256 loanId);
 
-    // TRUSTEE, no timelock. Non-economic fields only. Performing <-> WatchList; same-status
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE through AccessManager.execute; status is a uint8 ordinal Approved 0 .. Closed 4). Non-economic fields only. Performing <-> WatchList; same-status
     // metadata-only on Approved/Default; Closed reverts. metadata_uri is replaced on every call.
     function updateMutable(
         uint256 loanId,
@@ -43,10 +43,10 @@ interface ILoanRegistry {
         uint256 equityAmount
     ) external;
 
-    // TRUSTEE, no timelock. Reverts unless now >= currentMaturityDate and status not in
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE; `newRate` is bps x 100, `newMaturityTimestamp`). Reverts unless now >= currentMaturityDate and status not in
     // {Default, Closed}. Appends an epoch from the prior maturity (continuous accrual),
     // sets currentMaturityDate, returns status to Performing. Emits LoanRolledOver.
-    function rollover(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate) external;
+    function rollover(uint256 loanId, uint32 newRate, uint64 newMaturityTimestamp) external;
 
     // RISK_COUNCIL, 24h timelock. Re-terms outside the rollover fast-path (default penalty
     // rate, off-cycle maturity). Appends an epoch from now. Emits EconomicsAmended.
@@ -55,7 +55,7 @@ interface ILoanRegistry {
     // RISK_COUNCIL, immediate per the user docs. May fire before or after maturity. Blocks loan-tied mints.
     function setDefault(uint256 loanId) external;
 
-    // TRUSTEE (no timelock) for {ScheduledMaturity, EarlyRepayment};
+    // TRUSTEE (no timelock; EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE, ClosureReason ordinals ScheduledMaturity 1, EarlyRepayment 2) for {ScheduledMaturity, EarlyRepayment};
     // RISK_COUNCIL (24h) for {Default, OtherWriteDown}.
     function closeLoan(uint256 loanId, ClosureReason reason) external;
 

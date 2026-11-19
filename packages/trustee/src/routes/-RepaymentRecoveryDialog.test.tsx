@@ -377,6 +377,7 @@ describe("RepaymentRecoveryDialog step 2", () => {
         oet_alloc: "0",
       },
       valueDate: 1_793_059_200,
+      chainId: CHAIN,
     });
   });
 
@@ -678,16 +679,78 @@ describe("RepaymentRecoveryDialog on EVM", () => {
     ).toHaveTextContent(/bank cash/);
   });
 
-  it("keeps step 2 blocked with the EVM not-available-yet copy after the reversal", () => {
+  const EVM_WATERFALL = {
+    senior_principal_returned: "345000000",
+    senior_coupon_net: "1155000000",
+    management_fee: "0",
+    performance_fee: "0",
+    oet_allocation: "0",
+  };
+
+  function readyStep2() {
     setEvmRows(true);
     setAccess({ immediate: true, delay: 0 }, null);
+    state.financials = { data: { offtaker_outstanding: "150.000000" } };
+    state.waterfall = { data: EVM_WATERFALL, error: null, isLoading: false };
+    state.audit = {
+      data: {
+        items: [
+          {
+            chain_id: EVM,
+            timestamp: "2026-10-01T00:00:00Z",
+            action: "Cash repaid",
+            scope: { loan_id: "7", label: "Loan #7" },
+            reference: "",
+            event_name: "CashRepaid",
+            details: { repayment_id: "1", value_date: 1_793_059_200 },
+          },
+        ],
+      },
+    };
+  }
+
+  it("enables step 2 on EVM once reversed, indexed, valued and the wallet can repay, and records with the chain id", () => {
+    readyStep2();
     renderDialog(vi.fn(), EVM);
+    expect(
+      screen.queryByTestId("repayment-recovery-step2-blocked"),
+    ).not.toBeInTheDocument();
+    const button = screen.getByTestId("repayment-recovery-record");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(rec().mutateAsync).toHaveBeenCalledWith({
+      loanId: 7,
+      repayment: {
+        offtaker_received: "1500000000",
+        senior_principal_repaid: "345000000",
+        senior_interest: "1155000000",
+        equity_distributed: "0",
+        mgmt_fee: "0",
+        perf_fee: "0",
+        oet_alloc: "0",
+      },
+      valueDate: 1_793_059_200,
+      chainId: EVM,
+    });
+  });
+
+  it("keeps step 2 blocked on EVM until the reversal is done", () => {
+    readyStep2();
+    setEvmRows(false);
+    renderDialog(vi.fn(), EVM);
+    expect(
+      screen.getByTestId("repayment-recovery-step2-blocked"),
+    ).toHaveTextContent("Reverse the repayment first.");
+    expect(rec().mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Stellar-only copy on step 2 for an unknown chain", () => {
+    readyStep2();
+    renderDialog(vi.fn(), 1234);
     expect(screen.getByTestId("repayment-recovery-record")).toBeDisabled();
     expect(
       screen.getByTestId("repayment-recovery-step2-blocked"),
-    ).toHaveTextContent(
-      /Recording the corrected repayment on EVM is not available yet/,
-    );
+    ).toHaveTextContent(/Stellar only/);
     expect(rec().mutateAsync).not.toHaveBeenCalled();
   });
 });

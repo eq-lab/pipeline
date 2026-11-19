@@ -30,3 +30,20 @@ describe("ENV.EVM_START_BLOCK", () => {
     },
   );
 });
+
+describe("ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS", () => {
+  it("defaults to empty", async () => {
+    vi.stubEnv("VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS", "");
+    expect((await loadEnv()).EVM_DEAL_TOKEN_FACTORY_ADDRESS).toBe("");
+  });
+
+  it("reads the configured address", async () => {
+    vi.stubEnv(
+      "VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS",
+      "0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC",
+    );
+    expect((await loadEnv()).EVM_DEAL_TOKEN_FACTORY_ADDRESS).toBe(
+      "0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC",
+    );
+  });
+});

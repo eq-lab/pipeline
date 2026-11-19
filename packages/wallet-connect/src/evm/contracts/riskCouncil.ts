@@ -14,6 +14,7 @@ import type {
   RelayResult,
   RelayStage,
 } from "../../stellar/contracts/accessManager";
+import type { LoanDisbursementState } from "../../stellar/contracts/loanRegistry";
 import type {
   LoanChainState,
   LoanMoney,
@@ -203,6 +204,28 @@ export const evmLoanRegistryRiskCouncilAbi = [
           { name: "outstanding", type: "uint256" },
           { name: "accruedInterest", type: "uint256" },
           { name: "carvedOut", type: "bool" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "immutableLoanData",
+    inputs: [{ name: "loanId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "borrowerRef", type: "bytes32" },
+          { name: "originalFacilitySize", type: "uint256" },
+          { name: "originalSeniorTranche", type: "uint256" },
+          { name: "originalEquityTranche", type: "uint256" },
+          { name: "originalOfftakerPrice", type: "uint256" },
+          { name: "seniorInterestRate", type: "uint32" },
+          { name: "originationDate", type: "uint64" },
+          { name: "originalMaturityDate", type: "uint64" },
         ],
       },
     ],
@@ -487,5 +510,28 @@ export async function readEvmLoanMoney({
     outstanding: data.outstanding.toString(),
     repaid: data.repaid.toString(),
     writtenDown: data.writtenDown.toString(),
+  };
+}
+
+export async function readEvmLoanDisbursementState(
+  params: ReadEvmLoanParams,
+): Promise<LoanDisbursementState> {
+  const who = "readEvmLoanDisbursementState";
+  const address = requireEvmRegistry(params.registry, who);
+  const [data, immutable] = await Promise.all([
+    readEvmMutableLoanData(who, params),
+    readEvmContract<{ originalSeniorTranche: bigint }>({
+      abi: evmLoanRegistryRiskCouncilAbi,
+      address,
+      functionName: "immutableLoanData",
+      args: [readLoanId(who, params.loanId)],
+      blockNumber: params.blockNumber,
+    }),
+  ]);
+  return {
+    status: ordinalName(EVM_LOAN_STATUSES, data.status, "status"),
+    carvedOut: data.carvedOut === true,
+    disbursed: data.disbursed.toString(),
+    originalSeniorTranche: immutable.originalSeniorTranche.toString(),
   };
 }

@@ -26,6 +26,7 @@ import {
   evmRiskCouncilErrorAbi,
   evmRiskCouncilSelector,
   readEvmLoanChainState,
+  readEvmLoanDisbursementState,
   readEvmLoanMoney,
   readEvmRiskCouncilSchedule,
   relayEvmRiskCouncil,
@@ -391,5 +392,43 @@ describe("readEvmLoanMoney", () => {
     await expect(readEvmLoanMoney({ registry: "", loanId: 7 })).rejects.toThrow(
       "readEvmLoanMoney: registry must not be empty",
     );
+  });
+});
+
+describe("readEvmLoanDisbursementState", () => {
+  it("maps the ordinal and reads the tranche from immutableLoanData", async () => {
+    mockRead.mockImplementation(async ({ functionName }) =>
+      functionName === "mutableLoanData"
+        ? { status: 1, carvedOut: false, disbursed: 250n }
+        : { originalSeniorTranche: 1_000n },
+    );
+    await expect(
+      readEvmLoanDisbursementState({ registry: REGISTRY, loanId: 7 }),
+    ).resolves.toEqual({
+      status: "Performing",
+      carvedOut: false,
+      disbursed: "250",
+      originalSeniorTranche: "1000",
+    });
+    expect(mockRead.mock.calls.map((c) => c[0].functionName).sort()).toEqual([
+      "immutableLoanData",
+      "mutableLoanData",
+    ]);
+  });
+
+  it("rejects an unknown status and a bad loan id", async () => {
+    mockRead.mockImplementation(async ({ functionName }) =>
+      functionName === "mutableLoanData"
+        ? { status: 9, carvedOut: false, disbursed: 0n }
+        : { originalSeniorTranche: 1n },
+    );
+    await expect(
+      readEvmLoanDisbursementState({ registry: REGISTRY, loanId: 7 }),
+    ).rejects.toThrow(/unknown status 9/);
+    mockRead.mockReset();
+    await expect(
+      readEvmLoanDisbursementState({ registry: REGISTRY, loanId: -1 }),
+    ).rejects.toThrow(/invalid loanId -1/);
+    expect(mockRead).not.toHaveBeenCalled();
   });
 });
