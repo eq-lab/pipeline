@@ -144,7 +144,7 @@ The API serves `function` and `args` as stored and adds no mapping. Consumers (t
 
 The EVM indexer (#1939, epic #1937) mirrors the Stellar one: raw `contract_logs` rows from `index_once`, the shared supervised `access-manager-sync` loop with its watermark, the unchanged Stellar insert and close SQL, the 604 800 s expiry constant. Everything not listed in [Differences from Stellar](#differences-from-stellar) is identical.
 
-Contract source: `pipeline-contracts@150631a`, stock OpenZeppelin `AccessManager` (`lib/openzeppelin-contracts/contracts/access/manager/AccessManager.sol`), deployed plain (`script/deployers/DeployAccessManager.sol`). Hoodi AccessManager `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`. All Hoodi role delays are 0, so nothing is scheduled there until #1944.
+Contract source: `pipeline-contracts@150631a`, stock OpenZeppelin `AccessManager` (`lib/openzeppelin-contracts/contracts/access/manager/AccessManager.sol`), deployed plain (`script/deployers/DeployAccessManager.sol`). Hoodi AccessManager `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`. All Hoodi role delays are 0, so Risk Council actions execute immediately through `AccessManager.execute` and no operation is scheduled there; Stellar keeps its 24 h Risk Council delay. The delay is whatever the deployment sets, an accepted difference. Pending-operations indexing (#1939, #1941) is unchanged and shows operations only when a deployment has a delayed role.
 
 ### EVM configuration
 

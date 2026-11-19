@@ -10,7 +10,7 @@
 
 The worker indexes the EVM AccessManager's `OperationScheduled`, `OperationCanceled` and `OperationExecuted` events into `contract_logs`, and the shared `access-manager-sync` task projects each operation into `access_manager_operations` with the scheduled `calldata`, the decoded `function` and `args_json`, and the loan reference. #1941 (API) reads that table for EVM. Spec: `docs/references/access-manager-events.md#evm`.
 
-Persona: operator (worker logs, env key, database). There is no UI or API in this issue. The key is `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`; unset ships dark. Stories 2, 3 and 4 need a delayed role on the Hoodi AccessManager (all Hoodi role delays are 0 until #1944) and run in the epic QA pass or on a local Anvil with a delayed role.
+Persona: operator (worker logs, env key, database). There is no UI or API in this issue. The key is `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`; unset ships dark. Stories 2, 3 and 4 need a delayed role on the AccessManager; all Hoodi role delays are 0 by deployment, so they run on a local Anvil with a delayed role (or any deployment that sets one).
 
 ---
 
