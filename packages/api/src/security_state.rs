@@ -309,7 +309,7 @@ pub struct LoanSecurityResponse {
     pub terms: Option<SecurityTermsDto>,
     pub valuation: Option<SecurityValuationDto>,
     pub margin_call: Option<MarginCallDto>,
-    /// EVM only; `null` on Stellar.
+    /// EVM `150631a`+ only; `null` on Stellar and on an EVM deployment whose `Terms` has no `defaultRatioBps` (`f92d719`, Hoodi).
     pub default_breach: Option<DefaultBreachDto>,
     pub prices: Option<PricesDto>,
     pub extension_consents: Vec<ConsentDto>,
@@ -1181,7 +1181,7 @@ pub fn build_security_response(
     let margin_call =
         terms.map(|t| margin_call_dto(now, closed, t, valuation, &rows.margin_events, &un));
     let default_breach = terms
-        .filter(|_| params.has_default_breach)
+        .filter(|t| params.has_default_breach && t.default_ratio_bps.is_some())
         .map(|t| default_breach_dto(closed, t, valuation, &rows.margin_events, &un));
     let marks_due = marks_due_count(&records);
     let prices = terms.map(|t| prices_dto(now, t, rows, &marks.settings.policy, marks_due, &un));

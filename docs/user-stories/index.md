@@ -447,6 +447,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1941 API: pending_operations for EVM chains (calldata args)](https://github.com/eq-lab/pipeline/issues/1941) | [1941-evm-pending-operations-api.md](./epic-1937/1941-evm-pending-operations-api.md) | Initial |
 | [#1942 Trustee: Risk Council security page and inspectors on EVM loans](https://github.com/eq-lab/pipeline/issues/1942) | [1942-trustee-evm-security-page.md](./epic-1937/1942-trustee-evm-security-page.md) | Initial |
 | [#1943 Trustee: Risk Council hub, escalate, reterm, writedown and repayment recovery on EVM loans](https://github.com/eq-lab/pipeline/issues/1943) | [1943-trustee-evm-rc-pages.md](./epic-1937/1943-trustee-evm-rc-pages.md) | Initial |
+| [#2070 EVM SecurityRegistry: support the deployed f92d719 ABI alongside 150631a (indexer + API)](https://github.com/eq-lab/pipeline/issues/2070) | [2070-evm-sr-dual-abi.md](./epic-1937/2070-evm-sr-dual-abi.md) | Initial |
 
 | [#2060 Trustee + wallet-connect: consolidate duplicated EVM preflight and helpers](https://github.com/eq-lab/pipeline/issues/2060) | [2060-evm-preflight-consolidation.md](./epic-1937/2060-evm-preflight-consolidation.md) | Initial |
 

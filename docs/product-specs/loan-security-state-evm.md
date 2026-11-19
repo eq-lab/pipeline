@@ -13,9 +13,9 @@ Identical on both chains: the route, the 400 / 404 / 500 rules, every Stellar ke
 | Config keys | one: `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS` | two, set together: `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_API_SECURITY_RECORD_NFT_ADDRESS`. The RecordNft events are stored under the RecordNft address, so `refresh_pending` needs it |
 | Amount, quantity, grade and price strings | 7 dp, `raw / 1e7` | 6 dp, `raw / 1e6` (`PAR_VALUE = 1_000_000`; PLUSD has 6 decimals). The grade scale is assumed to be the quantity's |
 | Per-record value, `agent_release`, suggested mark | `1e7` | `1e6` |
-| `agent_release` debt | `outstanding + accrued_interest` | the snapshot's `debt`, the Reader's `_facilityDebt`: `ceil((outstanding + accrued) × originalFacilitySize / originalSeniorTranche)`, or the pool debt when the senior tranche is 0. `valuation.debt` is therefore larger than `outstanding + accrued_interest` whenever the senior tranche is below the facility. The served `ltv_bps` and `coverage_bps` are the contract's, verbatim |
-| `terms.default_ratio_bps`, `terms.originator_fee_rate` | `null` | served (`originator_fee_rate` is on the 1e6 economics scale, like `default_rate`) |
-| `default_breach` | `null` | served when terms exist |
+| `agent_release` debt | `outstanding + accrued_interest` | the snapshot's `debt`, the Reader's `_facilityDebt` (on `f92d719`, Hoodi, the Reader's `debt` is the pool debt `outstanding + accrued`, matching that deployment's release check): `ceil((outstanding + accrued) × originalFacilitySize / originalSeniorTranche)`, or the pool debt when the senior tranche is 0. `valuation.debt` is therefore larger than `outstanding + accrued_interest` whenever the senior tranche is below the facility. The served `ltv_bps` and `coverage_bps` are the contract's, verbatim |
+| `terms.default_ratio_bps`, `terms.originator_fee_rate` | `null` | served (`originator_fee_rate` is on the 1e6 economics scale, like `default_rate`); `null` on an `f92d719` deployment (Hoodi) |
+| `default_breach` | `null` | served when terms exist and carry `default_ratio_bps`; `null` on `f92d719` |
 | Address text | Strkey | EIP-55 |
 | `pending_operations` | served (#1922), `args_xdr` | served (#1941), `calldata` |
 
@@ -43,4 +43,4 @@ The EVM `Security*` rows render in `GET /v1/audit-log` with 6 dp amounts, and th
 
 ## Contract references
 
-`pipeline-contracts@150631a`: `_requireReleasable` (`src/securityRegistry/SecurityRegistryUpgradeable.sol:601`), `_facilityDebt` (`:652`), `_ltvBps` (`:708`), `_signalOrClearDefaultBreach` (`:452`) and the Reader's `coverageDetail` (`src/PipelineSecurityRegistryReader.sol:75`).
+`pipeline-contracts@150631a` (Hoodi runs `f92d719`; see [security-registry-events.md](../references/security-registry-events.md#deployed-versions)): `_requireReleasable` (`src/securityRegistry/SecurityRegistryUpgradeable.sol:601`), `_facilityDebt` (`:652`), `_ltvBps` (`:708`), `_signalOrClearDefaultBreach` (`:452`) and the Reader's `coverageDetail` (`src/PipelineSecurityRegistryReader.sol:75`).

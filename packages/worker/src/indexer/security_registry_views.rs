@@ -154,6 +154,48 @@ pub mod rd {
     }
 }
 
+pub mod rd_f92d719 {
+    use alloy::sol;
+    sol! {
+        struct Terms {
+            uint32 advanceRatioBps;
+            uint32 marginCallRatioBps;
+            uint64 curePeriod;
+            uint64 priceStaleAfter;
+            uint8 paymentTerm;
+            uint64 gracePeriod;
+            uint32 defaultRate;
+            uint64 attestationInterval;
+            uint64 inspectionInterval;
+            uint32 toleranceBps;
+            uint32 gradeToleranceBps;
+            uint64 marginCallAt;
+        }
+        struct CountedRecord {
+            uint256 recordId;
+            uint256 countedQuantity;
+            uint256 valuePerUnit;
+            uint64 markAt;
+            bool stale;
+            bool flagged;
+        }
+        struct CoverageDetail {
+            uint256 value;
+            uint256 staleValue;
+            uint256 flaggedValue;
+            uint256 debt;
+            uint32 coverageBps;
+            uint32 ltvBps;
+            uint64 marginCallAt;
+            uint256 cureBy;
+            bool priceStale;
+            CountedRecord[] records;
+        }
+        function coverageDetail(uint256 loanId) external view returns (CoverageDetail memory);
+        function terms(uint256 loanId) external view returns (Terms memory);
+    }
+}
+
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 
 fn hex32(v: &B256) -> String {
@@ -239,59 +281,143 @@ pub fn decode_inspection(result: &[u8]) -> Result<InspectionView> {
 }
 
 pub fn decode_terms(result: &[u8]) -> Result<TermsView> {
-    let t = rd::termsCall::abi_decode_returns(result, true)
-        .context("decode terms return")?
-        ._0;
-    Ok(TermsView {
-        advance_ratio_bps: t.advanceRatioBps,
-        margin_call_ratio_bps: t.marginCallRatioBps,
-        cure_period: t.curePeriod.to_string(),
-        price_stale_after: t.priceStaleAfter.to_string(),
-        payment_term: payment_term_name(t.paymentTerm).to_owned(),
-        grace_period: t.gracePeriod.to_string(),
-        default_rate: t.defaultRate,
-        attestation_interval: t.attestationInterval.to_string(),
-        inspection_interval: t.inspectionInterval.to_string(),
-        tolerance_bps: t.toleranceBps,
-        grade_tolerance_bps: t.gradeToleranceBps,
-        margin_call_at: t.marginCallAt.to_string(),
-        default_ratio_bps: Some(t.defaultRatioBps),
-        originator_fee_rate: Some(t.originatorFeeRate),
-        default_breach_at: Some(t.defaultBreachAt.to_string()),
+    match rd::termsCall::abi_decode_returns(result, true) {
+        Ok(r) => {
+            let t = r._0;
+            Ok(TermsView {
+                advance_ratio_bps: t.advanceRatioBps,
+                margin_call_ratio_bps: t.marginCallRatioBps,
+                cure_period: t.curePeriod.to_string(),
+                price_stale_after: t.priceStaleAfter.to_string(),
+                payment_term: payment_term_name(t.paymentTerm).to_owned(),
+                grace_period: t.gracePeriod.to_string(),
+                default_rate: t.defaultRate,
+                attestation_interval: t.attestationInterval.to_string(),
+                inspection_interval: t.inspectionInterval.to_string(),
+                tolerance_bps: t.toleranceBps,
+                grade_tolerance_bps: t.gradeToleranceBps,
+                margin_call_at: t.marginCallAt.to_string(),
+                default_ratio_bps: Some(t.defaultRatioBps),
+                originator_fee_rate: Some(t.originatorFeeRate),
+                default_breach_at: Some(t.defaultBreachAt.to_string()),
+            })
+        }
+        Err(new_err) => {
+            let t = rd_f92d719::termsCall::abi_decode_returns(result, true)
+                .map_err(|old_err| {
+                    anyhow!(
+                        "decode terms return: neither the 150631a (15-field) nor the f92d719 (12-field) shape ({new_err}; {old_err})"
+                    )
+                })?
+                ._0;
+            Ok(TermsView {
+                advance_ratio_bps: t.advanceRatioBps,
+                margin_call_ratio_bps: t.marginCallRatioBps,
+                cure_period: t.curePeriod.to_string(),
+                price_stale_after: t.priceStaleAfter.to_string(),
+                payment_term: payment_term_name(t.paymentTerm).to_owned(),
+                grace_period: t.gracePeriod.to_string(),
+                default_rate: t.defaultRate,
+                attestation_interval: t.attestationInterval.to_string(),
+                inspection_interval: t.inspectionInterval.to_string(),
+                tolerance_bps: t.toleranceBps,
+                grade_tolerance_bps: t.gradeToleranceBps,
+                margin_call_at: t.marginCallAt.to_string(),
+                default_ratio_bps: None,
+                originator_fee_rate: None,
+                default_breach_at: None,
+            })
+        }
+    }
+}
+
+fn counted_record(
+    record_id: U256,
+    counted_quantity: U256,
+    value_per_unit: U256,
+    mark_at: u64,
+    stale: bool,
+    flagged: bool,
+) -> Result<CountedRecordView> {
+    Ok(CountedRecordView {
+        record_id: to_u32(record_id, "record_id")?,
+        counted_quantity: counted_quantity.to_string(),
+        value_per_unit: value_per_unit.to_string(),
+        mark_at: mark_at.to_string(),
+        stale,
+        flagged,
     })
 }
 
 pub fn decode_coverage_detail(result: &[u8]) -> Result<CoverageDetailView> {
-    let d = rd::coverageDetailCall::abi_decode_returns(result, true)
-        .context("decode coverageDetail return")?
-        ._0;
-    let records = d
-        .records
-        .iter()
-        .map(|r| {
-            Ok(CountedRecordView {
-                record_id: to_u32(r.recordId, "record_id")?,
-                counted_quantity: r.countedQuantity.to_string(),
-                value_per_unit: r.valuePerUnit.to_string(),
-                mark_at: r.markAt.to_string(),
-                stale: r.stale,
-                flagged: r.flagged,
+    match rd::coverageDetailCall::abi_decode_returns(result, true) {
+        Ok(r) => {
+            let d = r._0;
+            let records = d
+                .records
+                .iter()
+                .map(|r| {
+                    counted_record(
+                        r.recordId,
+                        r.countedQuantity,
+                        r.valuePerUnit,
+                        r.markAt,
+                        r.stale,
+                        r.flagged,
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(CoverageDetailView {
+                value: d.value.to_string(),
+                stale_value: d.staleValue.to_string(),
+                flagged_value: d.flaggedValue.to_string(),
+                debt: d.debt.to_string(),
+                coverage_bps: d.coverageBps,
+                ltv_bps: d.ltvBps,
+                margin_call_at: d.marginCallAt.to_string(),
+                cure_by: d.cureBy.to_string(),
+                price_stale: d.priceStale,
+                records,
+                default_breach_at: Some(d.defaultBreachAt.to_string()),
             })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(CoverageDetailView {
-        value: d.value.to_string(),
-        stale_value: d.staleValue.to_string(),
-        flagged_value: d.flaggedValue.to_string(),
-        debt: d.debt.to_string(),
-        coverage_bps: d.coverageBps,
-        ltv_bps: d.ltvBps,
-        margin_call_at: d.marginCallAt.to_string(),
-        cure_by: d.cureBy.to_string(),
-        price_stale: d.priceStale,
-        records,
-        default_breach_at: Some(d.defaultBreachAt.to_string()),
-    })
+        }
+        Err(new_err) => {
+            let d = rd_f92d719::coverageDetailCall::abi_decode_returns(result, true)
+                .map_err(|old_err| {
+                    anyhow!(
+                        "decode coverageDetail return: neither the 150631a (11-field head) nor the f92d719 (10-field head) shape ({new_err}; {old_err})"
+                    )
+                })?
+                ._0;
+            let records = d
+                .records
+                .iter()
+                .map(|r| {
+                    counted_record(
+                        r.recordId,
+                        r.countedQuantity,
+                        r.valuePerUnit,
+                        r.markAt,
+                        r.stale,
+                        r.flagged,
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(CoverageDetailView {
+                value: d.value.to_string(),
+                stale_value: d.staleValue.to_string(),
+                flagged_value: d.flaggedValue.to_string(),
+                debt: d.debt.to_string(),
+                coverage_bps: d.coverageBps,
+                ltv_bps: d.ltvBps,
+                margin_call_at: d.marginCallAt.to_string(),
+                cure_by: d.cureBy.to_string(),
+                price_stale: d.priceStale,
+                records,
+                default_breach_at: None,
+            })
+        }
+    }
 }
 
 pub fn decode_loan_money(result: &[u8]) -> Result<LoanMoneyView> {

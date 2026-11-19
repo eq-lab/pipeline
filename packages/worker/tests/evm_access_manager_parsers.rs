@@ -4,10 +4,10 @@ mod evm_access_manager_support;
 use alloy::primitives::{address, keccak256, Address, B256};
 use evm_access_manager_support::*;
 use pipeline_worker::indexer::access_manager_evm_parsers::{
-    classify_access_manager_topic, decode_call, parse_access_manager_log, EvmExecutedRow,
+    classify_access_manager_topic, decode_call, loan_ref, parse_access_manager_log, EvmExecutedRow,
     EvmScheduledRow, EvmTargets, ACCESS_MANAGER_EVM_ALLOW_LISTED_TOPICS,
 };
-use pipeline_worker::indexer::access_manager_sync::{AmTopic, CanceledRow};
+use pipeline_worker::indexer::access_manager_sync::{AmTopic, CanceledRow, LoanRef};
 use serde_json::json;
 
 fn sig(s: &str) -> B256 {
@@ -323,6 +323,31 @@ fn set_terms_decodes_to_an_object_of_all_fifteen_fields() {
     assert_eq!(terms["curePeriod"], "604800");
     assert_eq!(terms["paymentTerm"], 1);
     assert_eq!(terms["defaultBreachAt"], "0");
+}
+
+#[test]
+fn set_terms_selectors_are_pinned() {
+    let old = "setTerms(uint256,(uint32,uint32,uint64,uint64,uint8,uint64,uint32,uint64,uint64,uint32,uint32,uint64))";
+    assert_eq!(selector(old), "0x36b14cd2");
+    let data = set_terms_f92d719_data(7);
+    assert_eq!(hex_data(&data[..4]), "0x36b14cd2");
+    assert_eq!(hex_data(&set_terms_data(7)[..4]), "0x45f225f5");
+}
+
+#[test]
+fn f92d719_set_terms_calldata_decodes() {
+    let t = targets();
+    let d = decode_call(SECURITY, &set_terms_f92d719_data(7), &t);
+    assert_eq!(d.function, "setTerms");
+    let json = d.args_json.expect("args");
+    assert_eq!(json[0], "7");
+    let terms = json[1].as_object().expect("tuple is an object");
+    assert_eq!(terms.len(), 12);
+    assert_eq!(terms["advanceRatioBps"], 6000);
+    assert_eq!(terms["paymentTerm"], 1);
+    assert!(!terms.contains_key("defaultRatioBps"));
+    let args = d.args.expect("dyn args");
+    assert_eq!(loan_ref(SECURITY, "setTerms", &args, &t), LoanRef::Loan(7));
 }
 
 #[test]

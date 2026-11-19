@@ -161,6 +161,85 @@ fn terms_set_flattens_the_struct_with_the_evm_extras() {
     );
 }
 
+const OLD_TERMS_TOPIC: &str = "0xafe2a37a11f39e6c1aabcfeee99c2838f1dca51206b72e457790877f82f19005";
+const NEW_TERMS_TOPIC: &str = "0x35ef31a2f77f591c834f93ab744e2d6d2e96c49d289cda4237b7193b684365f0";
+
+#[test]
+fn terms_set_f92d719_stores_the_twelve_shared_keys_only() {
+    let log = terms_set_f92d719(7, 0, 100, 0, 1);
+    let parsed = dispatch_security_registry(&log.log, REGISTRY, NFT).unwrap();
+    assert_eq!(parsed.event_name, "SecurityTermsSet");
+    assert_eq!(
+        parsed.params,
+        json!({
+            "loan_id": "7",
+            "advance_ratio_bps": 6000,
+            "margin_call_ratio_bps": 7500,
+            "default_rate": 20_000,
+            "tolerance_bps": 500,
+            "grade_tolerance_bps": 200,
+            "cure_period": "259200",
+            "price_stale_after": "86400",
+            "grace_period": "432000",
+            "attestation_interval": "604800",
+            "inspection_interval": "2592000",
+            "margin_call_at": "0",
+            "payment_term": "Dp"
+        })
+    );
+    for key in [
+        "default_ratio_bps",
+        "originator_fee_rate",
+        "default_breach_at",
+    ] {
+        assert!(parsed.params.get(key).is_none(), "{key}");
+    }
+}
+
+#[test]
+fn hoodi_topics_are_pinned() {
+    let has = |topic: &str, name: &str| {
+        SECURITY_REGISTRY_EVENT_TOPICS.iter().any(|(e, t, n)| {
+            *e == SecurityEmitter::Registry && format!("{t:#x}") == topic && *n == name
+        })
+    };
+    assert!(has(OLD_TERMS_TOPIC, "SecurityTermsSet"));
+    assert!(has(NEW_TERMS_TOPIC, "SecurityTermsSet"));
+    assert_eq!(
+        format!("{:#x}", sr_f92d719::TermsSet::SIGNATURE_HASH),
+        OLD_TERMS_TOPIC
+    );
+    assert!(has(
+        "0x37628b827703d616bfd00f47e8d13ecabe347fa729ad6abf0724235fbe934ecb",
+        "SecurityDefaultBreach"
+    ));
+    assert!(has(
+        "0xed206567f71e87007acd11d033569eff156928e672e2d81a3c9c19872997cea7",
+        "SecurityDefaultBreachPriceStale"
+    ));
+    assert!(has(
+        "0xa6f25b5ed69f7384a6b641cd7ca5aede8fdfcd848bac4ae4d25897129be9e1e0",
+        "SecurityDefaultBreachCleared"
+    ));
+}
+
+#[test]
+fn a_terms_set_blob_under_the_other_shapes_topic_fails_to_decode() {
+    let old = terms_set_f92d719(7, 0, 100, 0, 1).log;
+    let new = terms_set(7, 0, 100, 0, 2).log;
+    let relabel = |log: &Log, topic0: B256| {
+        let mut topics = log.inner.data.topics().to_vec();
+        topics[0] = topic0;
+        log_data(topics, log.inner.data.data.to_vec(), REGISTRY, 100, 3)
+    };
+    let old_under_new = relabel(&old, sr::TermsSet::SIGNATURE_HASH);
+    let new_under_old = relabel(&new, sr_f92d719::TermsSet::SIGNATURE_HASH);
+    assert!(dispatch_security_registry(&old_under_new, REGISTRY, NFT).is_none());
+    assert!(dispatch_security_registry(&new_under_old, REGISTRY, NFT).is_none());
+    assert!(parse_security_event(&old, SecurityEmitter::Registry).is_some());
+    assert!(parse_security_event(&new, SecurityEmitter::Registry).is_some());
+}
+
 #[test]
 fn revalued_and_margin_events_decode() {
     check(
@@ -498,7 +577,7 @@ fn an_out_of_range_enum_is_stored_as_unknown() {
     );
 }
 
-const FORGE_TOPICS: [(&str, &str); 25] = [
+const FORGE_TOPICS: [(&str, &str); 26] = [
     (
         "SecurityRecordRegistered",
         "0x51c795991f7e40cbfd5cc4ff1e0ff1230b1d6b9494f2d5411d062ea15e2dd14f",
@@ -538,6 +617,10 @@ const FORGE_TOPICS: [(&str, &str); 25] = [
     (
         "SecurityTermsSet",
         "0x35ef31a2f77f591c834f93ab744e2d6d2e96c49d289cda4237b7193b684365f0",
+    ),
+    (
+        "SecurityTermsSet",
+        "0xafe2a37a11f39e6c1aabcfeee99c2838f1dca51206b72e457790877f82f19005",
     ),
     (
         "SecurityRevalued",
@@ -612,13 +695,14 @@ const FORGE_ALLOW_LISTED: [&str; 7] = [
 ];
 
 #[test]
-fn topic_hashes_match_forge_inspect_at_150631a() {
+fn topic_hashes_match_forge_inspect_at_both_commits() {
     for (name, topic) in FORGE_TOPICS {
-        let found = SECURITY_REGISTRY_EVENT_TOPICS
-            .iter()
-            .find(|(_, _, n)| *n == name)
-            .unwrap_or_else(|| panic!("{name}"));
-        assert_eq!(format!("{:#x}", found.1), topic, "{name}");
+        assert!(
+            SECURITY_REGISTRY_EVENT_TOPICS
+                .iter()
+                .any(|(_, t, n)| *n == name && format!("{t:#x}") == topic),
+            "{name} {topic}"
+        );
     }
     for topic in FORGE_ALLOW_LISTED {
         assert!(
@@ -632,7 +716,7 @@ fn topic_hashes_match_forge_inspect_at_150631a() {
 
 #[test]
 fn topic_table_matches_the_shared_names() {
-    assert_eq!(SECURITY_REGISTRY_EVENT_TOPICS.len(), 25);
+    assert_eq!(SECURITY_REGISTRY_EVENT_TOPICS.len(), 26);
     for (_, _, name) in SECURITY_REGISTRY_EVENT_TOPICS {
         assert!(is_security_registry_event(name), "{name}");
     }
@@ -671,14 +755,21 @@ fn no_topic_is_duplicated() {
         .collect();
     topics.sort();
     topics.dedup();
-    assert_eq!(topics.len(), 25);
+    assert_eq!(topics.len(), 26);
     let mut names: Vec<&str> = SECURITY_REGISTRY_EVENT_TOPICS
         .iter()
         .map(|(_, _, n)| *n)
         .collect();
     names.sort_unstable();
+    let total = names.len();
     names.dedup();
     assert_eq!(names.len(), 25);
+    assert_eq!(total - names.len(), 1);
+    let twice: Vec<_> = SECURITY_REGISTRY_EVENT_TOPICS
+        .iter()
+        .filter(|(_, _, n)| *n == "SecurityTermsSet")
+        .collect();
+    assert_eq!(twice.len(), 2);
 }
 
 fn all_logs() -> Vec<Log> {
@@ -689,6 +780,7 @@ fn all_logs() -> Vec<Log> {
         doc_added(7, 12, 2, 1, 100, 0, 4).log,
         released(7, 12, 1, false, 100, 0, 5).log,
         terms_set(7, 0, 100, 0, 6).log,
+        terms_set_f92d719(7, 0, 100, 0, 22).log,
         revalued(7, 12, 1, 100, 0, 7).log,
         margin_call(7, 1, 1, 100, 0, 8).log,
         price_stale(7, 1, 100, 0, 9).log,
@@ -777,6 +869,7 @@ fn the_security_only_trap_excludes_topics_shared_with_the_legacy_registry() {
         (sr::Paused::SIGNATURE_HASH, false),
         (sr::Unpaused::SIGNATURE_HASH, false),
         (sr::TermsSet::SIGNATURE_HASH, true),
+        (sr_f92d719::TermsSet::SIGNATURE_HASH, true),
     ] {
         assert_eq!(is_security_only_topic(&topic), expected, "{topic}");
     }

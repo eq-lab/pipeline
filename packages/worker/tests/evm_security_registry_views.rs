@@ -3,7 +3,7 @@ mod evm_security_support;
 
 use alloy::primitives::{Address, B256, U256};
 use alloy::rpc::json_rpc::{ErrorPayload, RpcError};
-use alloy::sol_types::{SolError, SolValue};
+use alloy::sol_types::{SolCall, SolError, SolValue};
 use alloy::transports::TransportErrorKind;
 use evm_security_support::*;
 use pipeline_worker::indexer::security_registry_sync::SecurityViewSource;
@@ -256,6 +256,144 @@ fn coverage_detail_with_counted_records_and_default_breach() {
     assert_eq!(v.records[0].mark_at, "1790000300");
     assert!(v.records[0].flagged && !v.records[0].stale);
     assert!(v.records[1].stale);
+}
+
+const HOODI_TERMS: &str = "00000000000000000000000000000000000000000000000000000000000017700000000000000000000000000000000000000000000000000000000000001d4c000000000000000000000000000000000000000000000000000000000003f4800000000000000000000000000000000000000000000000000000000000015180000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000697800000000000000000000000000000000000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000000093a800000000000000000000000000000000000000000000000000000000000278d0000000000000000000000000000000000000000000000000000000000000001f400000000000000000000000000000000000000000000000000000000000000c80000000000000000000000000000000000000000000000000000000000000000";
+const HOODI_COVERAGE: &str = "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000074a5ed5200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000000";
+
+fn bytes_of(hex_text: &str) -> Vec<u8> {
+    hex::decode(hex_text).unwrap()
+}
+
+fn f92d719_coverage(records: Vec<rd_f92d719::CountedRecord>) -> rd_f92d719::CoverageDetail {
+    rd_f92d719::CoverageDetail {
+        value: u(1_250_000_000),
+        staleValue: u(10),
+        flaggedValue: u(20),
+        debt: u(800_000_000),
+        coverageBps: 15_625,
+        ltvBps: 6400,
+        marginCallAt: 1_790_000_005,
+        cureBy: u(1_790_604_805),
+        priceStale: true,
+        records,
+    }
+}
+
+fn old_record(id: U256) -> rd_f92d719::CountedRecord {
+    rd_f92d719::CountedRecord {
+        recordId: id,
+        countedQuantity: u(900_000),
+        valuePerUnit: u(5_000_000),
+        markAt: 1_790_000_300,
+        stale: false,
+        flagged: true,
+    }
+}
+
+#[test]
+fn hoodi_terms_payload_decodes_as_f92d719() {
+    let v = decode_terms(&bytes_of(HOODI_TERMS)).unwrap();
+    assert_eq!(v.advance_ratio_bps, 6000);
+    assert_eq!(v.margin_call_ratio_bps, 7500);
+    assert_eq!(v.cure_period, "259200");
+    assert_eq!(v.price_stale_after, "86400");
+    assert_eq!(v.payment_term, "Dp");
+    assert_eq!(v.grace_period, "432000");
+    assert_eq!(v.default_rate, 20_000);
+    assert_eq!(v.attestation_interval, "604800");
+    assert_eq!(v.inspection_interval, "2592000");
+    assert_eq!(v.tolerance_bps, 500);
+    assert_eq!(v.grade_tolerance_bps, 200);
+    assert_eq!(v.margin_call_at, "0");
+    assert_eq!(v.default_ratio_bps, None);
+    assert_eq!(v.originator_fee_rate, None);
+    assert_eq!(v.default_breach_at, None);
+}
+
+#[test]
+fn hoodi_coverage_detail_payload_decodes_as_f92d719() {
+    let v = decode_coverage_detail(&bytes_of(HOODI_COVERAGE)).unwrap();
+    assert_eq!(v.debt, "501000000000");
+    assert_eq!(v.coverage_bps, 0);
+    assert_eq!(v.ltv_bps, u32::MAX);
+    assert!(!v.price_stale);
+    assert!(v.records.is_empty());
+    assert_eq!(v.default_breach_at, None);
+}
+
+#[test]
+fn f92d719_coverage_with_records() {
+    let bytes = f92d719_coverage(vec![old_record(u(12)), old_record(u(13))]).abi_encode();
+    let v = decode_coverage_detail(&bytes).unwrap();
+    assert_eq!(v.records.len(), 2);
+    assert_eq!(v.records[1].record_id, 13);
+    assert_eq!(v.cure_by, "1790604805");
+    assert_eq!(v.default_breach_at, None);
+    let big = U256::from(u64::from(u32::MAX) + 1);
+    let err =
+        decode_coverage_detail(&f92d719_coverage(vec![old_record(big)]).abi_encode()).unwrap_err();
+    assert!(err.to_string().contains("record_id"), "{err}");
+}
+
+#[test]
+fn the_two_shapes_are_exclusive() {
+    let old_terms = bytes_of(HOODI_TERMS);
+    let new_terms = t_as_rd(&terms(1, 2, 3)).abi_encode();
+    assert!(rd::termsCall::abi_decode_returns(&old_terms, true).is_err());
+    assert!(rd_f92d719::termsCall::abi_decode_returns(&new_terms, true).is_err());
+
+    let old_cov = bytes_of(HOODI_COVERAGE);
+    let new_cov = coverage(1, 2, 3).abi_encode();
+    assert!(rd::coverageDetailCall::abi_decode_returns(&old_cov, true).is_err());
+    assert!(rd_f92d719::coverageDetailCall::abi_decode_returns(&new_cov, true).is_err());
+
+    let old_cov_records = f92d719_coverage(vec![old_record(u(12))]).abi_encode();
+    assert!(rd::coverageDetailCall::abi_decode_returns(&old_cov_records, true).is_err());
+
+    let empty_new = rd::CoverageDetail {
+        value: U256::ZERO,
+        staleValue: U256::ZERO,
+        flaggedValue: U256::ZERO,
+        debt: U256::ZERO,
+        coverageBps: 0,
+        ltvBps: 0,
+        marginCallAt: 0,
+        cureBy: U256::ZERO,
+        defaultBreachAt: 0,
+        priceStale: false,
+        records: vec![],
+    }
+    .abi_encode();
+    assert!(rd_f92d719::coverageDetailCall::abi_decode_returns(&empty_new, true).is_err());
+    let v = decode_coverage_detail(&empty_new).unwrap();
+    assert_eq!(v.default_breach_at.as_deref(), Some("0"));
+    assert!(!v.price_stale && v.records.is_empty());
+
+    let empty_old = f92d719_coverage(vec![]).abi_encode();
+    assert!(rd::coverageDetailCall::abi_decode_returns(&empty_old, true).is_err());
+    assert_eq!(
+        decode_coverage_detail(&empty_old)
+            .unwrap()
+            .default_breach_at,
+        None
+    );
+}
+
+#[test]
+fn garbage_fails_naming_both_shapes() {
+    for blob in [vec![0u8; 100], vec![0u8; 13 * 32]] {
+        for err in [
+            decode_terms(&blob).unwrap_err(),
+            decode_coverage_detail(&blob).unwrap_err(),
+        ] {
+            let text = format!("{err:#}");
+            assert!(
+                text.contains("150631a") && text.contains("f92d719"),
+                "{text}"
+            );
+        }
+    }
 }
 
 #[test]
