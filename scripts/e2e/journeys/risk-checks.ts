@@ -1,17 +1,15 @@
 // What the Stellar and EVM risk journeys share: API reads, how a refused call is recorded and the checks over the same recorded shapes; see docs/e2e.md "Risk Council".
 
 import type { Check } from "../lib/journey";
+import { contractError } from "../lib/stellar";
 import { http, ok } from "../lib/stellar-world";
 import { check, need, units, verdict } from "./stellar-lp";
 
 type Entry = Record<string, any>;
 
-/** The error of a call that was rejected, or null when it went through. */
-export const rejection = (call: () => Promise<unknown>): Promise<string | null> =>
-  call().then(
-    () => null,
-    (e) => String(e instanceof Error ? e.message : e).slice(0, 300),
-  );
+/** The error of a call that was rejected (`describe` shortens it, default the message start), or null when it went through. */
+export const rejection = (call: () => Promise<unknown>, describe = (e: unknown) => String(e instanceof Error ? e.message : e).slice(0, 300)): Promise<string | null> =>
+  call().then(() => null, describe);
 
 /** The loan-book reads of a risk journey on one chain (`query` is `chain_id=<id>`), for the trustee's `token`. */
 export const riskApi = (query: string, token: () => string, loanId: () => bigint | number) => {
@@ -31,6 +29,8 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
 export function riskChecks(chain: "stellar" | "evm"): Check[] {
   const key = (name: string) => `${chain === "evm" ? "evm." : ""}risk.${name}`;
   const id = (name: string) => `${chain}.risk.${name}`;
+  // The AccessManager's refusal: EVM's custom error name (`revertName`), Stellar's `Error(Contract, #1)`.
+  const refusal = (error: string) => (chain === "evm" ? error === "AccessManagedUnauthorized" : contractError(error) === "1");
   const flags = (name: string, paused: boolean) =>
     check(
       id(paused ? "pause" : "unpause"),
@@ -50,7 +50,7 @@ export function riskChecks(chain: "stellar" | "evm"): Check[] {
     check(id("default-refused"), "Keys without the risk council role (the trustee-side key and the originator) cannot move a loan to Default: the call is rejected and the loan keeps its status", (r) => {
       const d = need(r, key("defaultRefused"));
       const attempts = d.attempts as { who: string; error: string | null }[];
-      return verdict(attempts.length >= 2 && attempts.every((a) => a.error !== null) && d.statusAfter === "Performing", JSON.stringify(d));
+      return verdict(attempts.length >= 2 && attempts.every((a) => a.error !== null && refusal(a.error)) && d.statusAfter === "Performing", JSON.stringify(d));
     }),
     check(id("default"), "The risk council moves the loan to Default: the status on chain, in the loan book and loan detail agree, attention counts one more defaulted loan and the at-risk senior is the outstanding", (r) => {
       const d = need(r, key("default"));
