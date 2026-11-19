@@ -20,6 +20,16 @@ const REPO = join(HERE, "../..");
 const TIMEOUT = 30_000;
 const home = mkdtempSync(join(tmpdir(), "e2e-stack-"));
 process.env.E2E_HOME = join(home, "e2e-home");
+// down() cleans docker by label machine-wide; a stub docker keeps the fixed test tags (x, d, ...) from touching a real stack.
+// It records its calls and lists one id per `ps`/`ls`, so down()'s removals run against the stub too.
+const dockerLog = join(home, "docker.log");
+mkdirSync(join(home, "bin"));
+writeFileSync(
+  join(home, "bin", "docker"),
+  `#!/bin/sh\necho "$*" >> "${dockerLog}"\ncase "$1 $2" in ps*|*" ls") echo "id-$1" ;; esac\n`,
+  { mode: 0o755 },
+);
+process.env.PATH = `${join(home, "bin")}:${process.env.PATH}`;
 after(() => rmSync(home, { recursive: true, force: true }));
 
 const C = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -289,6 +299,21 @@ describe("down", { timeout: TIMEOUT }, () => {
     down("other");
     assert.equal(readFileSync(join(process.env.E2E_HOME!, "stack.lock"), "utf8"), "keep");
     down("keep");
+  });
+
+  // #1985: an unfiltered `docker ps -aq` here would remove every container on the machine.
+  it("removes only the docker resources labelled with its tag", () => {
+    rmSync(dockerLog, { force: true });
+    down("lbl");
+    const filter = "--filter label=pipeline-e2e.tag=lbl";
+    assert.deepEqual(readFileSync(dockerLog, "utf8").trim().split("\n"), [
+      `ps -aq ${filter}`,
+      "rm -fv id-ps",
+      `volume ls -q ${filter}`,
+      "volume rm -f id-volume",
+      `network ls -q ${filter}`,
+      "network rm id-network",
+    ]);
   });
 });
 
