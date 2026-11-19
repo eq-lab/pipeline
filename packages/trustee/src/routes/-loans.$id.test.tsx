@@ -25,13 +25,19 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({
       children,
       to,
+      search,
       "data-testid": testId,
     }: {
       children: React.ReactNode;
       to: string;
+      search?: unknown;
       "data-testid"?: string;
     }) => (
-      <a href={to} data-testid={testId}>
+      <a
+        href={to}
+        data-testid={testId}
+        data-search={search === undefined ? undefined : JSON.stringify(search)}
+      >
         {children}
       </a>
     ),
@@ -144,6 +150,7 @@ vi.mock("./-DisburseAction", () => ({
 }));
 
 import { Route } from "./loans.$id";
+import { rememberLoanBookSearch } from "./-loanBookSearch";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
 // it directly since the route isn't mounted in a real router tree here.
@@ -349,6 +356,16 @@ describe("Loan detail route — hero (live)", () => {
       "href",
       "/loans",
     );
+  });
+
+  it("carries the loan book's last tab and chain filter on the back link (#2080)", () => {
+    rememberLoanBookSearch({ tab: "Watchlist", chain: 560048 });
+    renderRoute();
+    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ tab: "Watchlist", chain: 560048 }),
+    );
+    rememberLoanBookSearch({});
   });
 });
 
@@ -1313,12 +1330,16 @@ describe("Loan detail route — top-level states", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({ state: "error", errorMessage: "kaboom" }),
     );
+    rememberLoanBookSearch({ chain: 560048 });
     renderRoute();
     expect(screen.getByTestId("loan-detail-error")).toHaveTextContent("kaboom");
-    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
-      "href",
-      "/loans",
+    const back = screen.getByText("‹ Loans").closest("a");
+    expect(back).toHaveAttribute("href", "/loans");
+    expect(back).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ chain: 560048 }),
     );
+    rememberLoanBookSearch({});
   });
 });
 
