@@ -523,12 +523,7 @@ export function useRiskCouncilRelay() {
         if (mode !== "schedule") return { hash, schedule: executing };
         let schedule: OperationSchedule | undefined;
         try {
-          schedule = await readEvmScheduleFor(
-            evm,
-            call,
-            evmCaller,
-            termsShape,
-          );
+          schedule = await readEvmScheduleFor(evm, call, evmCaller, termsShape);
         } catch {
           schedule = undefined;
         }
