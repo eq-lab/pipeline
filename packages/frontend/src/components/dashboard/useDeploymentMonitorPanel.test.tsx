@@ -1,16 +1,4 @@
-/**
- * Tests for `src/components/dashboard/useDeploymentMonitorPanel.ts`.
- *
- * Covers:
- *   - Panel-level state machine (Active Loans query): loading / error / ready.
- *   - In Origination tab (issue #755): independent state machine, submission →
- *     row mapping, count badge, and the fact that a loading/empty submissions
- *     query does NOT force the panel out of "ready".
- *   - Tab selection state.
- *
- * Uses the `pipeline.mock.api.*` localStorage mock layer (same approach as
- * `useWithdrawalQueuePanel.test.tsx`).
- */
+// spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -575,6 +563,71 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
 
     expect(result.current.headerAggregates.ltv).toBe("80%");
     expect(result.current.rows.map((r) => r.ltv)).toEqual(["80%", "0%", "95%"]);
+  });
+});
+
+describe("useDeploymentMonitorPanel — active loans count (#2128)", () => {
+  const loan = (commodity: string, status: string) => ({
+    originator: commodity,
+    borrower: commodity,
+    commodity,
+    principal: "4000.000000",
+    collateral: null,
+    ltv: null,
+    ltv_bps: 8000,
+    duration_days: 60,
+    rate: "0.110000",
+    protection: null,
+    status,
+  });
+  const book = (loans: ReturnType<typeof loan>[]) => ({
+    summary: {
+      total_deployed: "4000.000000",
+      total_collateral: null,
+      senior_debt_coverage: null,
+      avg_yield: "0.110000",
+      avg_duration_days: 60,
+    },
+    loans,
+  });
+  const render = async (loans: ReturnType<typeof loan>[]) => {
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(book(loans)));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+    return result.current;
+  };
+
+  it("counts only non-terminal loans while listing every served row in order", async () => {
+    const panel = await render([
+      loan("Perf", "Performing"),
+      loan("Watch", "WatchList"),
+      loan("Done", "Closed"),
+      loan("Bad", "Default"),
+    ]);
+    expect(panel.activeLoansCount).toBe(2);
+    expect(panel.rows.map((r) => r.commodity)).toEqual([
+      "Perf",
+      "Watch",
+      "Done",
+      "Bad",
+    ]);
+  });
+
+  it("counts 0 but still lists rows when every loan is terminal", async () => {
+    const panel = await render([
+      loan("Done", "Closed"),
+      loan("Bad", "Default"),
+    ]);
+    expect(panel.activeLoansCount).toBe(0);
+    expect(panel.rows).toHaveLength(2);
+  });
+
+  it("counts 0 when there are no loans", async () => {
+    const panel = await render([]);
+    expect(panel.activeLoansCount).toBe(0);
   });
 });
 

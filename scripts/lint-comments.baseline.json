@@ -219,14 +219,6 @@
     "header": 23,
     "nodeIds": 0
   },
-  "packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.test.tsx": {
-    "header": 13,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/components/dashboard/useWithdrawalQueuePanel.test.tsx": {
-    "header": 18,
-    "nodeIds": 0
-  },
   "packages/frontend/src/components/dashboard/useYieldHistoryPanel.test.tsx": {
     "header": 16,
     "nodeIds": 0
