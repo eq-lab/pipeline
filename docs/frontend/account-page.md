@@ -181,7 +181,9 @@ read-only `—` row. `walletOnly` wires `onAddEmail={openAddEmail}`, `openAddEma
 [`auth-components.md#authflowprovider`](./auth-components.md#authflowprovider)) — clicking it opens
 `AddEmailModal` (#1459), the normal create-account registration (email + password → OTP → session)
 with its own chrome; see
-[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). The authenticated path
+[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). That screen carries an
+`Already have an account? Sign in` link (#2054) that opens the flow's sign-in screen; closing or
+signing in returns to `/account`, and no wallet data is sent. The authenticated path
 never passes `onAddEmail`, so its read-only row is unchanged.
 
 `Upload` (`AccountUploadRow`, via `AccountDocumentsCard`'s `onUploadIntercept`): document writes
