@@ -10,6 +10,8 @@ const wagmi = vi.hoisted(() => ({
   writeContract: vi.fn(),
   waitForTransactionReceipt: vi.fn(),
   readContract: vi.fn(),
+  getStorageAt: vi.fn(),
+  getBytecode: vi.fn(),
 }));
 
 vi.mock("@wagmi/core", () => ({
@@ -19,6 +21,8 @@ vi.mock("@wagmi/core", () => ({
   writeContract: wagmi.writeContract,
   waitForTransactionReceipt: wagmi.waitForTransactionReceipt,
   readContract: wagmi.readContract,
+  getStorageAt: wagmi.getStorageAt,
+  getBytecode: wagmi.getBytecode,
   getPublicClient: () => ({ estimateContractGas: wagmi.estimateContractGas }),
 }));
 vi.mock("../config", () => ({ initEvmWalletConnect: () => ({ id: "cfg" }) }));
@@ -30,8 +34,10 @@ import {
   encodeErrorResult,
 } from "viem";
 import {
+  EIP1967_IMPLEMENTATION_SLOT,
   EVM_TX_GAS_CAP,
   readEvmContract,
+  readEvmContractCode,
   sendEvmContractCall,
   sendEvmContractCallChecked,
 } from "./write";
@@ -282,5 +288,45 @@ describe("sendEvmContractCallChecked", () => {
     );
     expect(stages).toEqual(["awaiting-signature", "confirming"]);
     expect(result).toEqual({ hash: HASH, receipt: RECEIPT });
+  });
+});
+
+describe("readEvmContractCode", () => {
+  const IMPLEMENTATION = "0x502ff7b573acf4efd69414a25c45fe18c839a683";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reads the EIP-1967 implementation when the slot is set", async () => {
+    wagmi.getStorageAt.mockResolvedValue(
+      `0x${"0".repeat(24)}${IMPLEMENTATION.slice(2)}`,
+    );
+    wagmi.getBytecode.mockResolvedValue("0x6080");
+    await expect(readEvmContractCode(TARGET)).resolves.toBe("0x6080");
+    expect(wagmi.getStorageAt.mock.calls[0]![1]).toEqual({
+      address: TARGET,
+      slot: EIP1967_IMPLEMENTATION_SLOT,
+    });
+    expect(wagmi.getBytecode.mock.calls[0]![1]).toEqual({
+      address: IMPLEMENTATION,
+    });
+  });
+
+  it("reads the address itself when the slot is zero", async () => {
+    wagmi.getStorageAt.mockResolvedValue(`0x${"0".repeat(64)}`);
+    wagmi.getBytecode.mockResolvedValue("0x6080");
+    await readEvmContractCode(TARGET);
+    expect(wagmi.getBytecode.mock.calls[0]![1]).toEqual({ address: TARGET });
+  });
+
+  it("throws on missing or empty code", async () => {
+    wagmi.getStorageAt.mockResolvedValue(undefined);
+    wagmi.getBytecode.mockResolvedValue(undefined);
+    await expect(readEvmContractCode(TARGET)).rejects.toThrow(
+      `no code at ${TARGET}`,
+    );
+    wagmi.getBytecode.mockResolvedValue("0x");
+    await expect(readEvmContractCode(TARGET)).rejects.toThrow("no code at");
   });
 });

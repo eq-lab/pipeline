@@ -1,7 +1,9 @@
 // spec: docs/frontend/wallet-flows.md#trustee-evm-contract-client
 import {
+  getBytecode,
   getConnection,
   getPublicClient,
+  getStorageAt,
   readContract,
   simulateContract,
   switchChain,
@@ -21,6 +23,9 @@ import { initEvmWalletConnect } from "../config";
 import { parseAddress, readMock } from "../mock";
 
 export const EVM_TX_GAS_CAP = 16_777_215n;
+
+export const EIP1967_IMPLEMENTATION_SLOT =
+  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
 const MOCK_ADDRESS_KEY = "pipeline.mock.wallet.address";
 
@@ -64,6 +69,23 @@ export function readEvmContract<T = unknown>({
     args,
     ...(blockNumber === undefined ? {} : { blockNumber }),
   } as never) as Promise<T>;
+}
+
+export async function readEvmContractCode(address: string): Promise<Hex> {
+  const config = initEvmWalletConnect();
+  const slot = await getStorageAt(config, {
+    address: address as Address,
+    slot: EIP1967_IMPLEMENTATION_SLOT,
+  });
+  const word = (slot ?? "0x").slice(2).padStart(64, "0");
+  const implementation = /^0+$/.test(word) ? address : `0x${word.slice(-40)}`;
+  const code = await getBytecode(config, {
+    address: implementation as Address,
+  });
+  if (!code || code === "0x") {
+    throw new Error(`readEvmContractCode: no code at ${implementation}`);
+  }
+  return code;
 }
 
 export async function sendEvmContractCall({

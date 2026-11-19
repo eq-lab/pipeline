@@ -131,11 +131,17 @@ Rejected:
    - Only `0xfe1748f511583f6c9349f672593e6312bedfce40` holds role `0xeb1d771c1671a32e` (setTerms, resolveFlag, releaseWithConsent).
 
    **Recommended default:** run the SR security flows with `0xfe1748f5…`, and record this in the #2082 user story. Do not grant roles from this issue, because deployments are not changed here. The app needs no change either way.
+
+   **Settled (2026-11-19):** the default. QA uses `0xfe1748f5…` for the SR flows; recorded in the user story.
 2. **Hoodi has no loans yet** (`nextLoanId() = 0`), so a live `setTerms` cannot succeed until a loan is drawn there.
 
    **Recommended default:** accept the `eth_call` evidence above as this PR's on-chain verification: it gets past the selector and role check and fails only on loan existence. The live round trip moves to QA #1945 after the first Hoodi loan is drawn.
 
+   **Settled (2026-11-19):** the default. The Hoodi `eth_call` simulation is the on-chain check.
+
 ## Implementation Steps
+
+**Status:** steps 1 to 9 are done. Deviations: the probe's unrecognised-build error does not name the implementation address (the pure function has no address): `Unrecognised SecurityRegistry build: setTerms selector neither 0x45f225f5 nor 0x36b14cd2 (or both)`. The new differences-table rows are numbered 21 to 23 as planned (row 20 is #2072's).
 
 1. **wallet-connect: code reader** (`packages/wallet-connect/src/evm/contracts/write.ts`).
    - Add `export const EIP1967_IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"`.
