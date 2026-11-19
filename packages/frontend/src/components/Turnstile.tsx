@@ -118,6 +118,11 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(
     onStatusChangeRef.current = onStatusChange;
 
     useEffect(() => {
+      if (ENV.E2E_CAPTCHA_TOKEN) {
+        onTokenRef.current(ENV.E2E_CAPTCHA_TOKEN);
+        onStatusChangeRef.current?.("ready");
+        return;
+      }
       if (!ENV.TURNSTILE_SITE_KEY) {
         onStatusChangeRef.current?.("unavailable");
         return;
@@ -176,7 +181,8 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(
 
     useImperativeHandle(ref, () => ({
       reset: () => {
-        if (widgetIdRef.current !== undefined) {
+        if (ENV.E2E_CAPTCHA_TOKEN) setAttempt((current) => current + 1);
+        else if (widgetIdRef.current !== undefined) {
           onStatusChangeRef.current?.("loading");
           window.turnstile?.reset(widgetIdRef.current);
         }
