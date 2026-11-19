@@ -6,9 +6,11 @@ use async_trait::async_trait;
 use stellar_xdr::curr::ScVal;
 
 use shared::security_registry::{
-    ContractView, CountedRecordView, CoverageDetailView, DocView, InspectionView, LoanMoneyView,
-    MarkView, RecordView, TermsView,
+    CountedRecordView, CoverageDetailView, DocView, InspectionView, LoanMoneyView, MarkView,
+    RecordView, TermsView,
 };
+
+pub use crate::indexer::security_registry_sync::{contract_view, SecurityViewSource};
 
 use crate::indexer::stellar::loan_registry_reader::{
     expect_map, map_bool, map_bytes32, map_entry, map_enum_variant, map_i128, map_string, map_u128,
@@ -168,6 +170,9 @@ pub fn decode_terms(scval: &ScVal) -> Result<TermsView> {
         tolerance_bps: map_u32(&m, "tolerance_bps", "Terms")?,
         grade_tolerance_bps: map_u32(&m, "grade_tolerance_bps", "Terms")?,
         margin_call_at: map_u64(&m, "margin_call_at", "Terms")?.to_string(),
+        default_ratio_bps: None,
+        originator_fee_rate: None,
+        default_breach_at: None,
     })
 }
 
@@ -198,6 +203,7 @@ pub fn decode_coverage_detail(scval: &ScVal) -> Result<CoverageDetailView> {
         cure_by: map_u64(&m, "cure_by", "CoverageDetail")?.to_string(),
         price_stale: map_bool(&m, "price_stale", "CoverageDetail")?,
         records,
+        default_breach_at: None,
     })
 }
 
@@ -251,27 +257,6 @@ pub fn decode_bool(scval: &ScVal) -> Result<bool> {
         ScVal::Bool(b) => Ok(*b),
         other => bail!("expected Bool, got {other:?}"),
     }
-}
-
-pub fn contract_view(paused: bool, inspectors: Vec<String>, loan_registry: String) -> ContractView {
-    ContractView {
-        paused,
-        inspectors,
-        loan_registry,
-    }
-}
-
-#[async_trait]
-pub trait SecurityViewSource: Send + Sync {
-    async fn record(&self, record_id: u32) -> Result<(RecordView, u64)>;
-    async fn inspection(&self, inspection_id: u32) -> Result<(InspectionView, u64)>;
-    async fn terms(&self, loan_id: u32) -> Result<(Option<TermsView>, u64)>;
-    async fn extension_consents(&self, loan_id: u32) -> Result<(Vec<String>, u64)>;
-    async fn inspectors(&self) -> Result<(Vec<String>, u64)>;
-    async fn paused(&self) -> Result<(bool, u64)>;
-    async fn loan_registry(&self) -> Result<(String, u64)>;
-    async fn coverage_detail(&self, loan_id: u32) -> Result<(CoverageDetailView, u64)>;
-    async fn loan_money(&self, registry: &str, loan_id: u32) -> Result<(LoanMoneyView, u64)>;
 }
 
 pub struct RpcSecurityViewSource {
@@ -365,5 +350,17 @@ impl SecurityViewSource for RpcSecurityViewSource {
             .call(registry, "loan_money", vec![ScVal::U32(loan_id)])
             .await?;
         Ok((decode_loan_money(&v)?, l))
+    }
+
+    async fn latest_ledger(&self) -> Result<u64> {
+        self.rpc.get_latest_ledger().await
+    }
+
+    fn is_missing_record(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_RECORD_CODE)
+    }
+
+    fn is_missing_inspection(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_INSPECTION_CODE)
     }
 }

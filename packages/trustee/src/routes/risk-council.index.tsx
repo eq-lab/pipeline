@@ -196,6 +196,18 @@ function LoansTable({
   );
 }
 
+function InspectorsLink() {
+  return (
+    <Link
+      to="/risk-council/inspectors"
+      data-testid="risk-council-inspectors-link"
+      className="self-start text-[#000080] underline"
+    >
+      Inspector panel
+    </Link>
+  );
+}
+
 function RiskCouncilIndex() {
   const view = useRiskCouncilHub();
 
@@ -205,7 +217,10 @@ function RiskCouncilIndex() {
         {navItem.heading}
       </h1>
       {view.blockedReason ? (
-        <Muted testId="risk-council-blocked">{view.blockedReason}</Muted>
+        <>
+          <Muted testId="risk-council-blocked">{view.blockedReason}</Muted>
+          {view.showInspectorsLink && <InspectorsLink />}
+        </>
       ) : (
         <>
           <p
@@ -217,13 +232,7 @@ function RiskCouncilIndex() {
           {view.roleLine && (
             <Muted testId="risk-council-role">{view.roleLine}</Muted>
           )}
-          <Link
-            to="/risk-council/inspectors"
-            data-testid="risk-council-inspectors-link"
-            className="self-start text-[#000080] underline"
-          >
-            Inspector panel
-          </Link>
+          <InspectorsLink />
           <ScheduledTable rows={view.rows} chain={view.chainId} />
           <LoansTable loans={view.loans} chain={view.chainId} />
         </>

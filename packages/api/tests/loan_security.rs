@@ -11,7 +11,7 @@ use chrono::{TimeZone, Utc};
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::loan_security::{
-    self, parse_loan_id, resolve_security_registry, LoanSecurityDoc,
+    self, parse_loan_id, resolve_security_registry, security_log_contracts, LoanSecurityDoc,
 };
 use pipeline_api::security_state::{
     build_security_response, mark_price_pairs, needs_concentrate_inputs, MarkInputs,
@@ -25,7 +25,7 @@ use shared::position_repo::PositionRepo;
 use shared::security_marks::{CommodityMap, MarkSettings};
 use shared::security_registry::{
     ConsentRow, DocRow, InspectionRow, LotRow, MarginCallEventRow, RecordRow, RegistryStateRow,
-    TermsRow, ValuationRow,
+    SecurityChainParams, TermsRow, ValuationRow, EVM_SECURITY_PARAMS, STELLAR_SECURITY_PARAMS,
 };
 use shared::security_registry_repo::{LoanSecurityRows, SaleRepaymentRow};
 use tower::ServiceExt;
@@ -44,9 +44,12 @@ const STELLAR_OTHER: ConfiguredChain = ConfiguredChain {
     kind: ChainKind::Stellar,
 };
 const REGISTRY: &str = "CDTUMAT6QBBPUZQFTZWMPHXHVQSLPUWRPDHKVQEMEF2YKCV4QTSCSQVN";
+const EVM_REGISTRY: &str = "0xB51E7f13420D106946376A67Fe5921C63B09BE15";
+const EVM_NFT: &str = "0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09";
 const LOAN_REGISTRY: &str = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX";
 const NOW: u64 = 1_762_400_000;
 const UNIT: i128 = 10_000_000;
+const U6: i128 = 1_000_000;
 
 fn make_test_state(security: HashMap<i64, String>) -> AppState {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap();
@@ -73,6 +76,7 @@ fn make_test_state(security: HashMap<i64, String>) -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: security,
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
@@ -180,6 +184,9 @@ fn terms() -> TermsRow {
         margin_call_at: dec(0),
         set_ledger: Some(123),
         complete: true,
+        default_ratio_bps: None,
+        originator_fee_rate: None,
+        default_breach_at: None,
     }
 }
 
@@ -202,6 +209,7 @@ fn valuation_row(ltv_bps: i64, counted_records: Value) -> ValuationRow {
         accrued_interest: dec(100 * UNIT),
         money_ledger: 501,
         source_log_id: 40,
+        default_breach_at: None,
     }
 }
 
@@ -266,18 +274,33 @@ fn base_rows() -> LoanSecurityRows {
     }
 }
 
-fn build(rows: &LoanSecurityRows, status: Option<&str>) -> Value {
+fn build_on(
+    chain: ConfiguredChain,
+    params: &SecurityChainParams,
+    contract: &str,
+    rows: &LoanSecurityRows,
+    status: Option<&str>,
+) -> Value {
     let mut rows = rows.clone();
     rows.loan_status = status.map(str::to_owned);
     serde_json::to_value(build_security_response(
-        STELLAR.chain_id,
-        REGISTRY,
+        chain.chain_id,
+        params,
+        contract,
         "7",
         &rows,
         NOW,
         &MarkInputs::default(),
     ))
     .unwrap()
+}
+
+fn build(rows: &LoanSecurityRows, status: Option<&str>) -> Value {
+    build_on(STELLAR, &STELLAR_SECURITY_PARAMS, REGISTRY, rows, status)
+}
+
+fn build_evm(rows: &LoanSecurityRows, status: Option<&str>) -> Value {
+    build_on(EVM, &EVM_SECURITY_PARAMS, EVM_REGISTRY, rows, status)
 }
 
 fn sqlx_dec(digits: i64, scale: i64) -> BigDecimal {
@@ -295,6 +318,7 @@ fn margin_event(block: i64, kind: &str, ltv: i64, cure_by: Option<i128>) -> Marg
         cure_by: cure_by.map(dec),
         block_timestamp: i64::try_from(NOW).unwrap() - 5_000 + block,
         tx_hash: format!("tx{block}"),
+        default_ratio_bps: None,
     }
 }
 
@@ -310,10 +334,46 @@ fn open_call_rows(ltv: i64, cure_by: i128) -> LoanSecurityRows {
     rows
 }
 
+fn evm_registries() -> HashMap<i64, String> {
+    HashMap::from([(EVM.chain_id, EVM_REGISTRY.to_owned())])
+}
+
+fn evm_nfts() -> HashMap<i64, String> {
+    HashMap::from([(EVM.chain_id, EVM_NFT.to_owned())])
+}
+
 #[test]
-fn an_evm_chain_has_no_security_registry() {
+fn an_unconfigured_evm_chain_has_no_security_registry() {
     let err = resolve_security_registry(EVM, &registries()).unwrap_err();
     assert_eq!(not_found_message(err), "security_registry_not_configured");
+}
+
+#[test]
+fn a_configured_evm_chain_resolves() {
+    assert_eq!(
+        resolve_security_registry(EVM, &evm_registries()).unwrap(),
+        EVM_REGISTRY
+    );
+}
+
+#[test]
+fn the_log_contracts_are_the_registry_plus_the_chains_record_nft() {
+    assert_eq!(
+        security_log_contracts(STELLAR, REGISTRY, &HashMap::new()),
+        [REGISTRY]
+    );
+    assert_eq!(
+        security_log_contracts(STELLAR, REGISTRY, &evm_nfts()),
+        [REGISTRY]
+    );
+    assert_eq!(
+        security_log_contracts(EVM, EVM_REGISTRY, &evm_nfts()),
+        [EVM_REGISTRY, EVM_NFT]
+    );
+    assert_eq!(
+        security_log_contracts(EVM, EVM_REGISTRY, &HashMap::new()),
+        [EVM_REGISTRY]
+    );
 }
 
 #[test]
@@ -387,6 +447,15 @@ fn the_openapi_document_lists_the_route_and_its_refusals() {
         assert!(get["responses"].get(status).is_some(), "missing {status}");
     }
     assert!(get.get("security").is_none());
+    let schemas = &doc["components"]["schemas"];
+    assert!(schemas.get("DefaultBreachDto").is_some());
+    assert!(schemas.get("DefaultBreachEventDto").is_some());
+    assert!(schemas["LoanSecurityResponse"]["properties"]
+        .get("default_breach")
+        .is_some());
+    for key in ["default_ratio_bps", "originator_fee_rate"] {
+        assert!(schemas["SecurityTermsDto"]["properties"].get(key).is_some());
+    }
 }
 
 #[test]
@@ -1157,6 +1226,7 @@ fn the_loan_status_comes_from_the_rows() {
     rows.loan_status = Some("Closed".to_owned());
     let v = serde_json::to_value(build_security_response(
         STELLAR.chain_id,
+        &STELLAR_SECURITY_PARAMS,
         REGISTRY,
         "7",
         &rows,
@@ -1215,7 +1285,21 @@ fn marks(price: &str) -> MarkInputs<'static> {
 fn build_marked(rows: &LoanSecurityRows, marks: &MarkInputs<'_>) -> Value {
     serde_json::to_value(build_security_response(
         STELLAR.chain_id,
+        &STELLAR_SECURITY_PARAMS,
         REGISTRY,
+        "7",
+        rows,
+        NOW,
+        marks,
+    ))
+    .unwrap()
+}
+
+fn build_marked_evm(rows: &LoanSecurityRows, marks: &MarkInputs<'_>) -> Value {
+    serde_json::to_value(build_security_response(
+        EVM.chain_id,
+        &EVM_SECURITY_PARAMS,
+        EVM_REGISTRY,
         "7",
         rows,
         NOW,
@@ -1525,4 +1609,409 @@ fn a_long_scale_price_gives_a_suggestion() {
         v["records"][0]["suggested_mark"]["value_per_unit"],
         "0.3333333"
     );
+}
+
+fn evm_terms() -> TermsRow {
+    TermsRow {
+        default_ratio_bps: Some(9000),
+        originator_fee_rate: Some(10_000),
+        default_breach_at: Some(dec(0)),
+        ..terms()
+    }
+}
+
+fn evm_rows() -> LoanSecurityRows {
+    let mut rows = base_rows();
+    rows.terms = Some(evm_terms());
+    rows.records[0].mark_value_per_unit = Some(dec(U6));
+    let (v, _) = rows.valuation.as_mut().unwrap();
+    v.value = dec(12_500 * U6);
+    v.debt = dec(8_000 * U6);
+    v.outstanding = dec(7_900 * U6);
+    v.accrued_interest = dec(100 * U6);
+    v.counted_records = json!([counted_entry(1, 1_000 * U6, 2 * U6)]);
+    rows
+}
+
+#[test]
+fn evm_amounts_are_exact_6dp_strings() {
+    let v = build_evm(&evm_rows(), None);
+    let val = &v["valuation"];
+    assert_eq!(val["value"], "12500.000000");
+    assert_eq!(val["debt"], "8000.000000");
+    assert_eq!(val["outstanding"], "7900.000000");
+    assert_eq!(val["accrued_interest"], "100.000000");
+    let r = &v["records"][0]["valuation"];
+    assert_eq!(r["counted_quantity"], "1000.000000");
+    assert_eq!(r["value_per_unit"], "2.000000");
+    assert_eq!(r["value"], "2000.000000");
+    assert_eq!(v["records"][0]["mark"]["value_per_unit"], "1.000000");
+}
+
+#[test]
+fn evm_amounts_cover_sub_unit_negative_large_and_negative_exponent_values() {
+    let mut rows = evm_rows();
+    let (val, _) = rows.valuation.as_mut().unwrap();
+    val.value = dec(1_000_000);
+    val.stale_value = dec(1);
+    val.flagged_value = dec(-1_500_000);
+    val.debt = BigDecimal::from_str("123456789012345678901234567890").unwrap();
+    val.outstanding = sqlx_dec(125, -6);
+    val.accrued_interest = sqlx_dec(1_500_000_000, 3);
+    let v = build_evm(&rows, None);
+    let val = &v["valuation"];
+    assert_eq!(val["value"], "1.000000");
+    assert_eq!(val["stale_value"], "0.000001");
+    assert_eq!(val["flagged_value"], "-1.500000");
+    assert_eq!(val["debt"], "123456789012345678901234.567890");
+    assert_eq!(val["outstanding"], "125.000000");
+    assert_eq!(val["accrued_interest"], "1.500000");
+}
+
+#[test]
+fn evm_goods_value_floors_at_1e6_and_other_value_is_the_quantity() {
+    let mut rows = evm_rows();
+    rows.records = vec![
+        record(1, "WarehousePledge", "Active"),
+        record(2, "CashCover", "Active"),
+    ];
+    rows.valuation.as_mut().unwrap().0.counted_records =
+        json!([counted_entry(1, 1, 500_000), counted_entry(2, 33 * U6, 0)]);
+    let v = build_evm(&rows, None);
+    assert_eq!(v["records"][0]["valuation"]["value"], "0.000000");
+    assert_eq!(v["records"][1]["valuation"]["value"], "33.000000");
+}
+
+#[test]
+fn evm_quantities_grades_and_inspections_are_6dp() {
+    let mut rows = evm_rows();
+    rows.records[0].reference_quantity = Some(dec(2_500 * U6));
+    rows.records[0].reference_grade = Some(dec(U6 / 2));
+    rows.lots[0].latest_quantity = Some(dec(7));
+    let mut i = inspection(3, 1);
+    i.quantity = Some(dec(1_250_000));
+    i.grade = Some(dec(999_999));
+    rows.inspections = vec![i];
+    let v = build_evm(&rows, None);
+    let r = &v["records"][0];
+    assert_eq!(r["reference_quantity"], "2500.000000");
+    assert_eq!(r["reference_grade"], "0.500000");
+    assert_eq!(r["lot"]["latest_quantity"], "0.000007");
+    assert_eq!(r["inspections"][0]["quantity"], "1.250000");
+    assert_eq!(r["inspections"][0]["grade"], "0.999999");
+}
+
+#[test]
+fn evm_repayments_are_6dp() {
+    let mut rows = evm_rows();
+    rows.records.push(record(2, "WarehousePledge", "Enforced"));
+    let mut r = repayment(2, 3, None);
+    r.params["cash"] = json!((100 * U6).to_string());
+    r.params["interest_minted"] = json!((5 * U6).to_string());
+    r.params["fee_shares"] = json!("250000");
+    rows.repayments = vec![r];
+    let v = build_evm(&rows, None);
+    let rep = &v["records"][1]["repayments"][0];
+    assert_eq!(rep["cash"], "100.000000");
+    assert_eq!(rep["interest_minted"], "5.000000");
+    assert_eq!(rep["fee_shares"], "0.250000");
+}
+
+#[test]
+fn an_evm_suggested_mark_and_report_are_6dp() {
+    let v = build_marked_evm(&zinc_rows(Some(U6)), &marks("100"));
+    let s = &v["records"][0]["suggested_mark"];
+    assert_eq!(s["value_per_unit"], "100.000000");
+    let report = s["report"].as_str().unwrap();
+    assert!(report.contains("\nvalue_per_unit=100.000000\n"), "{report}");
+    assert!(report.contains(&format!("\nsecurity_registry={EVM_REGISTRY}\n")));
+    assert_eq!(
+        s["report_hash"],
+        shared::security_marks::report_hash(report)
+    );
+    assert_eq!(
+        s["report_hash"],
+        "e13fe824880cf05b6c1b9e675bbbbfadd6f0c918e2c13b661f1b57c16a27b156"
+    );
+    assert_eq!(v["records"][0]["move_bps"], 990_000);
+}
+
+#[test]
+fn a_stellar_suggested_mark_report_and_hash_are_unchanged() {
+    let v = build_marked(&zinc_rows(Some(UNIT)), &marks("100"));
+    let s = &v["records"][0]["suggested_mark"];
+    assert_eq!(s["value_per_unit"], "100.0000000");
+    assert!(s["report"]
+        .as_str()
+        .unwrap()
+        .contains("\nvalue_per_unit=100.0000000\n"));
+    assert_eq!(
+        s["report_hash"],
+        "0542f946c5af80595590f23832f6b6b682f694540489d4b97eb98f88a6413a96"
+    );
+}
+
+fn facility_rows(outstanding: i128, accrued: i128, debt: i128) -> LoanSecurityRows {
+    let counted = json!([
+        counted_entry(1, 1_000 * U6, U6),
+        counted_entry(2, 1_000 * U6, U6)
+    ]);
+    let mut rows = release_rows(outstanding, &counted);
+    let (v, _) = rows.valuation.as_mut().unwrap();
+    v.accrued_interest = dec(accrued);
+    v.debt = dec(debt);
+    rows
+}
+
+#[test]
+fn evm_agent_release_uses_the_facility_debt_not_outstanding_plus_accrued() {
+    let v = build_evm(&facility_rows(700 * U6, 0, 900 * U6), None);
+    assert_eq!(v["records"][0]["agent_release"], "needs_consent");
+    let v = build_evm(&facility_rows(900 * U6, 0, 700 * U6), None);
+    assert_eq!(v["records"][0]["agent_release"], "allowed");
+    let v = build_evm(&facility_rows(900 * U6, 0, 800 * U6), None);
+    assert_eq!(v["records"][0]["agent_release"], "allowed");
+    let v = build_evm(&facility_rows(700 * U6, 0, 800 * U6 + 1), None);
+    assert_eq!(v["records"][0]["agent_release"], "needs_consent");
+}
+
+#[test]
+fn evm_agent_release_with_an_unreadable_facility_debt_is_null() {
+    let mut rows = facility_rows(700 * U6, 0, 700 * U6);
+    rows.valuation.as_mut().unwrap().0.debt = sqlx_dec(1, -99_999);
+    let v = build_evm(&rows, None);
+    assert_eq!(v["records"][0]["agent_release"], Value::Null);
+}
+
+#[test]
+fn evm_agent_release_keeps_the_unconditional_cases() {
+    let mut rows = facility_rows(0, 0, 900 * U6);
+    assert_eq!(
+        build_evm(&rows, None)["records"][0]["agent_release"],
+        "allowed"
+    );
+    rows = facility_rows(5_000 * U6, 0, 5_000 * U6);
+    rows.records[1].status = "PendingPerfection".to_owned();
+    assert_eq!(
+        build_evm(&rows, None)["records"][1]["agent_release"],
+        "allowed"
+    );
+}
+
+#[test]
+fn stellar_agent_release_still_uses_outstanding_plus_accrued() {
+    let counted = json!([
+        counted_entry(1, 1_000 * UNIT, UNIT),
+        counted_entry(2, 1_000 * UNIT, UNIT)
+    ]);
+    let mut rows = release_rows(700 * UNIT, &counted);
+    {
+        let (v, _) = rows.valuation.as_mut().unwrap();
+        v.accrued_interest = dec(100 * UNIT);
+        v.debt = dec(900 * UNIT);
+    }
+    assert_eq!(build(&rows, None)["records"][0]["agent_release"], "allowed");
+    rows.valuation.as_mut().unwrap().0.accrued_interest = dec(100 * UNIT + 1);
+    assert_eq!(
+        build(&rows, None)["records"][0]["agent_release"],
+        "needs_consent"
+    );
+}
+
+#[test]
+fn evm_terms_carry_the_extra_fields() {
+    let v = build_evm(&evm_rows(), None);
+    assert_eq!(v["terms"]["default_ratio_bps"], 9000);
+    assert_eq!(v["terms"]["originator_fee_rate"], 10_000);
+}
+
+#[test]
+fn a_stellar_response_serializes_the_evm_only_keys_as_null() {
+    let v = build(&base_rows(), None);
+    assert!(v["terms"]["default_ratio_bps"].is_null());
+    assert!(v["terms"]["originator_fee_rate"].is_null());
+    assert!(v.get("default_breach").is_some());
+    assert!(v["default_breach"].is_null());
+    let mut rows = evm_rows();
+    rows.margin_events = vec![evm_breach_event(10, "default_breach", 9500)];
+    assert!(build(&rows, None)["default_breach"].is_null());
+}
+
+fn evm_breach_event(block: i64, kind: &str, ltv: i64) -> MarginCallEventRow {
+    MarginCallEventRow {
+        margin_call_ratio_bps: None,
+        default_ratio_bps: Some(9000),
+        ..margin_event(block, kind, ltv, None)
+    }
+}
+
+fn breach_rows(breach_at: Option<BigDecimal>, ltv: i64) -> LoanSecurityRows {
+    let mut rows = evm_rows();
+    rows.terms.as_mut().unwrap().default_breach_at = breach_at;
+    rows.valuation.as_mut().unwrap().0.ltv_bps = ltv;
+    rows
+}
+
+#[test]
+fn default_breach_is_null_without_terms() {
+    let v = build_evm(&LoanSecurityRows::default(), None);
+    assert!(v["default_breach"].is_null());
+}
+
+#[test]
+fn default_breach_open_is_true_false_or_unknown() {
+    let at = i128::from(NOW) - 4_000;
+    let v = build_evm(&breach_rows(Some(dec(at)), 9500), None);
+    assert_eq!(v["default_breach"]["open"], true);
+    assert_eq!(v["default_breach"]["opened_at"], at.to_string());
+    let v = build_evm(&breach_rows(Some(dec(0)), 9500), None);
+    assert_eq!(v["default_breach"]["open"], false);
+    assert!(v["default_breach"]["opened_at"].is_null());
+    for unknown in [None, Some(sqlx_dec(1, -99_999))] {
+        let v = build_evm(&breach_rows(unknown, 9500), None);
+        let b = &v["default_breach"];
+        assert!(b["open"].is_null());
+        assert!(b["opened_at"].is_null());
+        assert!(b["ltv_above_ratio_no_onchain_breach"].is_null());
+        assert!(b["open_breach_clearable"].is_null());
+    }
+}
+
+#[test]
+fn default_breach_last_fields_pick_the_last_row_of_each_kind() {
+    let mut rows = breach_rows(Some(dec(0)), 9500);
+    rows.margin_events = vec![
+        evm_breach_event(10, "default_breach", 9100),
+        evm_breach_event(11, "default_breach_price_stale", 9200),
+        evm_breach_event(12, "default_breach", 9300),
+        evm_breach_event(13, "default_breach_price_stale", 9400),
+        evm_breach_event(14, "default_breach_cleared", 8000),
+    ];
+    let v = build_evm(&rows, None);
+    let b = &v["default_breach"];
+    assert_eq!(b["last_default_breach_ltv_bps"], 9300);
+    assert_eq!(b["last_price_stale"]["ltv_bps"], 9400);
+    assert_eq!(
+        b["last_price_stale"]["at"],
+        (i64::try_from(NOW).unwrap() - 5_000 + 13).to_string()
+    );
+}
+
+#[test]
+fn default_breach_without_events_has_null_last_fields_and_no_events() {
+    let v = build_evm(&breach_rows(Some(dec(0)), 9500), None);
+    let b = &v["default_breach"];
+    assert!(b["last_default_breach_ltv_bps"].is_null());
+    assert!(b["last_price_stale"].is_null());
+    assert_eq!(b["events"], json!([]));
+}
+
+#[test]
+fn ltv_above_the_default_ratio_with_no_breach_is_flagged_strictly() {
+    let flag = |v: &Value| v["default_breach"]["ltv_above_ratio_no_onchain_breach"].clone();
+    assert_eq!(
+        flag(&build_evm(&breach_rows(Some(dec(0)), 9001), None)),
+        true
+    );
+    assert_eq!(
+        flag(&build_evm(&breach_rows(Some(dec(0)), 9000), None)),
+        false
+    );
+    assert_eq!(
+        flag(&build_evm(&breach_rows(Some(dec(0)), 9001), Some("Closed"))),
+        false
+    );
+    let mut no_val = breach_rows(Some(dec(0)), 9001);
+    no_val.valuation = None;
+    assert_eq!(flag(&build_evm(&no_val, None)), false);
+    assert_eq!(
+        flag(&build_evm(&breach_rows(Some(dec(5)), 9500), None)),
+        false
+    );
+    let mut no_ratio = breach_rows(Some(dec(0)), 9500);
+    no_ratio.terms.as_mut().unwrap().default_ratio_bps = None;
+    assert!(flag(&build_evm(&no_ratio, None)).is_null());
+}
+
+#[test]
+fn an_open_breach_is_clearable_at_or_below_the_default_ratio() {
+    let at = dec(i128::from(NOW) - 4_000);
+    let clear = |v: &Value| v["default_breach"]["open_breach_clearable"].clone();
+    assert_eq!(
+        clear(&build_evm(&breach_rows(Some(at.clone()), 9000), None)),
+        true
+    );
+    assert_eq!(
+        clear(&build_evm(&breach_rows(Some(at.clone()), 9001), None)),
+        false
+    );
+    assert_eq!(
+        clear(&build_evm(&breach_rows(Some(dec(0)), 8000), None)),
+        false
+    );
+    let mut no_ratio = breach_rows(Some(at), 8000);
+    no_ratio.terms.as_mut().unwrap().default_ratio_bps = None;
+    assert!(clear(&build_evm(&no_ratio, None)).is_null());
+}
+
+#[test]
+fn default_breach_events_keep_order_and_carry_the_ratio() {
+    let mut rows = breach_rows(Some(dec(0)), 9500);
+    rows.margin_events = vec![
+        evm_breach_event(10, "default_breach", 9100),
+        evm_breach_event(11, "default_breach_price_stale", 9200),
+        evm_breach_event(12, "default_breach_cleared", 8000),
+    ];
+    let v = build_evm(&rows, None);
+    let events = v["default_breach"]["events"].as_array().unwrap();
+    let kinds: Vec<&str> = events.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    assert_eq!(
+        kinds,
+        [
+            "default_breach",
+            "default_breach_price_stale",
+            "default_breach_cleared"
+        ]
+    );
+    assert_eq!(events[0]["ltv_bps"], 9100);
+    assert_eq!(events[0]["default_ratio_bps"], 9000);
+    assert_eq!(events[0]["block_number"], 10);
+    assert_eq!(events[0]["tx_hash"], "tx10");
+    assert_eq!(
+        events[0]["at"],
+        (i64::try_from(NOW).unwrap() - 5_000 + 10).to_string()
+    );
+}
+
+#[test]
+fn margin_call_and_default_breach_events_stay_separate() {
+    let mut rows = open_call_rows(9000, 1_762_000_000);
+    rows.terms.as_mut().unwrap().default_ratio_bps = Some(9000);
+    rows.terms.as_mut().unwrap().default_breach_at = Some(dec(0));
+    rows.margin_events.extend([
+        margin_event(11, "price_stale", 8700, None),
+        evm_breach_event(12, "default_breach", 9500),
+        evm_breach_event(13, "default_breach_price_stale", 9600),
+        evm_breach_event(14, "default_breach_cleared", 8000),
+    ]);
+    let v = build_evm(&rows, None);
+    let mc = &v["margin_call"];
+    let kinds: Vec<&str> = mc["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["open", "price_stale"]);
+    assert_eq!(mc["last_price_stale"]["ltv_bps"], 8700);
+    assert_eq!(mc["last_margin_call_ltv_bps"], 9000);
+    assert_eq!(v["default_breach"]["last_price_stale"]["ltv_bps"], 9600);
+    assert_eq!(v["default_breach"]["events"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn a_margin_call_keeps_its_cure_by_on_evm() {
+    let v = build_evm(&open_call_rows(9000, 1_762_000_000), None);
+    assert_eq!(v["margin_call"]["cure_by"], "1762000000");
+    assert_eq!(v["margin_call"]["cure_by_source"], "event");
 }

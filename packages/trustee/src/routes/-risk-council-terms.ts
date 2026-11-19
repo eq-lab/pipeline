@@ -21,9 +21,23 @@ export function formatTermsRows(
   if (terms == null) return [];
   const bps = (value: number | undefined) =>
     value == null ? "—" : `${bpsToPercentText(value)}%`;
+  const defaultRatio: LabelValue[] =
+    terms.default_ratio_bps == null
+      ? []
+      : [{ label: "Default ratio", value: bps(terms.default_ratio_bps) }];
+  const originatorFee: LabelValue[] =
+    terms.originator_fee_rate == null
+      ? []
+      : [
+          {
+            label: "Originator fee rate",
+            value: `${defaultRateToPercentText(terms.originator_fee_rate)}%`,
+          },
+        ];
   return [
     { label: "Advance ratio", value: bps(terms.advance_ratio_bps) },
     { label: "Margin call ratio", value: bps(terms.margin_call_ratio_bps) },
+    ...defaultRatio,
     { label: "Cure period", value: formatServedDuration(terms.cure_period) },
     {
       label: "Price stale after",
@@ -38,6 +52,7 @@ export function formatTermsRows(
           ? "—"
           : `${defaultRateToPercentText(terms.default_rate)}%`,
     },
+    ...originatorFee,
     {
       label: "Attestation interval",
       value: formatServedDuration(terms.attestation_interval),

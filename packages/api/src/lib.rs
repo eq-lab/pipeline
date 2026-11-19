@@ -91,6 +91,7 @@ pub struct AppState {
     pub withdrawal_queue_addresses: HashMap<i64, String>,
     pub pocket_addresses: HashMap<i64, String>,
     pub security_registry_addresses: HashMap<i64, String>,
+    pub security_record_nft_addresses: HashMap<i64, String>,
     pub plusd_addresses: HashMap<i64, String>,
     pub security_marks: shared::security_marks::MarkSettings,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.

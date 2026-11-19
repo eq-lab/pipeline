@@ -10,7 +10,7 @@ use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use pipeline_worker::indexer::stellar::security_registry_parsers::dispatch_security_registry;
 use shared::security_registry::{
     fold_loan, DocView, InspectionView, LoanProjection, LoanView, MarkView, RecordRow, RecordView,
-    Snapshot, TermsView, ZERO_HASH,
+    Snapshot, TermsView, STELLAR_SECURITY_PARAMS, ZERO_HASH,
 };
 use stellar_security_support::*;
 use stellar_xdr::curr::ScVal;
@@ -55,7 +55,14 @@ fn replay(
             )
         })
         .collect();
-    fold_loan(1, &rows, &records, &inspections, loan.as_ref())
+    fold_loan(
+        1,
+        &rows,
+        &records,
+        &inspections,
+        loan.as_ref(),
+        &STELLAR_SECURITY_PARAMS,
+    )
 }
 
 fn rec(p: &LoanProjection, id: i64) -> &RecordRow {
@@ -722,6 +729,7 @@ fn terms_snapshot_without_a_terms_event_is_incomplete_and_later_events_apply() {
         tolerance_bps: 50,
         grade_tolerance_bps: 100,
         margin_call_at: "0".into(),
+        ..TermsView::default()
     };
     let loan = Snapshot {
         as_of_ledger: 100,

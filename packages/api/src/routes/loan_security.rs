@@ -10,6 +10,7 @@ use axum::{Json, Router};
 use bigdecimal::BigDecimal;
 use shared::access_manager_repo::AccessManagerRepo;
 use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
+use shared::security_registry::security_params;
 use shared::security_registry_repo::{LoanSecurityRows, SecurityRegistryRepo};
 use utoipa::OpenApi;
 
@@ -20,10 +21,11 @@ use crate::pending_operations::{
 };
 use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::security_state::{
-    build_security_response, mark_price_pairs, needs_concentrate_inputs, ConsentDto, InspectionDto,
-    LastPriceStaleDto, LoanSecurityResponse, LotDto, MarginCallDto, MarginEventDto, MarkInputs,
-    PricesDto, RecordDocDto, RecordMarkDto, RecordValuationDto, SaleRepaymentDto,
-    SecurityRecordDto, SecurityTermsDto, SecurityValuationDto, SuggestedMarkDto, ValuationAsOfDto,
+    build_security_response, mark_price_pairs, needs_concentrate_inputs, ConsentDto,
+    DefaultBreachDto, DefaultBreachEventDto, InspectionDto, LastPriceStaleDto,
+    LoanSecurityResponse, LotDto, MarginCallDto, MarginEventDto, MarkInputs, PricesDto,
+    RecordDocDto, RecordMarkDto, RecordValuationDto, SaleRepaymentDto, SecurityRecordDto,
+    SecurityTermsDto, SecurityValuationDto, SuggestedMarkDto, ValuationAsOfDto,
 };
 use crate::AppState;
 
@@ -37,6 +39,8 @@ use crate::AppState;
         ValuationAsOfDto,
         MarginCallDto,
         MarginEventDto,
+        DefaultBreachDto,
+        DefaultBreachEventDto,
         LastPriceStaleDto,
         PricesDto,
         ConsentDto,
@@ -54,7 +58,7 @@ use crate::AppState;
     )),
     tags((
         name = "LoanBook",
-        description = "Stellar SecurityRegistry state of a loan, read from the indexed projection"
+        description = "SecurityRegistry state of a loan (Stellar and EVM), read from the indexed projection"
     ))
 )]
 pub struct LoanSecurityDoc;
@@ -71,6 +75,16 @@ pub fn resolve_security_registry<S: BuildHasher>(
         .get(&chain.chain_id)
         .map(String::as_str)
         .ok_or_else(|| ApiError::NotFound("security_registry_not_configured".to_owned()))
+}
+
+pub fn security_log_contracts<S: BuildHasher>(
+    chain: ConfiguredChain,
+    contract: &str,
+    nfts: &HashMap<i64, String, S>,
+) -> Vec<String> {
+    let mut out = vec![contract.to_owned()];
+    out.extend(nfts.get(&chain.chain_id).cloned());
+    out
 }
 
 pub fn parse_loan_id(raw: &str) -> Result<u32, ApiError> {
@@ -92,7 +106,7 @@ pub fn parse_loan_id(raw: &str) -> Result<u32, ApiError> {
     responses(
         (status = 200, description = "Terms, valuation, margin-call state, prices and every record of the loan, with a suggested mark per open goods record, and the loan's pending SecurityRegistry operations scheduled on the AccessManager; an unknown loan id returns empty state (`terms: null`, `records: []`)", body = LoanSecurityResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id, or malformed loan_id"),
-        (status = 404, description = "The chain has no SecurityRegistry configured (`security_registry_not_configured`)"),
+        (status = 404, description = "The chain has no SecurityRegistry configured (`security_registry_not_configured`): the Stellar key, or both EVM keys (SecurityRegistry and RecordNft)"),
         (status = 500, description = "Internal error"),
     ),
     tag = "LoanBook"
@@ -105,8 +119,10 @@ async fn get_loan_security(
     let contract = resolve_security_registry(chain, &state.security_registry_addresses)?;
     let id = parse_loan_id(&loan_id)?;
     let registry = loan_registry_address(&state, chain.chain_id)?;
+    let log_contracts =
+        security_log_contracts(chain, contract, &state.security_record_nft_addresses);
     let rows = SecurityRegistryRepo::new(state.pool.clone())
-        .load_loan_security(chain.chain_id, contract, id, registry)
+        .load_loan_security(chain.chain_id, contract, &log_contracts, id, registry)
         .await?;
     let marks = load_mark_inputs(&state, chain.chain_id, id, &rows).await;
     let now = SystemTime::now()
@@ -114,6 +130,7 @@ async fn get_loan_security(
         .map_or(0, |d| d.as_secs());
     let mut response = build_security_response(
         chain.chain_id,
+        security_params(chain.kind),
         contract,
         &id.to_string(),
         &rows,

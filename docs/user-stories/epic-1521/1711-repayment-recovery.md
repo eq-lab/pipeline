@@ -99,9 +99,9 @@ Trustee app (`packages/trustee`), loan detail page of a Stellar loan, with a Ste
 
 ---
 
-## Story 6: An EVM loan shows the Stellar-only reason
+## Story 6: A loan on an unknown chain shows the Stellar-only reason
 
-**Persona:** Trustee viewing an eligible loan on an EVM chain.
+**Persona:** Trustee viewing an eligible loan on a chain that is neither Stellar nor the configured EVM chain (the configured EVM chain runs both steps since #1943 and #1574).
 
 **Steps:**
 
@@ -110,4 +110,4 @@ Trustee app (`packages/trustee`), loan detail page of a Stellar loan, with a Ste
 **Expected outcomes:**
 
 - The Repayment recovery card is shown with the Stellar-only reason and "Open recovery" is disabled.
-- No transaction is built or signed (TD-152).
+- No transaction is built or signed.

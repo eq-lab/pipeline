@@ -9,18 +9,28 @@ import {
 import {
   bankReferenceRefHash,
   disburse,
+  disburseEvmLoan,
+  evmDisburseSelector,
   readCanCall,
   readDebtTrustline,
+  readEvmCanCall,
+  readEvmLoanDisbursementState,
+  readEvmMinterBankCash,
+  readEvmMinterPaused,
+  readEvmRefHashSeen,
   readLoanDisbursementState,
   readLoanOwner,
   readRefHashSeen,
+  useEvmWallet,
   useStellarWallet,
   type CanCall,
   type LoanDisbursementState,
   type RelayStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { pickChainWallet, useChainWallet } from "@/lib/chainWallet";
+import { evmPreflight } from "@/lib/evmPreflight";
+import { isStellarTarget, loanActionChainReason } from "@/lib/targetChains";
 import {
   DISBURSE_NOT_CONFIGURED,
   MINTER_PAUSED,
@@ -49,11 +59,24 @@ const INVALIDATED_KEYS = [
   "loan-waterfall",
   "cash-book",
   "deal-token",
+  "evm-deal-token",
   "debt-trustline",
   "audit-log",
+  "evm-minter-bank-cash",
+  "evm-minter-paused",
 ];
 
-export function disburseConfigured(): boolean {
+export function disburseConfigured(
+  chainId?: number | null | undefined,
+): boolean {
+  if (!isStellarTarget(chainId)) {
+    return (
+      !!ENV.EVM_MINTER_ADDRESS &&
+      !!ENV.EVM_ACCESS_MANAGER_ADDRESS &&
+      !!ENV.EVM_LOAN_REGISTRY_ADDRESS &&
+      !!ENV.EVM_DEAL_TOKEN_FACTORY_ADDRESS
+    );
+  }
   return (
     !!ENV.STELLAR_YIELD_MINTER_ID &&
     !!ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID &&
@@ -80,17 +103,22 @@ export function useLoanDisbursementState(
   return useQuery<LoanDisbursementState, Error>({
     queryKey: ["loan-disbursement", chainId ?? null, loanId ?? null],
     enabled:
-      stellarOnlyActionReason(chainId) === null &&
-      disburseConfigured() &&
+      loanActionChainReason(chainId) === null &&
+      disburseConfigured(chainId) &&
       validLoanId(loanId),
     staleTime: 15_000,
     retry: false,
     queryFn: () =>
-      readLoanDisbursementState({
-        registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
-        loanId: loanId as number,
-        ...rpc(),
-      }),
+      isStellarTarget(chainId)
+        ? readLoanDisbursementState({
+            registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
+            loanId: loanId as number,
+            ...rpc(),
+          })
+        : readEvmLoanDisbursementState({
+            registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+            loanId: loanId as number,
+          }),
   });
 }
 
@@ -101,7 +129,11 @@ export function useDebtTrustline(
 ) {
   return useQuery<DebtTrustlineRead, Error>({
     queryKey: ["debt-trustline", chainId ?? null, loanId ?? null, debt ?? null],
-    enabled: !!debt && disburseConfigured() && validLoanId(loanId),
+    enabled:
+      !!debt &&
+      isStellarTarget(chainId) &&
+      disburseConfigured(chainId) &&
+      validLoanId(loanId),
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {
@@ -120,21 +152,52 @@ export function useDebtTrustline(
   });
 }
 
-export function useDisburseAccess(enabled: boolean) {
-  const { address } = useStellarWallet();
+export function useEvmMinterBankCash(enabled: boolean) {
+  return useQuery<string, Error>({
+    queryKey: ["evm-minter-bank-cash", ENV.EVM_MINTER_ADDRESS],
+    enabled: enabled && !!ENV.EVM_MINTER_ADDRESS,
+    refetchInterval: 30_000,
+    retry: false,
+    queryFn: () => readEvmMinterBankCash({ minter: ENV.EVM_MINTER_ADDRESS }),
+  });
+}
+
+export function useEvmMinterPaused(enabled: boolean) {
+  return useQuery<boolean, Error>({
+    queryKey: ["evm-minter-paused", ENV.EVM_MINTER_ADDRESS],
+    enabled: enabled && !!ENV.EVM_MINTER_ADDRESS,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: () => readEvmMinterPaused({ minter: ENV.EVM_MINTER_ADDRESS }),
+  });
+}
+
+export function useDisburseAccess(
+  chainId: number | null | undefined,
+  enabled: boolean,
+) {
+  const { address } = useChainWallet(chainId);
+  const stellar = isStellarTarget(chainId);
   return useQuery<CanCall, Error>({
-    queryKey: ["disburse-access", address],
-    enabled: enabled && !!address && disburseConfigured(),
+    queryKey: ["disburse-access", chainId ?? null, address],
+    enabled: enabled && !!address && disburseConfigured(chainId),
     staleTime: 30_000,
     retry: false,
     queryFn: () =>
-      readCanCall({
-        accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
-        caller: address!,
-        target: ENV.STELLAR_YIELD_MINTER_ID,
-        fn: "disburse",
-        ...rpc(),
-      }),
+      stellar
+        ? readCanCall({
+            accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
+            caller: address!,
+            target: ENV.STELLAR_YIELD_MINTER_ID,
+            fn: "disburse",
+            ...rpc(),
+          })
+        : readEvmCanCall({
+            accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+            caller: address!,
+            target: ENV.EVM_MINTER_ADDRESS,
+            selector: evmDisburseSelector(),
+          }),
   });
 }
 
@@ -148,7 +211,8 @@ function invalidateDisburse(queryClient: QueryClient) {
 }
 
 export function useDisburse() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const stellar = useStellarWallet();
+  const evm = useEvmWallet();
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
@@ -161,10 +225,42 @@ export function useDisburse() {
       reference,
     }) => {
       setStage(null);
-      const blocked = stellarOnlyActionReason(chainId);
+      const wallet = pickChainWallet(chainId, stellar, evm);
+      const blocked = loanActionChainReason(chainId);
       if (blocked) throw new Error(blocked);
-      if (!disburseConfigured()) throw new Error(DISBURSE_NOT_CONFIGURED);
-      if (!isConnected || !address) {
+      if (!disburseConfigured(chainId))
+        throw new Error(DISBURSE_NOT_CONFIGURED);
+
+      if (wallet.kind === "evm") {
+        const { caller, chainId: evmChainId } = evmPreflight({
+          chainId,
+          wallet,
+          config: disburseConfigured(chainId),
+          notConfigured: DISBURSE_NOT_CONFIGURED,
+        });
+        const evmRefHash = `0x${await bankReferenceRefHash(reference)}`;
+        const evmSeen = await readEvmRefHashSeen({
+          minter: ENV.EVM_MINTER_ADDRESS,
+          refHash: evmRefHash,
+        });
+        if (evmSeen) throw new Error(REUSED_DISBURSE_REFERENCE);
+        if (await readEvmMinterPaused({ minter: ENV.EVM_MINTER_ADDRESS })) {
+          throw new Error(MINTER_PAUSED);
+        }
+        return disburseEvmLoan({
+          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
+          minter: ENV.EVM_MINTER_ADDRESS,
+          caller,
+          chainId: evmChainId,
+          loanId,
+          amountRaw,
+          valueDate,
+          refHash: evmRefHash,
+          onStageChange: setStage,
+        });
+      }
+
+      if (!stellar.isConnected || !stellar.address) {
         throw new Error("Stellar wallet not connected.");
       }
       const refHash = await bankReferenceRefHash(reference);
@@ -178,12 +274,12 @@ export function useDisburse() {
       return disburse({
         accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         minterId: ENV.STELLAR_YIELD_MINTER_ID,
-        caller: address,
+        caller: stellar.address,
         loanId,
         amountRaw,
         valueDate,
         refHash,
-        signTransaction,
+        signTransaction: stellar.signTransaction,
         onStageChange: setStage,
         ...rpc(),
       });

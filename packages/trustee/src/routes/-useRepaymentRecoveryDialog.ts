@@ -13,9 +13,13 @@ import {
   useScheduleReverseRepay,
   type RecoveryRow,
 } from "@/api/useRepaymentRecovery";
-import { ENV } from "@/lib/env";
 import { findLoanEntry } from "@/lib/loanRoute";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  isStellarTarget,
+  loanActionChainReason,
+  riskCouncilChainReason,
+  riskCouncilTargetId,
+} from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import {
   candidateRows,
@@ -25,6 +29,7 @@ import {
   isRecoveryEligible,
   originalValueDate,
   recoveryCardState,
+  evmRecoveryErrorCopy,
   recoveryErrorCopy,
   reverseAction,
   reversalEffects,
@@ -68,13 +73,16 @@ export interface RecoveryDialogView {
 }
 
 function mapError(
+  chainId: number,
   mode: "schedule" | "execute",
   error: Error | null,
   fallback: string,
 ): UserFacingError | null {
   if (error == null) return null;
   const mapped = toUserError(error, fallback);
-  const copy = recoveryErrorCopy(mode, mapped.details);
+  const copy = isStellarTarget(chainId)
+    ? recoveryErrorCopy(mode, mapped.details)
+    : evmRecoveryErrorCopy(mapped.details);
   return copy ? { ...mapped, message: copy, isSpecific: true } : mapped;
 }
 
@@ -118,6 +126,7 @@ export function useRepaymentRecoveryDialog(
   }, [open]);
 
   const accessQuery = useReverseRepayAccess(
+    chainId,
     Number(loanId),
     selectedId,
     open && selectedRow !== null,
@@ -155,8 +164,10 @@ export function useRepaymentRecoveryDialog(
   const indexed = hasServedPositive(financials.data?.offtaker_outstanding);
   const canRepay = access?.canRepay.immediate === true;
 
+  const recordChainReason = loanActionChainReason(chainId);
   let blockedReason: string | null = null;
   if (!reversed) blockedReason = "Reverse the repayment first.";
+  else if (recordChainReason !== null) blockedReason = recordChainReason;
   else if (valueDate === null) {
     blockedReason =
       "The original value date was not found in the audit log, so the corrected repayment cannot be recorded here.";
@@ -176,7 +187,7 @@ export function useRepaymentRecoveryDialog(
 
   return {
     pending,
-    pendingTarget: ENV.STELLAR_YIELD_MINTER_ID,
+    pendingTarget: riskCouncilTargetId(chainId, "minter"),
     loading: candidatesQuery.isLoading,
     loadError: candidatesQuery.error
       ? toUserError(candidatesQuery.error, "Failed to load the repayments.")
@@ -193,6 +204,7 @@ export function useRepaymentRecoveryDialog(
     reverseStage: reverseMutation.stage,
     reversePending: reverseMutation.isPending,
     reverseError: mapError(
+      chainId,
       reverseMode,
       reverseMutation.error,
       "Failed to submit the reversal.",
@@ -226,6 +238,7 @@ export function useRepaymentRecoveryDialog(
             loanId: Number(loanId),
             repayment: corrected,
             valueDate,
+            chainId,
           })
           .then(({ hash }) => setRecordedHash(hash))
           .catch(() => {});
@@ -248,7 +261,7 @@ export function useRecoveryCard(
   const financials = useLoanFinancials(chainId, loanId);
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onchainStatus = entry?.onchain_status ?? null;
-  const blockedReason = entry ? stellarOnlyActionReason(entry.chain_id) : null;
+  const blockedReason = entry ? riskCouncilChainReason(entry.chain_id) : null;
   const candidates = useRecoveryCandidates(chainId, loanId, onchainStatus);
 
   const eligible = isRecoveryEligible({

@@ -93,6 +93,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Resolved
 
+### BUG-42: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/` — `new Horizon.Server(horizonUrl)` in `useStellarToken.ts`, `useStellarXlmBalance.ts`, `useStellarSacToken.ts`, `useStellarDepositManager.ts`, `useStellarStakedPlusd.ts`, `useStellarWithdrawalQueue.ts`. Found in the #1971 browser pass.
+- **Symptom:** On the e2e stack (`VITE_STELLAR_HORIZON_URL=http://localhost:58000`) the connected test wallet's USDC balance shows `—` and the deposit input stays disabled, although Horizon serves 1000 USDC for the account. The Stellar deposit and withdrawal walk of the e2e skill cannot run.
+- **Root cause:** `Horizon.Server` throws `Cannot connect to insecure horizon server` for an `http` URL unless constructed with `{ allowHttp: true }`; the Soroban RPC client already passes `allowHttp: sorobanRpcUrl.startsWith("http://")`. Production (https) is unaffected.
+- **Workaround:** None in the browser; `run.ts` covers the Stellar LP flow without the app.
+- **Resolved:** #2014 constructs all six clients with `{ allowHttp: horizonUrl.startsWith("http://") }`, as the Soroban RPC clients do. The Stellar LP browser pass then ran end to end on a fresh stack (USDC balance, PLUSD trustline, deposit, claim, stake, withdrawal, desktop and 375 px): see the "#2014 rerun" section of [`docs/e2e/release-run.md`](../e2e/release-run.md).
+
 ### BUG-40: The LP app hides the Claim step of a pending deposit when the remaining USDC is below the minimum deposit [FIXED 2026-11-18 / #2015]
 - **Date:** 2026-11-18
 - **Location:** `packages/frontend/src/routes/deposit.tsx` (`low-balance-banner` branch on `flow.hasBalance === false`) and `useDepositFlow.ts` (`evmHasBalance` compares the balance with `minDeposit`). Found in the #1971 browser pass on EVM.
@@ -101,13 +109,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** Bring the balance back above the minimum (on the stack: `anvil_dealERC20`); the steps card and Claim return.
 - **Resolved:** #2015 shows the low-balance and USDC-trustline banners only on `flow.isBelowMinimum` (`useDepositFlow`: balance below the minimum and no confirmed deposit request), so a deposit request awaiting verification or its claim keeps the steps card on both EVM and Stellar.
 
-### BUG-39: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
-- **Date:** 2026-11-18
-- **Location:** `packages/frontend/src/wallet/stellar/` — `new Horizon.Server(horizonUrl)` in `useStellarToken.ts`, `useStellarXlmBalance.ts`, `useStellarSacToken.ts`, `useStellarDepositManager.ts`, `useStellarStakedPlusd.ts`, `useStellarWithdrawalQueue.ts`. Found in the #1971 browser pass.
-- **Symptom:** On the e2e stack (`VITE_STELLAR_HORIZON_URL=http://localhost:58000`) the connected test wallet's USDC balance shows `—` and the deposit input stays disabled, although Horizon serves 1000 USDC for the account. The Stellar deposit and withdrawal walk of the e2e skill cannot run.
-- **Root cause:** `Horizon.Server` throws `Cannot connect to insecure horizon server` for an `http` URL unless constructed with `{ allowHttp: true }`; the Soroban RPC client already passes `allowHttp: sorobanRpcUrl.startsWith("http://")`. Production (https) is unaffected.
-- **Workaround:** None in the browser; `run.ts` covers the Stellar LP flow without the app.
-- **Resolved:** #2014 constructs all six clients with `{ allowHttp: horizonUrl.startsWith("http://") }`, as the Soroban RPC clients do. The Stellar LP browser pass then ran end to end on a fresh stack (USDC balance, PLUSD trustline, deposit, claim, stake, withdrawal, desktop and 375 px): see the "#2014 rerun" section of [`docs/e2e/release-run.md`](../e2e/release-run.md).
+### BUG-39: The EVM worker drops the DEBT-only `DealRegistered(uint256,address)` [FIXED 2026-11-19 / #1892]
+- **Date:** 2026-11-19
+- **Tracked:** #1892; found while planning #1892.
+- **Location:** `packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`.
+- **Symptom:** An EVM `registerDeal` leaves no `DealRegistered` row and no audit-log entry, and the DEBT token's `Transfer`s are not indexed.
+- **Root cause:** The decoder declares only the legacy `DealRegistered(uint256,address,address)`, `decode_log` validates topic0, and Hoodi / `150631a` emit `DealRegistered(uint256,address)`.
+- **Workaround:** None needed for the UI (it reads `deal()` on chain).
+- **Resolved:** #1892 accepts both shapes per log (`cargo: null` for DEBT-only) and tracks the DEBT token alone. No Hoodi registration existed before the fix (scan from block 3 955 455 to head), so nothing needs a backfill.
 
 ### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1) [FIXED 2026-11-16 / #1927]
 - **Date:** 2026-11-16

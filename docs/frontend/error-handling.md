@@ -233,8 +233,8 @@ full normalized raw text — never truncated — on every branch, matched or not
 1. **Wallet / user rejection** — same regex list as the LP's `toUserError` (ported verbatim) →
    `"You cancelled the transaction in your wallet."`. Checked first because a rejection can arrive
    wrapped inside a simulation/revert string.
-2. **Trustee preflight guard** — the five on-chain hooks (`useDrawLoan`, `useRollover`,
-   `useUpdateLifecycle`, `useRecordPayment`, `useCloseLoan`) throw these BEFORE any RPC call, and
+2. **Trustee preflight guard** — the on-chain hooks (`useDrawLoan`, `useRollover`,
+   `useUpdateLifecycle`, `useRecordPayment`, `useCloseLoan`, `useDisburse`) throw these BEFORE any RPC call (the EVM arm's "wallet not connected" guard comes from `evmPreflight`), and
    the text is already a short, hook-specific, human sentence — not a diagnostic dump:
    - `/not configured for this environment/i` → the guard's own sentence, rendered verbatim (e.g.
      "On-chain payment recording is not configured for this environment.").

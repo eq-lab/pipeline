@@ -29,7 +29,7 @@ that block.
 **Expected:**
 
 - One `DealRegistered` row from the factory address with `params.loan_id` (decimal string),
-  `params.debt` and `params.cargo` as checksummed addresses.
+  `params.debt` and `params.cargo` as checksummed addresses. A current factory (contracts #51 and later, Hoodi v5) emits `DealRegistered` with `debt` only: `params.cargo` is `null` and only the DEBT token is tracked (#1892).
 - The two token addresses are polled from the same cycle on, with no restart.
 
 ## Story 2 — Syncs are recorded as emitted, including no-ops

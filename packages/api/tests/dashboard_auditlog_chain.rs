@@ -60,6 +60,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
@@ -1225,6 +1226,14 @@ fn deal_token_factory_events_render_on_both_arms() {
     );
     assert_eq!(a, "Deal tokens registered");
     assert_eq!(d["cargo"], "0xC");
+
+    let (a, d) = act(
+        "DealRegistered",
+        json!({ "loan_id": "7", "debt": "0xD", "cargo": null }),
+        ChainKind::Evm,
+    );
+    assert_eq!(a, "Deal tokens registered");
+    assert_eq!(d, json!({ "debt": "0xD", "cargo": null }));
 
     for params in [
         json!({ "loan_id": "7", "debt": "CD", "cargo": null }),

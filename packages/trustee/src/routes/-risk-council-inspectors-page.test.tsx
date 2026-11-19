@@ -6,6 +6,7 @@ import {
   IMMEDIATE,
   NO_ROLE,
   STELLAR,
+  EVM,
   accessResult,
   relayResult,
 } from "./-riskCouncilFixtures";
@@ -24,6 +25,8 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@pipeline/wallet-connect", () => ({
   isInspectorAddress: (value: string) => /^G[A-Z0-9]{3,}$/.test(value),
+  isEvmInspectorAddress: (value: string) => /^0x[0-9a-fA-F]{40}$/.test(value),
+  normalizeEvmAddress: (value: string) => `0x${value.slice(2).toUpperCase()}`,
 }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
 vi.mock("@/api/useRiskCouncil", () => ({
@@ -217,5 +220,56 @@ describe("Inspector panel page", () => {
       screen.getByTestId("risk-council-inspectors-role"),
     ).toHaveTextContent(/On-chain actions run on Stellar only/);
     expect(screen.getByTestId("risk-council-inspectors-button")).toBeDisabled();
+  });
+
+  describe("on an EVM session", () => {
+    const A = `0x${"a".repeat(40)}`;
+    const B = `0x${"b".repeat(40)}`;
+    const C = `0x${"c".repeat(40)}`;
+    const C_NORMALISED = `0x${"C".repeat(40)}`;
+
+    it("reads the panel for the EVM chain and words the field for EVM", () => {
+      setup(DELAYED, [A, B], EVM);
+      renderRoute();
+      expect(mockInspectors).toHaveBeenCalledWith(EVM);
+      expect(
+        screen.getByTestId("risk-council-inspectors-draft"),
+      ).toHaveAttribute("placeholder", "0x…");
+      expect(
+        screen.getByText("Add inspector (EVM address)"),
+      ).toBeInTheDocument();
+    });
+
+    it("refuses a Stellar address and a lowercase duplicate of a current entry", () => {
+      setup(DELAYED, [A, B], EVM);
+      renderRoute();
+      const draft = screen.getByTestId("risk-council-inspectors-draft");
+      fireEvent.change(draft, { target: { value: "GCCCC" } });
+      expect(
+        screen.getByTestId("risk-council-inspectors-draft-error"),
+      ).toHaveTextContent("Enter a valid EVM address (0x…).");
+      fireEvent.change(draft, {
+        target: { value: A.toUpperCase().replace("0X", "0x") },
+      });
+      expect(
+        screen.getByTestId("risk-council-inspectors-draft-error"),
+      ).toHaveTextContent("already on the panel");
+    });
+
+    it("normalises an added address and schedules set_inspectors with it", () => {
+      setup(DELAYED, [A, B], EVM);
+      renderRoute();
+      fireEvent.change(screen.getByTestId("risk-council-inspectors-draft"), {
+        target: { value: C },
+      });
+      fireEvent.click(screen.getByTestId("risk-council-inspectors-add"));
+      fireEvent.click(screen.getByTestId("risk-council-inspectors-button"));
+      expect(relay.mutateAsync).toHaveBeenCalledWith({
+        mode: "schedule",
+        call: { fn: "set_inspectors", inspectors: [A, B, C_NORMALISED] },
+        chainId: EVM,
+        loanId: undefined,
+      });
+    });
   });
 });

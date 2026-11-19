@@ -409,7 +409,7 @@ describe("Stake page — approve needed state", () => {
     // After approve mock settles, the page should still show the header
     await waitFor(
       () => {
-        expect(screen.getByText("Earn 8.42% p.a.")).toBeInTheDocument();
+        expect(screen.getByText(/^Earn .* p\.a\.$/)).toBeInTheDocument();
       },
       { timeout: 2000 },
     );

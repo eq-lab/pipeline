@@ -17,7 +17,9 @@ use pipeline_worker::indexer::stellar::security_registry_parsers::{
     dispatch_security_registry, SECURITY_REGISTRY_EVENT_TOPICS,
 };
 use pipeline_worker::indexer::stellar::security_registry_sync::*;
-use pipeline_worker::indexer::stellar::security_registry_views::SecurityViewSource;
+use pipeline_worker::indexer::stellar::security_registry_views::{
+    is_contract_error, SecurityViewSource, NO_INSPECTION_CODE, NO_RECORD_CODE,
+};
 use shared::security_registry::{
     valuation_due, CoverageDetailView, InspectionView, LoanMoneyView, RecordView, TermsView,
 };
@@ -106,6 +108,15 @@ impl SecurityViewSource for Fake {
             601,
         ))
     }
+    async fn latest_ledger(&self) -> Result<u64> {
+        Ok(1_000)
+    }
+    fn is_missing_record(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_RECORD_CODE)
+    }
+    fn is_missing_inspection(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_INSPECTION_CODE)
+    }
 }
 
 fn record(id: u32, loan: u32) -> RecordView {
@@ -170,6 +181,7 @@ fn detail() -> CoverageDetailView {
         cure_by: "0".into(),
         price_stale: false,
         records: vec![],
+        default_breach_at: None,
     }
 }
 
@@ -440,6 +452,15 @@ impl SecurityViewSource for Hang {
     }
     async fn loan_money(&self, _: &str, _: u32) -> Result<(LoanMoneyView, u64)> {
         std::future::pending().await
+    }
+    async fn latest_ledger(&self) -> Result<u64> {
+        std::future::pending().await
+    }
+    fn is_missing_record(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_RECORD_CODE)
+    }
+    fn is_missing_inspection(&self, e: &anyhow::Error) -> bool {
+        is_contract_error(&e.to_string(), NO_INSPECTION_CODE)
     }
 }
 

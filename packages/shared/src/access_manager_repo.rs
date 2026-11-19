@@ -44,6 +44,7 @@ pub struct NewScheduledOp {
     pub target: String,
     pub function: String,
     pub args_xdr: Option<String>,
+    pub calldata: Option<String>,
     pub args_json: Option<Value>,
     pub ready_at: u64,
     pub loan_id: Option<i64>,
@@ -61,6 +62,7 @@ impl NewScheduledOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OpWrite {
     Schedule(NewScheduledOp),
     Cancel {
@@ -120,7 +122,7 @@ pub const RECORD_LOAN_SQL: &str = "SELECT loan_id FROM security_records
      LIMIT 1";
 
 pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o.nonce, o.caller,
-            o.target, o.function, o.args_xdr, o.args_json, o.ready_at, o.expires_at
+            o.target, o.function, o.args_xdr, o.calldata, o.args_json, o.ready_at, o.expires_at
      FROM access_manager_operations o
      CROSS JOIN LATERAL (
          SELECT COALESCE(o.loan_id, (
@@ -149,7 +151,7 @@ pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o
      WHERE o.chain_id = $1
        AND o.status = 'pending'
        AND o.target = ANY($2)
-       AND o.args_xdr IS NOT NULL
+       AND (o.args_xdr IS NOT NULL OR o.calldata IS NOT NULL)
        AND o.args_json IS NOT NULL
        AND r.loan_id IS NOT NULL
        AND ($4::bigint IS NULL OR r.loan_id = $4)
@@ -163,9 +165,9 @@ pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o
 
 pub const INSERT_SCHEDULED_SQL: &str = "INSERT INTO access_manager_operations
          (chain_id, contract_address, operation_id, nonce, caller, target, function,
-          args_xdr, args_json, ready_at, expires_at, status, loan_id, record_id,
+          args_xdr, calldata, args_json, ready_at, expires_at, status, loan_id, record_id,
           schedule_tx_hash, schedule_ledger, scheduled_at, source_log_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12, $13, $14, $15, $16, $17)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16, $17, $18)
      ON CONFLICT (chain_id, contract_address, operation_id, schedule_ledger, nonce) DO NOTHING";
 
 pub const MARK_CANCELED_SQL: &str = "UPDATE access_manager_operations
@@ -208,7 +210,8 @@ pub struct PendingOpRow {
     pub caller: String,
     pub target: String,
     pub function: String,
-    pub args_xdr: String,
+    pub args_xdr: Option<String>,
+    pub calldata: Option<String>,
     pub args_json: Value,
     pub ready_at: i64,
     pub expires_at: i64,
@@ -339,6 +342,7 @@ impl AccessManagerRepo {
                 .bind(&op.target)
                 .bind(&op.function)
                 .bind(&op.args_xdr)
+                .bind(&op.calldata)
                 .bind(&op.args_json)
                 .bind(op.ready_at as i64)
                 .bind(op.expires_at())

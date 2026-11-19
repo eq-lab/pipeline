@@ -11,8 +11,10 @@ import { sacBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 import {
   accessAction,
   amErrorCode,
+  evmErrorName,
   formatDelayHours,
   formatReadyAt,
+  LOAN_REGISTRY_PAUSED_COPY,
   stageLabel,
   type AccessAction,
 } from "@/lib/accessManagerAction";
@@ -218,6 +220,22 @@ export function recoveryErrorCopy(
 ): string | null {
   const code = amErrorCode(details);
   return code == null ? null : (RECOVERY_ERROR_COPY[`${mode}:${code}`] ?? null);
+}
+
+const EVM_RECOVERY_ERROR_COPY: Record<string, string> = {
+  AccessManagerNotScheduled: RECOVERY_ERROR_COPY["execute:6"]!,
+  AccessManagerNotReady: RECOVERY_ERROR_COPY["execute:7"]!,
+  AccessManagerExpired: RECOVERY_ERROR_COPY["execute:8"]!,
+  MinterInsufficientBankCash: RECOVERY_ERROR_COPY["execute:8"]!,
+  LoanRegistryRepaymentAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
+  MinterAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
+  AccessManagerAlreadyScheduled: RECOVERY_ERROR_COPY["schedule:9"]!,
+  EnforcedPause: LOAN_REGISTRY_PAUSED_COPY,
+};
+
+export function evmRecoveryErrorCopy(details: string): string | null {
+  const name = evmErrorName(details);
+  return name == null ? null : (EVM_RECOVERY_ERROR_COPY[name] ?? null);
 }
 
 export function formatValueDate(valueDateSeconds: number): string {

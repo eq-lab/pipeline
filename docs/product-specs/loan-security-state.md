@@ -2,9 +2,9 @@
 
 ## Overview
 
-`GET /v1/loan-book/{loan_id}/security?chain_id=<id>` serves the Stellar SecurityRegistry state of one loan: terms, the collateral valuation, margin-call state, price staleness, pause state, the inspector panel, extension consents, and every record with its docs, mark, lot, inspections, flag and linked minter repayments. It is read from the projection tables the worker folds every 30 s ([security-registry-events.md](../references/security-registry-events.md#projection-tables)). The API has no RPC client and never recomputes the loan's value, LTV or coverage: it serves the `coverage_detail` snapshot the worker stored. On-chain inspections are served here (the read side of #1782). Each open goods record also carries a suggested per-unit mark and a mark-due flag for the Trustee's manual `revalue` ([Mark Suggestions](#mark-suggestions), #1783), computed from off-chain prices, assays and offtake terms.
+`GET /v1/loan-book/{loan_id}/security?chain_id=<id>` serves the SecurityRegistry state (Stellar and EVM) of one loan: terms, the collateral valuation, margin-call state, price staleness, pause state, the inspector panel, extension consents, and every record with its docs, mark, lot, inspections, flag and linked minter repayments. It is read from the projection tables the worker folds every 30 s ([security-registry-events.md](../references/security-registry-events.md#projection-tables)). The API has no RPC client and never recomputes the loan's value, LTV or coverage: it serves the `coverage_detail` snapshot the worker stored. On-chain inspections are served here (the read side of #1782). Each open goods record also carries a suggested per-unit mark and a mark-due flag for the Trustee's manual `revalue` ([Mark Suggestions](#mark-suggestions), #1783), computed from off-chain prices, assays and offtake terms.
 
-Scope is Stellar only. The route needs `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`, equal to the worker's `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS`. A chain without it, including every EVM chain, answers `404 {"error":"security_registry_not_configured"}`.
+Scope is Stellar and EVM, served by the same code with the chain's parameters (decimals, release debt, default breach). A Stellar chain needs `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`, equal to the worker's `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS`. An EVM chain needs both `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_API_SECURITY_RECORD_NFT_ADDRESS`, set together and equal to the worker's `…_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` and `…_SECURITY_RECORD_NFT_ADDRESS` (a partial set fails boot naming the missing key; the Reader key is not needed, the Reader emits no events). A chain without its key or keys answers `404 {"error":"security_registry_not_configured"}`. The EVM differences are listed in [EVM differences](./loan-security-state-evm.md).
 
 ## Behavior
 
@@ -12,24 +12,25 @@ Scope is Stellar only. The route needs `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY
 
 | Field | Source |
 |---|---|
-| `terms.*`, `margin_call.open`, `opened_at` | `security_terms` (`margin_call_at` is event-folded, so fresher than the snapshot) |
+| `terms.*`, `margin_call.open`, `opened_at` | `security_terms` (`margin_call_at` is event-folded, so fresher than the snapshot); `terms.default_ratio_bps` and `originator_fee_rate` are EVM only |
 | `valuation.value`, `stale_value`, `flagged_value`, `debt`, `ltv_bps`, `coverage_bps`, `price_stale` | `security_loan_valuations` (`coverage_detail` at `detail_ledger`), verbatim |
 | `valuation.outstanding`, `accrued_interest` | the same row (`loan_money` at `money_ledger`, a separate simulate; it can differ from `debt` by a ledger of interest, TD-171) |
 | `records[].valuation.counted_quantity`, `value_per_unit`, `mark_at`, `stale`, `flagged` | the `counted_records` of the same snapshot |
-| `records[].valuation.value` | computed per record: goods `floor(counted_quantity × value_per_unit / 1e7)`, other `counted_quantity`. The contract divides once over the sum, so the values can sum a few raw units above `valuation.value` |
+| `records[].valuation.value` | computed per record: goods `floor(counted_quantity × value_per_unit / 10^decimals)`, other `counted_quantity` (`decimals` is 7 on Stellar, 6 on EVM). The contract divides once over the sum, so the values can sum a few raw units above `valuation.value` |
 | `margin_call.cure_by` | the `cure_by` of the `open` event whose `block_timestamp` equals `margin_call_at` (fixed at opening, `lib.rs:994-1006`); else the snapshot's, when its `margin_call_at` matches (it is recomputed as `margin_call_at + current cure_period`, `lib.rs:785-789`, so it drifts after `set_terms`). `cure_by_source` is `event`, `coverage_detail` or `null` |
 | `margin_call.cure_overdue` | computed: open, not `Closed`, `now > cure_by`. Nothing on-chain enforces `cure_by` |
 | `margin_call.ltv_above_ratio_no_onchain_call` | computed: no call open, a valuation exists, `valuation.ltv_bps > margin_call_ratio_bps`, loan not `Closed` |
 | `margin_call.open_call_curable` | computed: a call is open, a valuation exists, `valuation.ltv_bps <= advance_ratio_bps` (a `check_coverage` would cure it, `lib.rs:986-990`) |
-| `margin_call.last_margin_call_ltv_bps`, `last_price_stale`, `events[]` | `security_margin_call_events` |
+| `margin_call.last_margin_call_ltv_bps`, `last_price_stale`, `events[]` | `security_margin_call_events` rows of kind `open`, `price_stale`, `cured` |
+| `default_breach.*` | EVM only; the same shape as `margin_call` for the `DefaultBreach*` state, see [EVM differences](./loan-security-state-evm.md) |
 | `prices.mark_age`, `price_stale`, `records[].mark_stale`, `attestation_stale`, `inspection_stale` | computed at the API clock `now` from the projection |
 | `records[].suggested_mark`, `suggestion_status` | computed by `shared::security_marks::suggest` from `loan_asset_prices` and, for concentrates, the loan's latest `loan_assays` and `loan_offtake_terms`; `null` for non-goods and closed records |
 | `records[].move_bps`, `mark_due`, `mark_due_reasons`, `mark_due_at`, `prices.mark_max_age`, `mark_move_bps`, `marks_due` | computed at the API clock from the projected mark, the suggestion, `price_stale_after` and the policy keys |
 | `records[].counts_toward_value` | computed: `Active` and not `InsuranceLossPayee` |
-| `records[].agent_release` | computed from the snapshot: `allowed` when the Security Agent's own `release` passes `ensure_releasable` (`lib.rs:1199-1216`), else `needs_consent` (the Risk Council's `release_with_consent`). `PendingPerfection`, `InsuranceLossPayee` and zero outstanding are `allowed` before any snapshot is needed; the LTV branch is `null` without a snapshot or when a counted record cannot be resolved; `null` for a closed record |
+| `records[].agent_release` | computed from the snapshot: `allowed` when the Security Agent's own `release` passes `ensure_releasable` (`lib.rs:1199-1216`; EVM `_requireReleasable`, `SecurityRegistryUpgradeable.sol:601`), else `needs_consent` (the Risk Council's `release_with_consent`). The debt is `outstanding + accrued_interest` on Stellar and the snapshot's `debt` (the contract's facility debt) on EVM; an undecodable `accrued_interest` or `debt` gives `null`. `PendingPerfection`, `InsuranceLossPayee` and zero outstanding are `allowed` before any snapshot is needed; the LTV branch is `null` without a snapshot or when a counted record cannot be resolved; `null` for a closed record |
 | `records[].repayments[]` | minter `CashRepaid` rows with this loan and `sale_id == record_id`, with the earliest `CashRepaymentReversed` of the same repayment. A repayment links only when it is at or after the record's `SecurityEnforcementStarted` or `SecurityRecordEnforced` event on this loan, because minter sale ids collide with legacy CollateralRegistry ids |
 | `paused`, `inspectors` | `security_registry_state` |
-| `refresh_pending` | computed: the loan has SecurityRegistry log rows newer than the projection watermark, or SecurityRegistry or loan-registry log rows newer than the valuation's `source_log_id` |
+| `refresh_pending` | computed: the loan has log rows of the chain's SecurityRegistry log addresses (the registry on Stellar; the registry and the RecordNft on EVM) newer than the projection watermark, or of those addresses plus the loan registry newer than the valuation's `source_log_id` |
 
 **Closed loans.** `close_loan` does not check open records (`loan-registry/src/lib.rs:564-614`). Records are served unchanged, open ones included. With outstanding 0, `agent_release` is `allowed`. A closed loan carries no alarm: `cure_overdue` and `ltv_above_ratio_no_onchain_call` are `false`, and a call still open on-chain shows `open_call_curable: true`.
 
@@ -49,23 +50,23 @@ The contract mirrors live in `shared::security_state`, so the alerts (#1784) and
 |---|---|
 | `ltv_bps(debt, value)` | `ltv_bps`, `954-965`: 0 without debt; `u32::MAX` when `value <= 0` or on overflow; else `ceil(debt × 10000 / value)` |
 | `coverage_bps(debt, value)` | `coverage_bps`, `944-951`, with `coverage`'s zero-debt rule (`738-745`, `781-785`): `floor(max(value, 0) × 10000 / debt)`; `u32::MAX` without debt or on overflow |
-| `counted_value_excluding(terms, exclude)` | `valuation`, `897-916`: goods `qty × value_per_unit`, other `qty × 1e7`, summed with checked adds and divided by `1e7` once; `None` where the contract panics with `Overflow` |
-| `record_term_value(term)` | `record_term`, `868-888`, per record |
-| `agent_release(…)` | `ensure_releasable`, `1199-1216` |
+| `counted_value_excluding(terms, exclude, unit)` | `valuation`, `897-916`: goods `qty × value_per_unit`, other `qty × unit`, summed with checked adds and divided by `unit` once (`unit` is `10^decimals`: `1e7` Stellar, `1e6` EVM); `None` where the contract panics with `Overflow` |
+| `record_term_value(term, unit)` | `record_term`, `868-888`, per record |
+| `agent_release(…, debt, …, unit)` | `ensure_releasable`, `1199-1216`; the caller supplies the debt, and `None` is `needs_consent` |
 | `attestation_stale`, `inspection_stale`, `mark_stale` | `is_stale`, `918-942`, and `record_term`, `868-888` |
 | `mark_age`, `price_stale` | `mark_age`, `807-827`, and the per-record price-stale rule |
 | `counts_toward_value`, `is_in_storage` | `Protection::counts` (`types.rs`) and the `is_stale` storage test |
 | `cure_by(…)` | the event-over-snapshot rule above |
 | `security_marks::{normalize_commodity, quote_factor, bounded_dec, bounded_dec_str, standard_vpu_raw, concentrate_vpu_raw, suggest, report_hash, effective_max_age, move_bps, moved, mark_due}` | the mark suggestion and mark-due rules below; reused by #1784 and #1785 |
-| `format_7dp`, `format_7dp_i128` | exact `raw / 1e7` as a plain 7-decimal string, never an exponent |
+| `format_dp`, `format_dp_i128` (`format_7dp*` are the Stellar aliases) | exact `raw / 10^decimals` as a plain string at the chain's decimals, never an exponent |
 
-Stored decimals are read with a bounded exponent: Postgres decoding returns round numbers with a negative exponent (`12500000000` as `125E+8`), which is rescaled; an exponent below -40 or above 20000 is rejected, never expanded. An undecodable number is served as `null`, and every flag that depends on it is `null` (unknown), never `false` or `0`.
+The EVM mirrors are listed in [loan-security-state-evm.md](./loan-security-state-evm.md#contract-references). Stored decimals are read with a bounded exponent: Postgres decoding returns round numbers with a negative exponent (`12500000000` as `125E+8`), which is rescaled; an exponent below -40 or above 20000 is rejected, never expanded. An undecodable number is served as `null`, and every flag that depends on it is `null` (unknown), never `false` or `0`.
 
 ## API Contract
 
-`GET /v1/loan-book/{loan_id}/security?chain_id=<id>`, public (every field is on-chain data). `chain_id` is required: `400` when missing, malformed or not in `CHAINS`. `loan_id` is a `u32`: `400` otherwise. `404 security_registry_not_configured` when the chain has no API SecurityRegistry key (checked before any database read). `500` on a database error.
+`GET /v1/loan-book/{loan_id}/security?chain_id=<id>`, public (every field is on-chain data). `chain_id` is required: `400` when missing, malformed or not in `CHAINS`. `loan_id` is a `u32`: `400` otherwise. `404 security_registry_not_configured` when the chain has no API SecurityRegistry key (Stellar) or keys (EVM, both) (checked before any database read). `500` on a database error.
 
-**Encoding.** Ids, `u64` times and `u64` durations are decimal strings (`mark_age` can be `u64::MAX`). `u32` bps, `i32` variances and `default_rate` are JSON numbers. `ltv_bps` and `coverage_bps` keep `4294967295` as the `u32::MAX` sentinel. `i128` and `u128` amounts and quantities, grades and prices are exact 7-decimal strings (`raw / 1e7`, e.g. `"1250.0000000"`). Hashes are lowercase hex and addresses are Strkeys, as stored.
+**Encoding.** Ids, `u64` times and `u64` durations are decimal strings (`mark_age` can be `u64::MAX`). `u32` bps, `i32` variances and `default_rate` are JSON numbers. `ltv_bps` and `coverage_bps` keep `4294967295` as the `u32::MAX` sentinel. `i128` and `u128` amounts and quantities, grades and prices are exact decimal strings at the chain's scale (`raw / 10^decimals`: 7 dp on Stellar, e.g. `"1250.0000000"`; 6 dp on EVM, e.g. `"1250.000000"`). Hashes are lowercase hex. Addresses are Strkeys on Stellar and EIP-55 on EVM, as stored.
 
 ```json
 { "chain_id": 99000001, "loan_id": "7", "security_registry": "C...", "now": "1762400000",
@@ -73,7 +74,8 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
   "terms": { "advance_ratio_bps": 8000, "margin_call_ratio_bps": 8500, "cure_period": "604800",
     "price_stale_after": "86400", "payment_term": "Lc", "grace_period": "0", "default_rate": 0,
     "attestation_interval": "0", "inspection_interval": "0", "tolerance_bps": 200,
-    "grade_tolerance_bps": 100, "set_ledger": 123, "complete": true },
+    "grade_tolerance_bps": 100, "set_ledger": 123, "complete": true,
+    "default_ratio_bps": null, "originator_fee_rate": null },
   "valuation": { "value": "0.0000000", "stale_value": "0.0000000", "flagged_value": "0.0000000",
     "debt": "0.0000000", "outstanding": "0.0000000", "accrued_interest": "0.0000000",
     "ltv_bps": 0, "coverage_bps": 4294967295, "price_stale": false,
@@ -84,6 +86,7 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
     "ltv_above_ratio_no_onchain_call": false, "open_call_curable": false,
     "events": [{ "kind": "open|price_stale|cured", "ltv_bps": 9000, "margin_call_ratio_bps": 8500,
                  "cure_by": "...", "at": "...", "block_number": 1, "tx_hash": "..." }] },
+  "default_breach": null,
   "prices": { "mark_age": "0", "price_stale": false, "mark_max_age": "86400", "mark_move_bps": 200, "marks_due": 0 },
   "extension_consents": [{ "position": 0, "consent_hash": "hex", "new_maturity": "...", "ledger": 1, "at": "..." }],
   "records": [{ "record_id": "1", "lot_id": "1", "protection": "WarehousePledge", "commodity": "...",
@@ -111,16 +114,16 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
     "repayments": [{ "repayment_id": "3", "cash": "...", "interest_minted": "...", "fee_shares": "...",
       "value_date": "...", "ref_hash": "hex", "tx_hash": "...", "at": "...", "reversed_at": null }] }],
   "pending_operations": [{ "operation_id": "hex64", "nonce": 1, "caller": "G...", "target": "C...",
-    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64",
+    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64", "calldata": null,
     "args": [7, 8000, "86400"], "ready_at": "2025-11-16T00:00:00Z", "expires_at": "2025-11-23T00:00:00Z",
     "state": "waiting|ready|expired" }] }
 ```
 
-`pending_operations` is always an array, see [Pending operations](#pending-operations). The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.
+`pending_operations` is always an array, see [Pending operations](#pending-operations). `default_breach` and the two new `terms` keys are `null` on Stellar, see [EVM differences](./loan-security-state-evm.md). The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.
 
 ## Loan book fields
 
-`GET /v1/loan-book` (#1786) adds three flat, nullable keys to every `loans[]` entry. The keys are always present. They are read from the projection tables in one SQL statement per Stellar chain with an API SecurityRegistry key, with no RPC call and no migration. The Trustee loans table reads them instead of the off-chain `ccr_bps` (#1906).
+`GET /v1/loan-book` (#1786) adds three flat, nullable keys to every `loans[]` entry. The keys are always present. They are read from the projection tables in one SQL statement per chain with an API SecurityRegistry key (Stellar key, or both EVM keys), with no RPC call and no migration. The Trustee loans table reads them instead of the off-chain `ccr_bps` (#1906).
 
 | Field | Type | Source | `null` when |
 |---|---|---|---|
@@ -128,38 +131,38 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
 | `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
 | `price_stale` | `bool` or `null` | `security_loan_valuations.price_stale`, the contract flag, same as `/security` `valuation.price_stale` | no valuation snapshot yet |
 
-A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay`) and SecurityRegistry, see [Pending operations](#pending-operations).
+A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay` / `reverseRepay`) and SecurityRegistry, on Stellar and EVM, see [Pending operations](#pending-operations).
 
-The three LTV keys are `null` on EVM entries and on Stellar chains without `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`. The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
+The three LTV keys are `null` on chains without their API SecurityRegistry key (`CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS` or the two EVM keys). The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
 
 ## Pending operations
 
-Operations the Risk Council scheduled on the Stellar AccessManager and that have not been executed or canceled (#1922, epic #1920), read from `access_manager_operations` ([access-manager-events.md](../references/access-manager-events.md#api-read)). They are served on `GET /v1/loan-book/{loan_id}/security` (SecurityRegistry operations of the loan: `set_terms`, `resolve_flag`, `release_with_consent`) and on every `loans[]` entry of `GET /v1/loan-book` (every loan-scoped operation of the loan on the configured LoanRegistry, Minter and SecurityRegistry).
+Operations the Risk Council scheduled on the Stellar or EVM AccessManager and that have not been executed or canceled (#1922, epic #1920; EVM #1941, epic #1937), read from `access_manager_operations` ([access-manager-events.md](../references/access-manager-events.md#api-read)). They are served on `GET /v1/loan-book/{loan_id}/security` (SecurityRegistry operations of the loan: `set_terms`, `resolve_flag`, `release_with_consent`) and on every `loans[]` entry of `GET /v1/loan-book` (every loan-scoped operation of the loan on the configured LoanRegistry, Minter and SecurityRegistry). Both chains share one DTO and one read.
 
 | Field | Type | Source |
 |---|---|---|
-| `operation_id` | string | 64 lowercase hex, as stored |
+| `operation_id` | string | 64 lowercase hex, as stored; on EVM the contract's `bytes32` is `0x` + these 64 hex |
 | `nonce` | number | contract nonce (`u32`) |
-| `caller`, `target`, `function` | string | as stored |
+| `caller`, `target` | string | as stored: a Strkey on Stellar, EIP-55 on EVM |
+| `function` | string | the contract's native name, as stored: snake_case on Stellar, Solidity camelCase on EVM; see [Function names per chain](../references/access-manager-events.md#function-names-per-chain) |
 | `target_kind` | `loan_registry`, `minter`, `security_registry`, `other` | `target` compared with the chain's API LoanRegistry, Minter and SecurityRegistry addresses; `other` is reserved and not emitted here |
-| `args_xdr` | string | base64 of the arguments, verbatim |
-| `args` | JSON array | `args_json` verbatim, display only |
+| `args_xdr` | string or `null` | Stellar: base64 of the arguments, verbatim; `null` on EVM |
+| `calldata` | string or `null` | EVM: `0x` + lowercase hex of the whole call data, selector included, verbatim: the `data` of `execute(target, data)` / `cancel(caller, target, data)`; `null` on Stellar. Exactly one of `args_xdr` and `calldata` is non-null |
+| `args` | JSON array | `args_json` verbatim, display only, in the chain's native shape ([EVM](../references/access-manager-events.md#evm-args-and-operation-id): `uint256` ids as decimal strings, tuples as objects keyed by the Solidity names, enums as ordinals) |
 | `ready_at`, `expires_at` | ISO-8601 UTC | `ready_at` and `ready_at + 604800` |
 | `state` | `waiting`, `ready`, `expired` | derived at the API clock `now`: `waiting` while `now < ready_at`, `expired` once `now >= expires_at`, else `ready` |
 
-**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response.
-
-**Sort.** By `ready_at`, then `operation_id`, then `nonce`.
+**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response. **Sort.** By `ready_at`, then `operation_id`, then `nonce`.
 
 **Selection.**
 
 - Only `pending` rows. Executed and canceled rows are never served. An expired schedule stays `pending` in the table and is served as `expired`, with no time window, until a later schedule of the same operation id supersedes it.
-- Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address. A loan id of a retired contract never attaches to the same id on the current one.
+- Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address, compared as canonical strings (a Strkey, or EIP-55 on EVM, exactly). A loan id of a retired contract never attaches to the same id on the current one.
 - The loan is the row's `loan_id`. For a `resolve_flag` or `release_with_consent` row projected before its record was known (`loan_id` `NULL`, `record_id` set), the read resolves the loan from `security_records`, the `SecurityRecordRegistered` rows of `contract_logs` and `security_view_snapshots`. Rows with no loan are not served.
-- Rows without `args_xdr` and `args_json` (transaction out of retention) are not served: they cannot be executed from the console.
+- Rows without native args (`args_xdr` or `calldata`) or without `args_json` are not served: they cannot be executed from the console. Stellar: the transaction was out of retention. EVM: the operation id did not verify, the selector is unknown, or the arguments are undecodable.
 - A row is dropped when a later schedule (greater `(schedule_ledger, source_log_id)`) of the same contract and operation id exists, whatever its status. On chain a new schedule of an id is accepted only after the previous one stopped being live. The contract nonce restarts at 1 once the temporary entry lapses, so the rule does not compare nonces.
 
-**Empty array.** EVM chains, a chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. `other`, `set_inspectors` and any non-loan operation are out of scope.
+**Empty array.** A chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. The EVM keys are `CHAIN_<id>_EVM_API_MINTER_ADDRESS` (optional, must equal the indexer's Minter; it does not enable the cash book, analytics or attention-count Minter reads) and `CHAIN_<id>_EVM_API_SECURITY_REGISTRY_ADDRESS` (#1940). `other`, `set_inspectors` / `setInspectors` (a RecordNft operation on EVM, never a target) and any non-loan operation are out of scope.
 
 **Freshness.** Up to one `access-manager-sync` interval (15 s) after the indexer passes the ledger. A database error is a `500` for the whole response. Reconciliation against the contract's `get_schedule` is TD-187.
 
@@ -175,7 +178,7 @@ Every stored string or `NUMERIC` that feeds the suggestion arithmetic is bounded
 
 ## Mark Suggestions
 
-The Trustee holds `revalue`; the backend only suggests and flags. The worker holds no key and writes nothing. `value_per_unit` is USD per one record unit at 7 dp (`$100 / Mt` is `1000000000` raw). A suggestion never applies `haircut_pct`.
+The Trustee holds `revalue`; the backend only suggests and flags. The worker holds no key and writes nothing. `value_per_unit` is USD per one record unit at the chain's scale (7 dp on Stellar, `$100 / Mt` is `1000000000` raw; 6 dp on EVM, `100000000` raw). A suggestion never applies `haircut_pct`.
 
 **Config** (all optional; unset ships dark): `SECURITY_MARK_COMMODITIES` (API and worker, same value), `SECURITY_MARK_MAX_AGE_SECS` (default `86400`, `0` off), `SECURITY_MARK_MOVE_BPS` (default `200`, `0` off). The map is a JSON array of `{commodity, mode, asset, price_provider, quote_unit, benchmark}` with `deny_unknown_fields`: at most 16 KiB and 64 entries, unique normalized keys, `asset` `[A-Z0-9_-]{1,16}`, a known `price_provider`, `quote_unit` one of `TroyOz`, `Mt`, `Lb`, `Bbl` (required for `StandardGoods`, absent or `TroyOz` for `MetalConcentrate`), `benchmark` `[A-Za-z0-9_]{1,32}` defaulting to `asset`. A malformed value fails boot naming the key; set the API first.
 
@@ -183,7 +186,7 @@ The Trustee holds `revalue`; the backend only suggests and flags. The worker hol
 
 **Units** (quote units per record unit): `Mt` and `Dmt` to `TroyOz` `10000000000 / 311035`; to `Mt` `1`; to `Lb` `100000000000 / 45359237`; `Bbl` to `Bbl` `1`; anything else is `unsupported_unit`. `Dmt` is a mass in tonnes with no moisture applied.
 
-**Standard goods.** `floor(price x factor x 1e7)` in exact integer math, clamped at 0, from the latest `loan_asset_prices` row of `(asset, price_provider)`; a result outside `i128` is `unreadable`.
+**Standard goods.** `floor(price x factor x 10^decimals)` (`1e7` Stellar, `1e6` EVM) in exact integer math, clamped at 0, from the latest `loan_asset_prices` row of `(asset, price_provider)`; a result outside `i128` is `unreadable`.
 
 **Metal concentrate.** The record must be in `Dmt`. Inputs are the loan's latest assay and offtake, applied to every concentrate record of the loan. `value_per_unit = max(0, NSR per dry tonne)` from `collateral_valuation::nsr_per_dmt` (no realisation costs, no haircut, the record's grade unused). Each payable metal is priced at `(asset_for_metal(metal), price_provider)`.
 

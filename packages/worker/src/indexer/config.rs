@@ -410,6 +410,8 @@ pub struct IndexerJobSettings {
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
     pub plusd_address: Option<Address>,
+    pub access_manager_address: Option<Address>,
+    pub security_registry: Option<EvmSecurityRegistry>,
     pub asset_tracking: Option<EvmAssetTracking>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
@@ -446,6 +448,13 @@ impl IndexerJobSettings {
                     .map(|raw| parse_evm_address(&plusd_key, &raw))
                     .transpose()?
             },
+            access_manager_address: {
+                let access_manager_key = format!("{ip}ACCESS_MANAGER_ADDRESS");
+                env_nonblank(&access_manager_key)
+                    .map(|raw| parse_evm_address(&access_manager_key, &raw))
+                    .transpose()?
+            },
+            security_registry: evm_security_registry_from_env(chain_id)?,
             asset_tracking: evm_asset_tracking_from_env(chain_id)?,
             polling_block_range: require_nonzero(
                 chain_id,
@@ -480,6 +489,40 @@ impl IndexerJobSettings {
             .map(IndexerJobSettings::from_chain_env)
             .collect()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EvmSecurityRegistry {
+    pub registry: Address,
+    pub record_nft: Address,
+    pub reader: Address,
+}
+
+fn evm_security_registry_from_env(chain_id: i64) -> Result<Option<EvmSecurityRegistry>> {
+    let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
+    let keys = [
+        format!("{ip}SECURITY_REGISTRY_ADDRESS"),
+        format!("{ip}SECURITY_RECORD_NFT_ADDRESS"),
+        format!("{ip}SECURITY_REGISTRY_READER_ADDRESS"),
+    ];
+    let raws = keys.each_ref().map(|k| env_nonblank(k));
+    let Some(present) = raws.iter().position(Option::is_some) else {
+        return Ok(None);
+    };
+    if let Some(missing) = raws.iter().position(Option::is_none) {
+        anyhow::bail!(
+            "{} must be set when {} is set; the SecurityRegistry, RecordNft and Reader keys are set together",
+            keys[missing],
+            keys[present]
+        );
+    }
+    let [registry, record_nft, reader] =
+        [0, 1, 2].map(|i| parse_evm_address(&keys[i], raws[i].as_deref().unwrap_or_default()));
+    Ok(Some(EvmSecurityRegistry {
+        registry: registry?,
+        record_nft: record_nft?,
+        reader: reader?,
+    }))
 }
 
 /// USDC `Transfer` tracking on one EVM chain, from `JOB_INDEXER_EVM_<id>_ASSET_ADDRESS`,

@@ -25,13 +25,19 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({
       children,
       to,
+      search,
       "data-testid": testId,
     }: {
       children: React.ReactNode;
       to: string;
+      search?: unknown;
       "data-testid"?: string;
     }) => (
-      <a href={to} data-testid={testId}>
+      <a
+        href={to}
+        data-testid={testId}
+        data-search={search === undefined ? undefined : JSON.stringify(search)}
+      >
         {children}
       </a>
     ),
@@ -144,15 +150,17 @@ vi.mock("./-DisburseAction", () => ({
 }));
 
 import { Route } from "./loans.$id";
+import { rememberLoanBookSearch } from "./-loanBookSearch";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
 // it directly since the route isn't mounted in a real router tree here.
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4488",
 });
+let routeChain = 99_000_001;
 (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
   () => ({
-    chain: 99_000_001,
+    chain: routeChain,
   });
 
 function renderRoute() {
@@ -308,6 +316,7 @@ beforeEach(() => {
   mockMutableState.data = { status: "Performing", metadataUri: "ipfs://cur" };
   mockMutableState.isLoading = false;
   mockMutableState.error = null;
+  routeChain = 99_000_001;
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
   mockComplete.mutate = vi.fn();
@@ -347,6 +356,16 @@ describe("Loan detail route — hero (live)", () => {
       "href",
       "/loans",
     );
+  });
+
+  it("carries the loan book's last tab and chain filter on the back link (#2080)", () => {
+    rememberLoanBookSearch({ tab: "Watchlist", chain: 560048 });
+    renderRoute();
+    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ tab: "Watchlist", chain: 560048 }),
+    );
+    rememberLoanBookSearch({});
   });
 });
 
@@ -794,7 +813,25 @@ describe("Loan detail route — Matured variant (#866)", () => {
       newRateBps: 1450,
       // 2026-09-30T00:00:00Z in Unix seconds.
       newMaturity: Math.floor(Date.parse("2026-09-30T00:00:00Z") / 1000),
+      chainId: 99_000_001,
     });
+  });
+
+  it("submits the rollover with the EVM chain id on an EVM loan (#1574)", () => {
+    routeChain = 560_048;
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    fireEvent.change(screen.getByTestId("rollover-rate"), {
+      target: { value: "14.5" },
+    });
+    fireEvent.change(screen.getByTestId("rollover-maturity"), {
+      target: { value: "2026-09-30" },
+    });
+    fireEvent.click(screen.getByTestId("rollover-submit"));
+    expect(mockRollover.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ newRateBps: 1450, chainId: 560_048 }),
+    );
   });
 
   it("rejects a rate with more than two decimals or out of range and keeps submit disabled (#1625)", () => {
@@ -881,9 +918,9 @@ describe("Loan detail route — Matured variant (#866)", () => {
   });
 });
 
-describe("Loan detail route — non-Stellar loan gate (#1537)", () => {
+describe("Loan detail route — unknown-chain loan gate (#1537, #1574)", () => {
   const REASON =
-    "On-chain actions run on Stellar only — this loan lives on Hoodi, and signing them from the Trustee app is not supported yet.";
+    "On-chain actions run on Stellar only — this loan lives on Chain 1234, and signing them from the Trustee app is not supported yet.";
 
   it("disables the on-chain actions, shows the reason, and keeps Escalate enabled", () => {
     mockUseLoanDetail.mockReturnValue(
@@ -1080,6 +1117,22 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
       loanId: 4488,
       status: "WatchList",
       metadataUri: "ipfs://cur",
+      chainId: 99_000_001,
+    });
+  });
+
+  it("sends the EVM chain id with the lifecycle update on an EVM loan (#1574)", () => {
+    routeChain = 560_048;
+    openUpdateDialog();
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "WatchList" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "WatchList",
+      metadataUri: "ipfs://cur",
+      chainId: 560_048,
     });
   });
 
@@ -1105,6 +1158,7 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
       loanId: 4488,
       status: "Approved",
       metadataUri: "ipfs://new",
+      chainId: 99_000_001,
     });
   });
 
@@ -1244,7 +1298,7 @@ describe("Loan detail route — Repayment recovery card (#1711)", () => {
     expect(screen.getByTestId("loan-detail-open-recovery")).toBeEnabled();
   });
 
-  it("is disabled with the Stellar-only reason on an EVM loan", () => {
+  it("is disabled with the Stellar-only reason on an unknown EVM chain", () => {
     mockRecoveryCard.state = "blocked-evm";
     mockRecoveryCard.blockedReason = "On-chain actions run on Stellar only.";
     mockUseLoanDetail.mockReturnValue(makeResult());
@@ -1276,12 +1330,16 @@ describe("Loan detail route — top-level states", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({ state: "error", errorMessage: "kaboom" }),
     );
+    rememberLoanBookSearch({ chain: 560048 });
     renderRoute();
     expect(screen.getByTestId("loan-detail-error")).toHaveTextContent("kaboom");
-    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
-      "href",
-      "/loans",
+    const back = screen.getByText("‹ Loans").closest("a");
+    expect(back).toHaveAttribute("href", "/loans");
+    expect(back).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ chain: 560048 }),
     );
+    rememberLoanBookSearch({});
   });
 });
 

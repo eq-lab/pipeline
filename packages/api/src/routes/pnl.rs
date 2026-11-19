@@ -14,7 +14,7 @@ use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::minter_cash_book::{build_wire_outs, wire_out_escrow_steps, wire_out_raw_steps};
-use crate::routes::common::{RequiredChain, SeriesStat};
+use crate::routes::common::{stellar_minter, RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::total_balance::{
     build_composite_history, composite_window_start, fold_term, plain_bounded, plusd_holder_key,
@@ -506,7 +506,7 @@ async fn wire_out_term(
 ) -> anyhow::Result<Option<WireTerm>> {
     let rows = match kind {
         ChainKind::Stellar => {
-            let Some(minter) = state.minter_addresses.get(&chain_id) else {
+            let Some(minter) = stellar_minter(kind, &state.minter_addresses, chain_id) else {
                 return Ok(None);
             };
             let lp = wallet.to_uppercase();

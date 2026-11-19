@@ -593,6 +593,17 @@ function Deposit() {
               />
             )}
 
+            {isDeposit &&
+              !flow.exceedsBalance &&
+              flow.minDeposit !== undefined &&
+              amountBig > 0n &&
+              amountBig < flow.minDeposit && (
+                <InlineError
+                  message={`Minimum deposit is ${flow.minChipLabel.replace(" (Min)", "")}`}
+                  className="self-end"
+                />
+              )}
+
             {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
             {isConnectionPending ? null : !flow.isConnected ? (
               <Card

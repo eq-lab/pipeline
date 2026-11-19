@@ -12,12 +12,19 @@ use shared::events::ContractLog;
 use super::deal_tokens::DealTokenInfo;
 use super::parsers::extract_log_meta;
 
-mod deal_token_factory {
+mod deal_token_factory_legacy {
     use alloy::sol;
     sol! {
         event DealRegistered(uint256 indexed loanId, address debt, address cargo);
-        event DebtSynced(uint256 indexed loanId, uint256 target, uint256 previous, uint256 minted, uint256 clawed);
         event CargoSynced(uint256 indexed loanId, uint256 target, uint256 previous, uint256 minted, uint256 burned);
+    }
+}
+
+mod deal_token_factory {
+    use alloy::sol;
+    sol! {
+        event DealRegistered(uint256 indexed loanId, address debt);
+        event DebtSynced(uint256 indexed loanId, uint256 target, uint256 previous, uint256 minted, uint256 clawed);
     }
 }
 
@@ -25,9 +32,12 @@ sol! {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
-pub fn decode_deal_registered(log: &Log) -> Option<(U256, Address, Address)> {
-    let decoded = deal_token_factory::DealRegistered::decode_log(log.as_ref(), true).ok()?;
-    Some((decoded.loanId, decoded.debt, decoded.cargo))
+pub fn decode_deal_registered(log: &Log) -> Option<(U256, Address, Option<Address>)> {
+    if let Ok(d) = deal_token_factory::DealRegistered::decode_log(log.as_ref(), true) {
+        return Some((d.loanId, d.debt, None));
+    }
+    let d = deal_token_factory_legacy::DealRegistered::decode_log(log.as_ref(), true).ok()?;
+    Some((d.loanId, d.debt, Some(d.cargo)))
 }
 
 fn contract_log(log: &Log, event_name: &str, params: Value) -> Option<ContractLog> {
@@ -51,7 +61,7 @@ pub fn parse_deal_registered(log: &Log) -> Option<ContractLog> {
         json!({
             "loan_id": loan_id.to_string(),
             "debt": debt.to_checksum(None),
-            "cargo": cargo.to_checksum(None),
+            "cargo": cargo.map(|c| c.to_checksum(None)),
         }),
     )
 }
@@ -72,7 +82,7 @@ pub fn parse_debt_synced(log: &Log) -> Option<ContractLog> {
 }
 
 pub fn parse_cargo_synced(log: &Log) -> Option<ContractLog> {
-    let d = deal_token_factory::CargoSynced::decode_log(log.as_ref(), true).ok()?;
+    let d = deal_token_factory_legacy::CargoSynced::decode_log(log.as_ref(), true).ok()?;
     contract_log(
         log,
         "CargoSynced",

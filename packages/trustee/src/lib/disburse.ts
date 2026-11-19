@@ -1,15 +1,15 @@
 // spec: docs/frontend/trustee-flows.md#disburse-1898
-import {
-  parseUsdDollarsToI128,
-  type CanCall,
-  type LoanDisbursementState,
-} from "@pipeline/wallet-connect";
+import type { CanCall, LoanDisbursementState } from "@pipeline/wallet-connect";
 import {
   REUSED_BANK_REFERENCE_COPY,
   WIRE_OUT_REFERENCE_MAX,
-  rawToDecimal7,
 } from "@/lib/wireOut";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { loanActionChainReason } from "@/lib/targetChains";
+import {
+  parseExactAmount,
+  rawToDecimal,
+  SAC_DECIMALS,
+} from "@/utils/stellarSacUnits";
 import { formatUsdExact } from "@/utils/formatUsd";
 import {
   parseSorobanContractErrorCode,
@@ -48,7 +48,7 @@ export interface DisburseViewInput {
   connected: boolean;
   loan: DisburseQuery<LoanDisbursementState>;
   deal: DisburseQuery<{ debt: string } | null>;
-  trustline: DisburseQuery<DebtTrustlineRead>;
+  trustline: DisburseQuery<DebtTrustlineRead> | null;
   paused: DisburseQuery<boolean>;
   access: DisburseQuery<CanCall>;
 }
@@ -77,7 +77,7 @@ export function loanAcceptsDisbursement(loan: LoanDisbursementState): boolean {
 }
 
 export function disburseView(input: DisburseViewInput): DisburseView {
-  const chainReason = stellarOnlyActionReason(input.chainId);
+  const chainReason = loanActionChainReason(input.chainId);
   if (chainReason) return blocked(chainReason);
   if (!input.configured) return blocked(DISBURSE_NOT_CONFIGURED);
   if (input.loan.isError) return blocked("Could not read this loan on-chain.");
@@ -91,14 +91,16 @@ export function disburseView(input: DisburseViewInput): DisburseView {
   }
   if (deal.data === null) return blocked(DEBT_NOT_REGISTERED);
 
-  if (trustline.isError) {
-    return blocked("Could not verify the DEBT trustline of the loan holder.");
-  }
-  if (trustline.isPending || !trustline.data) {
-    return blocked("Checking the DEBT trustline of the loan holder…");
-  }
-  if (trustline.data.trustline === "missing") {
-    return blocked(debtTrustlineMissing(trustline.data.holder));
+  if (trustline !== null) {
+    if (trustline.isError) {
+      return blocked("Could not verify the DEBT trustline of the loan holder.");
+    }
+    if (trustline.isPending || !trustline.data) {
+      return blocked("Checking the DEBT trustline of the loan holder…");
+    }
+    if (trustline.data.trustline === "missing") {
+      return blocked(debtTrustlineMissing(trustline.data.holder));
+    }
   }
 
   if (paused.isError)
@@ -130,24 +132,23 @@ export interface DisburseFormInput {
   valueDateInput: string;
   today: string;
   reference: string;
+  decimals?: number;
 }
 
 export function disburseFormError({
+  decimals = SAC_DECIMALS,
   amountInput,
   bankCashRaw,
   valueDateInput,
   today,
   reference,
 }: DisburseFormInput): string | null {
-  let amount: bigint;
-  try {
-    amount = parseUsdDollarsToI128(amountInput);
-  } catch {
-    return "Enter the amount disbursed (up to 7 decimals).";
+  const amount = parseExactAmount(amountInput, decimals);
+  if (amount === null) {
+    return `Enter the amount disbursed (up to ${decimals} decimals).`;
   }
-  if (amount <= 0n) return "Enter the amount disbursed (up to 7 decimals).";
   if (bankCashRaw !== null && amount > BigInt(bankCashRaw)) {
-    return `The minter's booked bank cash (${formatUsdExact(rawToDecimal7(bankCashRaw))}) is below this amount. Book the incoming wires first.`;
+    return `The minter's booked bank cash (${formatUsdExact(rawToDecimal(bankCashRaw, decimals))}) is below this amount. Book the incoming wires first.`;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(valueDateInput)) {
     return "Enter the value date.";
@@ -164,11 +165,16 @@ export function disburseFormError({
 export interface DisburseErrorContext {
   disbursed?: string;
   originalSeniorTranche?: string;
+  decimals?: number;
 }
 
 export function disburseErrorCopy(
   err: unknown,
-  { disbursed, originalSeniorTranche }: DisburseErrorContext = {},
+  {
+    disbursed,
+    originalSeniorTranche,
+    decimals = SAC_DECIMALS,
+  }: DisburseErrorContext = {},
 ): UserFacingError {
   const mapped = toUserError(
     err,
@@ -193,27 +199,43 @@ export function disburseErrorCopy(
   if (/RefHashSeen/i.test(mapped.details) || code === 7) {
     return specific(REUSED_DISBURSE_REFERENCE);
   }
-  if (code === 8) {
+  if (/DealTokenFactoryNotRegistered/.test(mapped.details)) {
+    return specific(DEBT_NOT_REGISTERED);
+  }
+  if (/MinterInsufficientBankCash/.test(mapped.details) || code === 8) {
     return specific(
       "The minter's booked bank cash is below this amount. Book the incoming wires first.",
     );
   }
-  if (code === 6 || code === 25) {
+  if (
+    /MinterInvalidAmount|LoanRegistryInvalidAmount/.test(mapped.details) ||
+    code === 6 ||
+    code === 25
+  ) {
     return specific("The amount must be greater than zero.");
   }
-  if (code === 13) {
+  if (
+    /LoanRegistryDisbursementExceedsTranche/.test(mapped.details) ||
+    code === 13
+  ) {
     const detail =
       disbursed !== undefined && originalSeniorTranche !== undefined
-        ? ` (${formatUsdExact(rawToDecimal7(disbursed))} of ${formatUsdExact(rawToDecimal7(originalSeniorTranche))} already disbursed)`
+        ? ` (${formatUsdExact(rawToDecimal(disbursed, decimals))} of ${formatUsdExact(rawToDecimal(originalSeniorTranche, decimals))} already disbursed)`
         : "";
     return specific(`This exceeds the loan's senior tranche${detail}.`);
   }
-  if (code === 3 || code === 2) {
+  if (
+    /LoanRegistryWrongCurrentStatus|LoanRegistryNonExistentLoanId/.test(
+      mapped.details,
+    ) ||
+    code === 3 ||
+    code === 2
+  ) {
     return specific(
       "This loan's on-chain status does not allow a disbursement.",
     );
   }
-  if (code === 21) {
+  if (/LoanRegistryCarvedOut/.test(mapped.details) || code === 21) {
     return specific("This loan is carved out and cannot be disbursed.");
   }
   return mapped;

@@ -11,7 +11,7 @@ Passed: 54 required, 2 optional
 ❌ stellar.loan-book.ltv-bps — API ltv_bps null (price_stale null) vs chain 8889–8889 bps (issue #1998)
 ❌ evm.lp.voucher-deadline — the API returned deadline null (deposit), null (withdrawal) (issue #1798)
 Seen in the browser: see "Browser passes" below
-Not checked: the Stellar LP app deposit and withdrawal (BUG-39)
+Not checked: the Stellar LP app deposit and withdrawal (BUG-42)
 ```
 
 Every failing check is optional and has an issue. The run used `checks.json` before this change, so the result below shows the first three as `"pending"`; `checks.json` now carries #1990, #1991 and #1998. No entry is left `pending`.
@@ -116,7 +116,7 @@ Both `ltv-range` checks pass and are in `canBeRequired`; their entries stay in `
 
 Driven with the Playwright MCP (headless Chromium 158), against the stack above, after `run.ts`, desktop 1440×900 and then 375×812. The Chrome DevTools MCP of `.mcp.json` was not available to the agent, and no `chromium` is on the `PATH`. Sessions came from the API as the skill describes (`captcha_token: "e2e"`, the passcode from `logs/api.log`), a fresh email per LP pass. Console errors in every pass: only Reown / WalletConnect `403`/`400` for the placeholder project id `e2e`.
 
-### LP app on Stellar — ❌ blocked after Connect (BUG-39)
+### LP app on Stellar — ❌ blocked after Connect (BUG-42)
 
 Rerun after the fix: ✅, see [#2014 rerun](#2014-rerun-lp-app-on-stellar) below.
 
@@ -125,7 +125,7 @@ Rerun after the fix: ✅, see [#2014 rerun](#2014-rerun-lp-app-on-stellar) below
 | Session | ✅ signed in; "Finish account setup" dialog shown and closed |
 | Connect | ✅ terms gate first, then Stellar tab → **E2E test wallet** (first row); the account page shows `GDQUX6…KZK7`, the stack's `lp-browser` key. The header shows only the Account button, not the address |
 | Link settlement address | ✅ SEP-53 challenge signed by the test wallet; "Linked to your connected wallet" |
-| Deposit | ❌ USDC balance shows `—` and the amount input stays disabled; Horizon serves 1000 USDC for the account. `Horizon.Server` refuses the stack's `http://localhost:58000` without `allowHttp` (BUG-39), and the PLUSD trustline step uses the same client |
+| Deposit | ❌ USDC balance shows `—` and the amount input stays disabled; Horizon serves 1000 USDC for the account. `Horizon.Server` refuses the stack's `http://localhost:58000` without `allowHttp` (BUG-42), and the PLUSD trustline step uses the same client |
 | Stake, withdraw, activity, 375 px | not walked: blocked by the deposit |
 
 ### LP app on EVM — ✅ with two UI defects
@@ -159,7 +159,7 @@ No percentage outside 0–200 % was shown. Observations, not ❌ (the figures eq
 
 ## #2014 rerun: LP app on Stellar
 
-The Stellar LP browser pass, rerun after the BUG-39 fix (#2014) on a fresh stack.
+The Stellar LP browser pass, rerun after the BUG-42 fix (#2014) on a fresh stack.
 
 ```
 E2E 2014-b — commit b7c1a42d, contracts stellar 7646cef, exit 0
@@ -184,7 +184,7 @@ Driven with the Playwright MCP (headless Chromium) after `run.ts`, at 1440×900 
 | Step | Result |
 |------|--------|
 | Session | ✅ signed in; "Finish account setup" dialog shown and closed |
-| Connect | ✅ terms gate first, then Stellar tab → **E2E test wallet** (first row); account page wallet `GCNLMB…XALB`, **USDC balance $1,000.00** (the Horizon read BUG-39 broke). The header shows only the Account button, as in the run above |
+| Connect | ✅ terms gate first, then Stellar tab → **E2E test wallet** (first row); account page wallet `GCNLMB…XALB`, **USDC balance $1,000.00** (the Horizon read BUG-42 broke). The header shows only the Account button, as in the run above |
 | Link settlement address | ✅ SEP-53 challenge signed by the test wallet; "Linked to your connected wallet."; API `/v1/lps/me` `stellar_address` = the `lp-browser` key |
 | Deposit | ✅ `/deposit` shows USDC 1,000.00 and the input is enabled; Enable PLUSD (the Horizon trustline write) ✅; `request_deposit` of 100 USDC ✅; Claim waited "awaiting authorization" |
 | KYC | ✅ applicant through `POST /v1/kyc/applicants`, `GREEN` webhook (`sumsubGreen`); KYC status 2/2/2, PLUSD `authorized` true |
