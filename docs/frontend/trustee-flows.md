@@ -606,7 +606,7 @@ Every field is read defensively → `—`, never fabricated.
   served (chains without a SecurityRegistry, no snapshot yet): `ltv_bps`
   (verbatim from the stored snapshot; `4294967295`, the `u32::MAX` sentinel, means debt with no
   counted value and shows as "No security value"), `margin_call_open`
-  (`security_terms.margin_call_at != 0`) and `price_stale` (the contract's snapshot flag). The
+  (`security_terms.margin_call_at != 0`, `false` for a `Closed` loan, #2076) and `price_stale` (the contract's snapshot flag). The
   frontend reads each with `?? null`, so it also works while the keys are absent (this issue
   deploys before #1786). The column is **hidden** unless at least one
   row, Stellar or EVM (#1942), has a non-null `ltv_bps` or `margin_call_open === true`; the footnote

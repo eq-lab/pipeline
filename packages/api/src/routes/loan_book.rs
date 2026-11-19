@@ -1561,7 +1561,9 @@ pub fn attach_security<S: std::hash::BuildHasher>(
             .copied()
             .unwrap_or_default();
         entry.ltv_bps = fields.ltv_bps;
-        entry.margin_call_open = fields.margin_call_open;
+        entry.margin_call_open = fields
+            .margin_call_open
+            .map(|o| o && entry.status != "Closed");
         entry.price_stale = fields.price_stale;
     }
 }

@@ -1013,7 +1013,7 @@ fn margin_call_dto(
     un: &Unreadable,
 ) -> MarginCallDto {
     let margin_call_at = un.u64(&terms.margin_call_at);
-    let open = margin_call_at.map(|m| m != 0);
+    let open = margin_call_at.map(|m| m != 0 && !closed);
     let open_events: Vec<(u64, u64)> = events
         .iter()
         .filter(|e| e.kind == "open")

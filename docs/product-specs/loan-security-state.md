@@ -12,7 +12,7 @@ Scope is Stellar and EVM, served by the same code with the chain's parameters (d
 
 | Field | Source |
 |---|---|
-| `terms.*`, `margin_call.open`, `opened_at` | `security_terms` (`margin_call_at` is event-folded, so fresher than the snapshot); `terms.default_ratio_bps` and `originator_fee_rate` are EVM only |
+| `terms.*`, `margin_call.open`, `opened_at` | `security_terms` (`margin_call_at` is event-folded, so fresher than the snapshot); `margin_call.open` is `margin_call_at != 0` and the loan is not `Closed` (see Closed loans below); `terms.default_ratio_bps` and `originator_fee_rate` are EVM only |
 | `valuation.value`, `stale_value`, `flagged_value`, `debt`, `ltv_bps`, `coverage_bps`, `price_stale` | `security_loan_valuations` (`coverage_detail` at `detail_ledger`), verbatim |
 | `valuation.outstanding`, `accrued_interest` | the same row (`loan_money` at `money_ledger`, a separate simulate; it can differ from `debt` by a ledger of interest, TD-171) |
 | `records[].valuation.counted_quantity`, `value_per_unit`, `mark_at`, `stale`, `flagged` | the `counted_records` of the same snapshot |
@@ -32,7 +32,7 @@ Scope is Stellar and EVM, served by the same code with the chain's parameters (d
 | `paused`, `inspectors` | `security_registry_state` |
 | `refresh_pending` | computed: the loan has log rows of the chain's SecurityRegistry log addresses (the registry on Stellar; the registry and the RecordNft on EVM) newer than the projection watermark, or of those addresses plus the loan registry newer than the valuation's `source_log_id` |
 
-**Closed loans.** `close_loan` does not check open records (`loan-registry/src/lib.rs:564-614`). Records are served unchanged, open ones included. With outstanding 0, `agent_release` is `allowed`. A closed loan carries no alarm: `cure_overdue` and `ltv_above_ratio_no_onchain_call` are `false`, and a call still open on-chain shows `open_call_curable: true`.
+**Closed loans.** `close_loan` does not check open records (`loan-registry/src/lib.rs:564-614`). Records are served unchanged, open ones included. With outstanding 0, `agent_release` is `allowed`. A closed loan carries no alarm: `cure_overdue` and `ltv_above_ratio_no_onchain_call` are `false`. A margin call still open on-chain after `close_loan` (nothing cures it at close) is resolved on close (#2076): `margin_call.open` and `open_call_curable` are `false`, and so is the loan-book `margin_call_open`. `opened_at`, `cure_by` and `events[]` still show the on-chain call.
 
 **Freshness.** The fold runs every 30 s and the valuation refreshes when a log row is newer or the last read is older than 5 min with debt above 0, so a write shows within one or two cycles. `refresh_pending: true` means the served state lags; poll until it is `false`. `valuation.*` is as of `detail_ledger`. The computed staleness flags use the API clock (`now`, in the response); the contract uses the ledger timestamp, so a flag can flip a few seconds apart from the contract's at the boundary. All tables are read in one `REPEATABLE READ, READ ONLY` transaction, so the response never mixes two projection versions.
 
@@ -128,7 +128,7 @@ The EVM mirrors are listed in [loan-security-state-evm.md](./loan-security-state
 | Field | Type | Source | `null` when |
 |---|---|---|---|
 | `ltv_bps` | `u32` or `null` | `security_loan_valuations.ltv_bps`, same value as `/security` `valuation.ltv_bps`; `4294967295` (u32::MAX) passes through | no valuation snapshot yet |
-| `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
+| `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0` and the entry's `status` is not `Closed`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
 | `price_stale` | `bool` or `null` | `security_loan_valuations.price_stale`, the contract flag, same as `/security` `valuation.price_stale` | no valuation snapshot yet |
 
 A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay` / `reverseRepay`) and SecurityRegistry, on Stellar and EVM, see [Pending operations](#pending-operations).
