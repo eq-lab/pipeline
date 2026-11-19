@@ -4,11 +4,13 @@ import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
   securityReasonHash,
+  type EvmSecurityTermsShape,
   type FlagOutcome,
   type SecurityPaymentTerm,
   type SecurityRegistryCall,
   type SecurityTermsInput,
 } from "@pipeline/wallet-connect";
+import { useEvmSecurityTermsShape } from "@/api/useRiskCouncil";
 import {
   useLoanSecurity,
   type LoanSecurityInspection,
@@ -163,10 +165,18 @@ const ORIGINATOR_FEE_FIELD: TermsFieldSpec = {
   placeholder: "e.g. 1",
 };
 
+function evmTermsExtras(
+  chainId: number | null | undefined,
+  termsShape: EvmSecurityTermsShape | null,
+): boolean {
+  return !isStellarTarget(chainId) && termsShape === "terms15";
+}
+
 export function termsFieldsFor(
   chainId: number | null | undefined,
+  termsShape: EvmSecurityTermsShape | null,
 ): ReadonlyArray<TermsFieldSpec> {
-  if (isStellarTarget(chainId)) return STELLAR_TERMS_FIELDS;
+  if (!evmTermsExtras(chainId, termsShape)) return STELLAR_TERMS_FIELDS;
   return STELLAR_TERMS_FIELDS.flatMap((field) =>
     field.key === "marginCallRatio"
       ? [field, DEFAULT_RATIO_FIELD]
@@ -301,9 +311,10 @@ export function defaultRatioOrderInvalid(parsed: ParsedTerms): boolean {
 export function ratioOrderErrorFor(
   parsed: ParsedTerms,
   chainId: number | null | undefined,
+  termsShape: EvmSecurityTermsShape | null,
 ): string | null {
   if (ratioOrderInvalid(parsed)) return RATIO_ORDER_ERROR;
-  return !isStellarTarget(chainId) && defaultRatioOrderInvalid(parsed)
+  return evmTermsExtras(chainId, termsShape) && defaultRatioOrderInvalid(parsed)
     ? DEFAULT_RATIO_ORDER_ERROR
     : null;
 }
@@ -312,9 +323,11 @@ export function buildSetTermsCall(
   loanId: number | null,
   values: TermsFormValues,
   chainId: number | null | undefined,
+  termsShape: EvmSecurityTermsShape | null,
 ): SecurityRegistryCall | null {
   const p = parseTermsForm(values);
-  const evm = !isStellarTarget(chainId);
+  if (!isStellarTarget(chainId) && termsShape === null) return null;
+  const evm = evmTermsExtras(chainId, termsShape);
   if (
     evm &&
     (p.defaultRatioBps === null ||
@@ -507,12 +520,23 @@ export function buildReleaseCall(
   return { fn: "release_with_consent", recordId: id, consentHash };
 }
 
+export interface TermsShapeView {
+  loading: boolean;
+  error: UserFacingError | null;
+  retry: () => void;
+}
+
+export const TERMS_SHAPE_LOADING = "Checking the SecurityRegistry build…";
+export const TERMS_SHAPE_ERROR =
+  "Could not identify the SecurityRegistry build — Set terms is unavailable.";
+
 export interface SetTermsFormView {
   values: TermsFormValues;
   setField: (key: TermsFieldKey, value: string) => void;
   setPaymentTerm: (value: SecurityPaymentTerm | "") => void;
   echoes: Record<TermsFieldKey, { echo: string | null; invalid: boolean }>;
   termsFields: ReadonlyArray<TermsFieldSpec>;
+  shape: TermsShapeView;
   ratioOrderError: string | null;
   pendingNotice: string | null;
   action: ActionView;
@@ -579,8 +603,17 @@ export function useRiskCouncilSecurity(
   const [overrides, setOverrides] = useState<Partial<TermsFormValues>>({});
   const prefill = prefillTermsForm(served?.terms);
   const values: TermsFormValues = { ...prefill, ...overrides };
-  const termsCall = buildSetTermsCall(base.loanId, values, chainId);
-  const termsFields = termsFieldsFor(chainId);
+  const shapeQuery = useEvmSecurityTermsShape(chainId);
+  const termsShape = shapeQuery.data ?? null;
+  const shapeError =
+    shapeQuery.error && termsShape === null
+      ? {
+          ...toUserError(shapeQuery.error, TERMS_SHAPE_ERROR),
+          message: TERMS_SHAPE_ERROR,
+        }
+      : null;
+  const termsCall = buildSetTermsCall(base.loanId, values, chainId, termsShape);
+  const termsFields = termsFieldsFor(chainId, termsShape);
   const parsed = parseTermsForm(values);
 
   const termsAction = useRiskCouncilActionView({
@@ -655,7 +688,12 @@ export function useRiskCouncilSecurity(
         setOverrides((prev) => ({ ...prev, paymentTerm: value })),
       echoes,
       termsFields,
-      ratioOrderError: ratioOrderErrorFor(parsed, chainId),
+      shape: {
+        loading: shapeQuery.isLoading === true,
+        error: shapeError,
+        retry: () => void shapeQuery.refetch(),
+      },
+      ratioOrderError: ratioOrderErrorFor(parsed, chainId, termsShape),
       pendingNotice: termsPending ? SET_TERMS_PENDING_NOTICE : null,
       action: termsAction,
     },

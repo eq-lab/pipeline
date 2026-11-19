@@ -18,7 +18,10 @@ import {
   EVM_SCHEDULER,
   EVM_SECURITY_REGISTRY,
   EVM_SET_TERMS_ARGS,
+  EVM_SET_TERMS_F92D719_ARGS,
+  EVM_SET_TERMS_F92D719_CALLDATA,
   evmPendingOp,
+  evmPendingOpF92d719,
   evmLoanRegistryOp,
   evmMinterOp,
   EVM_LOAN_REGISTRY,
@@ -1151,6 +1154,46 @@ describe("decodeEvmSecurityCall", () => {
   });
 });
 
+describe("decodeEvmSecurityCall on an f92d719 row", () => {
+  const terms12 = EVM_SET_TERMS_F92D719_ARGS[1] as Record<string, unknown>;
+
+  it("decodes the 12-key terms without the extras", () => {
+    expect(
+      decodeEvmSecurityCall("set_terms", EVM_SET_TERMS_F92D719_ARGS),
+    ).toEqual({
+      fn: "set_terms",
+      loanId: 7,
+      terms: {
+        advanceRatioBps: 7000,
+        marginCallRatioBps: 8250,
+        curePeriod: "604800",
+        priceStaleAfter: "86400",
+        paymentTerm: "Lc",
+        gracePeriod: "259200",
+        defaultRate: 20000,
+        attestationInterval: "2592000",
+        inspectionInterval: "0",
+        toleranceBps: 50,
+        gradeToleranceBps: 25,
+      },
+    });
+  });
+
+  it("keeps every other key set as the raw-JSON fallback", () => {
+    const decode = (args: unknown) => decodeEvmSecurityCall("set_terms", args);
+    expect(decode(["7", { ...terms12, defaultRatioBps: 9000 }])).toBeNull();
+    expect(decode(["7", { ...terms12, defaultBreachAt: "0" }])).toBeNull();
+    const swapped: Record<string, unknown> = {
+      ...terms12,
+      originatorFeeRate: 10000,
+    };
+    delete swapped.defaultRate;
+    expect(decode(["7", swapped])).toBeNull();
+    expect(decode(["7", { ...terms12, marginCallAt: "5" }])).toBeNull();
+    expect(decode([7, terms12])).toBeNull();
+  });
+});
+
 describe("EVM served rows", () => {
   it("canonicalises setTerms and decodes it from the calldata row", () => {
     const item = fromServed(evmPendingOp());
@@ -1242,6 +1285,23 @@ describe("EVM served rows", () => {
     );
     expect(rows["Default ratio"]).toBe("90%");
     expect(rows["Originator fee rate"]).toBe("1%");
+    expect(rows["Payment term"]).toBe("Letter of credit (Lc)");
+  });
+
+  it("renders a served 12-key setTerms row like the Stellar one", () => {
+    const item = fromServed(evmPendingOpF92d719());
+    expect(item.calldata).toBe(EVM_SET_TERMS_F92D719_CALLDATA);
+    expect(item.calldata?.startsWith("0x36b14cd2")).toBe(true);
+    expect(pendingActionLabel(item)).toBe("Set terms");
+    const labels = pendingArgRows(item, EVM).map((r) => r.label);
+    expect(labels).toEqual(
+      pendingArgRows(fromServed(pendingOp()), STELLAR).map((r) => r.label),
+    );
+    expect(labels).not.toContain("Default ratio");
+    expect(labels).not.toContain("Originator fee rate");
+    const rows = Object.fromEntries(
+      pendingArgRows(item, EVM).map((r) => [r.label, r.value]),
+    );
     expect(rows["Payment term"]).toBe("Letter of credit (Lc)");
   });
 

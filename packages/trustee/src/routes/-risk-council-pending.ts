@@ -179,6 +179,21 @@ const EVM_TERMS_KEYS = [
   "defaultBreachAt",
 ] as const;
 
+const EVM_TERMS12_KEYS = [
+  "advanceRatioBps",
+  "marginCallRatioBps",
+  "curePeriod",
+  "priceStaleAfter",
+  "paymentTerm",
+  "gracePeriod",
+  "defaultRate",
+  "attestationInterval",
+  "inspectionInterval",
+  "toleranceBps",
+  "gradeToleranceBps",
+  "marginCallAt",
+] as const;
+
 export interface ReverseRepayCall {
   fn: "reverse_repay";
   loanId: number;
@@ -336,6 +351,16 @@ function enumOrdinal<T>(value: unknown, allowed: readonly T[]): T | null {
   return Number.isInteger(value) ? (allowed[value as number] ?? null) : null;
 }
 
+function hasExactKeys(
+  terms: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): boolean {
+  return (
+    Object.keys(terms).length === keys.length &&
+    keys.every((key) => key in terms)
+  );
+}
+
 function decodeEvmTerms(
   value: unknown,
 ): Extract<SecurityRegistryCall, { fn: "set_terms" }>["terms"] | null {
@@ -343,12 +368,8 @@ function decodeEvmTerms(
     return null;
   }
   const terms = value as Record<string, unknown>;
-  if (
-    Object.keys(terms).length !== EVM_TERMS_KEYS.length ||
-    !EVM_TERMS_KEYS.every((key) => key in terms)
-  ) {
-    return null;
-  }
+  const full = hasExactKeys(terms, EVM_TERMS_KEYS);
+  if (!full && !hasExactKeys(terms, EVM_TERMS12_KEYS)) return null;
   const paymentTerm = enumOrdinal<SecurityPaymentTerm>(
     terms.paymentTerm,
     SECURITY_PAYMENT_TERMS,
@@ -356,11 +377,10 @@ function decodeEvmTerms(
   const u32s = [
     terms.advanceRatioBps,
     terms.marginCallRatioBps,
-    terms.defaultRatioBps,
     terms.defaultRate,
-    terms.originatorFeeRate,
     terms.toleranceBps,
     terms.gradeToleranceBps,
+    ...(full ? [terms.defaultRatioBps, terms.originatorFeeRate] : []),
   ];
   const u64s = [
     terms.curePeriod,
@@ -374,24 +394,28 @@ function decodeEvmTerms(
     !u32s.every(isU32) ||
     !u64s.every(isU64) ||
     terms.marginCallAt !== "0" ||
-    terms.defaultBreachAt !== "0"
+    (full && terms.defaultBreachAt !== "0")
   ) {
     return null;
   }
   return {
     advanceRatioBps: terms.advanceRatioBps as number,
     marginCallRatioBps: terms.marginCallRatioBps as number,
-    defaultRatioBps: terms.defaultRatioBps as number,
     curePeriod: terms.curePeriod as string,
     priceStaleAfter: terms.priceStaleAfter as string,
     paymentTerm,
     gracePeriod: terms.gracePeriod as string,
     defaultRate: terms.defaultRate as number,
-    originatorFeeRate: terms.originatorFeeRate as number,
     attestationInterval: terms.attestationInterval as string,
     inspectionInterval: terms.inspectionInterval as string,
     toleranceBps: terms.toleranceBps as number,
     gradeToleranceBps: terms.gradeToleranceBps as number,
+    ...(full
+      ? {
+          defaultRatioBps: terms.defaultRatioBps as number,
+          originatorFeeRate: terms.originatorFeeRate as number,
+        }
+      : {}),
   };
 }
 

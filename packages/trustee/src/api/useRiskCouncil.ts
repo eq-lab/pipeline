@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { useCallback, useState } from "react";
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -26,6 +27,7 @@ import {
   readEvmScheduledOperation,
   readEvmSecurityInspectors,
   readEvmSecurityRegistrySchedule,
+  readEvmSecurityTermsShape,
   readLoanChainState,
   readLoanMoney,
   readRiskCouncilSchedule,
@@ -41,6 +43,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   type CanCall,
+  type EvmSecurityTermsShape,
   type LoanChainState,
   type LoanMoney,
   type OperationSchedule,
@@ -205,17 +208,55 @@ function evmCouncilConfig(fn: CouncilCall["fn"]): EvmCouncilConfig | null {
   };
 }
 
+export function evmSecurityTermsShapeQuery() {
+  return queryOptions<EvmSecurityTermsShape, Error>({
+    queryKey: ["evm-security-terms-shape", ENV.EVM_SECURITY_REGISTRY_ADDRESS],
+    queryFn: () => {
+      const registry = ENV.EVM_SECURITY_REGISTRY_ADDRESS;
+      if (!registry) throw new Error(SECURITY_NOT_CONFIGURED);
+      return readEvmSecurityTermsShape({ registry });
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 2,
+  });
+}
+
+export function useEvmSecurityTermsShape(chainId: number | null | undefined) {
+  return useQuery({
+    ...evmSecurityTermsShapeQuery(),
+    enabled:
+      !isStellarTarget(chainId) && riskCouncilChainReason(chainId) === null,
+  });
+}
+
+async function evmTermsShapeFor(
+  queryClient: QueryClient,
+  fn: CouncilCall["fn"],
+): Promise<EvmSecurityTermsShape | undefined> {
+  return fn === "set_terms"
+    ? queryClient.fetchQuery(evmSecurityTermsShapeQuery())
+    : undefined;
+}
+
 function evmSelectorFor(
   fn: CouncilCall["fn"],
+  termsShape?: EvmSecurityTermsShape,
 ): ReturnType<typeof evmSecuritySelector> {
   return councilTarget(fn) === "security_registry"
-    ? evmSecuritySelector(fn as EvmSecurityFn)
+    ? evmSecuritySelector(fn as EvmSecurityFn, termsShape)
     : evmRiskCouncilSelector(fn as RiskCouncilCall["fn"]);
 }
 
-function evmCalldataFor(call: CouncilCall): string {
+function evmCalldataFor(
+  call: CouncilCall,
+  termsShape?: EvmSecurityTermsShape,
+): string {
   return councilTarget(call) === "security_registry"
-    ? encodeEvmSecurityRegistryCalldata(call as SecurityRegistryCall)
+    ? encodeEvmSecurityRegistryCalldata(
+        call as SecurityRegistryCall,
+        termsShape,
+      )
     : encodeEvmRiskCouncilCalldata(call as RiskCouncilCall);
 }
 
@@ -223,6 +264,7 @@ function readEvmScheduleFor(
   evm: EvmCouncilConfig,
   call: CouncilCall,
   caller: string,
+  termsShape?: EvmSecurityTermsShape,
 ): Promise<OperationSchedule> {
   const base = {
     accessManager: evm.accessManager,
@@ -234,6 +276,7 @@ function readEvmScheduleFor(
         ...base,
         call: call as SecurityRegistryCall,
         recordNft: evm.recordNft,
+        termsShape,
       })
     : readEvmRiskCouncilSchedule({ ...base, call: call as RiskCouncilCall });
 }
@@ -244,6 +287,7 @@ function relayEvmFor(
   caller: string,
   mode: RelayMode,
   onStageChange: (stage: RelayStage) => void,
+  termsShape?: EvmSecurityTermsShape,
 ) {
   const base = {
     mode,
@@ -258,6 +302,7 @@ function relayEvmFor(
         ...base,
         call: call as SecurityRegistryCall,
         recordNft: evm.recordNft,
+        termsShape,
       })
     : relayEvmRiskCouncil({ ...base, call: call as RiskCouncilCall });
 }
@@ -307,6 +352,7 @@ export function useRiskCouncilAccess(
   const { address } = useChainWallet(chainId);
   const callKey = call == null ? null : riskCouncilCallKey(call);
   const target = councilTarget(fn);
+  const queryClient = useQueryClient();
 
   return useQuery<RiskCouncilAccess, Error>({
     queryKey: ["risk-council-access", chainId, address, target, fn, callKey],
@@ -318,15 +364,16 @@ export function useRiskCouncilAccess(
         const evm = evmCouncilConfig(fn);
         if (!evm) throw new Error(notConfiguredFor(target));
         if (!address) throw new Error("EVM wallet not connected.");
+        const termsShape = await evmTermsShapeFor(queryClient, fn);
         const canCall = await readEvmCanCall({
           accessManager: evm.accessManager,
           caller: address,
           target: evm.target,
-          selector: evmSelectorFor(fn),
+          selector: evmSelectorFor(fn, termsShape),
         });
         let schedule: OperationSchedule | null = null;
         if (!canCall.immediate && canCall.delay > 0 && call !== null) {
-          schedule = await readEvmScheduleFor(evm, call, address);
+          schedule = await readEvmScheduleFor(evm, call, address, termsShape);
         }
         return { canCall, schedule };
       }
@@ -451,10 +498,16 @@ export function useRiskCouncilRelay() {
           notConfigured: notConfiguredFor(target),
           chainReason: riskCouncilChainReason,
         });
+        const termsShape = await evmTermsShapeFor(queryClient, call.fn);
         let executing: OperationSchedule | undefined;
         if (mode === "execute") {
           try {
-            executing = await readEvmScheduleFor(evm, call, evmCaller);
+            executing = await readEvmScheduleFor(
+              evm,
+              call,
+              evmCaller,
+              termsShape,
+            );
           } catch {
             executing = undefined;
           }
@@ -465,11 +518,12 @@ export function useRiskCouncilRelay() {
           evmCaller,
           mode,
           setStage,
+          termsShape,
         );
         if (mode !== "schedule") return { hash, schedule: executing };
         let schedule: OperationSchedule | undefined;
         try {
-          schedule = await readEvmScheduleFor(evm, call, evmCaller);
+          schedule = await readEvmScheduleFor(evm, call, evmCaller, termsShape);
         } catch {
           schedule = undefined;
         }
@@ -478,7 +532,7 @@ export function useRiskCouncilRelay() {
           schedule,
           caller: evmCaller,
           target: evm.target,
-          calldata: evmCalldataFor(call),
+          calldata: evmCalldataFor(call, termsShape),
         };
       }
       const cfg = riskCouncilConfig(target);

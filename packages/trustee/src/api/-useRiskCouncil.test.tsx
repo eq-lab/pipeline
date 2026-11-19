@@ -12,6 +12,7 @@ import {
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
+  useEvmSecurityTermsShape,
   useSecurityInspectors,
 } from "./useRiskCouncil";
 import {
@@ -41,6 +42,7 @@ const mocks = vi.hoisted(() => ({
   readEvmScheduledOperation: vi.fn(),
   executeEvmScheduledOperation: vi.fn(),
   readEvmSecurityInspectors: vi.fn(),
+  readEvmSecurityTermsShape: vi.fn(),
   encodeEvmSecurityRegistryCalldata: vi.fn(),
   evmSecuritySelector: vi.fn(),
   readEvmRiskCouncilSchedule: vi.fn(),
@@ -75,6 +77,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   readEvmScheduledOperation: mocks.readEvmScheduledOperation,
   executeEvmScheduledOperation: mocks.executeEvmScheduledOperation,
   readEvmSecurityInspectors: mocks.readEvmSecurityInspectors,
+  readEvmSecurityTermsShape: mocks.readEvmSecurityTermsShape,
   encodeEvmSecurityRegistryCalldata: mocks.encodeEvmSecurityRegistryCalldata,
   evmSecuritySelector: mocks.evmSecuritySelector,
   evmSecurityTarget: (
@@ -160,6 +163,7 @@ beforeEach(() => {
   envMock.EVM_MINTER_ADDRESS = EVM_MINTER;
   mocks.evmRiskCouncilSelector.mockReturnValue("0xfeedf00d");
   mocks.encodeEvmRiskCouncilCalldata.mockReturnValue("0xc0ffee0000");
+  mocks.readEvmSecurityTermsShape.mockResolvedValue("terms15");
   mocks.evmSecuritySelector.mockReturnValue("0xdeadbeef");
   mocks.encodeEvmSecurityRegistryCalldata.mockReturnValue("0xcafebabe00");
   mocks.relayRiskCouncil.mockResolvedValue({ hash: "H" });
@@ -992,6 +996,204 @@ describe("EVM Risk Council", () => {
     inspectors: [] as string[],
   };
 
+  describe("terms shape of the deployed registry", () => {
+    beforeEach(() => {
+      mocks.readEvmSecurityTermsShape.mockResolvedValue("terms12");
+      mocks.relayEvmSecurityRegistry.mockResolvedValue({ hash: "EVMH" });
+      mocks.readEvmCanCall.mockResolvedValue({ immediate: true, delay: 0 });
+    });
+
+    it("retries the probe after a transient error and then succeeds", async () => {
+      mocks.readEvmSecurityTermsShape
+        .mockRejectedValueOnce(new Error("rpc timeout"))
+        .mockResolvedValueOnce("terms12");
+      const { result } = renderHook(() => useEvmSecurityTermsShape(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.data).toBe("terms12"), {
+        timeout: 5000,
+      });
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledTimes(2);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("reports an error after the retries are exhausted", async () => {
+      mocks.readEvmSecurityTermsShape.mockRejectedValue(new Error("rpc down"));
+      const { result } = renderHook(() => useEvmSecurityTermsShape(EVM), {
+        wrapper: makeWrapper(),
+      });
+      await waitFor(() => expect(result.current.isError).toBe(true), {
+        timeout: 8000,
+      });
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledTimes(3);
+    });
+
+    it("never reads the probe on Stellar", () => {
+      renderHook(() => useEvmSecurityTermsShape(STELLAR), {
+        wrapper: makeWrapper(),
+      });
+      expect(mocks.readEvmSecurityTermsShape).not.toHaveBeenCalled();
+    });
+
+    it("selects the f92d719 selector for set_terms access", async () => {
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, null, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledWith({
+        registry: EVM_REGISTRY,
+      });
+      expect(mocks.evmSecuritySelector).toHaveBeenCalledWith(
+        "set_terms",
+        "terms12",
+      );
+    });
+
+    it("passes the shape to the schedule lookup when delayed", async () => {
+      mocks.readEvmCanCall.mockResolvedValue({ immediate: false, delay: 60 });
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "x",
+        readyAt: 0,
+      });
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, SET_TERMS, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.data?.schedule).not.toBeNull());
+      expect(mocks.readEvmSecurityRegistrySchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ termsShape: "terms12" }),
+      );
+    });
+
+    it("relays with the shape and stores the matching calldata", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "ab".repeat(32),
+        readyAt: 1_800_000_000,
+      });
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "schedule",
+          call: SET_TERMS,
+          chainId: EVM,
+          loanId: 4,
+        });
+      });
+      expect(mocks.relayEvmSecurityRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({ termsShape: "terms12" }),
+      );
+      expect(mocks.encodeEvmSecurityRegistryCalldata).toHaveBeenCalledWith(
+        SET_TERMS,
+        "terms12",
+      );
+      expect(mocks.readEvmSecurityRegistrySchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ termsShape: "terms12" }),
+      );
+    });
+
+    it("passes the shape to the execute-mode schedule lookup", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "cd".repeat(32),
+        readyAt: 77,
+      });
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        });
+      });
+      expect(mocks.readEvmSecurityRegistrySchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ termsShape: "terms12" }),
+      );
+    });
+
+    it("never probes for the other security functions or on Stellar", async () => {
+      const resolve = {
+        fn: "resolve_flag",
+        recordId: 3,
+        outcome: "Accepted",
+        reasonHash: "ab".repeat(32),
+      } as const;
+      const access = renderHook(
+        () => useRiskCouncilAccess(EVM, INSPECTORS, "set_inspectors"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(access.result.current.data).toBeDefined());
+      const relay = renderHook(() => useRiskCouncilRelay(), {
+        wrapper: makeWrapper(),
+      });
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "execute",
+          call: resolve,
+          chainId: EVM,
+        });
+      });
+      expect(mocks.evmSecuritySelector).toHaveBeenCalledWith(
+        "set_inspectors",
+        undefined,
+      );
+      expect(mocks.relayEvmSecurityRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({ termsShape: undefined }),
+      );
+      mocks.readCanCall.mockResolvedValue({ immediate: true, delay: 0 });
+      const stellar = renderHook(
+        () => useRiskCouncilAccess(STELLAR, null, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(stellar.result.current.data).toBeDefined());
+      expect(mocks.readEvmSecurityTermsShape).not.toHaveBeenCalled();
+    });
+
+    it("probes once for an access query and a relay sharing one cache", async () => {
+      fakeRelayTimers();
+      mocks.readEvmSecurityRegistrySchedule.mockResolvedValue({
+        operationId: "cd".repeat(32),
+        readyAt: 77,
+      });
+      const wrapper = makeWrapper();
+      const access = renderHook(
+        () => useRiskCouncilAccess(EVM, null, "set_terms"),
+        { wrapper },
+      );
+      await waitFor(() => expect(access.result.current.data).toBeDefined());
+      const relay = renderHook(() => useRiskCouncilRelay(), { wrapper });
+      await act(async () => {
+        await relay.result.current.mutateAsync({
+          mode: "execute",
+          call: SET_TERMS,
+          chainId: EVM,
+        });
+      });
+      expect(mocks.readEvmSecurityTermsShape).toHaveBeenCalledTimes(1);
+    });
+
+    it("surfaces a rejected probe as the access error and attempts no canCall", async () => {
+      mocks.readEvmSecurityTermsShape.mockRejectedValue(
+        new Error("Unrecognised SecurityRegistry build"),
+      );
+      const { result } = renderHook(
+        () => useRiskCouncilAccess(EVM, null, "set_terms"),
+        { wrapper: makeWrapper() },
+      );
+      await waitFor(() => expect(result.current.error).not.toBeNull(), {
+        timeout: 8000,
+      });
+      expect(result.current.error?.message).toMatch(/Unrecognised/);
+      expect(mocks.readEvmCanCall).not.toHaveBeenCalled();
+      expect(mocks.relayEvmSecurityRegistry).not.toHaveBeenCalled();
+    });
+  });
+
   describe("useRiskCouncilAccess", () => {
     it("reads canCall with the security selector against the registry", async () => {
       mocks.readEvmCanCall.mockResolvedValue({ immediate: true, delay: 0 });
@@ -1000,7 +1202,10 @@ describe("EVM Risk Council", () => {
         { wrapper: makeWrapper() },
       );
       await waitFor(() => expect(result.current.data).toBeDefined());
-      expect(mocks.evmSecuritySelector).toHaveBeenCalledWith("set_terms");
+      expect(mocks.evmSecuritySelector).toHaveBeenCalledWith(
+        "set_terms",
+        "terms15",
+      );
       expect(mocks.readEvmCanCall).toHaveBeenCalledWith({
         accessManager: EVM_AM,
         caller: EVM_CALLER,
@@ -1039,6 +1244,7 @@ describe("EVM Risk Council", () => {
         registry: EVM_REGISTRY,
         recordNft: EVM_NFT,
         caller: EVM_CALLER,
+        termsShape: "terms15",
       });
     });
 

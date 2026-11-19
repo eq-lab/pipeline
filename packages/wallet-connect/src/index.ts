@@ -383,7 +383,9 @@ export type {
 // ── EVM Risk Council ──────────────────────────────────────────────────────────
 export {
   EVM_TX_GAS_CAP,
+  EIP1967_IMPLEMENTATION_SLOT,
   readEvmContract,
+  readEvmContractCode,
   sendEvmContractCall,
   sendEvmContractCallChecked,
 } from "./evm/contracts/write";
@@ -410,11 +412,15 @@ export type {
 } from "./evm/contracts/accessManager";
 export {
   evmSecurityRegistryAbi,
+  evmSecurityRegistryTerms12Abi,
   evmSecurityRecordNftAbi,
   evmSecurityErrorAbi,
   EVM_SECURITY_FUNCTION_NAMES,
+  EVM_SET_TERMS_SELECTORS,
   evmSecuritySelector,
   type EvmSecurityFn,
+  evmSecurityTermsShapeFromCode,
+  readEvmSecurityTermsShape,
   encodeEvmSecurityRegistryCalldata,
   evmSecurityTarget,
   relayEvmSecurityRegistry,
@@ -426,6 +432,7 @@ export {
 export type {
   EvmSecurityAddresses,
   EvmSecurityCallParams,
+  EvmSecurityTermsShape,
   RelayEvmSecurityRegistryParams,
 } from "./evm/contracts/securityRegistry";
 

@@ -82,7 +82,7 @@ describe("terms form conversions", () => {
   it("prefills from served terms and reproduces them exactly", () => {
     const prefill = prefillTermsForm(SERVED_TERMS);
     expect(prefill).toEqual(FILLED);
-    expect(buildSetTermsCall(4, prefill, STELLAR)).toEqual({
+    expect(buildSetTermsCall(4, prefill, STELLAR, null)).toEqual({
       fn: "set_terms",
       loanId: 4,
       terms: {
@@ -104,34 +104,34 @@ describe("terms form conversions", () => {
   it("leaves a non-representable served duration empty", () => {
     const prefill = prefillTermsForm({ ...SERVED_TERMS, grace_period: "1" });
     expect(prefill.gracePeriod).toBe("");
-    expect(buildSetTermsCall(4, prefill, STELLAR)).toBeNull();
+    expect(buildSetTermsCall(4, prefill, STELLAR, null)).toBeNull();
   });
 
   it("prefills nothing when the loan has no terms", () => {
     const prefill = prefillTermsForm(null);
     expect(Object.values(prefill).every((v) => v === "")).toBe(true);
-    expect(buildSetTermsCall(4, prefill, STELLAR)).toBeNull();
+    expect(buildSetTermsCall(4, prefill, STELLAR, null)).toBeNull();
   });
 });
 
 describe("buildSetTermsCall", () => {
   it("needs a loan id, a payment term and every field", () => {
-    expect(buildSetTermsCall(null, FILLED, STELLAR)).toBeNull();
+    expect(buildSetTermsCall(null, FILLED, STELLAR, null)).toBeNull();
     expect(
-      buildSetTermsCall(1, { ...FILLED, paymentTerm: "" }, STELLAR),
+      buildSetTermsCall(1, { ...FILLED, paymentTerm: "" }, STELLAR, null),
     ).toBeNull();
     expect(
-      buildSetTermsCall(1, { ...FILLED, tolerance: "" }, STELLAR),
+      buildSetTermsCall(1, { ...FILLED, tolerance: "" }, STELLAR, null),
     ).toBeNull();
     expect(
-      buildSetTermsCall(1, { ...FILLED, curePeriod: "x" }, STELLAR),
+      buildSetTermsCall(1, { ...FILLED, curePeriod: "x" }, STELLAR, null),
     ).toBeNull();
   });
 
   it("refuses a margin call ratio below the advance ratio", () => {
     const values = { ...FILLED, advanceRatio: "90", marginCallRatio: "80" };
     expect(ratioOrderInvalid(parseTermsForm(values))).toBe(true);
-    expect(buildSetTermsCall(1, values, STELLAR)).toBeNull();
+    expect(buildSetTermsCall(1, values, STELLAR, null)).toBeNull();
     expect(
       ratioOrderInvalid(parseTermsForm({ ...FILLED, marginCallRatio: "70" })),
     ).toBe(false);
@@ -152,8 +152,8 @@ const EVM_FILLED: TermsFormValues = {
 
 describe("EVM terms form", () => {
   it("lists 12 fields with the two EVM fields after their neighbours", () => {
-    expect(termsFieldsFor(STELLAR).map((f) => f.key)).toHaveLength(10);
-    const keys = termsFieldsFor(EVM).map((f) => f.key);
+    expect(termsFieldsFor(STELLAR, null).map((f) => f.key)).toHaveLength(10);
+    const keys = termsFieldsFor(EVM, "terms15").map((f) => f.key);
     expect(keys).toHaveLength(12);
     expect(keys.indexOf("defaultRatio")).toBe(
       keys.indexOf("marginCallRatio") + 1,
@@ -161,13 +161,16 @@ describe("EVM terms form", () => {
     expect(keys.indexOf("originatorFeeRate")).toBe(
       keys.indexOf("defaultRate") + 1,
     );
-    expect(termsFieldsFor(EVM).find((f) => f.key === "defaultRatio")).toEqual({
+    expect(
+      termsFieldsFor(EVM, "terms15").find((f) => f.key === "defaultRatio"),
+    ).toEqual({
       key: "defaultRatio",
       label: "Default ratio (%)",
       placeholder: "e.g. 90",
     });
     expect(
-      termsFieldsFor(EVM).find((f) => f.key === "originatorFeeRate")?.label,
+      termsFieldsFor(EVM, "terms15").find((f) => f.key === "originatorFeeRate")
+        ?.label,
     ).toBe("Originator fee rate (%)");
   });
 
@@ -176,12 +179,12 @@ describe("EVM terms form", () => {
   });
 
   it("builds set_terms with both fields on EVM and never on Stellar", () => {
-    expect(buildSetTermsCall(4, EVM_FILLED, EVM)).toMatchObject({
+    expect(buildSetTermsCall(4, EVM_FILLED, EVM, "terms15")).toMatchObject({
       fn: "set_terms",
       loanId: 4,
       terms: { defaultRatioBps: 9000, originatorFeeRate: 10000 },
     });
-    const stellar = buildSetTermsCall(4, EVM_FILLED, STELLAR);
+    const stellar = buildSetTermsCall(4, EVM_FILLED, STELLAR, null);
     expect(stellar).not.toBeNull();
     expect(
       (stellar as unknown as { terms: Record<string, unknown> }).terms,
@@ -192,32 +195,41 @@ describe("EVM terms form", () => {
   });
 
   it("requires both fields on EVM", () => {
-    expect(buildSetTermsCall(4, FILLED, EVM)).toBeNull();
+    expect(buildSetTermsCall(4, FILLED, EVM, "terms15")).toBeNull();
     expect(
-      buildSetTermsCall(4, { ...EVM_FILLED, defaultRatio: "" }, EVM),
+      buildSetTermsCall(4, { ...EVM_FILLED, defaultRatio: "" }, EVM, "terms15"),
     ).toBeNull();
     expect(
-      buildSetTermsCall(4, { ...EVM_FILLED, originatorFeeRate: "x" }, EVM),
+      buildSetTermsCall(
+        4,
+        { ...EVM_FILLED, originatorFeeRate: "x" },
+        EVM,
+        "terms15",
+      ),
     ).toBeNull();
   });
 
   it("refuses both ratio-order violations with their own message", () => {
     const belowMargin = { ...EVM_FILLED, defaultRatio: "80" };
-    expect(buildSetTermsCall(4, belowMargin, EVM)).toBeNull();
-    expect(ratioOrderErrorFor(parseTermsForm(belowMargin), EVM)).toBe(
-      DEFAULT_RATIO_ORDER_ERROR,
-    );
+    expect(buildSetTermsCall(4, belowMargin, EVM, "terms15")).toBeNull();
+    expect(
+      ratioOrderErrorFor(parseTermsForm(belowMargin), EVM, "terms15"),
+    ).toBe(DEFAULT_RATIO_ORDER_ERROR);
     const marginBelowAdvance = {
       ...EVM_FILLED,
       advanceRatio: "90",
       marginCallRatio: "80",
     };
-    expect(buildSetTermsCall(4, marginBelowAdvance, EVM)).toBeNull();
-    expect(ratioOrderErrorFor(parseTermsForm(marginBelowAdvance), EVM)).toBe(
-      RATIO_ORDER_ERROR,
-    );
-    expect(ratioOrderErrorFor(parseTermsForm(EVM_FILLED), EVM)).toBeNull();
-    expect(ratioOrderErrorFor(parseTermsForm(belowMargin), STELLAR)).toBeNull();
+    expect(buildSetTermsCall(4, marginBelowAdvance, EVM, "terms15")).toBeNull();
+    expect(
+      ratioOrderErrorFor(parseTermsForm(marginBelowAdvance), EVM, "terms15"),
+    ).toBe(RATIO_ORDER_ERROR);
+    expect(
+      ratioOrderErrorFor(parseTermsForm(EVM_FILLED), EVM, "terms15"),
+    ).toBeNull();
+    expect(
+      ratioOrderErrorFor(parseTermsForm(belowMargin), STELLAR, null),
+    ).toBeNull();
   });
 
   it("echoes both fields in their raw units", () => {
@@ -234,6 +246,49 @@ describe("EVM terms form", () => {
         originatorFeeRate: "abc",
       }),
     ).toEqual({ echo: null, invalid: true });
+  });
+});
+
+describe("EVM terms form on an f92d719 registry", () => {
+  it("shows the Stellar fields on terms12 and while the build is unknown", () => {
+    const stellar = termsFieldsFor(STELLAR, null).map((f) => f.key);
+    expect(stellar).toHaveLength(10);
+    expect(termsFieldsFor(EVM, "terms12").map((f) => f.key)).toEqual(stellar);
+    expect(termsFieldsFor(EVM, null).map((f) => f.key)).toEqual(stellar);
+    expect(termsFieldsFor(EVM, "terms15")).toHaveLength(12);
+  });
+
+  it("builds the Stellar-shaped call on terms12, with no extras", () => {
+    expect(buildSetTermsCall(4, FILLED, EVM, "terms12")).toEqual(
+      buildSetTermsCall(4, FILLED, STELLAR, null),
+    );
+    const call = buildSetTermsCall(4, EVM_FILLED, EVM, "terms12");
+    expect(call).not.toBeNull();
+    const terms = (call as unknown as { terms: Record<string, unknown> }).terms;
+    expect(terms).not.toHaveProperty("defaultRatioBps");
+    expect(terms).not.toHaveProperty("originatorFeeRate");
+  });
+
+  it("builds nothing on EVM until the build is known", () => {
+    expect(buildSetTermsCall(4, FILLED, EVM, null)).toBeNull();
+    expect(buildSetTermsCall(4, EVM_FILLED, EVM, null)).toBeNull();
+  });
+
+  it("applies only the margin-over-advance rule on terms12", () => {
+    const belowMargin = { ...EVM_FILLED, defaultRatio: "80" };
+    expect(
+      ratioOrderErrorFor(parseTermsForm(belowMargin), EVM, "terms12"),
+    ).toBeNull();
+    expect(buildSetTermsCall(4, belowMargin, EVM, "terms12")).not.toBeNull();
+    const marginBelowAdvance = {
+      ...EVM_FILLED,
+      advanceRatio: "90",
+      marginCallRatio: "80",
+    };
+    expect(
+      ratioOrderErrorFor(parseTermsForm(marginBelowAdvance), EVM, "terms12"),
+    ).toBe(RATIO_ORDER_ERROR);
+    expect(buildSetTermsCall(4, marginBelowAdvance, EVM, "terms12")).toBeNull();
   });
 });
 

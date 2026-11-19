@@ -22,7 +22,7 @@ import {
 } from "../../stellar/contracts/securityRegistry";
 import { readEvmOperationSchedule, relayEvm } from "./accessManager";
 import { requireAddress } from "./args";
-import { readEvmContract } from "./write";
+import { readEvmContract, readEvmContractCode } from "./write";
 
 export const evmSecurityRegistryAbi = [
   {
@@ -182,6 +182,38 @@ export const evmSecurityRegistryAbi = [
   { type: "error", name: "SecurityRegistryZeroAddress", inputs: [] },
 ] as const;
 
+export type EvmSecurityTermsShape = "terms15" | "terms12";
+
+export const evmSecurityRegistryTerms12Abi = [
+  {
+    type: "function",
+    name: "setTerms",
+    inputs: [
+      { name: "loanId", type: "uint256" },
+      {
+        name: "newTerms",
+        type: "tuple",
+        components: [
+          { name: "advanceRatioBps", type: "uint32" },
+          { name: "marginCallRatioBps", type: "uint32" },
+          { name: "curePeriod", type: "uint64" },
+          { name: "priceStaleAfter", type: "uint64" },
+          { name: "paymentTerm", type: "uint8" },
+          { name: "gracePeriod", type: "uint64" },
+          { name: "defaultRate", type: "uint32" },
+          { name: "attestationInterval", type: "uint64" },
+          { name: "inspectionInterval", type: "uint64" },
+          { name: "toleranceBps", type: "uint32" },
+          { name: "gradeToleranceBps", type: "uint32" },
+          { name: "marginCallAt", type: "uint64" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
 export const evmSecurityRecordNftAbi = [
   {
     type: "function",
@@ -285,9 +317,27 @@ export function normalizeEvmAddress(value: string): string {
   return getAddress(value);
 }
 
-function evmSecurityItem(fn: EvmSecurityFn): AbiFunction {
+function setTermsShapeRequired(
+  termsShape: EvmSecurityTermsShape | undefined,
+  who: string,
+): EvmSecurityTermsShape {
+  if (termsShape === undefined) {
+    throw new Error(`${who}: termsShape is required for set_terms`);
+  }
+  return termsShape;
+}
+
+function evmSecurityItem(
+  fn: EvmSecurityFn,
+  termsShape?: EvmSecurityTermsShape,
+): AbiFunction {
   const abi =
-    fn === "set_inspectors" ? evmSecurityRecordNftAbi : evmSecurityRegistryAbi;
+    fn === "set_inspectors"
+      ? evmSecurityRecordNftAbi
+      : fn === "set_terms" &&
+          setTermsShapeRequired(termsShape, "evmSecuritySelector") === "terms12"
+        ? evmSecurityRegistryTerms12Abi
+        : evmSecurityRegistryAbi;
   const name = EVM_SECURITY_FUNCTION_NAMES[fn];
   const item = (abi as Abi).find(
     (entry): entry is AbiFunction =>
@@ -297,37 +347,44 @@ function evmSecurityItem(fn: EvmSecurityFn): AbiFunction {
   return item;
 }
 
-export function evmSecuritySelector(fn: EvmSecurityFn): Hex {
-  return toFunctionSelector(evmSecurityItem(fn));
+export function evmSecuritySelector(
+  fn: EvmSecurityFn,
+  termsShape?: EvmSecurityTermsShape,
+): Hex {
+  return toFunctionSelector(evmSecurityItem(fn, termsShape));
 }
 
-function encodeTerms(
-  terms: Extract<SecurityRegistryCall, { fn: "set_terms" }>["terms"],
-) {
+export const EVM_SET_TERMS_SELECTORS: Readonly<
+  Record<EvmSecurityTermsShape, Hex>
+> = {
+  terms15: evmSecuritySelector("set_terms", "terms15"),
+  terms12: evmSecuritySelector("set_terms", "terms12"),
+};
+
+type SetTermsInput = Extract<
+  SecurityRegistryCall,
+  { fn: "set_terms" }
+>["terms"];
+
+function sharedTerms(terms: SetTermsInput) {
   const advanceRatioBps = u32Arg(terms.advanceRatioBps, "advanceRatioBps");
   const marginCallRatioBps = u32Arg(
     terms.marginCallRatioBps,
     "marginCallRatioBps",
   );
-  const defaultRatioBps = u32Arg(terms.defaultRatioBps, "defaultRatioBps");
   if (marginCallRatioBps < advanceRatioBps) {
     fail("marginCallRatioBps (below advanceRatioBps)", marginCallRatioBps);
-  }
-  if (defaultRatioBps < marginCallRatioBps) {
-    fail("defaultRatioBps (below marginCallRatioBps)", defaultRatioBps);
   }
   const paymentTerm = SECURITY_PAYMENT_TERMS.indexOf(terms.paymentTerm);
   if (paymentTerm < 0) fail("paymentTerm", terms.paymentTerm);
   return {
     advanceRatioBps,
     marginCallRatioBps,
-    defaultRatioBps,
     curePeriod: u64Arg(terms.curePeriod, "curePeriod"),
     priceStaleAfter: u64Arg(terms.priceStaleAfter, "priceStaleAfter"),
     paymentTerm,
     gracePeriod: u64Arg(terms.gracePeriod, "gracePeriod"),
     defaultRate: u32Arg(terms.defaultRate, "defaultRate"),
-    originatorFeeRate: u32Arg(terms.originatorFeeRate, "originatorFeeRate"),
     attestationInterval: u64Arg(
       terms.attestationInterval,
       "attestationInterval",
@@ -336,20 +393,60 @@ function encodeTerms(
     toleranceBps: u32Arg(terms.toleranceBps, "toleranceBps"),
     gradeToleranceBps: u32Arg(terms.gradeToleranceBps, "gradeToleranceBps"),
     marginCallAt: 0n,
-    defaultBreachAt: 0n,
   };
+}
+
+function encodeTerms15(terms: SetTermsInput) {
+  const defaultRatioBps = u32Arg(terms.defaultRatioBps, "defaultRatioBps");
+  const originatorFeeRate = u32Arg(
+    terms.originatorFeeRate,
+    "originatorFeeRate",
+  );
+  const shared = sharedTerms(terms);
+  if (defaultRatioBps < shared.marginCallRatioBps) {
+    fail("defaultRatioBps (below marginCallRatioBps)", defaultRatioBps);
+  }
+  return { ...shared, defaultRatioBps, originatorFeeRate, defaultBreachAt: 0n };
+}
+
+function encodeTerms12(terms: SetTermsInput) {
+  if (terms.defaultRatioBps !== undefined) {
+    fail(
+      "defaultRatioBps (absent on this SecurityRegistry build)",
+      terms.defaultRatioBps,
+    );
+  }
+  if (terms.originatorFeeRate !== undefined) {
+    fail(
+      "originatorFeeRate (absent on this SecurityRegistry build)",
+      terms.originatorFeeRate,
+    );
+  }
+  return sharedTerms(terms);
 }
 
 export function encodeEvmSecurityRegistryCalldata(
   call: SecurityRegistryCall,
+  termsShape?: EvmSecurityTermsShape,
 ): Hex {
   switch (call.fn) {
-    case "set_terms":
-      return encodeFunctionData({
-        abi: evmSecurityRegistryAbi,
-        functionName: "setTerms",
-        args: [idArg(call.loanId, "loanId"), encodeTerms(call.terms)],
-      });
+    case "set_terms": {
+      const loanId = idArg(call.loanId, "loanId");
+      return setTermsShapeRequired(
+        termsShape,
+        "encodeEvmSecurityRegistryCalldata",
+      ) === "terms12"
+        ? encodeFunctionData({
+            abi: evmSecurityRegistryTerms12Abi,
+            functionName: "setTerms",
+            args: [loanId, encodeTerms12(call.terms)],
+          })
+        : encodeFunctionData({
+            abi: evmSecurityRegistryAbi,
+            functionName: "setTerms",
+            args: [loanId, encodeTerms15(call.terms)],
+          });
+    }
     case "resolve_flag": {
       const outcome = FLAG_OUTCOMES.indexOf(call.outcome);
       if (outcome < 0) fail("outcome", call.outcome);
@@ -405,6 +502,7 @@ export function evmSecurityTarget(
 
 export interface EvmSecurityCallParams extends EvmSecurityAddresses {
   call: SecurityRegistryCall;
+  termsShape?: EvmSecurityTermsShape;
   accessManager: string;
   caller: string;
 }
@@ -419,12 +517,13 @@ export function relayEvmSecurityRegistry({
   call,
   registry,
   recordNft,
+  termsShape,
   ...rest
 }: RelayEvmSecurityRegistryParams): Promise<RelayResult> {
   return relayEvm({
     ...rest,
     target: evmSecurityTarget(call.fn, { registry, recordNft }),
-    data: encodeEvmSecurityRegistryCalldata(call),
+    data: encodeEvmSecurityRegistryCalldata(call, termsShape),
     errorAbi: evmSecurityErrorAbi,
   });
 }
@@ -433,12 +532,13 @@ export function readEvmSecurityRegistrySchedule({
   call,
   registry,
   recordNft,
+  termsShape,
   ...rest
 }: EvmSecurityCallParams): Promise<OperationSchedule> {
   return readEvmOperationSchedule({
     ...rest,
     target: evmSecurityTarget(call.fn, { registry, recordNft }),
-    data: encodeEvmSecurityRegistryCalldata(call),
+    data: encodeEvmSecurityRegistryCalldata(call, termsShape),
   });
 }
 
@@ -454,4 +554,44 @@ export async function readEvmSecurityInspectors({
     functionName: "inspectors",
   });
   return inspectors.map((inspector) => getAddress(inspector));
+}
+
+export function evmSecurityTermsShapeFromCode(
+  code: Hex,
+): EvmSecurityTermsShape {
+  const hex = code.startsWith("0x") ? code.slice(2) : code;
+  const selectors = new Set<string>();
+  let i = 0;
+  while (i + 2 <= hex.length) {
+    const op = parseInt(hex.slice(i, i + 2), 16);
+    i += 2;
+    if (op < 0x60 || op > 0x7f) continue;
+    const size = op - 0x5f;
+    if (op === 0x63 && i + 8 <= hex.length) {
+      selectors.add(`0x${hex.slice(i, i + 8).toLowerCase()}`);
+    }
+    i += size * 2;
+  }
+  const has15 = selectors.has(EVM_SET_TERMS_SELECTORS.terms15);
+  const has12 = selectors.has(EVM_SET_TERMS_SELECTORS.terms12);
+  if (has15 === has12) {
+    throw new Error(
+      `Unrecognised SecurityRegistry build: setTerms selector neither ${EVM_SET_TERMS_SELECTORS.terms15} nor ${EVM_SET_TERMS_SELECTORS.terms12} (or both)`,
+    );
+  }
+  return has15 ? "terms15" : "terms12";
+}
+
+export async function readEvmSecurityTermsShape({
+  registry,
+}: {
+  registry: string;
+}): Promise<EvmSecurityTermsShape> {
+  if (!registry) {
+    throw new Error("readEvmSecurityTermsShape: registry must not be empty");
+  }
+  if (!isAddress(registry)) {
+    throw new Error(`readEvmSecurityTermsShape: invalid registry ${registry}`);
+  }
+  return evmSecurityTermsShapeFromCode(await readEvmContractCode(registry));
 }

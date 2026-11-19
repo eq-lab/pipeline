@@ -28,12 +28,14 @@ import {
   EVM_OPERATION_ID,
   EVM_SCHEDULER,
   EVM_SECURITY_REGISTRY,
+  EVM_SET_TERMS_F92D719_CALLDATA,
   accessResult,
   loanBookResult,
   loanEntry,
   loanRegistryOp,
   loanState,
   evmPendingOp,
+  evmPendingOpF92d719,
   minterOp,
   pendingOp,
   relayResult,
@@ -110,6 +112,7 @@ vi.mock("@/api/useRiskCouncil", async () => {
     PendingArgsMismatchError: actual.PendingArgsMismatchError,
     PendingTargetMismatchError: actual.PendingTargetMismatchError,
     RegistryPausedError: actual.RegistryPausedError,
+    useEvmSecurityTermsShape: vi.fn(),
     useRiskCouncilAccess: vi.fn(),
     useRiskCouncilLoanState: vi.fn(),
     useRiskCouncilRelay: vi.fn(),
@@ -121,6 +124,7 @@ import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
   NoLongerScheduledError,
+  useEvmSecurityTermsShape,
   usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
@@ -130,6 +134,7 @@ import { Route } from "./risk-council.security.$id";
 
 const mockLoanBook = vi.mocked(useLoanBook);
 const mockSecurity = vi.mocked(useLoanSecurity);
+const mockTermsShape = vi.mocked(useEvmSecurityTermsShape);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
@@ -234,6 +239,7 @@ beforeEach(() => {
   pendingExecute = pendingExecuteResult();
   walletState.address = SCHEDULER;
   walletState.evmAddress = undefined;
+  mockTermsShape.mockReturnValue({ data: undefined } as never);
   _resetRiskCouncilOpsForTests();
 });
 
@@ -1130,6 +1136,7 @@ describe("Security page — EVM loan", () => {
   beforeEach(() => {
     chain = EVM;
     walletState.evmAddress = EVM_SCHEDULER.toLowerCase();
+    mockTermsShape.mockReturnValue({ data: "terms15" } as never);
   });
 
   it("shows 12 term inputs and the two EVM rows in the current terms", () => {
@@ -1289,5 +1296,147 @@ describe("Security page — EVM loan", () => {
     expect(
       screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-link`),
     ).toHaveTextContent("Open Escalate to Default");
+  });
+});
+
+describe("Security page — EVM loan on an f92d719 registry", () => {
+  const served = (...ops: ReturnType<typeof pendingOp>[]) => ({
+    terms: TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  });
+  const termsInputs = (container: HTMLElement) =>
+    container.querySelectorAll(
+      'input[data-testid^="risk-council-security-terms-"]',
+    );
+
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER.toLowerCase();
+    mockTermsShape.mockReturnValue({ data: "terms12" } as never);
+  });
+
+  it("shows the 10 Stellar inputs and none of the EVM-only ones", () => {
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(termsInputs(container)).toHaveLength(10);
+    expect(
+      screen.queryByTestId("risk-council-security-terms-defaultRatio"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-originatorFeeRate"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-ratio-error"),
+    ).toBeNull();
+    const terms = screen.getByTestId("risk-council-security-terms");
+    expect(terms).not.toHaveTextContent("Default ratio");
+    expect(terms).not.toHaveTextContent("Originator fee rate");
+  });
+
+  it("relays set_terms without the extras", () => {
+    setup(IMMEDIATE, served(), EVM);
+    renderRoute();
+    const button = screen.getByTestId("risk-council-security-terms-button");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    const call = relay.mutateAsync.mock.calls[0]![0].call;
+    expect(call.fn).toBe("set_terms");
+    expect(call.terms).not.toHaveProperty("defaultRatioBps");
+    expect(call.terms).not.toHaveProperty("originatorFeeRate");
+  });
+
+  it("still flags a margin call ratio below the advance ratio", () => {
+    setup(IMMEDIATE, served(), EVM);
+    renderRoute();
+    fireEvent.change(
+      screen.getByTestId("risk-council-security-terms-marginCallRatio"),
+      { target: { value: "60" } },
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-ratio-error"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("renders a served 12-key row like Stellar and executes the served calldata", () => {
+    setup(DELAYED, served(evmPendingOpF92d719()), EVM);
+    renderRoute();
+    const args = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-args`);
+    expect(args).toHaveTextContent("Advance ratio70%");
+    expect(args).not.toHaveTextContent("Default ratio");
+    expect(args).not.toHaveTextContent("Originator fee rate");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "set_terms",
+        calldata: EVM_SET_TERMS_F92D719_CALLDATA,
+      }),
+    );
+  });
+
+  it("shows 10 inputs and disables Set terms while the build is unknown", () => {
+    mockTermsShape.mockReturnValue({ data: undefined } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(termsInputs(container)).toHaveLength(10);
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("holds the form with a reason while the build is checked", () => {
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-loading"),
+    ).toHaveTextContent("Checking the SecurityRegistry build…");
+    expect(termsInputs(container)).toHaveLength(0);
+    expect(
+      screen.queryByTestId("risk-council-security-terms-button"),
+    ).toBeNull();
+  });
+
+  it("shows the reason and a retry when the build cannot be identified", () => {
+    const refetch = vi.fn();
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("unrecognised setTerms selector"),
+      refetch,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-error"),
+    ).toHaveTextContent(
+      "Could not identify the SecurityRegistry build — Set terms is unavailable.",
+    );
+    expect(termsInputs(container)).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the form again once the retry resolves", () => {
+    mockTermsShape.mockReturnValue({
+      data: "terms12",
+      isLoading: false,
+      error: null,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-shape-error"),
+    ).toBeNull();
+    expect(termsInputs(container)).toHaveLength(10);
   });
 });
