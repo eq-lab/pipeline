@@ -60,6 +60,7 @@ sol! {
 
         function immutableLoanData(uint256 loanId) external view returns (ImmutableLoanData memory);
         function mutableLoanData(uint256 loanId) external view returns (MutableLoanData memory);
+        function maxFeeBps() external view returns (uint32);
     }
 }
 
@@ -108,6 +109,12 @@ pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
     })
 }
 
+pub fn decode_max_fee_bps(result: &[u8]) -> Result<u32> {
+    let decoded = ILoanRegistry::maxFeeBpsCall::abi_decode_returns(result, true)
+        .context("decode maxFeeBps return")?;
+    Ok(decoded._0)
+}
+
 /// Reads on-chain LoanRegistry data via eth_call. Implements two resolver traits:
 /// - `ImmutableDataResolver<Address, U256>`: `immutableLoanData(loanId)` — reads the immutable struct.
 /// - `MutableDataResolver<Address, U256>`: `mutableLoanData(loanId)` — reads the mutable struct.
@@ -128,6 +135,22 @@ impl LoanRegistryReader {
                 .with_context(|| format!("LoanRegistryReader: invalid RPC URL {rpc_url}"))?,
         ));
         Ok(Self { provider })
+    }
+
+    pub async fn max_fee_bps(&self, contract: &Address) -> Result<u32> {
+        let call_data = ILoanRegistry::maxFeeBpsCall {}.abi_encode();
+
+        let result = self
+            .provider
+            .call(
+                &alloy::rpc::types::TransactionRequest::default()
+                    .to(*contract)
+                    .input(call_data.into()),
+            )
+            .await
+            .with_context(|| format!("eth_call maxFeeBps() on {contract} failed"))?;
+
+        decode_max_fee_bps(&result)
     }
 }
 

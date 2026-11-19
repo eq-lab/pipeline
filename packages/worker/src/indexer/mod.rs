@@ -12,6 +12,7 @@ pub mod evm_parsers;
 pub mod loan_mapper;
 pub mod loan_metadata;
 pub mod loan_registry_reader;
+pub mod loan_registry_settings;
 pub mod mappers;
 pub mod parsers;
 pub mod plusd_transfers;
@@ -46,6 +47,9 @@ use loan_metadata::{
     HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
 };
 use loan_registry_reader::LoanRegistryReader;
+use loan_registry_settings::{
+    run_loan_registry_settings_loop, EvmMaxFeeBpsSource, PgMaxFeeBpsSink,
+};
 use poller::EvmEventPollerBuilder;
 use security_registry_parsers::reject_security_collision;
 use security_registry_sync::run_security_sync_loop;
@@ -332,6 +336,31 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             ))
         }
         None => None,
+    };
+
+    let _settings_guard = {
+        let rpc_url = settings.eth_rpc_url.clone();
+        let registry = loan_registry_checksum.clone();
+        let pool = pool.clone();
+        spawn_supervised("loan-registry-settings", chain_id, move || {
+            let rpc_url = rpc_url.clone();
+            let registry = registry.clone();
+            let pool = pool.clone();
+            async move {
+                let source = EvmMaxFeeBpsSource {
+                    reader: LoanRegistryReader::new(&rpc_url)?,
+                    registry: loan_registry_address,
+                };
+                run_loan_registry_settings_loop(
+                    &source,
+                    &PgMaxFeeBpsSink(pool),
+                    chain_id,
+                    registry,
+                )
+                .await;
+                Ok(())
+            }
+        })
     };
 
     index_loop(

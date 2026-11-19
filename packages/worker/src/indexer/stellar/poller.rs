@@ -25,6 +25,9 @@ use crate::indexer::{
     loan_metadata::{
         HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
     },
+    loan_registry_settings::{
+        run_loan_registry_settings_loop, PgMaxFeeBpsSink, StellarMaxFeeBpsSource,
+    },
     stellar::{
         access_manager_parsers::{dispatch_access_manager, TargetIds},
         access_manager_sync::run_access_manager_sync_loop,
@@ -530,6 +533,44 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
             }
         })
     });
+
+    let _settings_guard = match settings.loan_registry_id.as_deref() {
+        Some(registry_id) => match stellar_strkey::Contract::from_string(registry_id) {
+            Ok(contract) => {
+                let rpc = rpc.clone();
+                let pool = pool.clone();
+                let registry = contract.to_string().as_str().to_owned();
+                Some(spawn_supervised(
+                    "loan-registry-settings",
+                    chain_id,
+                    move || {
+                        let rpc = rpc.clone();
+                        let pool = pool.clone();
+                        let registry = registry.clone();
+                        async move {
+                            let source = StellarMaxFeeBpsSource {
+                                rpc,
+                                registry_id: registry.clone(),
+                            };
+                            run_loan_registry_settings_loop(
+                                &source,
+                                &PgMaxFeeBpsSink(pool),
+                                chain_id,
+                                registry,
+                            )
+                            .await;
+                            Ok(())
+                        }
+                    },
+                ))
+            }
+            Err(e) => {
+                tracing::warn!(chain_id, error = %e, "max_fee_bps sync disabled: invalid LOAN_REGISTRY_ADDRESS");
+                None
+            }
+        },
+        None => None,
+    };
 
     let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
         let rpc = rpc.clone();

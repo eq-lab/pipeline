@@ -18,6 +18,7 @@ const DAY: i64 = 86_400;
 const CONTRACT_YEAR: i64 = 31_557_600;
 const ONE_YEAR_LATER: i64 = ORIGINATION + CONTRACT_YEAR;
 const HUGE_AMOUNT: &str = "100000000000000000";
+const MAX_FEE_BPS: u32 = 5_000;
 
 fn snapshot(senior_tranche: &str, senior_repaid: &str, rate_bps: u32) -> LoanSnapshot {
     snapshot_with_repayment(
@@ -99,7 +100,7 @@ fn run(
     f: &FeeScheduleRow,
     events: &[LoanRateEventRow],
 ) -> WaterfallBreakdown {
-    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events).unwrap()
+    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events, MAX_FEE_BPS).unwrap()
 }
 
 fn suggested_interest(b: &WaterfallBreakdown) -> BigDecimal {
@@ -428,6 +429,7 @@ fn run_amount(s: &LoanSnapshot, amount: &str) -> Result<WaterfallBreakdown, ApiE
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &events,
+        MAX_FEE_BPS,
     )
 }
 

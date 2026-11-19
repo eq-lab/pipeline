@@ -110,7 +110,7 @@ not use env-var DB access.
 
 ### Storage (shared)
 
-1. **Migration** `packages/shared/migrations/<next>_loan_registry_settings.sql`. The header has a
+1. [x] **Migration** `packages/shared/migrations/<next>_loan_registry_settings.sql`. The header has a
    spec pointer (`docs/references/backend.md#loanregistry-settings-sync`) and a rollback block in
    the style of `20261118000002_access_manager_operations_calldata.sql`.
    ```sql
@@ -123,7 +123,7 @@ not use env-var DB access.
    );
    ```
    Rollback: `DROP TABLE loan_registry_settings; DELETE FROM _sqlx_migrations WHERE version = <next>;`.
-2. **Repo** `packages/shared/src/loan_registry_settings_repo.rs` (register it in
+2. [x] **Repo** `packages/shared/src/loan_registry_settings_repo.rs` (register it in
    `packages/shared/src/lib.rs`). It has no state and uses free async functions that take an
    `sqlx::Executor`, like `ContractLogsRepo` methods take one, so `AppState` and its 15 test
    constructions stay untouched.
@@ -134,14 +134,14 @@ not use env-var DB access.
 
 ### Worker sync (both chains)
 
-3. **EVM read** in `packages/worker/src/indexer/loan_registry_reader.rs`:
+3. [x] **EVM read** in `packages/worker/src/indexer/loan_registry_reader.rs`:
    - Add `function maxFeeBps() external view returns (uint32);` to the `ILoanRegistry` `sol!` block.
    - `pub fn decode_max_fee_bps(result: &[u8]) -> Result<u32>`: `ILoanRegistry::maxFeeBpsCall::abi_decode_returns(result, true)`, with context `"decode maxFeeBps return"`.
    - `impl LoanRegistryReader { pub async fn max_fee_bps(&self, contract: &Address) -> Result<u32> }`: `eth_call` at the latest block, built the same way as `immutable_loan_data`, with context `"eth_call maxFeeBps() on {contract} failed"`.
-4. **Stellar read** in `packages/worker/src/indexer/stellar/loan_registry_reader.rs`:
+4. [x] **Stellar read** in `packages/worker/src/indexer/stellar/loan_registry_reader.rs`:
    - `pub fn decode_max_fee_bps(value: &ScVal) -> Result<u32>`: use `crate::stellar::scval::scval_u32`; anything else is `bail!("max_fee_bps: expected U32, got {value:?}")`.
    - `pub(crate) async fn read_max_fee_bps(rpc: &StellarRpc, registry_id: &str) -> Result<u32>`: `simulate_view(rpc, registry_id, "max_fee_bps", vec![])`, then decode.
-5. **Sync loop** in a new `packages/worker/src/indexer/loan_registry_settings.rs` (register it in
+5. [x] **Sync loop** in a new `packages/worker/src/indexer/loan_registry_settings.rs` (register it in
    `indexer/mod.rs`; spec header points at `docs/references/backend.md#loanregistry-settings-sync`):
    - `pub const LOAN_REGISTRY_SETTINGS_INTERVAL: Duration = Duration::from_mins(1);`
    - `#[async_trait] pub trait MaxFeeBpsSource: Send + Sync { async fn max_fee_bps(&self) -> Result<u32>; }`
@@ -154,7 +154,7 @@ not use env-var DB access.
      - log `info!` the first time a value is stored and whenever it changes (keep `last: Option<u32>`);
      - log a failure with `warn!` on its first occurrence and with `debug!` while it repeats; a success resets this;
      - sleep `LOAN_REGISTRY_SETTINGS_INTERVAL`.
-6. **Spawn.**
+6. [x] **Spawn.**
    - EVM, in `run_indexer_job` (`packages/worker/src/indexer/mod.rs`, next to the
      `security-registry-sync` guard): `let _settings_guard = spawn_supervised("loan-registry-settings", chain_id, …)`.
      It builds `LoanRegistryReader::new(&settings.eth_rpc_url)?` and
@@ -167,7 +167,7 @@ not use env-var DB access.
 
 ### API
 
-7. **`packages/api/src/routes/waterfall.rs`:**
+7. [x] **`packages/api/src/routes/waterfall.rs`:**
    - Delete `pub const ASSUMED_MAX_FEE_BPS`.
    - Add `max_fee_bps: u32` as the **last** parameter of `compute_waterfall`. Pass it to
      `cap_interest_fees(&coupon, mgmt, perf, max_fee_bps)` and
@@ -183,7 +183,7 @@ not use env-var DB access.
    - In the `#[utoipa::path]` responses, add `(status = 503, description = "The LoanRegistry's max_fee_bps has not been read from the chain yet")`.
    - Update the module `//!` "Contract bounds" paragraph so it says the fee cap uses the
      registry's synced `max_fee_bps`. This is an edit to an existing doc header, not a new comment.
-8. **Call sites.** Update every `compute_waterfall(` caller: the handler,
+8. [x] **Call sites.** Update every `compute_waterfall(` caller: the handler,
    `packages/api/tests/waterfall.rs` (the `run` helper plus direct calls) and
    `packages/api/tests/waterfall_accrual.rs` (2 calls). Tests pass a local `const MAX_FEE_BPS: u32 = 5_000;`
    so every existing expectation is unchanged.

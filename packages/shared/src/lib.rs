@@ -31,6 +31,7 @@ pub mod loan_economics;
 pub mod loan_event_params;
 pub mod loan_fee_schedule_repo;
 pub mod loan_metadata;
+pub mod loan_registry_settings_repo;
 pub mod loan_snapshot;
 pub mod loan_status;
 pub mod log_mapper;

@@ -181,7 +181,7 @@ The encoding must match smart-contracts.md byte-for-byte (`abi.encode` is load-b
 - Timeout handling: if custodian does not respond within N minutes, alert ops; Bridge cannot submit without both sigs.
 - Retry semantics: idempotent on `repaymentRef`.
 
-**Waterfall data source.** Implemented as a read-only baseline calculator, `GET /v1/loan-book/{loan_id}/waterfall` (`packages/api/src/routes/waterfall.rs`). Fee rates are stored per loan in `loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps` (keyed `(chain_id, loan_id)`); the Trustee may still override any component before broadcasting `recordPayment`. See `docs/product-specs/trustee-dashboard.md` flow note A.
+**Waterfall data source.** Implemented as a read-only baseline calculator, `GET /v1/loan-book/{loan_id}/waterfall` (`packages/api/src/routes/waterfall.rs`). Fee rates are stored per loan in `loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps` (keyed `(chain_id, loan_id)`); the Trustee may still override any component before broadcasting `recordPayment`. The fee cap uses `max_fee_bps` from `loan_registry_settings` (see "LoanRegistry settings sync"); a missing row is a `503`. See `docs/product-specs/trustee-dashboard.md` flow note A.
 
 ### Flow 4: USYC Yield Distribution (lazy, stake/unstake-triggered)
 
@@ -538,6 +538,20 @@ Runs on a Stellar chain whenever `CHAIN_<id>_STELLAR_INDEXER_PLUSD_ADDRESS` is s
 **Ops rule.** Never unset the Stellar indexer PLUSD key once it is set: a gap between an unset and a later re-enable is invisible to `C`. If it was unset, rewind the cursor over the gap (within RPC retention) or delete the `PlusdTransfer` rows before the re-enable ledger so that `C` moves past the gap.
 
 **Acceptance (before setting `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`).** Deploy with the indexer key and wait about 15 minutes; `SELECT kind, count(*) FROM plusd_balance_seeds WHERE chain_id = <id> GROUP BY 1` must cover the candidate count; wait one verify round with no "PLUSD balance drift" warning; for at least 5 LP wallets with a non-zero balance, simulate `balance(W)` at `(B, L')`, wait for the cursor to pass `L'`, and check that the seed plus rows in `(as_of_ledger, L']` equals `B`; run a local API against the DB with the key set and check the last bucket (`B / 10^7` rounded down to 6 places) and one bucket between `C` and the seed. Then set the key (99000002 follows the same procedure). The per-wallet "no seed, no term" rule keeps the flip safe while seeding is still running.
+
+#### LoanRegistry settings sync
+
+Runs on every EVM and Stellar chain with a LoanRegistry configured (#1547); no new key. `loan_registry_settings.rs` is a `spawn_supervised` task (`loan-registry-settings`) started from `run_indexer_job` (EVM) and `run_stellar_indexer_job` (Stellar, only when the registry id is set), never inside `index_once`. It calls the registry view once on start and then every 60 s: EVM `maxFeeBps() returns (uint32)` through `eth_call` (selector `0xbf769a3f`), Stellar `max_fee_bps() -> u32` through `simulateTransaction`. Both use whole bps against `10_000`.
+
+**Table.** `loan_registry_settings` (`20261119000002_loan_registry_settings.sql`), keyed `(chain_id, contract_address)`, one upserted row with `max_fee_bps` (0 to `u32::MAX`; Stellar's setter has no range check) and `updated_at`. The address is normalized the way the API looks it up: EIP-55 on EVM, canonical `C…` Strkey on Stellar. If the indexer and API registry addresses differ no row matches and the waterfall answers `503`.
+
+**Logging.** `info` the first time a value is stored and whenever it changes. A read or store failure logs `warn` once, then `debug` while it repeats; the next success resets this. A failure keeps the last stored value. A registry without the view (the pre-rework Stellar registry) never stores a row.
+
+**Why not the event.** `MaxFeeBpsSet` is not indexed as the source: the first call happens at deploy time, before the indexer's start block, and Stellar RPC keeps events for about 7 days. The view is authoritative on both chains.
+
+**Consumer.** `GET /v1/loan-book/{loan_id}/waterfall` reads the row for the chain's API-scoped LoanRegistry and passes it to the fee-cap math; a missing row is a `503` (fail closed, no fallback to 5000). After an admin `setMaxFeeBps` the suggestion can use the old value for up to one sync interval.
+
+**Rollback.** `DROP TABLE loan_registry_settings` and `DELETE FROM _sqlx_migrations WHERE version = 20261119000002`.
 
 #### EVM DealTokenFactory (#1485)
 

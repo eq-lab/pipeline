@@ -70,7 +70,8 @@
 //! mgmt + perf))` (`LoanRegistryInterestExceedsMax`). The fee cap `mgmt + perf + oet ≤
 //! floor((senior_interest + mgmt + perf) × max_fee_bps / 10_000)` is met by moving any fee excess
 //! to the net coupon, so the interest total is unchanged; OET uses only the room left under the
-//! cap (`docs/product-specs/yield.md` § Waterfall components).
+//! cap (`docs/product-specs/yield.md` § Waterfall components). The cap is the registry's
+//! synced `max_fee_bps` (`shared::loan_registry_settings_repo`); a missing row is a `503`.
 //! For a loan in `Default` the contract demands fees, OET and equity of 0
 //! (`LoanRegistryNonZeroOnDefault`): the payment is split senior principal first, then senior
 //! interest, and an `amount` above principal outstanding + headroom is a `400`. An `as_of` more
@@ -107,8 +108,6 @@ use crate::AppState;
 
 /// Basis-points denominator (`10_000` bps = 100%).
 const BPS_DENOM: i64 = 10_000;
-
-pub const ASSUMED_MAX_FEE_BPS: u32 = 5_000;
 
 pub const AS_OF_FUTURE_SKEW_SECS: i64 = 300;
 
@@ -190,6 +189,7 @@ pub fn router() -> Router<Arc<AppState>> {
         (status = 404, description = "Loan not indexed as of the repayment instant"),
         (status = 422, description = "Loan event history incomplete (outstanding senior does not match the indexed events); re-index required"),
         (status = 500, description = "Internal server error"),
+        (status = 503, description = "The LoanRegistry's max_fee_bps has not been read from the chain yet"),
     ),
     tag = "LoanBook"
 )]
@@ -254,7 +254,20 @@ async fn get_waterfall(
 
     ensure_event_history_complete(&row.snapshot, &rate_events, as_of, row.block_timestamp)?;
 
-    let breakdown = compute_waterfall(&row.snapshot, &amount, as_of, &fees, &rate_events)?;
+    let max_fee_bps = require_max_fee_bps(
+        shared::loan_registry_settings_repo::max_fee_bps(&state.pool, chain_id, registry).await?,
+        chain_id,
+        registry,
+    )?;
+
+    let breakdown = compute_waterfall(
+        &row.snapshot,
+        &amount,
+        as_of,
+        &fees,
+        &rate_events,
+        max_fee_bps,
+    )?;
 
     Ok(Json(build_response(chain_id, &breakdown)))
 }
@@ -275,6 +288,18 @@ pub struct WaterfallBreakdown {
     pub equity_distributed: BigDecimal,
     pub senior_principal_fully_repaid: bool,
     pub offtaker_fully_received: bool,
+}
+
+pub fn require_max_fee_bps(
+    value: Option<u32>,
+    chain_id: i64,
+    registry: &str,
+) -> Result<u32, ApiError> {
+    value.ok_or_else(|| {
+        ApiError::ServiceUnavailable(format!(
+            "max_fee_bps for LoanRegistry {registry} on chain {chain_id} is not synced yet; try again shortly"
+        ))
+    })
 }
 
 pub fn validate_as_of_not_future(as_of: i64, now: i64) -> Result<(), ApiError> {
@@ -332,6 +357,7 @@ pub fn compute_waterfall(
     as_of: i64,
     fees: &FeeScheduleRow,
     rate_events: &[LoanRateEventRow],
+    max_fee_bps: u32,
 ) -> Result<WaterfallBreakdown, ApiError> {
     let amount = &trunc(amount);
     if as_of < s.origination_date {
@@ -416,7 +442,6 @@ pub fn compute_waterfall(
         let senior_coupon_net = trunc(&interest_payment) - &management_fee - &performance_fee;
         (senior_coupon_net, management_fee, performance_fee)
     };
-    let max_fee_bps = ASSUMED_MAX_FEE_BPS;
     let (senior_coupon_net, management_fee, performance_fee) = fit_interest_to_fee_cap(
         senior_coupon_net,
         management_fee,
