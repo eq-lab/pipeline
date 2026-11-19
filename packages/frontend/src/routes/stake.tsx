@@ -33,7 +33,6 @@ function Stake() {
   // ── Chain view ────────────────────────────────────────────────────────
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
-  // Same source as Home (HomeStatsStrip / StakeCard): live APY from /v1/stats.
   const { chainId } = useActiveChain();
   const { data: statsData } = useStats({ chainId });
   const isStellar = kind === "stellar";
