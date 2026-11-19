@@ -40,6 +40,7 @@ vi.mock("./config", () => ({
     setWallet: mockSetWallet,
     fetchAddress: mockFetchAddress,
   },
+  getStellarE2EWalletId: () => undefined,
 }));
 
 // ── Mock @creit.tech/stellar-wallets-kit events ───────────────────────────────

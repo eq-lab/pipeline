@@ -31,6 +31,7 @@ import {
   HANA_ID,
   ALBEDO_ID,
   RABET_ID,
+  getStellarE2EWalletId,
 } from "./config";
 import { getNetworkPassphrase } from "./chain";
 import { useMockStellarAddress, useMockStellarIsConnected } from "./mock";
@@ -240,6 +241,8 @@ export interface UseStellarConnectorsResult {
    * should handle errors (e.g. open the wallet's website in a new tab).
    */
   connectWallet(walletId: string, onUnavailable?: () => void): Promise<void>;
+  /** The e2e test wallet's id when the app registered it (`registerStellarE2EWallet`). */
+  e2eWalletId: string | undefined;
 }
 
 export function useStellarConnectors(): UseStellarConnectorsResult {
@@ -265,5 +268,5 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
     [mockAddress],
   );
 
-  return { connectWallet };
+  return { connectWallet, e2eWalletId: getStellarE2EWalletId() };
 }

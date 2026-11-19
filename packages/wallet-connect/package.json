@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./e2e-wallet": "./src/stellar/e2eWallet.ts",
+    "./e2e-evm-wallet": "./src/evm/e2eConnector.ts"
   },
   "scripts": {
     "lint": "eslint . && prettier --check .",

@@ -13,6 +13,7 @@ import { routeTree } from "./routeTree.gen";
 import { ENV } from "@/lib/env";
 import { AppErrorBoundary, AppErrorView } from "@/components/AppErrorBoundary";
 import { installGlobalErrorReporting } from "@/lib/diagnostics";
+import { loadE2EWallet } from "@/lib/e2eWallet";
 
 // Must precede render (the wallet providers init their kits lazily on first
 // render). spec: docs/frontend/trustee-flows.md#app-bootstrap--providers.
@@ -24,6 +25,7 @@ setWalletConnectConfig({
   appName: "Pipeline Trustee",
   appDescription: "Pipeline Trustee Admin Panel",
 });
+void loadE2EWallet();
 
 // Module-level singleton so StrictMode's double-mount doesn't create two
 // clients. spec: docs/frontend/trustee-flows.md#app-bootstrap--providers.

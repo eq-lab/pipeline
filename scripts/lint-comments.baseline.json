@@ -227,10 +227,6 @@
     "header": 6,
     "nodeIds": 0
   },
-  "packages/frontend/src/lib/env.ts": {
-    "header": 7,
-    "nodeIds": 0
-  },
   "packages/frontend/src/lib/format.test.ts": {
     "header": 7,
     "nodeIds": 0
@@ -361,10 +357,6 @@
   },
   "packages/frontend/src/wallet/evm/cache.ts": {
     "header": 11,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/evm/config.ts": {
-    "header": 10,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/evm/estimateGas.ts": {

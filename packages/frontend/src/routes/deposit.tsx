@@ -632,7 +632,7 @@ function Deposit() {
             ) : isStellar &&
               isDeposit &&
               usdcTrustline?.needsTrustline &&
-              flow.hasBalance === false ? (
+              flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="usdc-trustline-banner"
@@ -665,7 +665,7 @@ function Deposit() {
                   {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
                 </Button>
               </Card>
-            ) : isDeposit && flow.hasBalance === false ? (
+            ) : isDeposit && flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="low-balance-banner"

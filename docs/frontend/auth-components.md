@@ -1063,7 +1063,13 @@ host can prevent submission until a fresh token arrives. Script load and render 
 the cached load attempt,
 allowing a retry to reinsert and render the widget without reloading the page. If
 `ENV.TURNSTILE_SITE_KEY` is empty, it reports an unavailable configuration state. A failed or
-unconfigured challenge is never treated as a valid captcha token. `siteverify` is never
+unconfigured challenge is never treated as a valid captcha token. The one exception is the local
+e2e stack (#1982): under `vite dev` with `VITE_E2E_CAPTCHA` set and no site key,
+`ENV.E2E_CAPTCHA_TOKEN` is `pipeline-e2e-captcha` and the wrapper hands it out as the token
+(`ready`) without loading Cloudflare's script, again after each `reset`. The stack's API runs
+without `TURNSTILE_SECRET_KEY`, so it accepts the token; an API with the secret rejects it. The
+value sits behind the literal `import.meta.env.DEV`, so a production build drops it, and
+`scripts/e2e/assert-prod-wallet.ts` (CI) fails if a production bundle contains it. `siteverify` is never
 called client-side — only the token is sent to the API, which verifies it server-side (see the
 product spec's "Bot defense" section).
 

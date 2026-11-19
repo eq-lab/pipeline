@@ -64,6 +64,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 vi.mock("./config", () => ({
   wagmiConfig: {},
   wagmiAdapter: {},
+  E2E_EVM_WALLET_ID: undefined,
 }));
 
 // ── Mock FirstConnectionModal to avoid portal/DOM issues ────────────────────

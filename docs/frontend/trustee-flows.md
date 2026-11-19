@@ -3090,6 +3090,9 @@ the Stellar kit lazily on first render (not at module load), so the call only ne
 `createRoot(...).render(...)`, not any particular import (#791). The `QueryClient` is a module-
 level singleton so React StrictMode's double-mount doesn't create two clients (`EvmWalletProvider`
 mounts its own internal `QueryClientProvider` for wagmi; this one is for Trustee-owned fetching).
+On a local e2e stack only, `main.tsx` also calls `loadE2EWallet()` (`lib/e2eWallet.ts`), which
+registers the Stellar [E2E test wallet](../../packages/frontend/src/wallet/README.md#e2e-test-wallet)
+under its guards (#1970); a production build drops it.
 
 Provider order mirrors the LP frontend's `main.tsx`, minus `WalletGateProvider` — the Trustee
 omits the LP first-connection terms gate (internal operators; see the #791 exec plan's Decision

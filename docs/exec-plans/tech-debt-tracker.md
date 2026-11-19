@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-191.**
+**Next free number: TD-193.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,22 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-192: The LP app's e2e test wallets share one flag but need a key per chain
+
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/config.ts`, `packages/frontend/src/wallet/evm/config.ts`, `scripts/e2e/lib/env.ts` — Issue #1968.
+- **Gap:** `VITE_E2E_WALLET` turns on both the Stellar module and the EVM connector. A `--chains evm` stack sets it and keeps the apps on the standalone Stellar passphrase, but has no `E2E_WALLET_SECRET`, so the Stellar module's dynamic import rejects ("E2E_WALLET_SECRET is not") and the Soroban tab lists an **E2E test wallet** row that does nothing. A `--chains stellar` stack is unaffected (its EVM chain id is not `31337`).
+- **Impact:** A console error and a dead row on the Soroban tab of an EVM-only stack; the EVM walk is unaffected.
+- **Suggested fix:** Show each wallet row only when that chain's key is present, or give each chain its own flag.
+
+### TD-191: The e2e stack patches pipeline-contracts' anvil values to read them from the env
+
+- **Date:** 2026-11-18
+- **Location:** `scripts/e2e/stack.ts` (`patchChainValues`, `EVM_ROLES`) — Issue #1966.
+- **Gap:** `script/base/ChainValues.sol` at `3b74e98` hard-codes anvil's default-mnemonic accounts and mainnet USDC for chain `31337`. The contracts cache build rewrites those addresses to `vm.envAddress("E2E_EVM_<name>")` so a per-run mnemonic and the mock USDC can hold the roles.
+- **Impact:** A ref that renames, adds or drops an anvil value stops the cache build until `EVM_ROLES` is updated; the cache directory is keyed by ref only, so a change to the patch itself needs the old `pipeline-contracts@<ref>` cache removed by hand.
+- **Suggested fix:** Have pipeline-contracts read the anvil values (or all of them) from the env with the current addresses as defaults, then drop the patch.
 
 ### TD-144: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
 

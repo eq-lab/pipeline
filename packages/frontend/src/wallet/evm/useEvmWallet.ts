@@ -18,6 +18,7 @@ import {
 import { useBothWalletMocksConnected } from "../stellar/mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
 import { useWalletGate } from "../WalletGateContext";
+import { E2E_EVM_WALLET_ID } from "./config";
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
@@ -109,10 +110,12 @@ export function useEvmWallet(): WalletState {
 export type EvmWalletConnectorId =
   | "injected"
   | "coinbaseWallet"
-  | "walletConnect";
+  | "walletConnect"
+  | "pipeline-e2e-evm-wallet";
 
 export interface UseEvmConnectorsResult {
   connectWallet(connectorId: EvmWalletConnectorId): void;
+  e2eWalletId: string | undefined;
 }
 
 export function useEvmConnectors(): UseEvmConnectorsResult {
@@ -135,7 +138,7 @@ export function useEvmConnectors(): UseEvmConnectorsResult {
     }
   }
 
-  return { connectWallet };
+  return { connectWallet, e2eWalletId: E2E_EVM_WALLET_ID };
 }
 
 // ── Contract read hook ────────────────────────────────────────────────────────
