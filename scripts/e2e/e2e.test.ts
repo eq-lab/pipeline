@@ -213,6 +213,9 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     const r = JSON.parse(readResult());
     assert.deepEqual([r.ok, r.tag, r.schemaVersion], [false, tag, 1]);
     assert.match(r.error, /unknown check id/);
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 0);
+    assert.equal(check(["--tag", tag, "--requier", "stellar.fake.always"], [fakeJourney(100)], checksPath), 2);
+    assert.equal(JSON.parse(readResult()).ok, false);
   });
 
   it("no secret reaches the result or a redacted log", async () => {
