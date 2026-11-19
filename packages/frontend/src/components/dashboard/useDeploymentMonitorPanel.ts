@@ -82,12 +82,20 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   };
 }
 
+// One LTV definition across apps (#2077): the SecurityRegistry `ltv_bps` the
+// Operations Console shows, as a 4-decimal fraction for `formatLtv`. u32::MAX
+// (no value) and missing snapshots are `null`.
+function registryLtv(entry: LoanBookEntry): string | null {
+  const bps = entry.ltv_bps;
+  return bps == null || bps >= 4_294_967_295 ? null : (bps / 10_000).toFixed(4);
+}
+
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     commodity: entry.commodity,
     principal: formatCompactUsd(entry.principal),
     collateral: formatCompactUsd(entry.collateral),
-    ltv: formatLtv(entry.ltv),
+    ltv: formatLtv(registryLtv(entry)),
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
     protection: entry.protection ?? "—",
@@ -186,7 +194,8 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   let ltvAggregate: string | undefined;
   if (loans.length > 0) {
     const sum = loans.reduce((acc, loan) => {
-      const v = loan.ltv !== null ? parseFloat(loan.ltv) : 0;
+      const l = registryLtv(loan);
+      const v = l !== null ? parseFloat(l) : 0;
       return acc + (Number.isFinite(v) ? v : 0);
     }, 0);
     const avg = sum / loans.length;

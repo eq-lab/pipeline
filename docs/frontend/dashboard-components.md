@@ -1138,7 +1138,8 @@ origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#
   (commodity price feed) is not yet merged. Also displayed as served (#906).
 - `ltv` — user-approved average LTV (null → 0), defined only when `loans.length > 0` (seam refs
   #729/#765). Formula: `Σ(perRowLtv, null→0) / loans.length`, formatted as an integer percent
-  (e.g. `"85%"`). This is an approved exception to the "no frontend-computed metrics" rule.
+  (e.g. `"85%"`). Per-row LTV is the registry `ltv_bps` / 10000 (same figure as the Operations
+  Console; `null` or u32::MAX → null, #2077), not the legacy spot `ltv`. This is an approved exception to the "no frontend-computed metrics" rule.
 
 Same-scale rule applies to `formatRow`'s `principal`/`collateral` fields (issue #906, displayed as
 served).

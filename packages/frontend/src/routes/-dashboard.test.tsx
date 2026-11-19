@@ -561,6 +561,7 @@ const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
       principal: "8000.000000", // displayed as served → "$8.0K"
       collateral: "9500.000000", // displayed as served → "$9.5K"
       ltv: "0.8511",
+      ltv_bps: 8511,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",

@@ -274,6 +274,7 @@ describe("useDeploymentMonitorPanel — panel state", () => {
           principal: "8000.000000",
           collateral: "20986.500000",
           ltv: "0.5718",
+          ltv_bps: 5718,
           duration_days: 120,
           rate: "0.112000",
           protection: "LC at sight",
@@ -442,7 +443,8 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           commodity: "X",
           principal: "8000.000000",
           collateral: null,
-          ltv: "0.8000", // → 0.8
+          ltv: "0.8000",
+          ltv_bps: 8000, // → 0.8
           duration_days: 120,
           rate: "0.112000",
           protection: null,
