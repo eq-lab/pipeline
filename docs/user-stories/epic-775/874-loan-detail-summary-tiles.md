@@ -1,5 +1,7 @@
 # Issue #874 — Trustee loan detail summary tiles use backend data
 
+Note: #2127 corrected the facility tile mapping (Facility / disbursed = principal / disbursed amount; Facility / senior = principal / original_senior_tranche).
+
 ## Story 1 — Performing loan shows live summary figures
 
 **Persona:** A Trustee reviewing a Performing loan detail page.
@@ -10,7 +12,7 @@
 2. Let `/v1/loan-book/:id/financials` load with `not_minted_yield`.
 3. Inspect the three summary tiles below the status stepper.
 
-**Expected outcome:** The tiles show `Facility / disbursed` as `principal / original_senior_tranche`, `Repaid to date` from `repaid_to_date`, and `Interest to distribute` from the financials response. No old fixture values such as batch numbers or coupon dates appear.
+**Expected outcome:** The tiles show `Facility / disbursed` as `principal / principal` when `disbursed = true` (`principal / 0` otherwise), `Repaid to date` from `repaid_to_date`, and `Interest to distribute` from the financials response. No old fixture values such as batch numbers or coupon dates appear.
 
 ## Story 2 — Watchlist loan shows backend watchlist age
 
@@ -33,4 +35,4 @@
 2. Let `/v1/loan-book/:id/financials` load with an `epoch`.
 3. Inspect the summary tiles.
 
-**Expected outcome:** `Facility / senior` uses loan-book `principal` and the disbursed amount (`principal` when `disbursed = true`, otherwise `0`), `Repaid to date` uses `repaid_to_date`, and `Rate · epochs` uses the financials epoch APY and epoch number. Missing fields render `—`.
+**Expected outcome:** `Facility / senior` uses loan-book `principal` and `original_senior_tranche`, `Repaid to date` uses `repaid_to_date`, and `Rate · epochs` uses the financials epoch APY and epoch number. Missing fields render `—`.

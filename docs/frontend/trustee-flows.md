@@ -970,8 +970,9 @@ Price & Collateral.
 
 Three tiles, built entirely from served backend fields (no static fixture):
 
-- **Facility / disbursed** (performing/watchlist/disbursing) or **Facility / senior** (matured) —
-  `entry.principal` paired with the disbursed amount or `original_senior_tranche`.
+- **Facility / disbursed** (performing/watchlist/disbursing) — `principal / (disbursed ? principal : 0)`,
+  sub "funded" or "drawn, not yet funded".
+- **Facility / senior** (matured) — `principal / original_senior_tranche`, sub "—".
 - **Repaid to date** — `entry.repaid_to_date`, sub "offtaker received".
 - Variant-specific third tile: **watchlist** → "Days on watchlist"; **matured** → "Rate · epochs"
   (from `/financials`); otherwise → "Interest to distribute" (`not_minted_yield`).

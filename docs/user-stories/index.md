@@ -460,3 +460,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1329 Add a Foundation/Tokens Storybook story for design-token visual review](https://github.com/eq-lab/pipeline/issues/1329) | [1329-tokens-storybook-story.md](./epic-2029/1329-tokens-storybook-story.md) | Initial |
 | [#2049 LP formatCompactUsd renders values just under a unit boundary as $1000.0K](https://github.com/eq-lab/pipeline/issues/2049) | [2049-compact-usd-rounding.md](./epic-2029/2049-compact-usd-rounding.md) | Initial |
+
+## Epic #2129 — Math correctness
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#2127 Trustee loan detail: Facility / disbursed and Facility / senior tiles show the wrong second value](https://github.com/eq-lab/pipeline/issues/2127) | [2127-trustee-facility-tiles.md](./epic-2129/2127-trustee-facility-tiles.md) | Initial |

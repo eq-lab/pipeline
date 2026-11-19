@@ -277,6 +277,13 @@ describe("buildLifecycle", () => {
     ]);
   });
 
+  it("the Disbursing node sub reads drawn, not yet funded", () => {
+    const step = buildLifecycle("Disbursing").find(
+      (s) => s.label === "Disbursing",
+    );
+    expect(step?.sub).toBe("drawn, not yet funded");
+  });
+
   it("a Disbursing loan has the Disbursing node active (#862), live + Closed pending", () => {
     expect(spine("Disbursing")).toEqual([
       "Origination:done",
@@ -438,7 +445,7 @@ describe("buildSummaryTiles", () => {
     ).toEqual([
       {
         label: "Facility / disbursed",
-        value: "$4.8K / $3.96K",
+        value: "$4.8K / $4.8K",
         sub: "funded",
         subTone: "positive",
       },
@@ -457,7 +464,7 @@ describe("buildSummaryTiles", () => {
     ]);
   });
 
-  it("maps Facility / disbursed as principal / original_senior_tranche", () => {
+  it("maps Facility / disbursed as principal / principal when disbursed", () => {
     const tiles = buildSummaryTiles(
       makeEntry(),
       makeFinancials(),
@@ -465,11 +472,37 @@ describe("buildSummaryTiles", () => {
     );
     expect(tiles[0]).toMatchObject({
       label: "Facility / disbursed",
-      value: "$4.8K / $3.96K",
+      value: "$4.8K / $4.8K",
     });
   });
 
-  it("maps Facility / senior as principal / 0 when disbursed is false", () => {
+  it("keeps the Facility / disbursed label and mapping on the watchlist variant", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({ status: "WatchList" }),
+      makeFinancials(),
+      "watchlist",
+    );
+    expect(tiles[0]).toMatchObject({
+      label: "Facility / disbursed",
+      value: "$4.8K / $4.8K",
+    });
+  });
+
+  it("maps Facility / disbursed as principal / 0 with the drawn sub when not disbursed", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({ disbursed: false }),
+      makeFinancials(),
+      "performing",
+    );
+    expect(tiles[0]).toEqual({
+      label: "Facility / disbursed",
+      value: "$4.8K / $0",
+      sub: "drawn, not yet funded",
+      subTone: "attention",
+    });
+  });
+
+  it("maps Facility / senior as principal / original_senior_tranche regardless of disbursed", () => {
     const tiles = buildSummaryTiles(
       makeEntry({ disbursed: false }),
       makeFinancials(),
@@ -477,7 +510,7 @@ describe("buildSummaryTiles", () => {
     );
     expect(tiles[0]).toEqual({
       label: "Facility / senior",
-      value: "$4.8K / $0",
+      value: "$4.8K / $3.96K",
       sub: "—",
       subTone: "muted",
     });
@@ -506,7 +539,7 @@ describe("buildSummaryTiles", () => {
       [
         {
           label: "Facility / senior",
-          value: "$4.8K / $4.8K",
+          value: "$4.8K / $3.96K",
           sub: "—",
           subTone: "muted",
         },
@@ -524,6 +557,15 @@ describe("buildSummaryTiles", () => {
         },
       ],
     );
+  });
+
+  it("renders the non-matured facility tile as — / — when no entry is available", () => {
+    expect(buildSummaryTiles(undefined, undefined, "performing")[0]).toEqual({
+      label: "Facility / disbursed",
+      value: "— / —",
+      sub: "—",
+      subTone: "attention",
+    });
   });
 
   it("renders — when no backend field is available", () => {

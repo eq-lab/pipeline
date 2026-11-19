@@ -226,7 +226,7 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
     },
     {
       label: "Disbursing",
-      sub: "drawned, not yet funded",
+      sub: "drawn, not yet funded",
       index: 2,
       state: isDisbursing ? "active" : hasStatus ? "done" : "pending",
     },
@@ -379,6 +379,7 @@ export function buildSummaryTiles(
   variant: LoanDetailVariant,
 ): SummaryTile[] {
   const facility = formatCompactUsd(entry?.principal);
+  const senior = formatCompactUsd(entry?.original_senior_tranche);
   const repaid = formatCompactUsd(entry?.repaid_to_date);
   const disbursedAmount =
     entry == null
@@ -391,22 +392,19 @@ export function buildSummaryTiles(
     variant === "matured"
       ? {
           label: "Facility / senior",
-          value: tileValuePair(facility, disbursedAmount),
+          value: tileValuePair(facility, senior),
           sub: "—",
           subTone: "muted",
         }
       : {
           label: "Facility / disbursed",
-          value: tileValuePair(
-            facility,
-            formatCompactUsd(entry?.original_senior_tranche),
-          ),
+          value: tileValuePair(facility, disbursedAmount),
           sub:
             entry == null
               ? "—"
               : entry.disbursed
                 ? "funded"
-                : "drawned, not yet funded",
+                : "drawn, not yet funded",
           subTone: entry?.disbursed ? "positive" : "attention",
         };
 

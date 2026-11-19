@@ -221,9 +221,10 @@ describe("Loans list route (ready)", () => {
   });
 
   it("drops unknown tab and non-positive or non-integer chain values in validateSearch", () => {
-    expect(
-      parseLoanBookSearch({ tab: "Watchlist", chain: "560048" }),
-    ).toEqual({ tab: "Watchlist", chain: 560048 });
+    expect(parseLoanBookSearch({ tab: "Watchlist", chain: "560048" })).toEqual({
+      tab: "Watchlist",
+      chain: 560048,
+    });
     expect(parseLoanBookSearch({ tab: "Bogus", chain: "abc" })).toEqual({
       tab: undefined,
       chain: undefined,

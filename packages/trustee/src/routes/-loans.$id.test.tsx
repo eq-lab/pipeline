@@ -274,7 +274,7 @@ function makeResult(
       },
       {
         label: "Disbursing",
-        sub: "drawned, not yet funded",
+        sub: "drawn, not yet funded",
         state: "done",
         index: 2,
       },
@@ -289,7 +289,7 @@ function makeResult(
     tiles: [
       {
         label: "Facility / disbursed",
-        value: "$4.8M / $3.96M",
+        value: "$4.8M / $4.8M",
         sub: "funded",
         subTone: "positive",
       },
