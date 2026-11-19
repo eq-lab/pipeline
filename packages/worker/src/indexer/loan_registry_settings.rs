@@ -12,6 +12,7 @@ use super::stellar::loan_registry_reader::read_max_fee_bps;
 use super::stellar::rpc::StellarRpc;
 
 pub const LOAN_REGISTRY_SETTINGS_INTERVAL: Duration = Duration::from_mins(1);
+const FAILURE_WARN_EVERY: u32 = 10;
 
 #[async_trait]
 pub trait MaxFeeBpsSource: Send + Sync {
@@ -81,23 +82,23 @@ pub async fn run_loan_registry_settings_loop(
     registry: String,
 ) {
     let mut last: Option<u32> = None;
-    let mut failing = false;
+    let mut failures: u32 = 0;
     loop {
         match sync_once(source, sink, chain_id, &registry).await {
             Ok(value) => {
-                failing = false;
+                failures = 0;
                 if last != Some(value) {
                     tracing::info!(chain_id, %registry, max_fee_bps = value, previous = ?last, "LoanRegistry max_fee_bps synced");
                     last = Some(value);
                 }
             }
             Err(e) => {
-                if failing {
-                    tracing::debug!(chain_id, %registry, error = %e, "LoanRegistry max_fee_bps sync failed");
+                if failures.is_multiple_of(FAILURE_WARN_EVERY) {
+                    tracing::warn!(chain_id, %registry, failures, error = %e, "LoanRegistry max_fee_bps sync failed");
                 } else {
-                    tracing::warn!(chain_id, %registry, error = %e, "LoanRegistry max_fee_bps sync failed");
-                    failing = true;
+                    tracing::debug!(chain_id, %registry, error = %e, "LoanRegistry max_fee_bps sync failed");
                 }
+                failures = failures.saturating_add(1);
             }
         }
         tokio::time::sleep(LOAN_REGISTRY_SETTINGS_INTERVAL).await;

@@ -71,7 +71,7 @@
 //! floor((senior_interest + mgmt + perf) × max_fee_bps / 10_000)` is met by moving any fee excess
 //! to the net coupon, so the interest total is unchanged; OET uses only the room left under the
 //! cap (`docs/product-specs/yield.md` § Waterfall components). The cap is the registry's
-//! synced `max_fee_bps` (`shared::loan_registry_settings_repo`); a missing row is a `503`.
+//! synced `max_fee_bps` (`shared::loan_registry_settings_repo`); a missing row is a `503` except for a `Default` loan.
 //! For a loan in `Default` the contract demands fees, OET and equity of 0
 //! (`LoanRegistryNonZeroOnDefault`): the payment is split senior principal first, then senior
 //! interest, and an `amount` above principal outstanding + headroom is a `400`. An `as_of` more
@@ -254,11 +254,8 @@ async fn get_waterfall(
 
     ensure_event_history_complete(&row.snapshot, &rate_events, as_of, row.block_timestamp)?;
 
-    let max_fee_bps = require_max_fee_bps(
-        shared::loan_registry_settings_repo::max_fee_bps(&state.pool, chain_id, registry).await?,
-        chain_id,
-        registry,
-    )?;
+    let max_fee_bps =
+        shared::loan_registry_settings_repo::max_fee_bps(&state.pool, chain_id, registry).await?;
 
     let breakdown = compute_waterfall(
         &row.snapshot,
@@ -288,18 +285,6 @@ pub struct WaterfallBreakdown {
     pub equity_distributed: BigDecimal,
     pub senior_principal_fully_repaid: bool,
     pub offtaker_fully_received: bool,
-}
-
-pub fn require_max_fee_bps(
-    value: Option<u32>,
-    chain_id: i64,
-    registry: &str,
-) -> Result<u32, ApiError> {
-    value.ok_or_else(|| {
-        ApiError::ServiceUnavailable(format!(
-            "max_fee_bps for LoanRegistry {registry} on chain {chain_id} is not synced yet; try again shortly"
-        ))
-    })
 }
 
 pub fn validate_as_of_not_future(as_of: i64, now: i64) -> Result<(), ApiError> {
@@ -357,7 +342,7 @@ pub fn compute_waterfall(
     as_of: i64,
     fees: &FeeScheduleRow,
     rate_events: &[LoanRateEventRow],
-    max_fee_bps: u32,
+    max_fee_bps: Option<u32>,
 ) -> Result<WaterfallBreakdown, ApiError> {
     let amount = &trunc(amount);
     if as_of < s.origination_date {
@@ -427,6 +412,12 @@ pub fn compute_waterfall(
     if LoanStatus::parse(&s.status) == Some(LoanStatus::Default) {
         return default_breakdown(s, amount, &outstanding, &headroom, &outstanding_offtaker);
     }
+
+    let max_fee_bps = max_fee_bps.ok_or_else(|| {
+        ApiError::ServiceUnavailable(
+            "LoanRegistry max_fee_bps is not synced yet; try again shortly".to_owned(),
+        )
+    })?;
 
     let mut remaining = amount.clone();
     let target_total_interest =

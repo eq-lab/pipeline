@@ -545,11 +545,11 @@ Runs on every EVM and Stellar chain with a LoanRegistry configured (#1547); no n
 
 **Table.** `loan_registry_settings` (`20261119000002_loan_registry_settings.sql`), keyed `(chain_id, contract_address)`, one upserted row with `max_fee_bps` (0 to `u32::MAX`; Stellar's setter has no range check) and `updated_at`. The address is normalized the way the API looks it up: EIP-55 on EVM, canonical `C…` Strkey on Stellar. If the indexer and API registry addresses differ no row matches and the waterfall answers `503`.
 
-**Logging.** `info` the first time a value is stored and whenever it changes. A read or store failure logs `warn` once, then `debug` while it repeats; the next success resets this. A failure keeps the last stored value. A registry without the view (the pre-rework Stellar registry) never stores a row.
+**Logging.** `info` the first time a value is stored and whenever it changes. A read or store failure logs `warn` on the first failure and every 10th consecutive one (about every 10 minutes), `debug` otherwise; the next success resets this. A failure keeps the last stored value. A registry without the view (the pre-rework Stellar registry) never stores a row.
 
 **Why not the event.** `MaxFeeBpsSet` is not indexed as the source: the first call happens at deploy time, before the indexer's start block, and Stellar RPC keeps events for about 7 days. The view is authoritative on both chains.
 
-**Consumer.** `GET /v1/loan-book/{loan_id}/waterfall` reads the row for the chain's API-scoped LoanRegistry and passes it to the fee-cap math; a missing row is a `503` (fail closed, no fallback to 5000). After an admin `setMaxFeeBps` the suggestion can use the old value for up to one sync interval.
+**Consumer.** `GET /v1/loan-book/{loan_id}/waterfall` reads the row for the chain's API-scoped LoanRegistry and passes it to the fee-cap math; a missing row is a `503` (fail closed, no fallback to 5000) except for a loan in `Default`, whose split uses no fee cap. After an admin `setMaxFeeBps` the suggestion can use the old value for up to one sync interval.
 
 **Rollback.** `DROP TABLE loan_registry_settings` and `DELETE FROM _sqlx_migrations WHERE version = 20261119000002`.
 

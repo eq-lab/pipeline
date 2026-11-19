@@ -100,7 +100,7 @@ fn run(
     f: &FeeScheduleRow,
     events: &[LoanRateEventRow],
 ) -> WaterfallBreakdown {
-    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events, MAX_FEE_BPS).unwrap()
+    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events, Some(MAX_FEE_BPS)).unwrap()
 }
 
 fn suggested_interest(b: &WaterfallBreakdown) -> BigDecimal {
@@ -429,7 +429,7 @@ fn run_amount(s: &LoanSnapshot, amount: &str) -> Result<WaterfallBreakdown, ApiE
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &events,
-        MAX_FEE_BPS,
+        Some(MAX_FEE_BPS),
     )
 }
 

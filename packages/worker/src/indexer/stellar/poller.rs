@@ -539,7 +539,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
             Ok(contract) => {
                 let rpc = rpc.clone();
                 let pool = pool.clone();
-                let registry = contract.to_string().as_str().to_owned();
+                let registry = format!("{contract}");
                 Some(spawn_supervised(
                     "loan-registry-settings",
                     chain_id,
@@ -565,7 +565,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
                 ))
             }
             Err(e) => {
-                tracing::warn!(chain_id, error = %e, "max_fee_bps sync disabled: invalid LOAN_REGISTRY_ADDRESS");
+                tracing::error!(chain_id, error = %e, "max_fee_bps sync disabled: invalid LOAN_REGISTRY_ADDRESS");
                 None
             }
         },
