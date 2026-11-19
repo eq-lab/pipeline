@@ -25,8 +25,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, quote_quantity, same_name, to_pct,
-    ConcentrateValuation,
+    asset_for_metal, ccr_bps, compute_collateral, same_name, to_pct, ConcentrateValuation,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -852,12 +851,6 @@ pub fn build_response(
     if price_missing {
         missing.push("reference_price".to_owned());
     }
-    if !is_concentrate
-        && headline_price.is_some()
-        && quote_quantity(&anchor.asset, &anchor.quantity_dmt).is_none()
-    {
-        missing.push("quote_unit".to_owned());
-    }
     if is_concentrate {
         if assay.is_none() {
             missing.push("assay".to_owned());
@@ -891,6 +884,9 @@ pub fn build_response(
     // loan-book list uses). `None` when a required input for the mode is missing.
     let computation =
         compute_collateral(anchor, assay, offtake, prices).map_err(ApiError::Internal)?;
+    if !is_concentrate && headline_price.is_some() && computation.is_none() {
+        missing.push("quote_unit".to_owned());
+    }
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation
         .as_ref()
