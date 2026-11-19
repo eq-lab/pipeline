@@ -233,11 +233,19 @@ describe("risk council refusal check", () => {
   });
 
   it("passes when every key without the role is rejected and the loan keeps its status", () => {
-    assert.equal(refused.evaluate(recorded("Performing", "Unauthorized", "Unauthorized")).ok, true);
+    assert.equal(refused.evaluate(recorded("Performing", "Error(Contract, #1)", "Error(Contract, #1)")).ok, true);
+  });
+
+  it("fails when a call failed for another reason than the AccessManager's refusal", () => {
+    assert.equal(refused.evaluate(recorded("Performing", "Error(Contract, #1)", "invalid argument encoding")).ok, false);
+    const evm = riskChecks("evm").find((c) => c.id === "evm.risk.default-refused")!;
+    const attempts = (...errors: string[]) => ({ "evm.risk.defaultRefused": { attempts: errors.map((error) => ({ who: "k", error })), statusAfter: "Performing" } });
+    assert.equal(evm.evaluate(attempts("AccessManagedUnauthorized", "AccessManagedUnauthorized")).ok, true);
+    assert.equal(evm.evaluate(attempts("AccessManagedUnauthorized", "InsufficientFunds")).ok, false);
   });
 
   it("fails when the role went to the wrong key: a refused key's call went through and the loan defaulted", () => {
-    assert.equal(refused.evaluate(recorded("Default", "Unauthorized", null)).ok, false);
-    assert.equal(refused.evaluate(recorded("Performing", "Unauthorized", null)).ok, false);
+    assert.equal(refused.evaluate(recorded("Default", "Error(Contract, #1)", null)).ok, false);
+    assert.equal(refused.evaluate(recorded("Performing", "Error(Contract, #1)", null)).ok, false);
   });
 });

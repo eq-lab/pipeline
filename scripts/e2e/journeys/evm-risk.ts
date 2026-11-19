@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parseAbi, toHex, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import type { Journey } from "../lib/journey";
-import { anvil, EVM_CHAIN, evmWorld, read, send, views, type EvmWorld } from "../lib/evm-world";
+import { anvil, EVM_CHAIN, evmWorld, read, revertName, send, views, type EvmWorld } from "../lib/evm-world";
 import { until } from "../lib/stellar-world";
 import { depositManagerAbi } from "../../../packages/frontend/src/wallet/evm/abis/depositManager";
 import { erc20Abi } from "../../../packages/frontend/src/wallet/evm/abis/erc20";
@@ -29,6 +29,8 @@ const riskAbi = parseAbi([
   "function paused() view returns (bool)",
   "function pause()",
   "function unpause()",
+  // Declared so `revertName` decodes the AccessManager's refusal of `setDefault` ("default refused").
+  "error AccessManagedUnauthorized(address caller)",
 ]);
 
 type Entry = Record<string, any>;
@@ -122,7 +124,7 @@ const journey: Journey = {
         const attempts = [];
         // The registry manager held the risk actions before the stack moved them to the council; the originator holds nothing.
         for (const [who, key] of [["loan registry manager", role("LoanRegistryManager")], ["originator", privateKeyToAccount(generatePrivateKey())]] as const)
-          attempts.push({ who, error: await rejection(() => send(key, registry, riskAbi, "setDefault", [loanId])) });
+          attempts.push({ who, error: await rejection(() => send(key, registry, riskAbi, "setDefault", [loanId]), revertName) });
         recorded["evm.risk.defaultRefused"] = { attempts, statusAfter: STATUS[(await chain<Entry>(registry, "mutableLoanData", [loanId])).status] };
       },
     },
