@@ -315,9 +315,10 @@ matching both the error frame (weak password → disabled) and the enabled frame
 
 ### AddEmailModal
 
-`packages/frontend/src/components/AddEmailModal.tsx` (#1459). **This screen is the create-account
+`packages/frontend/src/components/AddEmailModal.tsx` (#1459, #2054). **This screen is the create-account
 registration (email + password → OTP → session), reached from `/account`'s `Add email` row instead
-of the header's `Sign Up` button.** It is not a new account type and does not link the visitor's
+of the header's `Sign Up` button; since #2054 it also carries an `Already have an account? Sign in`
+link for a visitor who already has an email account.** It is not a new account type and does not link the visitor's
 connected wallet to the resulting account — nothing about the wallet is read by, or sent to, this
 flow (see `account-page.md#wallet-only-variant-1458`). There is no change to
 `POST /v1/auth/signup`/`verify-otp`/`resend-otp`; `EmailAuthFlow` (below) routes this screen through
@@ -347,6 +348,13 @@ dismisses the whole flow (not a `goTo*` cross-link) because this screen has no s
    `CreateAccountModal`, same markup and tokens.
 2. **Save** — `Button variant="primary-blue" type="submit"`, label "Save", `h-12` (48px), `radius-s`
    (4px, resolved via `get_variable_defs`), fill `#000080`, `opacity-[0.32]` when disabled.
+3. **Sign-in link (#2054, no Figma frame)** — below `Save` (`gap-4`, inside the same `gap-12` slot),
+   the same caption-size line and tokens as `CreateAccountModal`'s footer: muted `Already have an
+   account?` + an ink `Sign in` `<button type="button">`. Rendered when `onSignIn` is supplied;
+   `EmailAuthFlow` wires it to `goToSignIn`, so it opens the existing `"sign-in"` screen (Forgot
+   password and Sign up stay reachable from there). Close/back and a successful login leave through
+   the flow's `onClose`/`onAuthenticated` exactly as on the add-email path, so the visitor lands back
+   on `/account`. Nothing about the wallet is sent.
 
 **Geometry.** The form wrapper is `mt-6 flex w-full flex-col gap-12 pb-16`: `mt-6` plus the shell
 column's own `gap-6` reproduces the frame's 48px heading→fields gap (the same `mt-*` technique
@@ -354,7 +362,7 @@ column's own `gap-6` reproduces the frame's 48px heading→fields gap (the same 
 reproduces the Container's 64px bottom padding. With `align="center"` (`my-auto`), this is what
 centers the rendered column where Figma's 438px container centers: `86 + 48 + 144 + 48 + 48 + 64 =
 438`. No field is nested further than the plan above — there is no wallet button, no "OR" divider,
-and no footer line anywhere in this screen.
+and no footer line other than the #2054 sign-in link.
 
 **Validation.** `useAuthCredentialsForm({ open, onSubmit, passwordRule: "policy" })` — the identical
 hook, policy, and error copy as `CreateAccountModal` (see its section above): `Save` stays disabled
@@ -903,8 +911,8 @@ create-account's submit, add-email's submit, and sign-in's `403 email_not_verifi
 arrow must return to whichever one sent it there. `otpBackScreen` (reset to `"sign-in"` whenever the
 flow opens) records that origin; `goBackFromOtp()` returns to `"add-email"` when it is `"add-email"`
 and to `"sign-in"` otherwise, covering both the create-account and the sign-in-403 origins (`OtpModal`
-only ever wires one `onBack`). `AddEmailModal` itself has no cross-link back to sign-in, so
-`otpBackScreen` cannot leak from an add-email submit into Create account before a later OTP+403
+only ever wires one `onBack`). `AddEmailModal`'s `Sign in` link (#2054) only calls `goToSignIn`, which
+never touches `otpBackScreen`, so it cannot leak from an add-email submit into Create account before a later OTP+403
 sequence.
 
 Wiring, screen by screen:
