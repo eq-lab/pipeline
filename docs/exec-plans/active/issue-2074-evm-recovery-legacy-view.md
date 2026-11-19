@@ -236,3 +236,11 @@ Line numbers are those in this worktree at `97836745`. The edits are narrow and 
    - **Recommended default:** add a new bullet after the TD-190 `Suggested fix` line (current line 2496) and leave lines 2493–2495 untouched. The new bullet states that the caveat is resolved by #2074. This merges cleanly in either order. If #2072 has already merged when the coder starts, the coder instead rewrites the merged caveat line in place.
 2. **The issue's "Observed" is not reproducible today.** Hoodi has no repayments, and the list short-circuits at `nextRepaymentId === 0`, so nothing reverts yet. Should the issue body be corrected?
    - **Recommended default:** leave the issue body as it is (the planner does not edit issues). State in the PR #2075 description that the bug is latent on Hoodi until the first EVM repayment, and that live verification is part of QA #1945.
+
+## Decisions and Progress
+
+- Open Question 1 settled on its default: TD-190 gets a separate "Hoodi Minter resolved (#2074)" bullet after the Suggested-fix line. `origin/main` did not contain PR #2072, so lines 2493-2495 are untouched.
+- Open Question 2 settled on its default: the issue body is left as it is. The bug is latent on Hoodi until the first EVM repayment.
+- Steps 1-5 done: view ABI and view-first read in `minter.ts`, vitest in `minter.test.ts`, the doc edits listed above, plus the user story `docs/user-stories/epic-1937/2074-evm-recovery-legacy-view.md` linked from `docs/user-stories/index.md` (ISSUE_PROTOCOL section 6).
+- Step 6 checks run before hand-off. Step 7 (read-only `cast` check) not run by the coder.
+- The plan stays in `docs/exec-plans/active/`; the manager moves it in Phase 4.
