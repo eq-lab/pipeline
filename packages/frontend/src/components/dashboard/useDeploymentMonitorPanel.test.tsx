@@ -574,11 +574,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
     expect(result.current.headerAggregates.ltv).toBe("80%");
-    expect(result.current.rows.map((r) => r.ltv)).toEqual([
-      "80%",
-      "0%",
-      "95%",
-    ]);
+    expect(result.current.rows.map((r) => r.ltv)).toEqual(["80%", "0%", "95%"]);
   });
 });
 
