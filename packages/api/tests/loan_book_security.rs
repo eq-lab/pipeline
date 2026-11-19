@@ -340,6 +340,16 @@ fn attach_security_fills_an_evm_entry() {
 }
 
 #[test]
+fn a_closed_loan_never_reports_an_open_margin_call() {
+    let mut resp = book(&[make_loan(STELLAR, 1)]);
+    resp.loans[0].status = "Closed".to_owned();
+    let mut by_loan: HashMap<LoanRef, LoanBookSecurityFields> = HashMap::new();
+    by_loan.insert(loan_ref(STELLAR, &dec(1)), fields(0, true, false));
+    attach_security(&mut resp, &by_loan);
+    assert_eq!(resp.loans[0].margin_call_open, Some(false));
+}
+
+#[test]
 fn an_evm_and_a_stellar_entry_with_the_same_loan_id_get_their_own_values() {
     let mut resp = book(&[make_loan(STELLAR, 1), make_loan(EVM, 1)]);
     let mut by_loan: HashMap<LoanRef, LoanBookSecurityFields> = HashMap::new();
