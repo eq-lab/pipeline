@@ -58,7 +58,7 @@ OET allocation → originator residual (junior yield). The originator residual i
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.
 
-**Offtaker-price ceiling (pricing basis).** The waterfall rejects a payment above the contracted offtaker price only for fixed-price loans; for a quotational loan (concentrate on a QP average) a settlement above it is accepted and reported via an `offtaker_overpaid` flag (overage → Equity residual), derived from the collateral `valuation_mode`. See issue #963.
+**Offtaker-price ceiling.** The waterfall rejects (`400`) any amount that would take cumulative `offtaker_received` above `original_offtaker_price`, on every loan and in every status. This matches `OfftakerExceedsPrice` in both LoanRegistries (EVM `_validateRepayment`, Stellar `validate_repayment`); a quotational-period settlement above the genesis price cannot be recorded through `recordPayment`. Issue #2123 supersedes the #963 quotational exception.
 
 ### Repayment on-chain delivery
 

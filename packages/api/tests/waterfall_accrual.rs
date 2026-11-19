@@ -3,8 +3,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::waterfall::{
-    compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, PricingBasis,
-    WaterfallBreakdown,
+    compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, WaterfallBreakdown,
 };
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
@@ -100,15 +99,7 @@ fn run(
     f: &FeeScheduleRow,
     events: &[LoanRateEventRow],
 ) -> WaterfallBreakdown {
-    compute_waterfall(
-        s,
-        &dec(HUGE_AMOUNT),
-        as_of,
-        f,
-        events,
-        PricingBasis::Quotational,
-    )
-    .unwrap()
+    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events).unwrap()
 }
 
 fn suggested_interest(b: &WaterfallBreakdown) -> BigDecimal {
@@ -437,7 +428,6 @@ fn run_amount(s: &LoanSnapshot, amount: &str) -> Result<WaterfallBreakdown, ApiE
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &events,
-        PricingBasis::Quotational,
     )
 }
 

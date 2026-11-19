@@ -64,7 +64,7 @@ It holds seven numeric fields:
 - `originalFacilitySize`, `originalSeniorTranche`, `originalEquityTranche`
 - `originalOfftakerPrice`, the total USDC the end buyer is contracted to pay for the cargo.
   Outstanding offtaker balance is `originalOfftakerPrice − offtakerReceivedTotal` — a hard
-  ceiling for fixed-price deals only; a quotational (concentrate) settlement may exceed it and is then flagged, not rejected (see [yield.md](./yield.md), issue #963).
+  ceiling on every loan, enforced by the LoanRegistry (`OfftakerExceedsPrice`) and by the waterfall (see [yield.md](./yield.md), #2123).
 - `seniorInterestRateBps`, the genesis annualised coupon rate for the Senior tranche in
   basis points (e.g. 1200 = 12%). The Equity tranche has no fixed rate and receives the
   residual.
