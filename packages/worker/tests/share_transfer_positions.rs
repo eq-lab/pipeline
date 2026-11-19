@@ -14,8 +14,8 @@ use std::str::FromStr;
 use alloy::primitives::{address, Address, U256};
 use pipeline_worker::indexer::{
     mappers::{
-        apply_position_delta, carry_over_transfer, is_position_event_name, is_staking_event_name,
-        transfer_sides, write_transfer_position,
+        apply_position_delta, apply_transfer, carry_over_transfer, is_position_event_name,
+        is_staking_event_name, transfer_sides,
     },
     parsers::parse_share_transfer,
 };
@@ -210,8 +210,6 @@ fn stake_updates_the_weighted_average_without_realizing_pnl() {
     assert_eq!(pnl, bd("0"));
 }
 
-// ── EVM end-to-end replay (issue #1593) ──────────────────────────────────────
-
 const EVM_ALICE: Address = address!("a11ce00000000000000000000000000000000001");
 const EVM_BOB: Address = address!("b0b0000000000000000000000000000000000002");
 
@@ -246,8 +244,7 @@ fn replay_transfer(
     let zero = (bd("0"), bd("0"));
     let prev_from = ledger.get(&f).cloned().unwrap_or_else(|| zero.clone());
     let prev_to = ledger.get(&t).cloned().unwrap_or(zero);
-    let next = carry_over_transfer(prev_from, prev_to, &amt, f == t);
-    write_transfer_position(&mut params, &next);
+    let next = apply_transfer(&mut params, "vault", (&f, &t, &amt), prev_from, prev_to);
     ledger.insert(f, (next.shares_from.clone(), next.avg_price_from.clone()));
     ledger.insert(t, (next.shares_to.clone(), next.avg_price_to.clone()));
     params

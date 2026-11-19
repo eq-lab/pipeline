@@ -84,3 +84,9 @@ fn amount_above_u128_keeps_its_full_decimal_string() {
     let parsed = parse_share_transfer(&log, &[VAULT]).expect("decodes");
     assert_eq!(parsed.params["amount"], value.to_string());
 }
+
+#[test]
+fn zero_value_transfer_is_skipped() {
+    let log = transfer(VAULT, ALICE, BOB, 0, 1, 0);
+    assert!(parse_share_transfer(&log, &[VAULT]).is_none());
+}

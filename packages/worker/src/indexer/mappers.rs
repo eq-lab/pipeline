@@ -412,15 +412,32 @@ async fn compute_transfer_position_fields(
         return Ok(());
     };
 
-    let self_transfer = from == to;
     let prev_from = fetch_prev_position(&mut *conn, chain_id, vault_address, &from).await?;
-    let prev_to = if self_transfer {
+    let prev_to = if from == to {
         prev_from.clone()
     } else {
         fetch_prev_position(&mut *conn, chain_id, vault_address, &to).await?
     };
 
-    if !self_transfer && prev_from.0 < amount {
+    apply_transfer(
+        params,
+        vault_address,
+        (&from, &to, &amount),
+        prev_from,
+        prev_to,
+    );
+    Ok(())
+}
+
+pub fn apply_transfer(
+    params: &mut Value,
+    vault_address: &str,
+    (from, to, amount): (&str, &str, &BigDecimal),
+    prev_from: (BigDecimal, BigDecimal),
+    prev_to: (BigDecimal, BigDecimal),
+) -> TransferPosition {
+    let self_transfer = from == to;
+    if !self_transfer && prev_from.0 < *amount {
         tracing::warn!(
             vault = vault_address,
             from = %from,
@@ -430,9 +447,9 @@ async fn compute_transfer_position_fields(
         );
     }
 
-    let next = carry_over_transfer(prev_from, prev_to, &amount, self_transfer);
+    let next = carry_over_transfer(prev_from, prev_to, amount, self_transfer);
     write_transfer_position(params, &next);
-    Ok(())
+    next
 }
 
 /// Compute a running USDC balance for `wallet` (the Withdrawal Queue Wallet)

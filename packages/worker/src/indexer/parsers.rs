@@ -184,7 +184,7 @@ pub fn parse_share_transfer(log: &Log, vaults: &[Address]) -> Option<ContractLog
         return None;
     }
     let decoded = Transfer::decode_log(log.as_ref(), true).ok()?;
-    if decoded.from == Address::ZERO || decoded.to == Address::ZERO {
+    if decoded.from == Address::ZERO || decoded.to == Address::ZERO || decoded.value.is_zero() {
         return None;
     }
     let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;

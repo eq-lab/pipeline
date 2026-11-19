@@ -599,6 +599,7 @@ The `position_events` view normalises all three position-bearing row shapes — 
 
 Params are `{from, to, amount}` with EIP-55 addresses and a decimal-string amount; the view and `fetch_prev_position` lowercase both sides. The differences from Stellar:
 
+- Zero-value `Transfer`s are skipped, because OZ allows `transfer(x, 0)` and `transferFrom(victim, attacker, 0)` and anyone could otherwise add `ShareTransfer` rows for free. The Stellar parser stores zero-amount transfers (`parse_transfer_as` has no amount filter); on both chains `transfer_sides` ignores them, so positions are identical.
 - Zero-address `Transfer`s are skipped. OZ ERC-20 emits `Transfer` on every mint and burn, but in the deployed `StakedPipelineUSD` (`pipeline-contracts@f92d719`) every mint or burn path also emits `Deposit` or `Withdraw` (`deposit`/`mint`/`withdraw`/`redeem` use the OZ `super`; `burnShares` calls `_burn` then emits `Withdraw`; treasury fee shares come from the Minter's `deposit(amount, treasury)`). Indexing the zero-address side would count the same change twice, so EVM yields the same set of rows as Stellar. A future vault upgrade that adds a mint or burn path without `Deposit`/`Withdraw` would be missed.
 - The handler checks the emitter. The EVM poller offers every fetched log to every handler and the first match wins; handler addresses only control which logs are fetched. PLUSD, USDC and deal-token `Transfer`s share the signature, so the sPLUSD closure returns `None` unless `log.address()` is a configured sPLUSD vault (`is_emitted_by`), and `parse_share_transfer` repeats the check. Stellar matches on `contract_id` in `dispatch_parser`. Add no further parsers to this handler without the same check.
 - No configuration or extra RPC call: the vault is a static, topic-unfiltered address, so its `Transfer` logs were already fetched (and dropped) before.
@@ -611,7 +612,9 @@ Params are `{from, to, amount}` with EIP-55 addresses and a decimal-string amoun
 
 Nothing references these rows by foreign key, and EVM RPC keeps full log history, so no data is lost. Status as of 2026-11-19: stage Hoodi (chain 560048, vault `0x87CD1002bdB9401423cb50A860314FC8f11440Cd`) has 3 `Transfer` logs since block 3 300 000 (2 mints, 1 burn) and no peer-to-peer transfers, so no backfill is needed; repeat the `eth_getLogs` count after deploy. Stage Hoodi is treated as the only EVM environment with an sPLUSD vault.
 
-On Stellar, any holder who sent or received shares before share-transfer tracking shipped needs an indexer resync over the vault to rebuild their chain.
+On Stellar the same holds: `is_duplicate` skips re-indexed rows, so a resync alone leaves later `StakingDeposit` / `StakingWithdrawal` rows with stale `shares_balance` / `avg_buy_share_price`. For any holder who sent or received shares before share-transfer tracking shipped, delete the vault's `StakingDeposit` / `StakingWithdrawal` / `ShareTransfer` rows for that chain, then rewind the indexer cursor to the vault's first event ledger so the chain is rebuilt in order.
+
+#### Position history and PnL (`GET /v1/positions/history`)
 
 **`GET /v1/positions/history`.** Position history for a wallet, reading `position_events` via `PositionRepo::get_position_history`. The period surface mirrors `/v1/stats/prices` — `days` (omit for all history), `interval` (`hourly` | `daily` | `weekly`, default `daily`), `chain_id` (required; missing, malformed or not in `CHAINS` → 400, no `DEFAULT_CHAIN_ID` fallback — the chain kind comes from `CHAINS`) — plus `wallet` (required). `GET /v1/pnl` likewise requires `chain_id`. The shared `intervals::MAX_SAMPLES` cap (1_000 buckets) applies, rejecting over-wide requests with a 400 that names the estimate.
 
