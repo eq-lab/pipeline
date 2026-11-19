@@ -10,7 +10,7 @@ import {
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { pickChainWallet } from "@/lib/chainWallet";
-import { loanActionChainReason } from "@/lib/targetChains";
+import { evmLoanRegistryConfig, evmPreflight } from "@/lib/evmPreflight";
 
 export type { RolloverStage };
 
@@ -43,21 +43,22 @@ export function useRollover(): UseRolloverResult {
       const wallet = pickChainWallet(chainId, stellar, evm);
 
       if (wallet.kind === "evm") {
-        const blocked = loanActionChainReason(chainId);
-        if (blocked) throw new Error(blocked);
-        if (!ENV.EVM_LOAN_REGISTRY_ADDRESS || !ENV.EVM_ACCESS_MANAGER_ADDRESS) {
-          throw new Error(
+        const {
+          config,
+          caller,
+          chainId: evmChainId,
+        } = evmPreflight({
+          chainId,
+          wallet,
+          config: evmLoanRegistryConfig(),
+          notConfigured:
             "On-chain rollover is not configured for this environment.",
-          );
-        }
-        if (!wallet.isConnected || !wallet.address) {
-          throw new Error("EVM wallet not connected.");
-        }
+        });
         return rolloverEvmLoan({
-          accessManager: ENV.EVM_ACCESS_MANAGER_ADDRESS,
-          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
-          caller: wallet.address,
-          chainId: ENV.EVM_CHAIN_ID,
+          accessManager: config.accessManager,
+          registry: config.registry,
+          caller,
+          chainId: evmChainId,
           loanId,
           newRateBps,
           newMaturity,

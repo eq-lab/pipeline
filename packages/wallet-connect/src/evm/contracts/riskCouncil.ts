@@ -1,11 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import {
   encodeFunctionData,
-  isAddress,
   toFunctionSelector,
   type Abi,
   type AbiFunction,
-  type Address,
   type Hex,
 } from "viem";
 import type {
@@ -21,6 +19,7 @@ import type {
   RiskCouncilCall,
 } from "../../stellar/contracts/riskCouncil";
 import { readEvmOperationSchedule, relayEvm } from "./accessManager";
+import { requireAddress } from "./args";
 import { readEvmContract } from "./write";
 
 const loanRegistryErrors = [
@@ -439,18 +438,11 @@ function readLoanId(who: string, loanId: number): bigint {
   return BigInt(loanId);
 }
 
-export function requireEvmRegistry(registry: string, who: string): Address {
-  if (!registry) throw new Error(`${who}: registry must not be empty`);
-  if (!isAddress(registry))
-    throw new Error(`${who}: invalid registry ${registry}`);
-  return registry;
-}
-
 export function readEvmMutableLoanData(
   who: string,
   { registry, loanId, blockNumber }: ReadEvmLoanParams,
 ): Promise<MutableLoanData> {
-  const address = requireEvmRegistry(registry, who);
+  const address = requireAddress(who, "registry", registry);
   return readEvmContract<MutableLoanData>({
     abi: evmLoanRegistryRiskCouncilAbi,
     address,
@@ -496,7 +488,7 @@ export async function readEvmLoanMoney({
   registry,
   loanId,
 }: ReadEvmLoanParams): Promise<LoanMoney> {
-  const address = requireEvmRegistry(registry, "readEvmLoanMoney");
+  const address = requireAddress("readEvmLoanMoney", "registry", registry);
   const data = await readEvmContract<EvmLoanMoneyData>({
     abi: evmLoanRegistryRiskCouncilAbi,
     address,
@@ -517,7 +509,7 @@ export async function readEvmLoanDisbursementState(
   params: ReadEvmLoanParams,
 ): Promise<LoanDisbursementState> {
   const who = "readEvmLoanDisbursementState";
-  const address = requireEvmRegistry(params.registry, who);
+  const address = requireAddress(who, "registry", params.registry);
   const [data, immutable] = await Promise.all([
     readEvmMutableLoanData(who, params),
     readEvmContract<{ originalSeniorTranche: bigint }>({

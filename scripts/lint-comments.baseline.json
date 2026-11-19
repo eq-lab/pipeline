@@ -731,10 +731,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/utils/stellarSacUnits.ts": {
-    "header": 5,
-    "nodeIds": 0
-  },
   "packages/ui/src/components/HeroIcon/HeroIcon.stories.tsx": {
     "header": 0,
     "nodeIds": 1

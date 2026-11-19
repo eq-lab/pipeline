@@ -29,12 +29,11 @@ import {
   disburseErrorCopy,
   disburseFormError,
   disburseView,
-  parseDisburseAmount,
-  rawToDecimal,
 } from "@/lib/disburse";
 import { chainAmountDecimals, loanActionChainReason } from "@/lib/targetChains";
 import { todayUtcDateInput, valueDateSeconds } from "@/lib/wireOut";
 import { formatUsdExact } from "@/utils/formatUsd";
+import { parseExactAmount, rawToDecimal } from "@/utils/stellarSacUnits";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 import { DIALOG_CLASS, HINT_CLASS, INPUT_CLASS } from "./-WireOutsSection";
 
@@ -251,7 +250,7 @@ function DisburseDialog({
 
   async function submit() {
     if (formError !== null || pending) return;
-    const amountRaw = parseDisburseAmount(amountInput, decimals)!.toString();
+    const amountRaw = parseExactAmount(amountInput, decimals)!.toString();
     try {
       const { hash } = await disburse.mutateAsync({
         chainId,

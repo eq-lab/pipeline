@@ -34,6 +34,7 @@ import {
   readEvmOperationSchedule,
   relayEvm,
 } from "./accessManager";
+import { requireAddress } from "./args";
 import { evmDealNotRegisteredErrorAbi } from "./dealTokenFactory";
 import { loanIdTopic, readEvmHeadBlock, scanEvmLogs } from "./logs";
 import {
@@ -395,11 +396,7 @@ export async function readEvmMinterRepayment({
   repaymentId: number;
   blockNumber?: bigint;
 }): Promise<EvmMinterRepaymentRecord> {
-  if (!minter)
-    throw new Error("readEvmMinterRepayment: minter must not be empty");
-  if (!isAddress(minter)) {
-    throw new Error(`readEvmMinterRepayment: invalid minter ${minter}`);
-  }
+  requireAddress("readEvmMinterRepayment", "minter", minter);
   const base = BigInt(evmMinterRepaymentSlot(loanId, repaymentId));
   const word = (offset: bigint) =>
     readEvmContract<Hex>({
@@ -617,12 +614,6 @@ export function readEvmRepaymentId(
     return id <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(id) : null;
   }
   return null;
-}
-
-function requireAddress(who: string, name: string, value: string): Address {
-  if (!value) throw new Error(`${who}: ${name} must not be empty`);
-  if (!isAddress(value)) throw new Error(`${who}: invalid ${name} ${value}`);
-  return value;
 }
 
 export interface RepayEvmLoanParams extends EvmRepayArgs {

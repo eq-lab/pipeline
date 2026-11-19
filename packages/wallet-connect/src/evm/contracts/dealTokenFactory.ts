@@ -4,10 +4,8 @@ import {
   ContractFunctionRevertedError,
   encodeFunctionData,
   getAddress,
-  isAddress,
   toFunctionSelector,
   type Abi,
-  type Address,
   type Hex,
 } from "viem";
 import type {
@@ -16,6 +14,7 @@ import type {
 } from "../../stellar/contracts/accessManager";
 import type { DealRead } from "../../stellar/contracts/dealTokenFactory";
 import { accessManagerAbi } from "./accessManager";
+import { requireAddress } from "./args";
 import { evmLoanRegistryErrorAbi } from "./riskCouncil";
 import { readEvmContract, sendEvmContractCallChecked } from "./write";
 
@@ -88,17 +87,14 @@ export async function readEvmDeal({
   factory: string;
   loanId: number;
 }): Promise<DealRead | null> {
-  if (!factory) throw new Error("readEvmDeal: factory must not be empty");
-  if (!isAddress(factory)) {
-    throw new Error(`readEvmDeal: invalid factory ${factory}`);
-  }
+  const factoryAddress = requireAddress("readEvmDeal", "factory", factory);
   if (!Number.isSafeInteger(loanId) || loanId < 0) {
     throw new Error(`readEvmDeal: invalid loanId ${loanId}`);
   }
   try {
     const data = await readEvmContract<{ debt: string }>({
       abi: evmDealTokenFactoryAbi,
-      address: factory,
+      address: factoryAddress,
       functionName: "deal",
       args: [BigInt(loanId)],
     });
@@ -142,13 +138,6 @@ export interface RelayEvmRegisterDealParams {
   onStageChange?: (stage: RelayStage) => void;
 }
 
-function requireAddress(name: string, value: string): Address {
-  if (!isAddress(value)) {
-    throw new Error(`registerEvmDeal: invalid ${name} ${value}`);
-  }
-  return value;
-}
-
 export async function relayEvmRegisterDeal({
   mode,
   accessManager,
@@ -158,9 +147,13 @@ export async function relayEvmRegisterDeal({
   chainId,
   onStageChange,
 }: RelayEvmRegisterDealParams): Promise<{ hash: Hex }> {
-  const managerAddress = requireAddress("accessManager", accessManager);
-  const factoryAddress = requireAddress("factory", factory);
-  requireAddress("caller", caller);
+  const managerAddress = requireAddress(
+    "registerEvmDeal",
+    "accessManager",
+    accessManager,
+  );
+  const factoryAddress = requireAddress("registerEvmDeal", "factory", factory);
+  requireAddress("registerEvmDeal", "caller", caller);
   const calldata = encodeEvmRegisterDealCalldata(loanId);
   const { hash } = await sendEvmContractCallChecked("registerEvmDeal", {
     abi: [...accessManagerAbi, ...evmRegisterDealErrorAbi],

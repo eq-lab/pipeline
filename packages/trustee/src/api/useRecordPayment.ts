@@ -15,7 +15,7 @@ import {
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { pickChainWallet } from "@/lib/chainWallet";
-import { loanActionChainReason } from "@/lib/targetChains";
+import { evmPreflight } from "@/lib/evmPreflight";
 
 export type { RepayStage, RepaymentInput };
 
@@ -57,29 +57,36 @@ export function useRecordPayment(): UseRecordPaymentResult {
       const wallet = pickChainWallet(chainId, stellar, evm);
 
       if (wallet.kind === "evm") {
-        const blocked = loanActionChainReason(chainId);
-        if (blocked) throw new Error(blocked);
-        if (!ENV.EVM_MINTER_ADDRESS || !ENV.EVM_LOAN_REGISTRY_ADDRESS) {
-          throw new Error(
+        const {
+          config,
+          caller,
+          chainId: evmChainId,
+        } = evmPreflight({
+          chainId,
+          wallet,
+          config:
+            ENV.EVM_MINTER_ADDRESS && ENV.EVM_LOAN_REGISTRY_ADDRESS
+              ? {
+                  minter: ENV.EVM_MINTER_ADDRESS,
+                  registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+                }
+              : null,
+          notConfigured:
             "On-chain payment recording is not configured for this environment.",
-          );
-        }
-        if (!wallet.isConnected || !wallet.address) {
-          throw new Error("EVM wallet not connected.");
-        }
+        });
         const nextRepaymentId = await readEvmNextRepaymentId({
-          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          registry: config.registry,
           loanId,
         });
         const refHash = await evmRepaymentRefHash({
-          registry: ENV.EVM_LOAN_REGISTRY_ADDRESS,
+          registry: config.registry,
           loanId,
           nextRepaymentId,
         });
         return repayEvmLoan({
-          minter: ENV.EVM_MINTER_ADDRESS,
-          caller: wallet.address,
-          chainId: ENV.EVM_CHAIN_ID,
+          minter: config.minter,
+          caller,
+          chainId: evmChainId,
           loanId,
           repayment,
           valueDate,

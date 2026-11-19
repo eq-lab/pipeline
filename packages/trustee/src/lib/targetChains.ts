@@ -42,24 +42,27 @@ export function stellarOnlyActionReason(
   return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
 }
 
+function isSignableChain(chainId: number | null | undefined): boolean {
+  return isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID;
+}
+
 export function loanActionChainReason(
   chainId: number | null | undefined,
 ): string | null {
-  if (isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID) return null;
+  if (isSignableChain(chainId)) return null;
   return stellarOnlyActionReason(chainId);
 }
 
 export function riskCouncilChainReason(
   chainId: number | null | undefined,
 ): string | null {
-  if (chainId === ENV.EVM_CHAIN_ID) return null;
-  return stellarOnlyActionReason(chainId);
+  return loanActionChainReason(chainId);
 }
 
 export function drawChainReason(
   chainId: number | null | undefined,
 ): string | null {
-  if (isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID) return null;
+  if (isSignableChain(chainId)) return null;
   return `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(chainId)} from the Trustee app is not supported yet. Reject or request changes instead.`;
 }
 

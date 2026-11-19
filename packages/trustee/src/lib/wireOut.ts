@@ -5,6 +5,7 @@ import {
   type WireOutRecord,
 } from "@pipeline/wallet-connect";
 import type { WireOutFn } from "@/api/useWireOuts";
+import { rawToDecimal, SAC_DECIMALS } from "@/utils/stellarSacUnits";
 import {
   parseSorobanContractErrorCode,
   toUserError,
@@ -115,10 +116,7 @@ export function wireOutStateReason(
 }
 
 export function rawToDecimal7(raw: string): string {
-  const digits = raw.replace(/^0+(?=\d)/, "").padStart(8, "0");
-  const whole = digits.slice(0, -7);
-  const fraction = digits.slice(-7).replace(/0+$/, "");
-  return fraction === "" ? whole : `${whole}.${fraction}`;
+  return rawToDecimal(raw, SAC_DECIMALS);
 }
 
 export function valueDateSeconds(dateInput: string): number {

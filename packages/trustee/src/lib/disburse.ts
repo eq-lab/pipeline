@@ -5,7 +5,11 @@ import {
   WIRE_OUT_REFERENCE_MAX,
 } from "@/lib/wireOut";
 import { loanActionChainReason } from "@/lib/targetChains";
-import { SAC_DECIMALS } from "@/utils/stellarSacUnits";
+import {
+  parseExactAmount,
+  rawToDecimal,
+  SAC_DECIMALS,
+} from "@/utils/stellarSacUnits";
 import { formatUsdExact } from "@/utils/formatUsd";
 import {
   parseSorobanContractErrorCode,
@@ -25,28 +29,6 @@ export const REUSED_DISBURSE_REFERENCE = REUSED_BANK_REFERENCE_COPY;
 
 export function debtTrustlineMissing(holder: string): string {
   return `The loan NFT holder ${holder} has no DEBT trustline. Operations must add the DEBT trustline for this loan before it can be disbursed.`;
-}
-
-export function rawToDecimal(raw: string, decimals: number): string {
-  const digits = raw.replace(/^0+(?=\d)/, "").padStart(decimals + 1, "0");
-  const whole = digits.slice(0, -decimals);
-  const fraction = digits.slice(-decimals).replace(/0+$/, "");
-  return fraction === "" ? whole : `${whole}.${fraction}`;
-}
-
-export function parseDisburseAmount(
-  input: string,
-  decimals: number,
-): bigint | null {
-  const match = new RegExp(`^(\\d+)(?:\\.(\\d{1,${decimals}}))?$`).exec(
-    input.trim(),
-  );
-  if (!match) return null;
-  const [, whole = "0", fraction = ""] = match;
-  const scaled =
-    BigInt(whole) * 10n ** BigInt(decimals) +
-    BigInt(fraction.padEnd(decimals, "0"));
-  return scaled > 0n ? scaled : null;
 }
 
 export interface DisburseQuery<T> {
@@ -161,7 +143,7 @@ export function disburseFormError({
   today,
   reference,
 }: DisburseFormInput): string | null {
-  const amount = parseDisburseAmount(amountInput, decimals);
+  const amount = parseExactAmount(amountInput, decimals);
   if (amount === null) {
     return `Enter the amount disbursed (up to ${decimals} decimals).`;
   }
