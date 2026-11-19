@@ -535,6 +535,51 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
 
     expect(result.current.headerAggregates.ltv).toBeUndefined();
   });
+
+  it("leaves terminal (Closed / Default) rows out of the average but shows their LTV (#2077)", async () => {
+    const loan = (commodity: string, ltvBps: number, status: string) => ({
+      originator: commodity,
+      borrower: commodity,
+      commodity,
+      principal: "4000.000000",
+      collateral: null,
+      ltv: null,
+      ltv_bps: ltvBps,
+      duration_days: 60,
+      rate: "0.110000",
+      protection: null,
+      status,
+    });
+    const fixture = {
+      summary: {
+        total_deployed: "4000.000000",
+        total_collateral: null,
+        senior_debt_coverage: null,
+        avg_yield: "0.110000",
+        avg_duration_days: 60,
+      },
+      loans: [
+        loan("Active", 8000, "Performing"),
+        loan("Closed", 0, "Closed"), // debt 0 → registry LTV 0
+        loan("Defaulted", 9500, "Default"),
+      ],
+    };
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(fixture));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    expect(result.current.headerAggregates.ltv).toBe("80%");
+    expect(result.current.rows.map((r) => r.ltv)).toEqual([
+      "80%",
+      "0%",
+      "95%",
+    ]);
+  });
 });
 
 // ── Tab selection ─────────────────────────────────────────────────────────────

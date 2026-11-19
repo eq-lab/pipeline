@@ -95,6 +95,11 @@ function validLtvBps(entry: LoanBookEntry): number | null {
     : null;
 }
 
+// Terminal rows (`Default` / `Closed`, appended after the active loans) are
+// shown but left out of the LTV average, like every API summary aggregate: a
+// closed loan has debt 0, so its `ltv_bps` 0 would pull the average down.
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["Default", "Closed"]);
+
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     commodity: entry.commodity,
@@ -195,9 +200,10 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const loans = data?.loans ?? [];
 
   // LTV aggregate calc — spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
-  // Mean over loans with a valid `ltv_bps` only: a chain without a registry
-  // value (null) or the no-value sentinel must not count as 0%.
+  // Mean over active loans with a valid `ltv_bps` only: a chain without a
+  // registry value (null) or the no-value sentinel must not count as 0%.
   const validBps = loans
+    .filter((loan) => !TERMINAL_STATUSES.has(loan.status))
     .map(validLtvBps)
     .filter((bps): bps is number => bps !== null);
   const ltvAggregate =

@@ -1134,12 +1134,14 @@ origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#
 
 - `principal` — always defined when ready (`total_deployed` is non-null); displayed as served by the
   backend (issue #906 — no frontend rescaling).
-- `ltv` — average LTV over the loans with a valid registry `ltv_bps` (a finite number that is not
-  the u32::MAX "no value" sentinel); `undefined` (label only) when no loan has one (seam refs
-  #729/#765, #2077). Formula: `ceil(Σ valid ltv_bps / count)`, formatted with `formatLtvBps`. Loans
-  without a value (EVM, chain without a SecurityRegistry key, no snapshot, sentinel) are left out
-  rather than counted as 0%. This is an approved exception to the "no frontend-computed metrics"
-  rule.
+- `ltv` — average LTV over the active loans with a valid registry `ltv_bps` (a finite number that
+  is not the u32::MAX "no value" sentinel); `undefined` (label only) when no active loan has one
+  (seam refs #729/#765, #2077). Formula: `ceil(Σ valid ltv_bps / count)`, formatted with
+  `formatLtvBps`. Loans without a value (chain without a SecurityRegistry key, no snapshot,
+  sentinel) are left out rather than counted as 0%. Terminal rows (`status` `Default` / `Closed`)
+  still show their own LTV but are left out of the average, like the API's active-set summary
+  aggregates (a closed loan has debt 0, so its `ltv_bps` is 0). This is an approved exception to
+  the "no frontend-computed metrics" rule.
 
 Per-row LTV (#2077) is the SecurityRegistry `ltv_bps` that the Operations Console shows, formatted
 by `formatLtvBps` with the Console's rule (one decimal rounded up, trailing `.0` trimmed: `8123` →
