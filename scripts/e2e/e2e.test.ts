@@ -218,6 +218,12 @@ describe("run.ts and check.ts on disk", { timeout: 30_000 }, () => {
     assert.equal(JSON.parse(readResult()).ok, false);
   });
 
+  it("an unwritable result.json still exits 2, not a crash that reads as a failed check", async () => {
+    assert.equal(await run(["--tag", tag], [fakeJourney(100)]), 0);
+    mkdirSync(join(dir(), "result.json"));
+    assert.equal(check(["--tag", tag], [fakeJourney(100)], checksPath), 2);
+  });
+
   it("no secret reaches the result or a redacted log", async () => {
     const leaky = fakeJourney(99, ` signer ${SEED} privateKey=${EVM_KEY}`);
     writeFileSync(

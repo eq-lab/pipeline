@@ -197,7 +197,12 @@ export function check(argv: string[], journeys: Journey[] = registry, checksPath
     const failed = failureTarget(argv);
     if (failed && existsSync(failed.dir)) {
       const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, tag: failed.tag, ok: false, error }, null, 2) + "\n";
-      writeFileSync(join(failed.dir, "result.json"), json);
+      try {
+        writeFileSync(join(failed.dir, "result.json"), json);
+      } catch (w) {
+        // The failure may be this very write (EISDIR, EACCES, ENOSPC); a throw here would exit 1, which reads as a failed check.
+        console.error(`check: cannot write result.json: ${redact(errorMessage(w))}`);
+      }
       if (failed.json) process.stdout.write(json);
     }
     return 2;
