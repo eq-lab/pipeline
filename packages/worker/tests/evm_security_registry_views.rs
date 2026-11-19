@@ -350,7 +350,34 @@ fn the_two_shapes_are_exclusive() {
 
     let old_cov_records = f92d719_coverage(vec![old_record(u(12))]).abi_encode();
     assert!(rd::coverageDetailCall::abi_decode_returns(&old_cov_records, true).is_err());
-    assert!(rd_f92d719::coverageDetailCall::abi_decode_returns(&new_cov, true).is_err());
+
+    let empty_new = rd::CoverageDetail {
+        value: U256::ZERO,
+        staleValue: U256::ZERO,
+        flaggedValue: U256::ZERO,
+        debt: U256::ZERO,
+        coverageBps: 0,
+        ltvBps: 0,
+        marginCallAt: 0,
+        cureBy: U256::ZERO,
+        defaultBreachAt: 0,
+        priceStale: false,
+        records: vec![],
+    }
+    .abi_encode();
+    assert!(rd_f92d719::coverageDetailCall::abi_decode_returns(&empty_new, true).is_err());
+    let v = decode_coverage_detail(&empty_new).unwrap();
+    assert_eq!(v.default_breach_at.as_deref(), Some("0"));
+    assert!(!v.price_stale && v.records.is_empty());
+
+    let empty_old = f92d719_coverage(vec![]).abi_encode();
+    assert!(rd::coverageDetailCall::abi_decode_returns(&empty_old, true).is_err());
+    assert_eq!(
+        decode_coverage_detail(&empty_old)
+            .unwrap()
+            .default_breach_at,
+        None
+    );
 }
 
 #[test]
