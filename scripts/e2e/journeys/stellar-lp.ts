@@ -148,16 +148,14 @@ const journey: Journey = {
         });
         const { dm, wq, vault, registry } = ids();
         const next = await read<bigint>(me(), dm, "next_request_id");
-        let deposited = 0n;
         let unclaimed = 0n;
         for (let i = 0n; i < next; i++) {
           // Request ids may start at 1; a missing id is skipped.
           const r = await read<{ amount: bigint; claimed: boolean }>(me(), dm, "get_request", [u128(i)]).catch(() => undefined);
-          if (r) deposited += r.amount;
           if (r && !r.claimed) unclaimed += r.amount;
         }
         const [wqQueued, wqClaimed, rate] = await Promise.all([read<bigint>(me(), wq, "total_queued"), read<bigint>(me(), wq, "total_claimed"), read<bigint>(me(), wq, "rate")]);
-        const withdrawnUsdc = (wqClaimed * rate) / RATE_ONE;
+        const supply = await plusdSupply();
         const summary = ok(await http("GET", `/v1/dashboard/summary?${CHAIN}`), "dashboard summary");
         const queue = ok(await http("GET", `/v1/withdrawal-queue?${CHAIN}`), "withdrawal queue");
         const pnl = ok(await http("GET", `/v1/pnl?${q}`), "pnl");
@@ -165,8 +163,9 @@ const journey: Journey = {
         const position = (pnl.positions as { vault_address: string; shares_balance: string }[]).find((p) => p.vault_address.toUpperCase() === vault.toUpperCase());
         const dep = recorded["lp.deposit"] as Record<string, string>;
         recorded["reconcile"] = {
-          tvl: { api: summary.tvl, chain: usd6(deposited - withdrawnUsdc).toString() },
-          plusdSupply: { apiTvl: summary.tvl, chainUnclaimedDeposits: usd6(unclaimed).toString(), chainSupply: usd6(await plusdSupply()).toString() },
+          // TVL is PLUSD in circulation plus deposits whose PLUSD is not minted yet (docs/product-specs/dashboards-tvl-ledger.md).
+          tvl: { api: summary.tvl, chain: usd6(supply + unclaimed).toString() },
+          plusdSupply: { apiTvl: summary.tvl, chainUnclaimedDeposits: usd6(unclaimed).toString(), chainSupply: usd6(supply).toString() },
           positions: {
             apiShares: position?.shares_balance ?? null,
             chainShares: (await balance(vault, me())).toString(),
@@ -254,7 +253,7 @@ journey.checks = [
     const expected = (BigInt(wd.amount) * BigInt(wd.rate ?? 0)) / RATE_ONE;
     return verdict(BigInt(wd.amount) > 0n && wd.usdcDelta === expected.toString() && wd.plusdAfter === "0" && wd.claimedOnChain === true, JSON.stringify(wd));
   }),
-  check("stellar.reconcile.tvl", "Dashboard TVL equals deposits requested minus withdrawals paid on chain", (r) => {
+  check("stellar.reconcile.tvl", "Dashboard TVL equals PLUSD supply on chain plus unclaimed deposits", (r) => {
     const t = need(r, "reconcile").tvl;
     return same("TVL", t.api, t.chain);
   }),

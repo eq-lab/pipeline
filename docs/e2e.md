@@ -99,7 +99,7 @@ npx tsx scripts/e2e/check.ts --tag <tag> [--json] [--optional <id>] [--require <
 | `stellar.lp.unstake` | PLUSD returned, shares burned |
 | `stellar.lp.withdrawal-too-early` | the unfunded claim fails with `TooEarly` (`Error(Contract, #2)`) |
 | `stellar.lp.withdrawal-claim` | USDC paid at the queue rate, PLUSD burned, the request claimed |
-| `stellar.reconcile.tvl` | `/v1/dashboard/summary` `tvl` against Σ deposit requests on chain less USDC paid by the queue |
+| `stellar.reconcile.tvl` | `/v1/dashboard/summary` `tvl` against PLUSD supply on chain (Horizon) plus unclaimed deposit requests, as the TVL ledger defines it |
 | `stellar.reconcile.plusd-supply` | PLUSD supply on chain (Horizon: holders and contracts) against the API TVL less unclaimed deposits; no API endpoint serves the supply (`plusd_outstanding` is `null` by design) |
 | `stellar.reconcile.positions` | `/v1/pnl` sPLUSD shares against the vault balance; `/v1/requests` statuses against the requests' `claimed` on chain |
 | `stellar.reconcile.withdrawal-queue` | `/v1/withdrawal-queue` `total_queued`, `total_claimed`, `rate` against the contract |
@@ -135,7 +135,7 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 7. **Repay** through the minter (`repay`, as Cash reporter): the outstanding principal and the interest accrued so far; the interest is minted to sPLUSD.
 8. **Close** (`close_loan`, `EarlyRepayment`) and the **loan book after close**.
 
-The stack grants the `trustee` `SECURITY_AGENT` (`register`, `perfect`) and the `risk-council` key `RISK_COUNCIL` (`set_terms`), so the journey signs the security registry calls with them. Play the journeys once per stack: the loan journey's wire in and interest mint PLUSD that a second LP reconcile (`stellar.reconcile.tvl`, `plusd-supply`) does not count, and its active loans are not in `stellar.reconcile.financial-position`'s `outstanding_total`.
+The stack grants the `trustee` `SECURITY_AGENT` (`register`, `perfect`) and the `risk-council` key `RISK_COUNCIL` (`set_terms`), so the journey signs the security registry calls with them. Play the journeys once per stack: the loan journey's active loans are not in a second LP reconcile's `stellar.reconcile.financial-position` `outstanding_total`.
 
 | Check | What it compares |
 |-------|------------------|
