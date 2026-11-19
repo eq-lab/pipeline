@@ -18,15 +18,17 @@ In scope:
 3. Trustee lib (`lib/dealToken.ts`): the chain gate moves from `stellarOnlyActionReason` to `loanActionChainReason`; EVM custom-error names map to the existing copy.
 4. `-RegisterDebtTokenAction.tsx` and `-useLoanDetail.ts`: chain-aware wallet, deal read and config.
 5. After a successful EVM registration both deal caches are invalidated, so the EVM Disburse card's "Register this loan's debt token first." clears without a reload.
-6. Docs: trustee-flows (Register debt token, EVM (#1574) table, Disburse EVM testnet caveat), TD-152, product specs, FRONTEND.md / `.env.example` consumer notes, a new user-stories doc, and the #1766 user-story update.
-7. Log the EVM indexer `DealRegistered` decoder mismatch as a known bug (see [Backend](#backend-what-is-served-and-indexed)).
+6. Docs: trustee-flows (Register debt token, EVM (#1574) table, Disburse EVM testnet caveat), TD-152, product specs (incl. audit-logging), backend.md § EVM DealTokenFactory, FRONTEND.md / `.env.example` consumer notes, a new user-stories doc, and the #1766 / #1485 user-story updates.
+7. **Backend (decided by the user 2026-11-19, the answer to the former Open Question 1):** fix the EVM worker so it indexes the DEBT-only `DealRegistered(uint256,address)` that the Hoodi factory and `150631a` emit. Today it decodes only the legacy `(uint256,address,address)` and drops everything else. The fix follows the #1788 structure for Stellar: per-log shape detection, `"cargo": null` for the DEBT-only shape, and the DEBT token tracked alone. See [Implementation step 6](#6-worker-accept-both-dealregistered-shapes-bug-39). The fix is logged as BUG-39 under "Resolved" in `known-bugs.md`.
 
 Out of scope:
 - Any contract change (contracts are frozen).
 - Chaining registration into Approve. It stays a separate, explicit signature, as on Stellar.
 - Calling `syncDebt`. Stellar does not call it from this action either.
 - Cancelling a scheduled registration (`AccessManager.cancel`). Stellar has no cancel either (TD-159).
-- The worker fix for the EVM `DealRegistered` decoder (Open Question 1, recommended as a separate backend issue).
+- Any database migration or change to the shared `contract_logs_repo` query. #1788 already made `DealRegistrationRow.cargo` an `Option` and dropped the `cargo IS NOT NULL` seed predicate, and `DealTokenRegistry::seed` already seeds DEBT alone for a `None` cargo.
+- Rewording the audit-log action "Deal tokens registered" for a single-token deal (#1788 kept it on Stellar too).
+- Removing the legacy `CargoSynced` parser. It stays for pre-#51 factories, as `parse_cargo_synced` does on Stellar.
 - A served debt address in the loan-book API. Neither chain serves one, and the row is an on-chain read on both.
 
 ### Stellar arm being mirrored (#1766, current code)
@@ -57,7 +59,8 @@ RPC `https://ethereum-hoodi-rpc.publicnode.com`, addresses from `pipeline-contra
 | Execute, role holder | `eth_call AccessManager.execute(factory, 0x19da0d36…00)` from `0x96ef…c04e4` passes the AccessManager and reaches the factory, which reverts `0xab6bb082` = `LoanRegistryNonExistentLoanId()` (no args): `registerDeal` first calls `loanRegistry.outstanding(loanId)`, and the registry holds no loans (`outstanding(0)` reverts the same) |
 | Execute, no role | the same call from `0x…dEaD` reverts `AccessManagerUnauthorizedCall(0x…dEaD, factory, 0x19da0d36)` (`0x81c6f24b`) |
 | Event | the implementation contains topic0 `0xc272178e…49156c42` = `DealRegistered(uint256 indexed loanId, address debt)` and **not** `0x32ae7784…2e5e530` = the legacy `DealRegistered(uint256,address,address)`; it also lacks `cargoAddress(uint256)` (`0x6748ba70`), `syncCargo(uint256)` (`0xcd7ca877`) and `collateralRegistry()` (`0xd330fadd`) |
-| History | factory logs from block 3 800 000 to head: only the four deploy/init logs (Upgraded, AuthorityUpdated, LoanRegistrySet, Initialized) in blocks 3 950 000–3 999 999; no `DealRegistered` yet |
+| Deploy block | **3 955 455**: tx `0x62a97a8f158a57709dd0fc6fc2db1ca367caec0c1482dc419bc6bbfa03839034` is the proxy's contract creation (`receipt.contractAddress` = the factory, `to` = null, status 1). Its four logs are `Upgraded(0x11995b…b508)`, `AuthorityUpdated`, `LoanRegistrySet` and `Initialized` |
+| History | `eth_getLogs` over the factory from block 3 800 000 (before the deploy) to head 4 046 167, in ≤ 50 000-block calls: only those four logs. There is no later `Upgraded`, so the implementation has not changed since deploy, and **no `DealRegistered` of either shape exists** |
 
 **Correction to the brief.** The Hoodi factory is **not** the `(debt, cargo)` build. Its bytecode has the DEBT-only interface, and `f92d719` and `150631a` have identical `src/dealTokenFactory/` (the cargo variant was removed in `a2e692f`, #51, before both). The `(debt, cargo)` shape belongs to the legacy *Stellar* factories (#1766 user story, "returns `Deal` as `{ cargo, debt }`") and to pre-#51 EVM factories. `readEvmDeal` decodes only the first word (`debt`), so it would read either shape correctly anyway.
 
@@ -65,25 +68,57 @@ RPC `https://ethereum-hoodi-rpc.publicnode.com`, addresses from `pipeline-contra
 
 - **Served debt address.** None. `GET /v1/loan-book` and the per-loan endpoints carry no debt-token field on either chain (`packages/api/src/routes/loan_book.rs`). The Stellar "Debt token" row is an on-chain `deal()` read, so the EVM row is `readEvmDeal`, the same approach.
 - **Indexer config.** `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (`worker/src/indexer/config.rs`, `mod.rs`) enables the EVM factory handler, and the unblock comment says it is set for 560048.
-- **Indexer bug (BUG-39, new).** The EVM decoder (`worker/src/indexer/deal_token_parsers.rs`) declares only the legacy `event DealRegistered(uint256 indexed loanId, address debt, address cargo)`. `decode_log(…, true)` checks topic0, so the DEBT-only event that the Hoodi factory and the frozen source emit is silently dropped. As a result:
+- **Indexer bug (BUG-39, fixed here).** The EVM decoder (`worker/src/indexer/deal_token_parsers.rs`) declares only the legacy `event DealRegistered(uint256 indexed loanId, address debt, address cargo)`. `decode_log(…, true)` checks topic0 (`0x32ae7784…`), so the DEBT-only event the Hoodi factory and the frozen source emit (topic0 `0xc272178e…`) is silently dropped. As a result:
   - `parse_deal_registered` returns `None`, so no `DealRegistered` row reaches `contract_logs` and the audit log (`api/src/routes/audit_log.rs` lists `DealRegistered`) never shows an EVM registration;
   - `DealTokenRegistry::observe` never learns the DEBT token, so its `Transfer` (mint / burn from `syncDebt`) is never indexed as `DealTokenTransfer`;
   - `DebtSynced` (unchanged signature) is still indexed.
-  The Stellar indexer already accepts both shapes (#1788). This bug predates #1892: it also hits a registration made out of band. The trustee UI does not depend on it, because registration state comes from `deal()` on chain on both arms. It is logged in `known-bugs.md` and raised as Open Question 1 rather than fixed here. It is a Rust worker change in a `frontend` issue, and AGENTS.md says to log, not fix, adjacent bugs.
+
+  The bug predates #1892; it would also hit a registration made out of band. The user decided (2026-11-19) to fix it in this PR so the EVM arm matches Stellar end to end.
+- **How #1788 fixed the same thing on Stellar (the structure to mirror).**
+  - **Parser:** accepts both shapes per event, with no per-address mode. The legacy shape gives `{loan_id, debt, cargo}`, the HEAD shape gives `{loan_id, debt, "cargo": null}` (D1: the key is kept and set to null), and a malformed `cargo` rejects the event (D2).
+  - **Token set:** `insert_deal(loan_id, debt, cargo: Option<…>)` tracks DEBT alone when there is no cargo (D5).
+  - **Seeding:** `seed` takes the optional cargo.
+  - **Already shared with EVM since #1788:** `DealRegistrationRow.cargo: Option<String>`, the seed query without the `cargo IS NOT NULL` predicate, and the EVM `DealTokenRegistry::seed` / private `insert_tokens` that seed DEBT alone for `None` (#1788 D4).
+  - **Audit log:** `pass(params, &["debt", "cargo"])` already renders `cargo: null`.
+
+  Only the EVM *decode* and *observe* paths are left. On EVM, alloy's topic0 check tells the two shapes apart, so the per-log choice is "try the DEBT-only event, then the legacy event". Their topic0s differ, so at most one can match. D2 has no EVM analogue: an ABI-decoded `address` is always well-formed.
+
+### Backfill decision (stage, chain 560048)
+
+**No cursor rewind is needed.** The factory was created at block 3 955 455, and `eth_getLogs` over the factory from 3 800 000 to head (4 046 167) holds only the four deploy/init logs. No `DealRegistered` of either shape has ever been emitted, so the current worker has dropped nothing. The worker's `CHAIN_560048_EVM_START_BLOCK` is 3 808 700, before the deploy, so the factory has been in range since it was created.
+
+**Ordering rule for the rollout.**
+- Deploy the new worker image before the first EVM `registerDeal` on Hoodi, whether from the app or out of band.
+- If a registration lands while the old image runs, rewind the shared cursor to the registration block: `UPDATE log_collector_state SET last_indexed_block = <block − 1> WHERE chain_id = 560048`, with the worker stopped. Replays skip stored rows on the unique key, and the `DealRegistered` row then seeds the DEBT token on the next start.
+- The coder re-runs the scan (`cast logs --address 0xCf54…eCDC --from-block 3955455 --to-block latest` in ≤ 50 000-block chunks, topic0 `0xc272178e…` or `0x32ae7784…`) just before merge and records the result in the PR.
 
 ## Assumptions and Risks
 
 - **No live end-to-end test on Hoodi before merge.** The registry holds no loans, so only the eth_call checks above were possible. The first real registration needs an EVM loan drawn from Origination (#1573). Mitigation: unit tests pin the calldata to the bytes verified on Hoodi (`0x19da0d36` + uint256), and the user story covers the live run.
 - **The schedule path is untestable on Hoodi** (role delay 0). It is implemented to mirror Stellar and is covered by unit tests only. `AccessManager.schedule(target, data, 0)` and `getSchedule(hashOperation(caller, target, data))` are the same bindings the Risk Council EVM arm (#1942/#1943) already uses.
 - **Shared-key regression.** `useDeal` and `useEvmDeal` must keep separate keys (`deal-token` / `evm-deal-token`): a shared key let a disabled observer overwrite the query function (#1574 review). The new `useLoanDeal` only calls both hooks and picks a result; it never merges keys. A test asserts that an EVM registration refetches `readEvmDeal` and never calls `readDeal`.
-- **Indexer lag.** Like Stellar, the UI re-reads `deal()` on chain after success, so the row and banner update immediately. The audit-log entry will not appear on EVM until BUG-39 is fixed (documented as a difference).
+- **Indexer lag.** Like Stellar, the UI re-reads `deal()` on chain after success, so the row and banner update immediately. The audit-log "Deal tokens registered" row appears once the worker indexes the block (with the BUG-39 fix in this PR).
+- **Mixed PR (frontend + worker).** The issue is labelled `frontend`, but the PR now also changes the Rust worker. The manager may want to add the `backend` label and route the PR through human review (Flow A rules), since only the label owner can decide that. The worker change is small, has no migration and no new env keys, and its tests are pure.
+- **Worker rollout safety (mirrors #1788's checklist).**
+  - Migrations: none.
+  - New env keys: none.
+  - RPC reads added: none (decoding is pure).
+  - Rollback: the old image keeps booting. It ignores DEBT-only events, exactly as today. A DEBT-only row written by the new image is already accepted by the old seed (#1788 shared code), so the old image still tracks the DEBT token after a rollback.
+  - API: no change. `details.cargo` on EVM `DealRegistered` can now be `null`, which Stellar rows already are.
+  - Legacy EVM rows: the behaviour is unchanged (both tokens seeded and observed; pinned by the existing tests).
+  - Post-deploy check: the startup line `deal-token registry seeded` (`deals`) for 560048 must stay `0` until the first registration, then rise.
+- **Gap between merge and worker deploy.** A registration in that window is dropped by the old worker. The ordering rule in [Backfill decision](#backfill-decision-stage-chain-560048) covers it.
 - **RPC read-after-write.** The publicnode RPC is load-balanced, so an immediate `deal()` re-read can hit a node that is one block behind. The 5 s re-invalidation (same as Stellar) covers it.
 - **Copy says "Trustee role"** while the EVM role is `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`. This follows the #1574 precedent (Disburse row 24: copy unchanged). Both Hoodi trustee wallets hold the role.
 - **Dependency:** none open. #1942, #1573 and #1574 are merged, and `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` is set on stage (eq-lab/argocd#517, per the unblock comment).
 
 ## Open Questions
 
-1. **EVM indexer drops the DEBT-only `DealRegistered` (BUG-39).** Should the worker fix (accept both `DealRegistered(uint256,address)` and the legacy `(uint256,address,address)` per log, `cargo` → JSON `null`, as #1788 did for Stellar; tests in `packages/worker/tests/deal_token_parsers.rs` and `deal_token_registry.rs`, no DB) be folded into this PR so the EVM audit log shows registrations like Stellar does? **Recommended default:** no. Keep #1892 frontend-only, log BUG-39 in `known-bugs.md`, and have the manager open a separate `backend` sub-issue (Flow A, human plan review). The UI does not depend on the indexer, and the bug predates this issue.
+_None_
+
+### Resolved questions
+
+- **Q1 (2026-11-19, the user, via the manager):** should the EVM worker fix for the DEBT-only `DealRegistered` (BUG-39) be in this PR? **Yes.** It is in scope (Implementation step 6), not a separate issue.
 
 ## Implementation Steps
 
@@ -154,13 +189,37 @@ RPC `https://ethereum-hoodi-rpc.publicnode.com`, addresses from `pipeline-contra
 
 1. Replace `useDeal(chainId, …)` with `useLoanDeal(chainId, …)` in `useLoanDetail`. `buildRegistryState` is unchanged: the "Debt token" row shows `debtTokenRegistered(deal).debt ?? "—"`, which is now the EVM address on the configured EVM chain. On another chain both reads are disabled, so the row shows "—".
 
-### 6. Lint and comments
+### 6. Worker: accept both `DealRegistered` shapes (BUG-39)
 
-- Run `npx tsx scripts/lint-comments.ts` and `npx tsx scripts/lint-docs.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file it lists. No new comments beyond the single spec-pointer header per file.
+Follow #1788 (`docs/exec-plans/completed/issue-1788-stellar-debt-only-deal-registered.md`); EVM differs only where decoding differs.
+
+1. `packages/worker/src/indexer/deal_token_parsers.rs`
+   - Keep the legacy module and rename it for clarity: `mod deal_token_factory_legacy { sol! { event DealRegistered(uint256 indexed loanId, address debt, address cargo); event CargoSynced(…); } }`.
+   - Add `mod deal_token_factory { sol! { event DealRegistered(uint256 indexed loanId, address debt); event DebtSynced(…); } }` (the `150631a` / Hoodi interface). The two `DealRegistered` must live in separate modules because `sol!` names collide.
+   - `pub fn decode_deal_registered(log: &Log) -> Option<(U256, Address, Option<Address>)>`:
+     - try `deal_token_factory::DealRegistered::decode_log(log.as_ref(), true)` → `(loanId, debt, None)`;
+     - otherwise try the legacy event → `(loanId, debt, Some(cargo))`;
+     - otherwise `None`.
+     Both calls validate topic0, so the choice is per log, with no per-address mode (#1788 F2: an in-place upgrade or a redeploy needs no switch).
+   - `parse_deal_registered` emits `json!({ "loan_id": …, "debt": debt.to_checksum(None), "cargo": cargo.map(|c| c.to_checksum(None)) })`, so the key set is always `loan_id, debt, cargo`, and `cargo` is JSON `null` for the DEBT-only shape (#1788 D1).
+   - `parse_debt_synced`, `parse_cargo_synced`, `Transfer` and `parse_deal_token_transfer` are unchanged.
+   - The spec header stays `docs/references/backend.md#evm-dealtokenfactory-1485`.
+2. `packages/worker/src/indexer/deal_tokens.rs`
+   - `pub fn insert_deal(&self, loan_id: &str, debt: Address, cargo: Option<Address>) -> Vec<Address>` delegates to the existing private `insert_tokens` with DEBT plus the optional CARGO. This mirrors Stellar's `insert_deal(…, cargo: Option<&str>)` (#1788 D5); the only callers are `observe` and the tests.
+   - `observe`: `Some((loan_id, debt, cargo)) => self.insert_deal(&loan_id.to_string(), debt, cargo)`.
+   - `seed` is unchanged; it already handles `row.cargo == None` (#1788 D4).
+   - The excluded-PLUSD guard and the idempotency are unchanged.
+3. Leave `packages/worker/src/indexer/evm_parsers.rs` (`register_deal_token_handlers`) as it is: it already routes every factory log through `parse_deal_registered` → `parse_debt_synced` → `parse_cargo_synced`, and the token handler's `lookup` picks up a DEBT-only token once `observe` adds it, in the same chunk (two-phase fetch). Verify that no other caller of `decode_deal_registered` / `insert_deal` exists (today: `deal_tokens.rs`, `worker/tests/deal_token_parsers.rs`, `deal_token_registry.rs`, `evm_dynamic_poll.rs`).
+4. `packages/shared` and `packages/api`: no code change. `list_deal_registrations` already returns `cargo` as `NULL`, and `audit_log.rs` `pass()` already gives `cargo: null`. Update the `AuditLogItem.details` doc line in `audit_log.rs:199` from "(Stellar, from contracts #38)" to "(Stellar from contracts #38; EVM from contracts #51)". This is a doc string only; check that the generated OpenAPI snapshot, if any, still passes.
+5. Run `cargo clippy --all -- -D warnings` and `cargo test -p pipeline-worker --test deal_token_parsers --test deal_token_registry --test evm_dynamic_poll` (+ `-p pipeline-api --test dashboard_auditlog_chain` if it is touched). Note known-bugs BUG-22 (an unknown-lint failure on older toolchains): if clippy fails only on that, record it in the PR and do not fix it here.
+
+### 7. Lint and comments
+
+- Run `npx tsx scripts/lint-comments.ts` and `npx tsx scripts/lint-docs.ts`; shrink `scripts/lint-comments.baseline.json` for any touched file it lists. No new comments beyond the single spec-pointer header per file (Rust included).
 
 ## Test Strategy
 
-Vitest only. There is no Rust change, so no Rust tests (if Open Question 1 is overridden, the worker tests go in `packages/worker/tests/`, pure decoding, no Postgres, no env DB URL). Commands, from the worktree:
+TypeScript: vitest. Rust: pure unit tests only, in `packages/worker/tests/<topic>.rs` (never inline `#[cfg(test)]` in `src/`). No test reads `DATABASE_URL`, `POSTGRES_URL` or any env var, and none reaches Postgres. Commands, from the worktree:
 
 ```bash
 export PATH=/opt/homebrew/opt/node@22/bin:$PATH
@@ -172,7 +231,28 @@ node .yarn/releases/yarn-4.13.0.cjs workspace @pipeline/trustee build      # tsc
 node .yarn/releases/yarn-4.13.0.cjs workspace @pipeline/trustee lint
 node .yarn/releases/yarn-4.13.0.cjs workspace @pipeline/wallet-connect lint
 npx tsx scripts/lint-docs.ts && npx tsx scripts/lint-comments.ts
+cargo test -p pipeline-worker --test deal_token_parsers --test deal_token_registry --test evm_dynamic_poll
+cargo clippy --all -- -D warnings
 ```
+
+Worker (Rust, pure):
+- `packages/worker/tests/deal_token_support/mod.rs`:
+  - add a nested `mod head { sol! { event DealRegistered(uint256 indexed loanId, address debt); } }`, plus a helper `deal_registered_debt_only(loan, debt, block, idx) -> Log` emitted by `FACTORY`;
+  - keep `deal_registered(…, cargo, …)` for the legacy shape.
+- `packages/worker/tests/deal_token_parsers.rs`:
+  - `deal_registered_debt_only_params`: keys are `cargo, debt, loan_id`, `cargo` is `Value::Null`, `debt` is checksummed, `loan_id` is a decimal string (a value above `u64::MAX` too), and `decode_deal_registered` gives `Some((loan, DEBT, None))`.
+  - `deal_registered_debt_only_topic_is_hoodi_topic`: the helper's topic0 is `0xc272178e5556e8231a7c82e997e13098dca27aa84ecc3c032872356d49156c42` and the legacy helper's is `0x32ae778469dceb9ab8e5aae14ba7b896fd508033a5cb741979a381ca5d21e530`. This pins both against the Hoodi bytecode.
+  - The existing `deal_registered_params` (legacy) now asserts `Some((loan, DEBT, Some(CARGO)))`.
+  - `parsers_reject_foreign_events` adds: a DEBT-only log is not parsed by `parse_debt_synced` / `parse_cargo_synced`, and a log with the DEBT-only topic0 but truncated data gives `None` from both `decode_deal_registered` and `parse_deal_registered` (no panic).
+- `packages/worker/tests/deal_token_registry.rs`:
+  - `observe_debt_only_registers_debt`: returns `[DEBT]` with kind `Debt` and loan id, does not insert `CARGO`, is idempotent on a second observe, and `addresses().len() == 1`;
+  - `observe_ignores_non_factory_emitter` also covers the DEBT-only shape;
+  - `observe_excludes_plusd_debt_only`: with `.excluding(Some(DEBT))`, the DEBT-only observe adds nothing;
+  - the legacy observe test is unchanged.
+- `packages/worker/tests/evm_dynamic_poll.rs`:
+  - change the three `insert_deal(…, CARGO)` calls to `Some(CARGO)`;
+  - add `same_chunk_discovery_debt_only`: a DEBT-only `DealRegistered` and a DEBT `Transfer` in the same chunk lead to a second fetch for `[DEBT]` only, and the transfer is decoded (the `FakeFetcher` pattern of `same_chunk_discovery_triggers_second_fetch`).
+- `packages/api/tests/dashboard_auditlog_chain.rs` (optional; extend the pure `act` / `format_action` test `deal_token_factory_events_render_on_both_arms`, which does not use the pool): `ChainKind::Evm` with `{"loan_id":"7","debt":"0xD","cargo":null}` gives "Deal tokens registered" and details `{"debt":"0xD","cargo":null}`.
 
 `packages/wallet-connect/src/evm/contracts/dealTokenFactory.test.ts` (extend; it mocks `./write`, so add `sendEvmContractCallChecked` to the mock):
 - `evmRegisterDealSelector()` is `0x19da0d36`.
@@ -221,6 +301,7 @@ Live check (after merge, from the user story, not a gate):
 - register from the banner;
 - confirm `deal(id)` returns the CREATE2 address equal to `debtAddress(id)`;
 - confirm the Disburse card moves past "Register this loan's debt token first.".
+- once indexed, confirm the Audit Log shows "Deal tokens registered" (`cargo` null), and after a Disburse confirm a `DealTokenTransfer` mint row for the DEBT token in `contract_logs`.
 
 ## Docs to Update
 
@@ -229,7 +310,7 @@ Live check (after merge, from the user story, not a gate):
     - drop "Stellar only; … #1892";
     - add an **EVM (#1892)** sub-block: the call, role, selector, access read, schedule path, error-name mapping, config, Hoodi check (the table above, condensed) and "no trustline / no issuer step";
     - "After success" adds `evm-deal-token`;
-    - state that the EVM worker does not index the DEBT-only `DealRegistered` yet (BUG-39).
+    - the "After success" line keeps "the worker already indexes `DealRegistered`", now true on both chains (EVM since #1892, BUG-39).
   - § Wired actions, Chain gate: "Only Register debt token stays Stellar-only (#1892)" becomes "Register debt token uses the same gate (#1892)".
   - § Disburse EVM (#1574): step 4 and the testnet caveat now point at Register debt token instead of "out of band"; `useDeal` / `useEvmDeal` are used by the Debt token row too (via `useLoanDeal`).
   - § EVM (#1574): row 28 ("used only by Disburse") becomes "used by Disburse, Register debt token and the Debt token row"; drop `registerDeal (#1892)` from "Not in the app".
@@ -239,7 +320,22 @@ Live check (after merge, from the user story, not a gate):
   - Register debt token is resolved by #1892;
   - what remains is the cash reporter bookings (`record_wire_in` #1501, `record_income`);
   - update the status line and title tag (`PARTIALLY RESOLVED … / #1892`).
-- `docs/exec-plans/known-bugs.md`: add **BUG-39**: the EVM indexer decodes only the legacy `DealRegistered(uint256,address,address)`, and Hoodi and `150631a` emit `DealRegistered(uint256,address)`. Include the location (`packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`), the symptom (no `DealRegistered` row and no audit-log entry for EVM registrations, DEBT `Transfer`s not tracked), the root cause (`decode_log` validates topic0), the workaround (none; the UI reads `deal()` on chain), and the fix sketch (#1788 pattern). Also note that `docs/references/backend.md` § EVM DealTokenFactory (#1485) still describes "a DEBT and a CARGO DealToken per loan".
+- `docs/exec-plans/known-bugs.md`: add **BUG-39** directly under `## Resolved`, titled `[FIXED 2026-11-19 / #1892]`. This follows the repo convention, e.g. BUG-38 found while planning #1922 and fixed by #1927. Fields:
+  - **Date:** 2026-11-19.
+  - **Tracked:** #1892; found while planning #1892.
+  - **Location:** `packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`.
+  - **Symptom:** an EVM `registerDeal` leaves no `DealRegistered` row and no audit-log entry, and the DEBT token's `Transfer`s are not indexed.
+  - **Root cause:** the decoder declares only the legacy `DealRegistered(uint256,address,address)`, `decode_log` validates topic0, and Hoodi / `150631a` emit `DealRegistered(uint256,address)`.
+  - **Workaround:** none needed for the UI (it reads `deal()` on chain).
+  - **Resolved:** #1892 accepts both shapes per log (`cargo: null` for DEBT-only) and tracks the DEBT token alone. No Hoodi registration existed before the fix (scan 3 955 455 to head), so nothing needs a backfill.
+- `docs/references/backend.md` § EVM DealTokenFactory (#1485):
+  - "mints a DEBT and a CARGO `DealToken` per loan" becomes: a DEBT `DealToken` per loan (current factories, contracts #51 and later, including Hoodi v5), plus a CARGO token on legacy factories only;
+  - the `DealRegistered` row of the table becomes `loan_id`, `debt`, `cargo` (JSON `null` for a DEBT-only `DealRegistered(uint256 indexed loanId, address debt)`);
+  - add the sentence "Both shapes (legacy `(uint256,address,address)` and current `(uint256,address)`) are accepted per log from the same factory address, told apart by topic0; a DEBT-only deal tracks its DEBT token only (#1892)", mirroring the Stellar paragraph;
+  - mark `CargoSynced` "legacy factories only";
+  - fix "a row without `cargo` seeds DEBT only, which never happens on EVM" in § Runtime address discovery: it now happens for every current-factory deal.
+- `docs/product-specs/audit-logging.md` line 73: `details.cargo` is `null` for Stellar deals registered after contracts #38 **and EVM deals on factories from contracts #51 (Hoodi v5)**.
+- `docs/user-stories/epic-1478/1485-evm-deal-token-factory-events.md` Story 1: note that a current factory emits `DealRegistered` with `debt` only, so `params.cargo` is `null` and only the DEBT token is tracked (#1892).
 - `docs/product-specs/loans.md` line 57: drop "EVM is #1892"; on both chains the Trustee registers the token after the draw (Stellar `register_deal`, EVM `registerDeal` through `AccessManager.execute`).
 - `docs/product-specs/loans-data.md` § security considerations (line 194): add the EVM `PipelineDealTokenFactory` bullet:
   - `registerDeal(uint256) restricted` on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, not called by `drawLoan`;
@@ -260,7 +356,7 @@ Live check (after merge, from the user story, not a gate):
   6. Contract errors (already registered, unknown loan id; no signature requested; "View details" holds the decoded name).
   7. An unconfigured EVM environment or another EVM chain (not-configured copy / Stellar-only copy, no button).
   8. No trustline or issuer step on EVM.
-  Also list the BUG-39 caveat: the audit log shows no `DealRegistered` on EVM yet.
+  Story 9 (backend): after the worker indexes the registration block, the Audit Log shows "Deal tokens registered" for the EVM loan with `debt` = the `deal()` address and `cargo` = null, and the first `syncDebt` mint (Disburse) appears as a `DealTokenTransfer` row in `contract_logs` (not in the audit log; `DealTokenTransfer` is excluded there).
 - `docs/user-stories/epic-1795/1766-register-debt-token.md` Story 6: an EVM loan on the configured chain is now covered by #1892; the blocked case is a loan on a non-configured chain. Update the overview line "Stellar only; EVM `registerDeal` is #1892".
 - `docs/user-stories/index.md`: add the #1892 row under "Epic #1795".
 
@@ -287,4 +383,4 @@ Everything not listed is identical (component, test ids, labels, notes, `accessA
 | 15 | Config | `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` | `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS`; same not-configured copy | Per-chain env |
 | 16 | Invalidation | `deal-token`, `register-deal-access`, `audit-log` (now and at 5 s) | the same list plus `evm-deal-token` (both arms invalidate all four) | Refreshes the EVM row and the Disburse card's `useEvmDeal` |
 | 17 | Access key | `["register-deal-access", address, loanId]` | `["register-deal-access", chainId, address, loanId]` (both arms) | A wallet address can't collide across chains, but the chain id makes the key explicit; prefix invalidation is unchanged |
-| 18 | Indexed event | `deal_registered` indexed (both shapes, #1788); audit log shows it | `DealRegistered(uint256 indexed loanId, address debt)` (topic0 `0xc272178e…`) is **not** indexed yet (BUG-39); the UI does not depend on it | Pre-existing worker decoder mismatch; Open Question 1 |
+| 18 | Indexed event | `deal_registered` `Map{debt}` or legacy `Map{cargo, debt}`, told apart per event by the map keys (#1788) | `DealRegistered(uint256 indexed loanId, address debt)` (topic0 `0xc272178e…`) or legacy `(…, address cargo)` (`0x32ae7784…`), told apart per log by topic0 (#1892, BUG-39). The same `contract_logs` row (`cargo: null` for DEBT-only), the same audit-log "Deal tokens registered", and DEBT-only token tracking | Solidity events are keyed by signature hash, Soroban events by map keys; the outcome is identical |
