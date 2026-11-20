@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-197.**
+**Next free number: TD-198.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,14 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-197: Audit-log rate fields and pre-rework registry snapshots still carry floored bps
+
+- **Date:** 2026-11-20
+- **Location:** `packages/api/src/routes/audit_log.rs` (`new_rate_bps`, `economics_rate_pct` through `economics_rate_to_bps`), `packages/shared/src/loan_snapshot.rs` (`genesis_rate_ppm` / `current_rate_ppm` fallback) — Issue #2126.
+- **Gap:** `EconomicsAmended` / `LoanRolledOver` audit rows still floor the ppm `new_rate` to whole bps and a 2-dp percent. Snapshot rows from earlier (pre-rework) LoanRegistry addresses are not backfilled with the ppm keys and keep the `bps × 100` fallback.
+- **Impact:** Display only: no consumer reads the audit fields, and the API is scoped to the current registry (#1538). A fractional rate shows rounded down in the audit log.
+- **Suggested fix:** Emit `new_rate` unfloored in the audit log when a consumer needs it; backfill old-registry rows only if they are ever served again.
 
 ### TD-196: Fee targets above the contract fee cap are never caught up
 

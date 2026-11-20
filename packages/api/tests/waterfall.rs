@@ -74,6 +74,7 @@ fn snapshot_with_repayment(
         // ceiling itself.
         original_offtaker_price: dec("100000000"),
         senior_interest_rate_bps: rate_bps,
+        senior_interest_rate_ppm: None,
         origination_date: ORIGINATION,
         original_maturity_date: ONE_YEAR_LATER,
         next_economics_epochs_id: dec("1"),
@@ -81,6 +82,7 @@ fn snapshot_with_repayment(
         status: "Performing".to_owned(),
         current_maturity_timestamp: ONE_YEAR_LATER,
         current_rate: rate_bps,
+        current_rate_ppm: None,
         closure_reason: String::new(),
         carved_out: false,
         disbursed: dec(senior_tranche),

@@ -8,6 +8,8 @@ Epic: #2129 (Math correctness). Branch `fix/2126-full-precision-rates`.
 
 **Decision (human, 2026-11-19):** carry the full 1e6 rate (ppm, `ONE = 1_000_000`) end to end. Do not floor it to whole bps. Accrual and the waterfall must match each contract's accrual exactly.
 
+**Decision (human, 2026-11-20):** no `epoch.current_apy_ppm` field. The financials endpoint and the Trustee coupon estimate stay on the floored bps; there is no frontend change.
+
 **Contract accrual (frozen, read from the sibling repos):**
 
 - EVM `pipeline-contracts/src/loanRegistry/LoanRegistryUpgradeable.sol:17-18,652-654`: `_epochInterest = (block.timestamp − effectiveFrom) × seniorInterestRate × principal / (YEAR × ONE)`, with `YEAR = 31_557_600` and `ONE = 1_000_000`. Integer division, so each epoch is floored. `_appendEconomicsEpoch` adds the floored value to `accruedInterest`. `_accruedInterest` returns the floored cumulative value plus the floored open epoch, minus recorded interest and fees, plus `interestAdjustment`, clamped at 0, and 0 when Closed.
@@ -25,9 +27,9 @@ Epic: #2129 (Math correctness). Branch `fix/2126-full-precision-rates`.
 7. **API.**
    - `GET /v1/loan-book`: per-loan `rate`, `avg_yield`, and through it the dashboard `loan_book_yield` / `current_apy_net_to_splusd`. Same fields and the same 6-decimal fraction strings, which now hold the exact ppm (6 dp fraction = 1 ppm).
    - `/v1/stats/yield` (`portfolio.rs`): `apy` and `accrued` use ppm.
-   - `GET /v1/loan-book/{id}/financials` `epoch.current_apy_bps`: kept, still an integer, now `ppm / 100` floored. One **additive** field `epoch.current_apy_ppm` is added (see Open Questions). There are no new routes.
+   - `GET /v1/loan-book/{id}/financials` `epoch.current_apy_bps`: kept, still an integer, now `ppm / 100` floored. No new field and no new routes.
 8. **Frontends.**
-   - Trustee "Scheduled coupon" (`packages/trustee/src/routes/-record-coupon.ts`) and the epoch labels (`-useLoanDetail.ts`) read `current_apy_ppm`.
+   - The Trustee "Scheduled coupon" and the epoch labels keep reading the floored `current_apy_bps` (no `current_apy_ppm` field, decision 2026-11-20).
    - LP and Trustee views that format the `rate` / `avg_yield` strings need no code change. They already parse decimal fractions, and `formatBpsRate` accepts fractional bps.
    - The reterm card already formats the on-chain ppm (`chain.currentRate / 100`).
 
@@ -57,7 +59,7 @@ Epic: #2129 (Math correctness). Branch `fix/2126-full-precision-rates`.
 
 ## Open Questions
 
-1. **Additive field `epoch.current_apy_ppm` on `GET /v1/loan-book/{id}/financials`.** The plan adds it so the Trustee "Scheduled coupon" uses the exact rate. The alternative is no API change: the coupon estimate stays on the floored `current_apy_bps`, a drift of at most 0.01 percentage points on a client-side estimate that already uses `/365`. Planned default: add the field. Say "no" to drop steps 9 and 13.
+None. The `epoch.current_apy_ppm` question was answered "no" on 2026-11-20 (steps 9 and 13 dropped).
 
 ## Implementation Steps
 
@@ -99,14 +101,14 @@ Rebase `fix/2126-full-precision-rates` onto `main` once #2123, #2124 and #1547 h
 
 6. **Backfill: repo queries** (`packages/shared/src/contract_logs_repo.rs`, in `ContractLogsRepo`)
    - `list_loans_missing_rate_ppm(chain_id, contract_address) -> Vec<BigDecimal>`: distinct `params->>'loan_id'` over rows with `event_name = ANY(LOAN_LIFECYCLE_EVENT_NAMES)`, `params ? 'snapshot'` and `NOT (params->'snapshot' ? 'senior_interest_rate_ppm')`.
-   - `list_rate_backfill_rows(chain_id, contract_address, loan_id) -> Vec<RateBackfillRow>`. Each row carries `id`, `event_name`, `params->'event'->>'new_rate'` (via `json_i64`, matching `EconomicsEventRow::from_event_json`), and `snapshot->>'senior_interest_rate_bps'`. Same filter, ordered by `(block_number, log_index)`.
+   - `list_rate_backfill_rows(chain_id, contract_address, loan_id) -> Vec<RateBackfillRow>`. Each row carries `id`, `event_name`, `params->'event'->'new_rate'` (via `json_i64`, matching `EconomicsEventRow::from_event_json`), `snapshot->'senior_interest_rate_bps'` and `has_ppm`. All lifecycle rows of the loan, ordered by `(block_number, log_index)`, so a rate event that already carries ppm still advances the rate.
    - `set_snapshot_rate_ppm(tx, id, genesis_ppm, current_ppm)`: `UPDATE contract_logs SET params = jsonb_set(jsonb_set(params, '{snapshot,senior_interest_rate_ppm}', to_jsonb($2::bigint)), '{snapshot,current_rate_ppm}', to_jsonb($3::bigint)) WHERE id = $1`. The only precedent for updating `contract_logs` is `kyc_repo.rs:865`.
    - `RateBackfillRow` is a plain struct in the same file.
 
 7. **Backfill: worker module** (new `packages/worker/src/indexer/rate_ppm_backfill.rs`, `pub mod` in `indexer/mod.rs`)
    - Pure function `pub fn plan_rate_ppm_backfill(genesis_ppm: u32, rows: &[RateBackfillRow]) -> Result<Vec<(i64, u32)>, String>`:
      - `Err` when any row's stored `senior_interest_rate_bps != genesis_ppm / 100` (the guard).
-     - Otherwise walk the rows in order. `cur = genesis_ppm`; a rate-event row (`LoanRolledOver` / `EconomicsAmended` with `new_rate`) sets `cur = new_rate` **before** its own row is emitted, because its snapshot is read after `_setTerms`. Emit `(id, cur)` for each row.
+     - Otherwise walk the rows in order. `cur = genesis_ppm`; a rate-event row (`LoanRolledOver` / `EconomicsAmended` with `new_rate`) sets `cur = new_rate` **before** its own row is emitted, because its snapshot is read after `_setTerms`. Emit `(id, cur)` for each row that lacks ppm. A rate event with no parseable `new_rate` keeps the previous rate.
    - Async `pub async fn run_rate_ppm_backfill<A: LoanAddress, Id: LoanId>(chain_id, contract: &A, repo: &ContractLogsRepo, pool: &PgPool, resolver: &dyn ImmutableDataResolver<A, Id>)`:
      1. List the loans.
      2. For each loan: `Id::from_bigdecimal`, then `resolver.immutable_loan_data`.
@@ -114,7 +116,7 @@ Rebase `fix/2126-full-precision-rates` onto `main` once #2123, #2124 and #1547 h
      4. Write all of the loan's rows in one transaction.
      5. Log `info` with the counts per chain. Per-loan failures are `warn` and skipped, never fatal.
    - Wire it in two places:
-     - EVM `run_indexer_job` (`indexer/mod.rs`), after the `reader` is built and before `index_loop`. Await it inline with `loan_registry_address` and the existing `immutable_resolver`.
+     - EVM `run_indexer_job` (`indexer/mod.rs`), right after the resolvers are built (before the Arcs move into the parser builder, so before the poller and the `loan-registry-settings` task start). Await it inline with `loan_registry_address` and `immutable_resolver`.
      - Stellar `run_stellar_indexer_job` (`stellar/poller.rs`), inside the `loan_registry_id` branch after `reader` is built, with `StellarAddress(lr_id.clone())`.
 
 8. **API consumers**
@@ -134,23 +136,18 @@ Rebase `fix/2126-full-precision-rates` onto `main` once #2123, #2124 and #1547 h
      - The `rate` / `avg_yield` field docs stay accurate as written.
    - `packages/api/src/routes/loan_financials.rs`:
      - `current_epoch` passes `s.genesis_rate_ppm()` to `build_epochs`.
-     - `EpochView` keeps `current_apy_bps: ppm_to_bps_floor(current.rate_ppm)` and adds `current_apy_ppm: u32` (Open Question 1). Its schema is in the existing `OpenApi` derive.
+     - `EpochView` keeps `current_apy_bps: ppm_to_bps_floor(current.rate_ppm)`; no new field.
    - `packages/api/src/routes/audit_log.rs`: unchanged (out of scope).
 
-9. **Trustee frontend** (only if Open Question 1 stays "add")
-   - `packages/trustee/src/api/useLoanFinancials.ts`: add `current_apy_ppm: number` to the epoch type.
-   - `packages/trustee/src/routes/-record-coupon.ts`: compute `apyBps = epoch.current_apy_ppm / 100`, which is fractional bps, so `computeScheduledCoupon` and `formatBpsRate` keep their signatures.
-   - `packages/trustee/src/routes/-useLoanDetail.ts` (:309 and :366): use `current_apy_ppm / 100`.
-   - Update the typed fixtures in `-useLoanFinancials.test.tsx`, `-record-repayment-page.test.tsx`, `-record-repayment.test.ts`, `-useLoanDetail.test.ts`, `-record-coupon-page.test.tsx` and `-record-coupon.test.ts`.
+9. **Dropped** (Trustee frontend; no `current_apy_ppm` field).
 
-10. **Fixtures.** Add `senior_interest_rate_ppm: None, current_rate_ppm: None` to every `LoanSnapshot` literal. Run `grep -rln "senior_interest_rate_bps:" packages --include='*.rs'`; it lists 22 files.
+10. **Fixtures.** Add `senior_interest_rate_ppm: None, current_rate_ppm: None` to every `LoanSnapshot` literal. Run `grep -rln "senior_interest_rate_bps:" packages --include='*.rs'`; it lists 25 files after the rebase.
 
 11. **Lint and build**
-    - `cargo clippy --all -- -D warnings`
+    - `cargo clippy --workspace --all-targets -- -D warnings`
+    - `cargo fmt --all`
     - `cargo test -p shared -p pipeline-api -p pipeline_worker` (or the workspace names)
-    - `yarn workspace trustee test` / typecheck
     - `npx tsx scripts/lint-docs.ts`
-    - `npx tsx scripts/lint-comments.ts`; shrink the baseline if a touched file is listed.
 
 ## Test Strategy
 
@@ -167,7 +164,7 @@ All tests are pure unit tests in `packages/<pkg>/tests/`, with no DB and no env 
   - `current_rate_ppm` fallback chain: `Some` ppm, then legacy `current_rate` bps ×100, then genesis.
   - Keep the `economics_rate_to_bps` assertions; the function still exists.
 - **`packages/api/tests/loan_book.rs`.** A loan with `current_rate_ppm: Some(72_550)` serves `rate == "0.072550"`. `avg_yield` weights in ppm, e.g. two loans 72,550 and 100,000 with equal outstanding give `"0.086275"`.
-- **`packages/api/tests/loan_financials.rs`.** Genesis `Some(72_550)` with no events gives `current_apy_bps == 725` and `current_apy_ppm == 72_550`. An `EconomicsAmended` with `new_rate` 112,550 gives `1125` / `112_550`.
+- **`packages/api/tests/loan_financials.rs`.** Genesis `Some(72_550)` with no events gives `current_apy_bps == 725`. An `EconomicsAmended` with `new_rate` 112,599 gives `1125`.
 - **`packages/api/tests/portfolio_compute.rs` / `yield_apy_semantics.rs`.** Existing whole-bps expectations stay unchanged once the fixtures carry `None`. Add one fractional-rate `accrued` case.
 - **`packages/shared/tests/loan_economics.rs`.** `build_epochs` keeps the raw ppm (`240_000` → `rate_ppm == 240_000`).
 - **`packages/shared/tests/loan_snapshot.rs`.** An old JSON row without the ppm keys deserializes to `None`. A round trip keeps `Some`. Test both accessors.
@@ -182,7 +179,6 @@ All tests are pure unit tests in `packages/<pkg>/tests/`, with no DB and no env 
   - A rollover then an amendment.
   - A guard mismatch (stored bps ≠ genesis/100) returns `Err`.
   - Rows with an unparseable `new_rate` keep the previous rate.
-- **Trustee (vitest).** `-record-coupon.test.ts`: the scheduled coupon with `current_apy_ppm: 72_550` uses 7.255%. `-useLoanDetail.test.ts`: the label is formatted from ppm.
 - **Manual check** (no DB in tests).
   - On a local or dev stack after deploy, confirm the worker logs the backfill counts per chain.
   - `SELECT count(*) FROM contract_logs WHERE params ? 'snapshot' AND NOT (params->'snapshot' ? 'senior_interest_rate_ppm')` drops to the pre-rework rows only.
@@ -200,13 +196,11 @@ All tests are pure unit tests in `packages/<pkg>/tests/`, with no DB and no env 
   - The snapshot fields `senior_interest_rate_ppm` / `current_rate_ppm`, with the legacy bps fields kept as floored mirrors.
   - The startup backfill (what it reads, the guard, idempotence, retry on restart, pre-rework rows untouched).
   - How to verify, using the SQL count above.
-- `docs/frontend/trustee-flows.md` :1324: the scheduled-coupon projection reads `current_apy_ppm / 100` (Open Question 1).
 - `docs/user-stories/epic-2129/2126-full-precision-rates.md` (new, same template as `2127-trustee-facility-tiles.md`). Stories:
   - A fractional-rate loan's waterfall proposes interest equal to the contract's accrued interest.
   - The loan book shows the exact rate fraction.
-  - The Trustee scheduled coupon uses the exact rate.
 
   Add a row to `docs/user-stories/index.md` under "Epic #2129 — Math correctness".
-- `docs/exec-plans/tech-debt-tracker.md`, TD-191 (next free number):
+- `docs/exec-plans/tech-debt-tracker.md`, TD-197 (next free number on origin/main):
   - Audit-log `EconomicsAmended` / `LoanRolledOver` `new_rate_bps` and `economics_rate_pct` still floor ppm to bps / 2-dp percent (display only, no consumer).
   - Snapshot rows from pre-rework LoanRegistry addresses are not backfilled and keep the `bps × 100` fallback.

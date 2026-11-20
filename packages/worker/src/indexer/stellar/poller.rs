@@ -405,6 +405,15 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
             reader.clone();
         let mutable_resolver: Arc<dyn MutableDataResolver<StellarAddress, u32>> = reader.clone();
 
+        crate::indexer::rate_ppm_backfill::run_rate_ppm_backfill(
+            chain_id,
+            &StellarAddress(lr_id.clone()),
+            &contract_logs_repo,
+            &pool,
+            immutable_resolver.as_ref(),
+        )
+        .await;
+
         Some(LoanMapperDeps {
             contract_logs_repo,
             fetcher,

@@ -34,6 +34,9 @@ pub struct LoanSnapshot {
     pub original_offtaker_price: BigDecimal,
     /// u32 on-chain; stored as u32 here (widened from i32 in prior schema).
     pub senior_interest_rate_bps: u32,
+    /// Full-precision genesis rate (ppm, `ONE = 1_000_000`); `None` on rows written before #2126.
+    #[serde(default)]
+    pub senior_interest_rate_ppm: Option<u32>,
     /// Cast from u64 on-chain.
     pub origination_date: i64,
     /// Cast from u64 on-chain. Use `current_maturity_timestamp` for the rollover-aware value.
@@ -46,10 +49,13 @@ pub struct LoanSnapshot {
     pub status: String,
     /// Rollover-aware maturity timestamp (may differ from `original_maturity_date` after rollovers).
     pub current_maturity_timestamp: i64,
-    /// Basis points on both arms; the readers convert from the contract's `ONE = 1_000_000` scale.
+    /// Floored bps mirror of `current_rate_ppm`.
     /// `#[serde(default)]`: pre-rework rows predate this field.
     #[serde(default)]
     pub current_rate: u32,
+    /// Full-precision current rate (ppm); `None` on rows written before #2126.
+    #[serde(default)]
+    pub current_rate_ppm: Option<u32>,
     pub closure_reason: String,
     /// `#[serde(default)]`: pre-rework rows predate this field.
     #[serde(default)]
@@ -76,6 +82,19 @@ pub struct LoanSnapshot {
 }
 
 impl LoanSnapshot {
+    pub fn genesis_rate_ppm(&self) -> u32 {
+        self.senior_interest_rate_ppm
+            .unwrap_or(self.senior_interest_rate_bps.saturating_mul(100))
+    }
+
+    pub fn current_rate_ppm(&self) -> u32 {
+        match self.current_rate_ppm {
+            Some(ppm) => ppm,
+            None if self.current_rate > 0 => self.current_rate.saturating_mul(100),
+            None => self.genesis_rate_ppm(),
+        }
+    }
+
     pub fn outstanding_senior_principal(&self) -> BigDecimal {
         (&self.disbursed - &self.repaid - &self.written_down).max(BigDecimal::zero())
     }

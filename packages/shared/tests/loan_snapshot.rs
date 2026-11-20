@@ -31,6 +31,7 @@ fn snapshot_with(amount: i64) -> LoanSnapshot {
         original_equity_tranche: BigDecimal::from(amount),
         original_offtaker_price: BigDecimal::from(amount),
         senior_interest_rate_bps: 1200,
+        senior_interest_rate_ppm: Some(120_000),
         origination_date: 0,
         original_maturity_date: 0,
         next_economics_epochs_id: BigDecimal::from(1),
@@ -38,6 +39,7 @@ fn snapshot_with(amount: i64) -> LoanSnapshot {
         status: "Performing".to_owned(),
         current_maturity_timestamp: 0,
         current_rate: 1200,
+        current_rate_ppm: Some(120_000),
         closure_reason: "None".to_owned(),
         carved_out: true,
         disbursed: BigDecimal::from(amount),
@@ -159,6 +161,8 @@ fn assert_legacy_row_defaults(snapshot: &LoanSnapshot) {
     assert_eq!(snapshot.protection, "");
     assert!(snapshot.documents.is_empty());
     assert_eq!(snapshot.current_rate, 0);
+    assert_eq!(snapshot.senior_interest_rate_ppm, None);
+    assert_eq!(snapshot.current_rate_ppm, None);
     assert!(!snapshot.carved_out);
     assert_eq!(snapshot.disbursed, BigDecimal::from(0));
     assert_eq!(snapshot.repaid, BigDecimal::from(0));
@@ -203,4 +207,39 @@ fn legacy_row_with_unrelated_unknown_key_still_deserializes() {
         .insert("foo".to_owned(), serde_json::json!("bar"));
     let snapshot: LoanSnapshot = serde_json::from_value(json).expect("deserialize legacy row");
     assert_legacy_row_defaults(&snapshot);
+}
+
+#[test]
+fn rate_accessors_prefer_ppm_then_legacy_bps_then_genesis() {
+    let mut snapshot = snapshot_with(1);
+    snapshot.senior_interest_rate_bps = 725;
+    snapshot.senior_interest_rate_ppm = Some(72_550);
+    snapshot.current_rate = 1125;
+    snapshot.current_rate_ppm = Some(112_599);
+    assert_eq!(snapshot.genesis_rate_ppm(), 72_550);
+    assert_eq!(snapshot.current_rate_ppm(), 112_599);
+
+    snapshot.senior_interest_rate_ppm = None;
+    snapshot.current_rate_ppm = None;
+    assert_eq!(snapshot.genesis_rate_ppm(), 72_500);
+    assert_eq!(snapshot.current_rate_ppm(), 112_500);
+
+    snapshot.current_rate = 0;
+    assert_eq!(snapshot.current_rate_ppm(), 72_500);
+}
+
+#[test]
+fn legacy_row_defaults_ppm_fields_to_none_and_round_trips_some() {
+    let json = legacy_row_json(&serde_json::json!({
+        "location_type": "",
+        "location_identifier": "",
+        "tracking_url": "",
+        "updated_at": 0,
+    }));
+    let legacy: LoanSnapshot = serde_json::from_value(json).expect("deserialize legacy row");
+    assert_eq!(legacy.genesis_rate_ppm(), 120_000);
+    let value = serde_json::to_value(snapshot_with(1)).expect("serialize");
+    assert_eq!(value["senior_interest_rate_ppm"], 120_000);
+    let restored: LoanSnapshot = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(restored.senior_interest_rate_ppm, Some(120_000));
 }

@@ -77,7 +77,7 @@ pub struct ImmutableLoanDataView {
     pub original_senior_tranche: alloy::primitives::U256,
     pub original_equity_tranche: alloy::primitives::U256,
     pub original_offtaker_price: alloy::primitives::U256,
-    pub senior_interest_rate_bps: u32,
+    pub senior_interest_rate_ppm: u32,
     pub origination_date: u64,
     pub original_maturity_date: u64,
 }
@@ -119,8 +119,8 @@ pub struct MutableLoanDataView {
     /// Numeric ordinal of `LoanStatus`: 0=Approved, 1=Performing, 2=WatchList, 3=Default, 4=Closed
     pub status: u8,
     pub current_maturity_timestamp: u64,
-    /// Basis points — both reader arms divide the on-chain ppm value by 100 (`LoanRegistryUpgradeable.sol:17,653`).
-    pub current_rate: u32,
+    /// Raw on-chain ppm (`ONE = 1_000_000`), unconverted by both reader arms.
+    pub current_rate_ppm: u32,
     /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment,
     /// 3=Cancelled, 4=Default, 5=OtherWriteDown
     pub closure_reason: u8,

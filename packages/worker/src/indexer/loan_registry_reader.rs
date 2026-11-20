@@ -66,11 +66,6 @@ sol! {
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 
-/// `LoanRegistryUpgradeable.sol:17,653,235,610` — ppm (`ONE = 1_000_000`) to bps.
-fn ppm_to_bps(raw: u32) -> u32 {
-    raw / 100
-}
-
 /// Pure decode, unit-tested in `packages/worker/tests/loan_registry_reader.rs`.
 pub fn decode_immutable_loan_data(result: &[u8]) -> Result<ImmutableLoanDataView> {
     let decoded = ILoanRegistry::immutableLoanDataCall::abi_decode_returns(result, true)
@@ -82,7 +77,7 @@ pub fn decode_immutable_loan_data(result: &[u8]) -> Result<ImmutableLoanDataView
         original_senior_tranche: d.originalSeniorTranche,
         original_equity_tranche: d.originalEquityTranche,
         original_offtaker_price: d.originalOfftakerPrice,
-        senior_interest_rate_bps: ppm_to_bps(d.seniorInterestRate),
+        senior_interest_rate_ppm: d.seniorInterestRate,
         origination_date: d.originationDate,
         original_maturity_date: d.originalMaturityDate,
     })
@@ -98,7 +93,7 @@ pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
         next_repayment_id: d.nextRepaymentId,
         status: d.status as u8,
         current_maturity_timestamp: d.currentMaturityTimestamp,
-        current_rate: ppm_to_bps(d.currentRate),
+        current_rate_ppm: d.currentRate,
         closure_reason: d.closureReason as u8,
         carved_out: d.carvedOut,
         disbursed: d.disbursed,

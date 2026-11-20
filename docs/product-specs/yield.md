@@ -45,7 +45,7 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | Component | Formula |
 |---|---|
 | `senior_principal_returned` | `min(amount, outstanding_senior_principal)` |
-| `senior_gross_interest` | `Σ segments floor(Δt × senior_rate × outstanding / 365.25 d)` (each constant segment floored to a whole unit, at the floored bps rate, so it never exceeds the on-chain cap), plus `interest_adjustment`, floored at 0 |
+| `senior_gross_interest` | `Σ epochs floor(Δt × senior_rate × outstanding / 365.25 d)` at the full 1e6 rate, floored once per contract epoch (an epoch opens on disburse, undisburse, record, unrecord, write-down, rollover and amend, not on default), so it equals the on-chain `_accruedInterest`; plus `interest_adjustment`, floored at 0 |
 | `management_fee` | `mgmt_rate × ∫ outstanding dt / 365.25 d` |
 | `securitisation_agent_fee` | `0` (inactive in MVP) |
 | `performance_fee` | `(senior_gross_interest − management_fee) × perf_rate` |

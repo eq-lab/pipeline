@@ -71,6 +71,7 @@ fn make_prior_snapshot() -> LoanSnapshot {
         original_equity_tranche: BigDecimal::from_str("1000000").unwrap(),
         original_offtaker_price: BigDecimal::from_str("5000000").unwrap(),
         senior_interest_rate_bps: 950_u32,
+        senior_interest_rate_ppm: None,
         origination_date: 1_700_000_000_i64,
         original_maturity_date: 1_800_000_000_i64,
         next_economics_epochs_id: BigDecimal::from(2),
@@ -78,6 +79,7 @@ fn make_prior_snapshot() -> LoanSnapshot {
         status: "Performing".to_owned(),
         current_maturity_timestamp: 1_800_001_000_i64,
         current_rate: 950_u32,
+        current_rate_ppm: None,
         closure_reason: "None".to_owned(),
         carved_out: false,
         disbursed: BigDecimal::from(4_000_000),
@@ -128,10 +130,10 @@ fn evm_rolled_over_round_trips_through_the_reader_mapping() {
         params.get("event"),
         1_700_000_500,
     );
-    let epochs = build_epochs(1_700_000_000, 1_800_000_000, 950, &[row]);
+    let epochs = build_epochs(1_700_000_000, 1_800_000_000, 95_000, &[row]);
     assert_eq!(epochs.len(), 2);
     assert_eq!(epochs[1].start, 1_800_000_000);
-    assert_eq!(epochs[1].rate_bps, 500);
+    assert_eq!(epochs[1].rate_ppm, 50_000);
     assert_eq!(epochs[1].maturity, 1_900_000_000);
 }
 
@@ -157,9 +159,9 @@ fn evm_economics_amended_round_trips_through_the_reader_mapping() {
         params.get("event"),
         1_700_000_500,
     );
-    let epochs = build_epochs(1_700_000_000, 1_800_000_000, 950, &[row]);
+    let epochs = build_epochs(1_700_000_000, 1_800_000_000, 95_000, &[row]);
     assert_eq!(epochs.len(), 1);
-    assert_eq!(epochs[0].rate_bps, 750);
+    assert_eq!(epochs[0].rate_ppm, 75_000);
     assert_eq!(epochs[0].maturity, 1_900_000_000);
 }
 

@@ -17,11 +17,12 @@
 //!    `LoanDefaulted` / `LoanWrittenDown` / `EconomicsAmended` / `LoanRolledOver` events
 //!    (`shared::book_weighting::LoanAccrual`): simple interest on the outstanding senior at
 //!    each moment, 365.25-day year (`CONTRACT_YEAR_SECS`), accruing through Default and past
-//!    maturity (no maturity cap, issue #967). Gross interest floors each constant
-//!    (outstanding, rate) segment to a whole unit, as the contract floors per epoch, so with
-//!    the floored bps rate it never exceeds the on-chain cap. Fees use the same
+//!    maturity (no maturity cap, issue #967). Gross interest uses the full 1e6
+//!    rate and floors once per contract epoch (opened by every outstanding event except
+//!    `LoanDefaulted`, and by every rate event), so it equals the on-chain `_accruedInterest`.
+//!    Fees use the same
 //!    `∫ outstanding dt` at their single rate:
-//!    - `senior_gross_interest = max(0, Σ segments floor(outstanding × rate × Δt / year) + interest_adjustment)` (signed; a waiver is negative)
+//!    - `senior_gross_interest = max(0, Σ epochs floor(outstanding × rate × Δt / year) + interest_adjustment)` (signed; a waiver is negative)
 //!    - `management_fee_cum    = mgmt_rate × ∫ outstanding dt / year`
 //!    - `performance_fee_cum   = (senior_gross_interest − management_fee_cum) × perf_rate`
 //!    - `senior_coupon_net_cum = senior_gross_interest − management_fee_cum − performance_fee_cum`
@@ -81,7 +82,7 @@
 //! **Units.** All monetary values — the `amount` input and every output — are **raw
 //! on-chain base units**, the same scale as the loan snapshot and `recordPayment`
 //! (7-decimal USDC on Stellar/Soroban). The computation is scale-invariant: the only
-//! non-monetary factors are dimensionless (`rate_bps / 10_000`, `Δt / year`), so no
+//! non-monetary factors are dimensionless (`rate / 1_000_000`, `Δt / year`), so no
 //! decimal divisor is applied and the outputs can be handed straight to `recordPayment`.
 //! Each component is truncated toward zero to a whole base unit.
 
@@ -306,7 +307,7 @@ pub fn ensure_event_history_complete(
         return Ok(());
     }
     let event_refs: Vec<&LoanRateEventRow> = rate_events.iter().collect();
-    let accrual = LoanAccrual::new(s.senior_interest_rate_bps, &event_refs);
+    let accrual = LoanAccrual::from_ppm(s.genesis_rate_ppm(), &event_refs);
     let from_events = accrual.outstanding_at(as_of);
     let snapshot = s.outstanding_senior_principal();
     if from_events != snapshot {
@@ -363,7 +364,7 @@ pub fn compute_waterfall(
 
     let outstanding = s.outstanding_senior_principal();
     let event_refs: Vec<&LoanRateEventRow> = rate_events.iter().collect();
-    let accrual = LoanAccrual::new(s.senior_interest_rate_bps, &event_refs);
+    let accrual = LoanAccrual::from_ppm(s.genesis_rate_ppm(), &event_refs);
     let outstanding_seconds = accrual.outstanding_seconds(as_of);
 
     let gross_accrued = accrual.accrued_floored_per_segment(as_of);

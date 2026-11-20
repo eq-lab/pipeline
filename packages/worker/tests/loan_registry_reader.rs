@@ -41,14 +41,14 @@ fn immutable_payload(borrower_ref: [u8; 32], senior_interest_rate: u32) -> Vec<u
 
 #[test]
 fn decode_mutable_loan_data_happy_path() {
-    let bytes = mutable_payload(1, 0, 100_000);
+    let bytes = mutable_payload(1, 0, 112_599);
 
     let view = decode_mutable_loan_data(&bytes).expect("should decode MutableLoanData");
 
     assert_eq!(view.next_economics_epochs_id, U256::from(1u64));
     assert_eq!(view.next_repayment_id, U256::from(2u64));
     assert_eq!(view.current_maturity_timestamp, 1_731_600_000);
-    assert_eq!(view.current_rate, 1_000, "100_000 ppm -> 1_000 bps (10%)");
+    assert_eq!(view.current_rate_ppm, 112_599);
     assert!(view.carved_out);
     assert_eq!(view.disbursed, U256::from(500_000u64));
     assert_eq!(view.repaid, U256::from(100_000u64));
@@ -131,7 +131,7 @@ fn decode_mutable_loan_data_rejects_pre_rework_payload() {
 #[test]
 fn decode_immutable_loan_data_happy_path() {
     let borrower_ref = [0xAB_u8; 32];
-    let bytes = immutable_payload(borrower_ref, 100_000);
+    let bytes = immutable_payload(borrower_ref, 72_550);
 
     let view = decode_immutable_loan_data(&bytes).expect("should decode ImmutableLoanData");
 
@@ -139,10 +139,7 @@ fn decode_immutable_loan_data_happy_path() {
         view.borrower_ref,
         Some(FixedBytes::<32>::from(borrower_ref))
     );
-    assert_eq!(
-        view.senior_interest_rate_bps, 1_000,
-        "100_000 ppm -> 1_000 bps (10%) — the #765 regression"
-    );
+    assert_eq!(view.senior_interest_rate_ppm, 72_550);
     assert_eq!(view.original_facility_size, U256::from(1_000_000u64));
     assert_eq!(view.original_senior_tranche, U256::from(800_000u64));
     assert_eq!(view.original_equity_tranche, U256::from(200_000u64));
