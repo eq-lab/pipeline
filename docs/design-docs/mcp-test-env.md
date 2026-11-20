@@ -32,14 +32,14 @@ All tools clamp inputs to the limits below; a clamped result carries `truncated:
 | `logs` | `service`, `since` (duration, e.g. `15m`), `grep?`, `limit?` | `{lines: [{ts, line}], truncated}` | `since` ≤ 24 h, `limit` ≤ 500 (default 100), line ≤ 2 KB |
 | `errors` | `service`, `since` | `{count, groups: [{message, count, lastTs}]}` | `since` ≤ 24 h, ≤ 50 groups; a `logs` query for error level, grouped by normalised message |
 | `schema` | none | `{tables: [{name, columns: [{name, type, nullable}]}]}` | `public` schema only |
-| `query` | `sql` | `{columns, rows, truncated}` | read-only transaction (`SET TRANSACTION READ ONLY`), `statement_timeout` 5–10 s, ≤ 500 rows |
+| `query` | `sql` | `{columns, rows, truncated}` | one statement only, read-only transaction (`BEGIN READ ONLY`), `statement_timeout` 5–10 s, ≤ 500 rows |
 | `health` | none | `{api, worker, db, grafana, k8s}` each `ok` or an error summary | one cheap probe per source, 2 s each |
 | `indexer_lag` | none | per chain: `{chainId, lastIndexedBlock, head, lagBlocks}` | head from RPC; see table map below |
 | `queues` | none | outbox counts (pending, failed, oldest age) and the 20 most recent errors per outbox | errors truncated to 500 chars |
 | `deployment` | `service?` | image tag, pods (phase, restarts, age) and recent events | events ≤ 50, last 1 h |
 | `config` | none | non-secret runtime config with secret-like keys masked (`***`) | Kubernetes Secrets are never read |
 
-`query` is defence in depth: the Postgres role is read-only (see checklist), the transaction is read-only, and the timeout bounds cost. SQL is not parsed. `config` is built from the Deployment's env names and ConfigMap values; any value from a `secretKeyRef`, and any key matching `KEY`, `SECRET`, `TOKEN`, `PASSWORD` or a URL with credentials, is masked.
+`query` is defence in depth: the Postgres role is read-only (see checklist), the transaction is read-only, and the timeout bounds cost. SQL is not parsed, but it is always run as exactly one statement: the adapter sends it through the extended query protocol (a prepared statement), which rejects multi-statement text. With the simple protocol a caller could send `COMMIT; SET statement_timeout = 0; ...` and leave both the read-only transaction and the timeout behind, because the role-level `default_transaction_read_only` and `statement_timeout` are only defaults the session may override. Each call opens its own `BEGIN READ ONLY` transaction and sets `SET LOCAL statement_timeout` inside it before the caller's statement, so a setting changed by an earlier call on a pooled connection never carries over. `config` is built from the Deployment's env names and ConfigMap values; any value from a `secretKeyRef`, and any key matching `KEY`, `SECRET`, `TOKEN`, `PASSWORD` or a URL with credentials, is masked.
 
 ### Logs
 
@@ -49,13 +49,13 @@ Logs come from the Grafana HTTP API (Loki datasource proxy) with a Viewer servic
 
 | Table | Meaning | Read by |
 |---|---|---|
-| `log_collector_state` (`chain_id`, `last_indexed_block`, `updated_at`) | EVM indexer cursor per chain | `indexer_lag` (compare with RPC head), `health` (stale `updated_at`) |
+| `log_collector_state` (`chain_id`, `last_indexed_block`, `updated_at`) | Indexer cursor per chain, EVM and Stellar alike (`last_indexed_block` is the last block on EVM, the last ledger on Stellar) | `indexer_lag` (compare with the RPC head: `eth_blockNumber` on EVM, `getLatestLedger` on Stellar), `health` (stale `updated_at`) |
 | `security_registry_state` (`chain_id`, `contract_address`, `projected_log_id`, `projected_snapshot_at`, `updated_at`) | SecurityRegistry projection cursor | `indexer_lag` (projection lag vs max `contract_logs.id`) |
 | `access_manager_sync_state` (`chain_id`, `contract_address`, `last_log_id`, `updated_at`) | AccessManager sync cursor | `indexer_lag` (same comparison) |
 | `kyc_outbox` (`chain_id`, `processed_at`, `error`, `created_at`) | KYC status pushes to chain | `queues` (unprocessed count and age, recent `error`) |
 | `yield_mint_outbox` (`chain_id`, `status`, `last_error`, `submitted_at`, `confirmed_at`) | yield mint submissions | `queues` (count per `status`, recent `last_error`) |
 
-Every table is also reachable through `query`. Stellar lag has no state table on main; `indexer_lag` reports it only once a cursor table exists (open question for the implementation).
+Every table is also reachable through `query`. The Stellar indexer writes its cursor to `log_collector_state` through the same repository as the EVM indexer, keyed by its own `chain_id`, so `indexer_lag` covers Stellar from the start; `lagBlocks` counts ledgers for a Stellar chain.
 
 ### Deployment sketch
 
@@ -65,9 +65,9 @@ A `pipeline-mcp` Deployment (one replica) in the test namespace via `eq-lab/argo
 
 Create by hand in the test environment:
 
-1. **Postgres read-only role** on the test database: `LOGIN`, `CONNECT`, `USAGE` on schema `public`, `SELECT` on all tables (and default privileges for future tables), no other grants, `default_transaction_read_only = on`, `statement_timeout = 10s`, connection limit ~5. Send the connection string through a Secret.
+1. **Postgres read-only role** on the test database: `LOGIN`, `CONNECT`, `USAGE` on schema `public`, `SELECT` on all tables (and default privileges for future tables), no other grants; revoke `TEMP` on the database and `CREATE` on schema `public` from `PUBLIC` if they are still granted (Postgres before 15 grants `CREATE` on `public` by default), so the role cannot create objects even outside a read-only transaction; `default_transaction_read_only = on`, `statement_timeout = 10s`, connection limit ~5. Send the connection string through a Secret.
 2. **Grafana Viewer service account and token** with access to the Loki datasource. Send the token through a Secret and tell us the datasource uid.
-3. **Kubernetes read-only ServiceAccount** in the test namespace with a Role granting `get`/`list` on `pods`, `events`, `deployments` (apps), and optionally `pods/log`. No Secrets, no write verbs, no cluster-wide rights.
+3. **Kubernetes read-only ServiceAccount** in the test namespace with a Role granting `get`/`list` on `pods`, `events`, `configmaps` (read by the `config` tool), `deployments` (apps), and optionally `pods/log`. No Secrets, no write verbs, no cluster-wide rights.
 4. **Ingress with TLS and an IP allowlist** limited to the coding-flow machine's address(es).
 5. **Secrets**: the MCP Bearer token(s), one per client (random, ≥ 32 bytes), plus the Postgres and Grafana credentials above.
 
