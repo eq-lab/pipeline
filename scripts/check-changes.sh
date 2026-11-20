@@ -73,6 +73,8 @@ rust=false e2e=false ui=false wallet=false frontend=false trustee=false mcp=fals
 while IFS= read -r path; do
     case "$path" in
         '') continue ;;
+        # Before the docs arm: specs are Markdown, and the mcp lint runs Prettier on its .md files.
+        packages/mcp/* | specs/*) mcp=true; docs_only=false ;;
         docs/* | *.md) ;; # docs only: doc lint always runs
         packages/api/* | packages/worker/* | packages/shared/* | Cargo.toml | Cargo.lock | \
             rust-toolchain | rust-toolchain.toml | rustfmt.toml | .rustfmt.toml | clippy.toml | .cargo/*)
@@ -82,7 +84,6 @@ while IFS= read -r path; do
         packages/wallet-connect/*) wallet=true; docs_only=false ;;
         packages/frontend/*) frontend=true; docs_only=false ;;
         packages/trustee/*) trustee=true; docs_only=false ;;
-        packages/mcp/* | specs/*) mcp=true; docs_only=false ;;
         *) all=true; docs_only=false ;; # package.json, yarn.lock, scripts/, .github/, .husky/, Dockerfile, unknown
     esac
 done <<<"$changed"
