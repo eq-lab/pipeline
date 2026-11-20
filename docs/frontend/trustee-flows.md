@@ -2757,22 +2757,27 @@ already in human units, or `null` when the backend has no source for that field 
 `deployed` is indexer-sourced) — render `—` for `null`, never derive a value client-side
 ([[no-frontend-computed-metrics]]).
 
-**Capital Wallet on-chain fold-in (#805, TD-41).** `useUsdcCustodyBalance` reads the Deposit
-Manager's USDC custody account directly from the Stellar contract (`usdc.balance(ENV.
-STELLAR_USDC_CUSTODY_ID)`, the same custody id the LP frontend's `useStellarUsdcCustodyBalance`
-uses) — that custody account is the on-chain source of the **Capital Wallet** balance-sheet
-bucket, so the hook is named for the account it reads, not for the bucket it feeds (it is
-unrelated to `VITE_STELLAR_CAPITAL_WALLET_ID`, the PLUSD receiver introduced in #1449). It is an
-interim substitute for the backend `capital_wallet` bucket (`null` until
-`capital_allocation.rs` indexes it). It converts the raw i128 7-decimal-SAC bigint to the same
-human-decimal-string shape as the backend buckets so it can feed straight into the existing
-formatters/summing logic; a misconfigured custody id (pointing at the USDC issuer) surfaces as
-`error` via `getSacBalance`'s own sentinel guard, never a fabricated ~$922B balance. Returns
-`{data: undefined, isLoading: false, error: null}` when unconfigured — no RPC call is made.
-**Scope gate (#1601):** the read is a Stellar SAC balance, so `useCapitalAllocationCard` folds it
-into the Capital Wallet row and the guarded total only when the resolved chain is the Stellar
-chain; for an EVM session the row shows the backend `capital_wallet` bucket or `—` (the EVM
-custody read is TD-156).
+**Capital Wallet on-chain fold-in (#805, TD-41, #1684).** `useUsdcCustodyBalance(chainId)` reads
+the Deposit Manager's USDC custody account on the session chain — that custody account is the
+on-chain source of the **Capital Wallet** balance-sheet bucket, so the hook is named for the
+account it reads, not for the bucket it feeds (it is unrelated to `VITE_STELLAR_CAPITAL_WALLET_ID`,
+the PLUSD receiver introduced in #1449). It is an interim substitute for the backend
+`capital_wallet` bucket (`null` until `capital_allocation.rs` indexes it):
+
+- **Stellar:** `usdc.balance(ENV.STELLAR_USDC_CUSTODY_ID)` on the 7-decimal SAC via `getSacBalance`.
+  A misconfigured custody id (pointing at the USDC issuer) surfaces as `error` through its own
+  sentinel guard, never a fabricated ~$922B balance.
+- **EVM:** ERC-20 `balanceOf(VITE_EVM_USDC_CUSTODY_ADDRESS)` on `VITE_EVM_USDC_ADDRESS` through
+  `getErc20Balance` (a read-only viem public client over `VITE_EVM_RPC_URL`), scaled by the token's
+  own `decimals()`.
+
+Either raw bigint becomes the same human-decimal string as the backend buckets so it feeds the
+existing formatters and summing logic. The chain id is part of the query key, so a chain switch
+never serves the other chain's cached value. An unconfigured pair for the session chain, or a chain
+id that is neither configured chain, makes no RPC call and returns
+`{data: undefined, isLoading: false, error: null}` (row shows `—`). The card passes the chain it
+already resolved (`useCapitalAllocation().chainId`) and folds the result in without a chain gate
+(#1684, TD-156); a read error degrades only the Capital Wallet row and the total's extra addend.
 
 **Guarded total (human-approved, #805) — a documented exception to
 [[no-frontend-computed-metrics]]:**

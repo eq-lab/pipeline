@@ -95,6 +95,7 @@ vi.mock("@/api/client", () => ({
 
 vi.mock("@pipeline/wallet-connect", () => ({
   getSacBalance: vi.fn().mockRejectedValue(new Error("not configured")),
+  getErc20Balance: vi.fn().mockRejectedValue(new Error("not configured")),
 }));
 
 function buildRouter() {

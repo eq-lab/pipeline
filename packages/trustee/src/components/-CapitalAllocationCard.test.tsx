@@ -24,6 +24,7 @@ import type { UseCapitalAllocationCardResult } from "./useCapitalAllocationCard"
 
 vi.mock("@pipeline/wallet-connect", () => ({
   getSacBalance: vi.fn(),
+  getErc20Balance: vi.fn(),
 }));
 
 function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {

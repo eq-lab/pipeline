@@ -537,6 +537,9 @@ export {
 } from "./evm/contracts/logs";
 export type { ScanEvmLogsParams } from "./evm/contracts/logs";
 
+export { getErc20Balance } from "./evm/erc20Balance";
+export type { GetErc20BalanceParams, Erc20Balance } from "./evm/erc20Balance";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";

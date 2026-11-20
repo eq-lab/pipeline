@@ -254,6 +254,8 @@ it grows as Trustee flow sub-issues of epic #775 land.
 | `VITE_EVM_RPC_URL`                     | `https://ethereum-hoodi-rpc.publicnode.com` | `https://ethereum-hoodi-rpc.publicnode.com`         |
 | `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)                        | `0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`        |
 | `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)                        | `0x621BaAb0ced6b11f88019582183b081A118755f4`        |
+| `VITE_EVM_USDC_ADDRESS`                | empty (unconfigured)                        | set per deploy                                      |
+| `VITE_EVM_USDC_CUSTODY_ADDRESS`        | empty (unconfigured)                        | set per deploy                                      |
 | `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)                        | `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`        |
 | `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`  | empty (unconfigured)                        | `0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC`        |
 | `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)                        | `0xB51E7f13420D106946376A67Fe5921C63B09BE15`        |
@@ -268,6 +270,9 @@ The two EVM contract addresses must equal the backend's per-chain values:
 Empty means unconfigured; EVM flows that need them short-circuit with a "not configured" error.
 The Risk Council security page and inspector panel on EVM (#1942) also need the AccessManager, SecurityRegistry and RecordNft addresses; the registry and RecordNft must equal the backend's `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` / `_SECURITY_RECORD_NFT_ADDRESS`.
 The Risk Council hub, escalate, reterm and writedown pages and the repayment-recovery dialog on EVM (#1943) use the LoanRegistry, Minter and AccessManager addresses. The recovery list scans `eth_getLogs` from `VITE_EVM_START_BLOCK` in 50 000-block calls, so set it to the LoanRegistry deploy block (the worker's `CHAIN_<id>_EVM_START_BLOCK`); the default `0` scans from genesis (TD-190).
+
+`VITE_EVM_USDC_ADDRESS` is the USDC ERC-20 and `VITE_EVM_USDC_CUSTODY_ADDRESS` is the deposit custody account
+(`CHAIN_<id>_EVM_API_CUSTODY_ADDRESSES`). Empty means the Capital Wallet on-chain read shows `—` on an EVM session.
 
 ```bash
 docker run --rm -p 8082:80 \
