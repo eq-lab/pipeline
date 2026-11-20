@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": [
     "packages/frontend",
+    "packages/mcp",
     "packages/trustee",
     "packages/ui",
     "packages/wallet-connect"
