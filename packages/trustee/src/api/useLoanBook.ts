@@ -7,6 +7,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import type { PendingOperation } from "./pendingOperations";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ export interface LoanBookEntry {
   /**
    * On-chain loan id (`SubmissionView.loan_id`), served since the loan/chain-id
    * addition to `GET /v1/loan-book`. Stable row key and the `/loans/$id` route
-   * param + the `{loan_id}` path segment for `useLoanValuation`.
+   * param + the `{loan_id}` path segment for `useLoanSecurity`.
    */
   loan_id: string;
   /** Chain the loan lives on (Stellar chain id for the Trustee app). */
@@ -124,33 +125,9 @@ export interface LoanBookEntry {
    * form of **Nearest payment** (#941/#953).
    */
   days_overdue: number | null;
-  /** Latest spot price of the underlying asset (USD, decimal string). `null` when unpriced. */
-  spot_price: string | null;
-  /**
-   * Trailing 7-day change of the underlying spot price, decimal fraction
-   * (e.g. `"-0.1800"` = -18%). `null` when unavailable.
-   */
-  spot_change_7d: string | null;
-  /**
-   * Collateral value, USDC base-6 decimal string. Registry-sourced;
-   * displayed as served (issue #906 — the former ×1000 workaround has been
-   * removed). `null` when unpriced. Backs the **Collateral** column.
-   */
-  collateral: string | null;
-  /**
-   * Loan-to-value, 4-decimal fraction string = `principal / collateral`.
-   * Served already-correct, do not scale. Not rendered on this page.
-   * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
-   */
-  ltv: string | null;
-  /**
-   * Collateral Coverage Ratio in basis points (`14000` = 140%) =
-   * `collateral / outstanding senior`. Served already-correct, do not scale.
-   * `null` when collateral is unavailable. Backs the **CCR** column +
-   * pre-default classification.
-   * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
-   */
-  ccr_bps: number | null;
+  ltv_bps?: number | null;
+  margin_call_open?: boolean | null;
+  price_stale?: boolean | null;
   duration_days: number;
   /** Senior interest rate, decimal-fraction string. Not rendered on this page. */
   rate: string;
@@ -180,6 +157,7 @@ export interface LoanBookEntry {
   days_on_watchlist: number | null;
   /** Unix timestamp of the WatchList transition used for `days_on_watchlist`. */
   watchlist_entered_at: number | null;
+  pending_operations?: PendingOperation[];
 }
 
 /** Shape of the `GET /v1/loan-book` response (post-#833/#834). */
@@ -199,6 +177,7 @@ export interface UseLoanBookResult {
   data: LoanBookResponse | undefined;
   isLoading: boolean;
   error: Error | null;
+  dataUpdatedAt?: number;
   refetch: () => void;
 }
 
@@ -228,6 +207,7 @@ export function useLoanBook(chainId?: number | null): UseLoanBookResult {
     data: query.data,
     isLoading: query.isLoading,
     error: query.error,
+    dataUpdatedAt: query.dataUpdatedAt,
     refetch: () => void query.refetch(),
   };
 }

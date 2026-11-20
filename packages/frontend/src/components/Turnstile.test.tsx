@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRef } from "react";
 import { act, fireEvent, render } from "@testing-library/react";
+import { ENV } from "@/lib/env";
 import { Turnstile, type TurnstileHandle } from "./Turnstile";
 
 vi.mock("@/lib/env", () => ({
@@ -143,5 +144,37 @@ describe("Turnstile", () => {
     expect(onStatusChange).not.toHaveBeenLastCalledWith("error");
     act(() => renderMock.mock.calls[2]![1]["error-callback"]());
     expect(onStatusChange).toHaveBeenLastCalledWith("error");
+  });
+
+  it("hands out the e2e stand-in token without Cloudflare, again after reset", () => {
+    Object.assign(ENV, {
+      TURNSTILE_SITE_KEY: "",
+      E2E_CAPTCHA_TOKEN: "pipeline-e2e-captcha",
+    });
+    try {
+      const onToken = vi.fn();
+      const onStatusChange = vi.fn();
+      const ref = createRef<TurnstileHandle>();
+      render(
+        <Turnstile
+          ref={ref}
+          onToken={onToken}
+          onStatusChange={onStatusChange}
+        />,
+      );
+      expect(onToken).toHaveBeenLastCalledWith("pipeline-e2e-captcha");
+      expect(onStatusChange).toHaveBeenLastCalledWith("ready");
+
+      onToken.mockClear();
+      act(() => ref.current?.reset());
+      expect(onToken).toHaveBeenLastCalledWith("pipeline-e2e-captcha");
+      expect(renderMock).not.toHaveBeenCalled();
+      expect(document.querySelector("script[src*='cloudflare']")).toBeNull();
+    } finally {
+      Object.assign(ENV, {
+        TURNSTILE_SITE_KEY: "test-site-key",
+        E2E_CAPTCHA_TOKEN: "",
+      });
+    }
   });
 });

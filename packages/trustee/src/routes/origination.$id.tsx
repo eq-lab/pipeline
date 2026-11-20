@@ -6,6 +6,7 @@ import { RequestChangesDialog } from "./-RequestChangesDialog";
 import { ApproveMintDialog } from "./-ApproveMintDialog";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { InlineError } from "@pipeline/ui";
+import { RegisterDebtTokenAction } from "./-RegisterDebtTokenAction";
 
 /**
  * Origination details / review page — the destination opened by clicking a
@@ -99,7 +100,15 @@ function StatusPill({ status }: { status: StatusChip }) {
   );
 }
 
-function TermRow({ label, value }: { label: string; value: string }) {
+function TermRow({
+  label,
+  value,
+  title,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+}) {
   return (
     <div
       className="flex items-baseline justify-between gap-[16px] py-[12px]"
@@ -108,7 +117,10 @@ function TermRow({ label, value }: { label: string; value: string }) {
       <span className="font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[rgba(56,55,53,0.6)]">
         {label}
       </span>
-      <span className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]">
+      <span
+        title={title}
+        className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]"
+      >
         {value}
       </span>
     </div>
@@ -161,7 +173,11 @@ function DealDetailsCard({
         <TermRow label="Corridor" value={dealDetails.corridor} />
         <TermRow label="Governing law" value={dealDetails.governingLaw} />
         <TermRow label="Protection" value={dealDetails.protection} />
-        <TermRow label="Location" value={dealDetails.location} />
+        <TermRow
+          label="Borrower ref"
+          value={dealDetails.borrowerRef}
+          title={dealDetails.borrowerRefFull ?? undefined}
+        />
       </div>
       <div
         data-testid="origination-detail-documents"
@@ -293,28 +309,37 @@ function ApprovedBanner({
   chainId: number;
 }) {
   return (
-    <div
-      data-testid="origination-detail-approved-banner"
-      className="flex flex-wrap items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
-    >
-      <CheckIcon
-        width={15}
-        height={15}
-        className="text-[color:var(--color-pipeline-positive-primary)]"
-      />
-      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
-        Approved & drawn · {date}
-      </span>
+    <div className="flex flex-col gap-[12px]">
+      <div
+        data-testid="origination-detail-approved-banner"
+        className="flex flex-wrap items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
+      >
+        <CheckIcon
+          width={15}
+          height={15}
+          className="text-[color:var(--color-pipeline-positive-primary)]"
+        />
+        <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
+          Approved & drawn · {date}
+        </span>
+        {loanId != null && (
+          <Link
+            to="/loans/$id"
+            params={{ id: String(loanId) }}
+            search={{ chain: chainId }}
+            data-testid="origination-detail-view-loan-link"
+            className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
+          >
+            View loan #{loanId} →
+          </Link>
+        )}
+      </div>
       {loanId != null && (
-        <Link
-          to="/loans/$id"
-          params={{ id: String(loanId) }}
-          search={{ chain: chainId }}
-          data-testid="origination-detail-view-loan-link"
-          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
-        >
-          View loan #{loanId} →
-        </Link>
+        <RegisterDebtTokenAction
+          chainId={chainId}
+          loanId={loanId}
+          variant="inline"
+        />
       )}
     </div>
   );
@@ -355,6 +380,7 @@ function ChangesRequestedBanner({
 }
 
 function DetailFooter({
+  submissionId,
   statusKind,
   reviewedDate,
   rejectionReason,
@@ -368,6 +394,7 @@ function DetailFooter({
   errorMessage,
   errorDetails,
 }: {
+  submissionId: string;
   statusKind: StatusChip["kind"];
   reviewedDate: string;
   rejectionReason: string;
@@ -394,9 +421,18 @@ function DetailFooter({
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
   }
   if (statusKind === "changes-requested") {
-    // Non-final: waiting on the originator to resubmit, so no action buttons (#950).
     return (
-      <ChangesRequestedBanner date={reviewedDate} reason={rejectionReason} />
+      <div className="flex flex-col items-start gap-[20px]">
+        <ChangesRequestedBanner date={reviewedDate} reason={rejectionReason} />
+        <Link
+          to="/origination/$id/edit"
+          params={{ id: submissionId }}
+          data-testid="origination-detail-amend"
+          className="flex h-[40px] items-center rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white no-underline"
+        >
+          Make changes and resubmit
+        </Link>
+      </div>
     );
   }
   // Only InReview falls back to the (now wired) action buttons. Backend
@@ -508,6 +544,7 @@ function OriginationDetail() {
         </div>
 
         <DetailFooter
+          submissionId={id}
           statusKind={detail.statusKind}
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
@@ -541,6 +578,8 @@ function OriginationDetail() {
         mintingLabel={review.mintingLabel}
         errorMessage={review.approveOpen ? review.errorMessage : null}
         errorDetails={review.approveOpen ? review.errorDetails : null}
+        blockedReason={review.approveBlockedReason}
+        notice={review.approveReviewOnlyNotice}
         preview={detail.transactionPreview}
       />
 

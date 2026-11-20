@@ -95,6 +95,21 @@ vi.mock("./-useOriginationReview", () => ({
   useOriginationReview: () => mockUseOriginationReview(),
 }));
 
+vi.mock("./-RegisterDebtTokenAction", () => ({
+  RegisterDebtTokenAction: (props: {
+    chainId: number;
+    loanId: number | null;
+    variant: string;
+  }) => (
+    <div
+      data-testid="register-debt-token-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-variant={props.variant}
+    />
+  ),
+}));
+
 import { Route } from "./origination.$id";
 import { useOriginationDetail } from "./-origination-detail";
 
@@ -127,6 +142,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     requestChangesOpen: false,
     mintedLoanId: null,
     approveBlockedReason: null,
+    approveReviewOnlyNotice: null,
     ...overrides,
   });
 }
@@ -163,7 +179,9 @@ const READY_RESULT: OriginationDetailResult = {
     corridor: "Peru → China",
     governingLaw: "England & Wales",
     protection: "LC at sight",
-    location: "Warehouse — SGS bonded stockpile, Callao, Peru",
+    borrowerRef: "ab12cd…ab12",
+    borrowerRefFull:
+      "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
@@ -171,12 +189,12 @@ const READY_RESULT: OriginationDetailResult = {
   reviewedDate: "2 Jan",
   rejectionReason: "—",
   transactionPreview: {
-    keyword: "LoanRegistry.mintLoan",
+    keyword: "LoanRegistry.draw_loan",
     rows: [
       { label: "originator", value: "Auric Andes S.A.C." },
       { label: "economics", value: "{ facility $3,500,000 }" },
       { label: "metadataURI", value: "ipfs://auric-assay-offtake-hash" },
-      { label: "initialLocation", value: "MV Example" },
+      { label: "borrowerRef", value: "ab12cd…ab12" },
     ],
   },
 };
@@ -250,10 +268,12 @@ describe("Origination details route", () => {
     expect(dealDetails.textContent).toContain("England & Wales");
     expect(dealDetails.textContent).toContain("Protection");
     expect(dealDetails.textContent).toContain("LC at sight");
-    expect(dealDetails.textContent).toContain("Location");
-    // #1014: the location TYPE leads the value under the fixed "Location" label.
-    expect(dealDetails.textContent).toContain(
-      "Warehouse — SGS bonded stockpile, Callao, Peru",
+    expect(dealDetails.textContent).toContain("Borrower ref");
+    expect(dealDetails.textContent).toContain("ab12cd…ab12");
+    expect(dealDetails.textContent).not.toContain("Location");
+    expect(screen.getByText("ab12cd…ab12")).toHaveAttribute(
+      "title",
+      READY_RESULT.dealDetails.borrowerRefFull,
     );
     expect(dealDetails.textContent).toContain("Offtake agreement.pdf");
     // #1014: the two new rows sit directly after Governing law.
@@ -261,7 +281,7 @@ describe("Origination details route", () => {
       dealDetails.textContent!.indexOf("Protection"),
     );
     expect(dealDetails.textContent!.indexOf("Protection")).toBeLessThan(
-      dealDetails.textContent!.indexOf("Location"),
+      dealDetails.textContent!.indexOf("Borrower ref"),
     );
   });
 
@@ -441,6 +461,40 @@ describe("Origination details route", () => {
       expect(link).toHaveAttribute("href", "/loans/4488");
     });
 
+    it("Approved: the 'View loan' link renders for loan id 0 (#1896)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      mockReview({ mintedLoanId: 0 });
+      renderRoute();
+      const link = screen.getByTestId("origination-detail-view-loan-link");
+      expect(link).toHaveTextContent("View loan #0");
+      expect(link).toHaveAttribute("href", "/loans/0");
+    });
+
+    it("Approved: hosts the Register debt token action only when the drawn loan id is known (#1766)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      const { unmount } = renderRoute();
+      expect(
+        screen.queryByTestId("register-debt-token-stub"),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      mockReview({ mintedLoanId: 4488 });
+      renderRoute();
+      const stub = screen.getByTestId("register-debt-token-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-variant", "inline");
+    });
+
     it("Rejected: renders the red 'Rejected · <date> — <reason>' banner; NO action buttons", () => {
       mockDetail({
         ...READY_RESULT,
@@ -465,7 +519,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner; NO action buttons (#950)", () => {
+    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner and the Make changes and resubmit link; NO review buttons (#950, #1913)", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "changes-requested", label: "Changes requested" },
@@ -480,14 +534,35 @@ describe("Origination details route", () => {
       expect(banner).toHaveTextContent(
         "Changes requested · 6 May — Attach the amended offtake agreement",
       );
-      // Non-final, waiting on the originator → no trustee action buttons.
       expect(
         screen.queryByTestId("origination-detail-reject"),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
+      const amend = screen.getByTestId("origination-detail-amend");
+      expect(amend).toHaveTextContent("Make changes and resubmit");
+      expect(amend).toHaveAttribute("href", "/origination/7/edit");
     });
+
+    it.each([
+      ["in-review", "Awaiting your review"],
+      ["approved", "Approved"],
+      ["rejected", "Rejected"],
+    ] as const)(
+      "%s: does not render the Make changes and resubmit link",
+      (kind, label) => {
+        mockDetail({
+          ...READY_RESULT,
+          statusChip: { kind, label },
+          statusKind: kind,
+        });
+        renderRoute();
+        expect(
+          screen.queryByTestId("origination-detail-amend"),
+        ).not.toBeInTheDocument();
+      },
+    );
 
     it("backend lifecycle status: renders the Approved banner, not action buttons (#892)", () => {
       mockDetail({
@@ -749,7 +824,7 @@ describe("Origination details route", () => {
       const preview = screen.getByTestId("approve-mint-preview");
       expect(preview).toHaveTextContent("Auric Andes S.A.C.");
       expect(preview).toHaveTextContent("ipfs://auric-assay-offtake-hash");
-      expect(preview).toHaveTextContent("MV Example");
+      expect(preview).toHaveTextContent("ab12cd…ab12");
     });
 
     it("Cancel in the approve dialog calls review.cancelApprove()", () => {
@@ -823,21 +898,58 @@ describe("Origination details route", () => {
 });
 
 describe("Origination detail — Approve gate for non-Stellar targets (#1536)", () => {
-  it("InReview on an EVM target: Approve disabled with the reason line, Reject and Request changes enabled", () => {
+  it("InReview on an unknown chain: Approve disabled with the reason line, Reject and Request changes enabled", () => {
     mockDetail(READY_RESULT);
     mockReview({
       approveBlockedReason:
-        "Approve & draw runs on Stellar only — drawing on Hoodi from the Trustee app is not supported yet. Reject or request changes instead.",
+        "Approve & draw runs on Stellar only — drawing on Chain 1234 from the Trustee app is not supported yet. Reject or request changes instead.",
     });
     renderRoute();
 
     expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
     expect(
       screen.getByTestId("origination-detail-approve-blocked"),
-    ).toHaveTextContent("drawing on Hoodi");
+    ).toHaveTextContent("drawing on Chain 1234");
     expect(screen.getByTestId("origination-detail-reject")).not.toBeDisabled();
     expect(
       screen.getByTestId("origination-detail-request-changes"),
     ).not.toBeDisabled();
+  });
+
+  it("InReview on the configured EVM chain (#1573): Approve enabled, no blocked line", () => {
+    mockDetail(READY_RESULT);
+    mockReview({ approveBlockedReason: null });
+    renderRoute();
+
+    expect(screen.getByTestId("origination-detail-approve")).not.toBeDisabled();
+    expect(
+      screen.queryByTestId("origination-detail-approve-blocked"),
+    ).toBeNull();
+  });
+});
+
+describe("Origination detail — Approve gate for missing draw inputs (#1805)", () => {
+  it("missing data_room_id: Approve disabled with the data-room reason, Borrower ref shows the missing copy", () => {
+    mockDetail({
+      ...READY_RESULT,
+      dealDetails: {
+        ...READY_RESULT.dealDetails,
+        borrowerRef: "Data room ID missing",
+        borrowerRefFull: null,
+      },
+    });
+    mockReview({
+      approveBlockedReason:
+        "Data room ID missing — this submission can't be drawn on-chain. Request changes so it is resubmitted with a data room ID, or reject it.",
+    });
+    renderRoute();
+
+    expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
+    expect(
+      screen.getByTestId("origination-detail-approve-blocked"),
+    ).toHaveTextContent("Data room ID missing");
+    expect(
+      screen.getByTestId("origination-detail-deal-details"),
+    ).toHaveTextContent("Data room ID missing");
   });
 });

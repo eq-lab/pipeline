@@ -31,6 +31,26 @@ pub struct SeriesStat {
     pub average: String,
 }
 
+pub fn stellar_minter<S: std::hash::BuildHasher>(
+    kind: shared::chains::ChainKind,
+    minter_addresses: &std::collections::HashMap<i64, String, S>,
+    chain_id: i64,
+) -> Option<&String> {
+    if kind == shared::chains::ChainKind::Stellar {
+        minter_addresses.get(&chain_id)
+    } else {
+        None
+    }
+}
+
+pub fn chain_kind(state: &AppState, chain_id: i64) -> Option<shared::chains::ChainKind> {
+    state
+        .chains
+        .iter()
+        .find(|c| c.chain_id == chain_id)
+        .map(|c| c.kind)
+}
+
 /// LoanRegistry address the LoanBook readers are scoped to on `chain_id`.
 /// Startup guarantees every configured chain has one, so the error is reachable only
 /// for a chain that is not configured.
@@ -40,6 +60,15 @@ pub fn loan_registry_address(state: &AppState, chain_id: i64) -> Result<&str, Ap
         .get(&chain_id)
         .map(String::as_str)
         .ok_or_else(|| ApiError::BadRequest(format!("unknown chain_id: {chain_id}")))
+}
+
+pub fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
+    if claims.has_role(TRUSTEE_ROLE) {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden(format!(
+        "this endpoint requires the `{TRUSTEE_ROLE}` role"
+    )))
 }
 
 /// Pure pre-checks of the trustee per-loan guard (no I/O): trustee role → 403, malformed

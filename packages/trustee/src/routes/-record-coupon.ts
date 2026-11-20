@@ -15,16 +15,18 @@ import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
 import { findLoanEntry } from "@/lib/loanRoute";
-import {
-  chainAmountDecimals,
-  stellarOnlyActionReason,
-} from "@/lib/targetChains";
+import { useCashReporterAccess } from "@/api/useCashReporterAccess";
+import { chainAmountDecimals, loanActionChainReason } from "@/lib/targetChains";
 import {
   formatBpsRate,
   formatFullUsd,
   formatUsdInputValue,
 } from "@/utils/formatUsd";
-import { formatEpochDate } from "@/utils/formatDate";
+import {
+  dateInputToValueDate,
+  formatEpochDate,
+  todayDateInput,
+} from "@/utils/formatDate";
 import {
   SAC_DECIMALS,
   parsePositiveUsdInput,
@@ -36,14 +38,7 @@ import type { UserFacingError } from "@/utils/userError";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
-/** Today, `YYYY-MM-DD` — the "Date received" input's default value. */
-export function todayDateInput(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-export function dateInputToValueDate(dateInput: string): number {
-  return Date.parse(`${dateInput}T00:00:00Z`) / 1000;
-}
+export { todayDateInput, dateInputToValueDate };
 
 /**
  * Parses the "Coupon received" USD text input into a positive dollar amount.
@@ -241,6 +236,7 @@ export interface RecordCouponView {
    */
   recordPaymentInput: RepaymentInput | null;
   onChainBlockedReason: string | null;
+  roleBlockedReason: string | null;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -280,8 +276,16 @@ export function useRecordCoupon(
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onChainBlockedReason = entry
-    ? stellarOnlyActionReason(entry.chain_id)
+    ? loanActionChainReason(entry.chain_id)
     : null;
+
+  const roleAccess = useCashReporterAccess(
+    "repay",
+    entry != null && onChainBlockedReason === null,
+    chainId,
+  );
+  const roleBlockedReason =
+    entry != null && onChainBlockedReason === null ? roleAccess.reason : null;
 
   const state: RecordCouponView["state"] = loanBook.isLoading
     ? "loading"
@@ -449,9 +453,12 @@ export function useRecordCoupon(
     coversPrincipal,
     principalInAmount: usdFull(seniorPrincipalReturnedUsd),
     recordPaymentInput:
-      onChainBlockedReason === null && amountSettled
+      onChainBlockedReason === null &&
+      roleBlockedReason === null &&
+      amountSettled
         ? buildRepaymentInput(amountBaseUnits, waterfall.data)
         : null,
     onChainBlockedReason,
+    roleBlockedReason,
   };
 }

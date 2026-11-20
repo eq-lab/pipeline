@@ -85,6 +85,12 @@ function formatQueueTotal(
   return formatCompactUsd(formatUnits(raw, decimals));
 }
 
+function parseFinite(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -151,26 +157,13 @@ export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
     : allRows.slice(0, WITHDRAWAL_QUEUE_DEFAULT_VISIBLE);
 
   // Liquid Cover calc — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
-  const cashRaw = fp?.assets.liquid.cash_stablecoins;
-  const tbillsRaw = fp?.assets.liquid.tokenized_tbills;
-  const cash = (() => {
-    if (cashRaw == null) return 0;
-    const n = parseFloat(cashRaw);
-    return Number.isFinite(n) ? n : 0;
-  })();
-  const tbills = (() => {
-    if (tbillsRaw == null) return 0;
-    const n = parseFloat(tbillsRaw);
-    return Number.isFinite(n) ? n : 0;
-  })();
-  const queueRaw = data.summary.in_queue_usd;
-  const queue = (() => {
-    if (queueRaw == null) return 0;
-    const n = parseFloat(queueRaw);
-    return Number.isFinite(n) ? n : 0;
-  })();
+  const cash = parseFinite(fp?.assets.liquid.cash_stablecoins);
+  const tbills = parseFinite(fp?.assets.liquid.tokenized_tbills);
+  const queue = parseFinite(data.summary.in_queue_usd);
   const liquidCover =
-    queue > 0 ? formatCoverage(((cash + tbills) / queue).toFixed(2)) : "—";
+    cash !== null && tbills !== null && queue !== null && queue > 0
+      ? formatCoverage(((cash + tbills) / queue).toFixed(2))
+      : "—";
 
   const summary: WithdrawalQueueSummaryFormatted = {
     inQueue: formatCompactUsd(data.summary.in_queue_usd),

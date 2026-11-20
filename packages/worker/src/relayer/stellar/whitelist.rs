@@ -19,6 +19,7 @@ use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrke
 use stellar_xdr::curr::{Limits, ReadXdr, ScVal, ScVec, VecM};
 
 use crate::indexer::stellar::rpc::{SendResponse, StellarRpc};
+use crate::indexer::stellar::security_registry_views::is_contract_error;
 use crate::relayer::stellar::sim_decode::{decode_auth_entries, decode_soroban_data};
 use crate::stellar::tx::{
     address_account, address_contract, build_invoke_envelope, envelope_to_base64, sign_envelope,
@@ -67,49 +68,35 @@ impl StellarWhitelister {
         }
     }
 
-    /// Pre-check whether the PLUSD SAC already reports `is_authorized(user) = true`.
-    ///
-    /// Returns `Ok(false)` (i.e. "proceed with submit") if the SAC view is missing,
-    /// the simulate response errored, or the return value was not a `ScVal::Bool`.
-    /// A wasted submit is preferable to a wrong skip.
-    pub async fn is_already_authorized(&self, user: &Ed25519Pub) -> Result<bool> {
+    pub async fn plusd_authorization(&self, holder: &ScVal) -> Result<PlusdAuth> {
         let envelope = build_invoke_envelope(
             &self.signer_pubkey,
             0,
             VIEW_PRECHECK_FEE,
             &self.plusd_sac_id,
             "authorized",
-            vec![address_account(user)],
+            vec![holder.clone()],
             vec![],
             None,
         );
         let envelope_b64 = envelope_to_base64(&envelope)?;
         let resp = self.rpc.simulate_transaction(&envelope_b64).await?;
-        if let Some(err) = &resp.error {
-            tracing::debug!(
-                wallet = %strkey_g(user),
-                error = %err,
-                "stellar is_authorized simulate errored — falling through to submit"
-            );
-            return Ok(false);
-        }
-        let Some(first) = resp.results.first() else {
-            return Ok(false);
-        };
-        let Ok(xdr_bytes) = STANDARD.decode(first.return_value_xdr_base64.as_bytes()) else {
-            return Ok(false);
-        };
-        let Ok(val) = ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none()) else {
-            return Ok(false);
-        };
-        Ok(matches!(val, ScVal::Bool(true)))
+        let value = resp
+            .results
+            .first()
+            .and_then(|r| STANDARD.decode(r.return_value_xdr_base64.as_bytes()).ok())
+            .and_then(|bytes| ScVal::from_xdr(bytes.as_slice(), Limits::none()).ok());
+        Ok(classify_authorized_simulate(
+            resp.error.as_deref(),
+            value.as_ref(),
+        ))
     }
 
     /// Submit `access_manager.execute(target=plusd_sac, function=set_authorized,
     /// args=[user, true], caller=signer)` and poll until terminal.
-    pub async fn submit_set_authorized(&self, user: &Ed25519Pub) -> Result<()> {
-        // Inner args forwarded to `target.set_authorized(...)`: [Address(user), Bool(true)].
-        let inner_args: VecM<ScVal> = vec![address_account(user), ScVal::Bool(true)]
+    pub async fn submit_set_authorized(&self, holder: &ScVal) -> Result<()> {
+        // Inner args forwarded to `target.set_authorized(...)`: [Address(holder), Bool(true)].
+        let inner_args: VecM<ScVal> = vec![holder.clone(), ScVal::Bool(true)]
             .try_into()
             .expect("two args fit in VecM");
 
@@ -214,8 +201,41 @@ impl StellarWhitelister {
     }
 }
 
-fn strkey_g(p: &Ed25519Pub) -> String {
-    format!("{p}")
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlusdAuth {
+    Authorized,
+    NotAuthorized,
+    NoTrustline,
+    Unknown,
+}
+
+const SAC_TRUSTLINE_MISSING_CODE: u32 = 13;
+
+pub fn holder_scval(strkey: &str) -> Option<ScVal> {
+    if let Ok(g) = Ed25519Pub::from_string(strkey) {
+        return Some(address_account(&g));
+    }
+    ContractStrkey::from_string(strkey)
+        .ok()
+        .map(|c| address_contract(&c))
+}
+
+pub fn classify_authorized_simulate(
+    error: Option<&str>,
+    return_value: Option<&ScVal>,
+) -> PlusdAuth {
+    if let Some(err) = error {
+        return if is_contract_error(err, SAC_TRUSTLINE_MISSING_CODE) {
+            PlusdAuth::NoTrustline
+        } else {
+            PlusdAuth::Unknown
+        };
+    }
+    match return_value {
+        Some(ScVal::Bool(true)) => PlusdAuth::Authorized,
+        Some(ScVal::Bool(false)) => PlusdAuth::NotAuthorized,
+        _ => PlusdAuth::Unknown,
+    }
 }
 
 // ─── Phase function ──────────────────────────────────────────────────────────
@@ -256,17 +276,21 @@ pub async fn phase_sync_whitelist_stellar(
         "stellar: processing whitelist allows"
     );
 
-    for candidate in candidates.into_iter().take(batch_size) {
-        let Ok(user) = Ed25519Pub::from_string(&candidate.wallet_address) else {
+    let mut submitted = 0usize;
+    for candidate in candidates {
+        if submitted >= batch_size {
+            break;
+        }
+        let Some(holder) = holder_scval(&candidate.wallet_address) else {
             tracing::warn!(
                 wallet = %candidate.wallet_address,
-                "stellar: lp_profiles row is not a valid G… strkey; skipping"
+                "stellar: lp_profiles row is not a valid G… or C… strkey; skipping"
             );
             continue;
         };
 
-        match whitelister.is_already_authorized(&user).await {
-            Ok(true) => {
+        match whitelister.plusd_authorization(&holder).await {
+            Ok(PlusdAuth::Authorized) => {
                 tracing::debug!(
                     wallet = %candidate.wallet_address,
                     "stellar: already authorized on-chain, syncing DB"
@@ -279,7 +303,14 @@ pub async fn phase_sync_whitelist_stellar(
                 }
                 continue;
             }
-            Ok(false) => {} // proceed
+            Ok(PlusdAuth::NoTrustline) => {
+                tracing::debug!(
+                    wallet = %candidate.wallet_address,
+                    "stellar: no PLUSD trustline yet, skipping"
+                );
+                continue;
+            }
+            Ok(PlusdAuth::NotAuthorized | PlusdAuth::Unknown) => {}
             Err(e) => {
                 tracing::warn!(
                     wallet = %candidate.wallet_address,
@@ -289,7 +320,8 @@ pub async fn phase_sync_whitelist_stellar(
             }
         }
 
-        match whitelister.submit_set_authorized(&user).await {
+        submitted += 1;
+        match whitelister.submit_set_authorized(&holder).await {
             Ok(()) => {
                 if let Err(e) = kyc_repo
                     .set_on_chain_allowed(chain_id, &candidate.wallet_address)

@@ -202,6 +202,39 @@ const WATERFALL_REINDEX_MESSAGE =
   "Loan data is incomplete — the indexer needs a re-sync. Contact support.";
 const WATERFALL_DEFAULT_MESSAGE =
   "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a smaller amount.";
+const RESUBMIT_URI_COLLISION_PATTERN = /metadata_uri .* already used/i;
+
+// spec: docs/frontend/trustee-flows.md#amend-and-resubmit-originationidedit-1913
+export function mapResubmitError(error: Error | null): UserFacingError | null {
+  if (error == null) return null;
+  if (error instanceof ApiError) {
+    const specific = (message: string): UserFacingError => ({
+      message,
+      details: error.message,
+      isSpecific: true,
+    });
+    if (error.status === 400) return specific(error.message);
+    if (error.status === 403) {
+      return specific("Only the originator can resubmit this loan.");
+    }
+    if (error.status === 404) {
+      return specific(
+        "Only the originator who submitted this loan can resubmit it.",
+      );
+    }
+    if (error.status === 409) {
+      return RESUBMIT_URI_COLLISION_PATTERN.test(error.message)
+        ? specific(
+            "This metadata URI is already used by another open submission. Use a unique one.",
+          )
+        : specific(
+            "This submission is no longer awaiting changes. Refresh to see its latest status.",
+          );
+    }
+  }
+  return toUserError(error, "Failed to resubmit the loan.");
+}
+
 const WATERFALL_DEFAULT_PATTERN = /^loan is in Default\b/i;
 
 // spec: docs/frontend/error-handling.md#waterfall-preview-no-details-on-the-expected-input-case-d5

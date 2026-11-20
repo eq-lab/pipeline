@@ -6,6 +6,8 @@ use sqlx::PgPool;
 use crate::chains::{normalize_usdc_amount, parse_chain_type, ChainKind};
 use crate::loan_event_params::json_i64;
 use crate::loan_snapshot::LoanSnapshot;
+use crate::plusd_seed::{PlusdCoverage, PlusdWindowSums};
+use crate::withdrawal_rate::{convert_to_assets, current_rate, LogPosition, RateSetPoint};
 
 /// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
 /// the "latest snapshot per loan" queries below (`list_latest_loan_snapshots`,
@@ -220,7 +222,8 @@ pub const LIST_WITHDRAWAL_QUEUE_ROWS_SQL: &str = "SELECT r.chain_id,
             r.params->>'withdrawer'        AS withdrawer,
             (r.params->>'amount')::numeric AS amount,
             r.block_timestamp              AS requested_at,
-            claim.claimed_at
+            claim.claimed_at,
+            r.contract_address
      FROM contract_logs r
      LEFT JOIN LATERAL (
          SELECT c.block_timestamp AS claimed_at
@@ -235,6 +238,27 @@ pub const LIST_WITHDRAWAL_QUEUE_ROWS_SQL: &str = "SELECT r.chain_id,
      WHERE r.chain_id = $1
        AND r.event_name = 'WithdrawalRequested'
        AND r.block_timestamp <= $2";
+
+pub const LIST_WITHDRAWAL_RATE_SETS_SQL: &str = "SELECT contract_address,
+            block_number,
+            log_index::bigint AS log_index,
+            (params->>'new_rate')::numeric AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND event_name = 'WithdrawalRateSet'
+       AND params ? 'new_rate'
+       AND block_timestamp <= $2
+     ORDER BY block_number, log_index";
+
+pub const WITHDRAWAL_QUEUE_TOTALS_SQL: &str = "SELECT
+         (SELECT COALESCE(MAX((params->>'queued')::numeric), 0)
+          FROM contract_logs
+          WHERE chain_id = $1 AND contract_address = $3
+            AND event_name = 'WithdrawalRequested' AND block_timestamp <= $2) AS total_queued,
+         (SELECT COALESCE(SUM((params->>'amount')::numeric), 0)
+          FROM contract_logs
+          WHERE chain_id = $1 AND contract_address = $3
+            AND event_name = 'RequestClaimed' AND block_timestamp <= $2) AS total_claimed";
 
 /// Signed raw (on-chain scale) PLUSD supply steps of one chain: `$1` chain id, `$2` `to_unix`,
 /// `$3` the chain's LoanRegistry address. See `docs/product-specs/dashboards-tvl-ledger.md`.
@@ -257,7 +281,7 @@ pub const PLUSD_LEDGER_SQL: &str = "WITH repayment_fees AS (
                   (p.params->'event'->>'repayment_id')::numeric,
                   p.log_index DESC
      )
-     SELECT block_timestamp, block_number, log_index, delta
+     SELECT block_timestamp, block_number, log_index::bigint AS log_index, delta
      FROM (
          SELECT block_timestamp, block_number, log_index,
                 CASE event_name
@@ -439,6 +463,9 @@ pub struct WithdrawalQueueRow {
     /// Latest matching `RequestClaimed` block timestamp (unix seconds); `None` while
     /// the request is still outstanding (queued).
     pub claimed_at: Option<i64>,
+    pub contract_address: String,
+    #[sqlx(default)]
+    pub value: BigDecimal,
 }
 
 /// The most recent loan-event snapshot per `(chain_id, loan_id)`.
@@ -654,7 +681,196 @@ pub struct RecordedPaymentRow {
 pub struct DealRegistrationRow {
     pub loan_id: String,
     pub debt: String,
-    pub cargo: String,
+    pub cargo: Option<String>,
+}
+
+pub const MINTER_CASH_BOOK_EVENT_NAMES: &[&str] = &[
+    "WireIn",
+    "WireInAssigned",
+    "WireInReturned",
+    "CashDisbursed",
+    "CashDisbursementReversed",
+    "CashRepaid",
+    "CashRepaymentReversed",
+    "WireOutRequested",
+    "WireOutSettled",
+    "WireOutCancelled",
+    "RampOpened",
+    "RampClosed",
+    "CashRecorded",
+    "MinterSnapshot",
+];
+
+pub const MINTER_EVENTS_SQL: &str = "SELECT
+         event_name,
+         block_number,
+         log_index,
+         block_timestamp,
+         params
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = ANY($3)
+     ORDER BY block_number, log_index";
+
+pub const MINTER_FOLD_EVENTS_SQL: &str = "WITH snap AS (
+         SELECT block_number AS b, log_index AS i
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND contract_address = $2
+            AND event_name = 'MinterSnapshot'
+          ORDER BY block_number DESC, log_index DESC
+          LIMIT 1)
+     SELECT
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     LEFT JOIN snap s ON TRUE
+     WHERE c.chain_id = $1
+       AND c.contract_address = $2
+       AND c.event_name = ANY($3)
+       AND (c.event_name = 'RampOpened'
+            OR s.b IS NULL
+            OR c.block_number > s.b
+            OR (c.block_number = s.b AND c.log_index >= s.i))
+     ORDER BY c.block_number, c.log_index";
+
+pub const LP_WIRE_OUT_EVENTS_SQL: &str = "SELECT
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     WHERE c.chain_id = $1
+       AND c.contract_address = $2
+       AND (
+            (c.event_name = 'WireOutRequested'
+                AND c.params @> jsonb_build_object('lp', $3::text))
+            OR (c.event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND EXISTS (
+                    SELECT 1
+                      FROM contract_logs r
+                     WHERE r.chain_id = $1
+                       AND r.contract_address = $2
+                       AND r.event_name = 'WireOutRequested'
+                       AND r.params @> jsonb_build_object('lp', $3::text)
+                       AND c.params @> jsonb_build_object('id', r.params->>'id')))
+       )
+     ORDER BY c.block_number, c.log_index";
+
+pub const LP_WIRE_IN_EVENTS_SQL: &str = "WITH assigned AS (
+        SELECT params->'id' AS id
+          FROM contract_logs
+         WHERE chain_id = $1
+           AND contract_address = $2
+           AND event_name = 'WireInAssigned'
+           AND params @> jsonb_build_object('receiver', $3::text))
+     SELECT event_name, block_number, log_index, block_timestamp, params
+       FROM contract_logs
+      WHERE chain_id = $1
+        AND contract_address = $2
+        AND (
+             (event_name IN ('WireIn', 'WireInAssigned')
+              AND params @> jsonb_build_object('receiver', $3::text))
+          OR (event_name = 'WireIn'
+              AND params @> ANY(ARRAY(
+                  SELECT jsonb_build_object('id', (id #>> '{}')::bigint) FROM assigned
+                   WHERE id #>> '{}' ~ '^[0-9]{1,10}$'
+                  UNION ALL
+                  SELECT jsonb_build_object('id', id #>> '{}') FROM assigned)))
+        )
+      ORDER BY block_number, log_index";
+
+pub const LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL: &str = "WITH minter AS (
+         SELECT contract_address
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND event_name = 'WireOutRequested'
+            AND params @> jsonb_build_object('lp', $2::text)
+          ORDER BY block_number DESC, log_index DESC
+          LIMIT 1)
+     SELECT
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     JOIN minter m ON m.contract_address = c.contract_address
+     WHERE c.chain_id = $1
+       AND (
+            (c.event_name = 'WireOutRequested'
+                AND c.params @> jsonb_build_object('lp', $2::text))
+            OR (c.event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND EXISTS (
+                    SELECT 1
+                      FROM contract_logs r
+                     WHERE r.chain_id = $1
+                       AND r.contract_address = c.contract_address
+                       AND r.event_name = 'WireOutRequested'
+                       AND r.params @> jsonb_build_object('lp', $2::text)
+                       AND c.params @> jsonb_build_object('id', r.params->>'id')))
+       )
+     ORDER BY c.block_number, c.log_index";
+
+pub const PLUSD_HOLDER_STEPS_SQL: &str = "SELECT block_number,
+         block_timestamp,
+         CASE WHEN params->>'amount' ~ '^[0-9]{1,39}$' THEN params->>'amount' END AS amount,
+         params @> jsonb_build_object('to', $3::text) AS incoming,
+         params @> jsonb_build_object('from', $3::text) AS outgoing
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = 'PlusdTransfer'
+       AND (params @> jsonb_build_object('to', $3::text)
+            OR params @> jsonb_build_object('from', $3::text))
+     ORDER BY block_number, log_index";
+
+pub const PLUSD_COVERAGE_START_SQL: &str = "SELECT block_number, block_timestamp
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = 'PlusdTransfer'
+     ORDER BY block_number, log_index
+     LIMIT 1";
+
+pub const PLUSD_WINDOW_SUMS_SQL: &str = "SELECT COALESCE(SUM(w.amt) FILTER (WHERE w.incoming), 0)::text AS credit,
+         COALESCE(SUM(w.amt) FILTER (WHERE w.outgoing), 0)::text AS debit,
+         COUNT(*) FILTER (WHERE w.amt IS NULL) AS malformed
+     FROM (
+         SELECT CASE WHEN params->>'amount' ~ '^[0-9]{1,39}$' THEN (params->>'amount')::numeric END AS amt,
+                params @> jsonb_build_object('to', $3::text) AS incoming,
+                params @> jsonb_build_object('from', $3::text) AS outgoing
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND contract_address = $2
+            AND event_name = 'PlusdTransfer'
+            AND block_number > $4
+            AND block_number <= $5
+            AND (params @> jsonb_build_object('to', $3::text)
+                 OR params @> jsonb_build_object('from', $3::text))
+     ) w";
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PlusdStepRow {
+    pub block_number: i64,
+    pub block_timestamp: i64,
+    pub amount: Option<String>,
+    pub incoming: bool,
+    pub outgoing: bool,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct MinterEventRow {
+    pub event_name: String,
+    pub block_number: i64,
+    pub log_index: i32,
+    pub block_timestamp: i64,
+    pub params: serde_json::Value,
 }
 
 pub struct ContractLogsRepo {
@@ -664,6 +880,132 @@ pub struct ContractLogsRepo {
 impl ContractLogsRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn list_minter_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let names: Vec<String> = MINTER_CASH_BOOK_EVENT_NAMES
+            .iter()
+            .map(|n| (*n).to_owned())
+            .collect();
+        let rows = sqlx::query_as::<_, MinterEventRow>(MINTER_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(&names)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_minter_fold_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let names: Vec<String> = MINTER_CASH_BOOK_EVENT_NAMES
+            .iter()
+            .map(|n| (*n).to_owned())
+            .collect();
+        let rows = sqlx::query_as::<_, MinterEventRow>(MINTER_FOLD_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(&names)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_out_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+        lp: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(lp)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_in_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+        wallet_strkey: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_IN_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(wallet_strkey)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_out_events_inferred_minter(
+        &self,
+        chain_id: i64,
+        lp: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL)
+            .bind(chain_id)
+            .bind(lp)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_plusd_holder_steps(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+        holder: &str,
+    ) -> anyhow::Result<Vec<PlusdStepRow>> {
+        let rows = sqlx::query_as::<_, PlusdStepRow>(PLUSD_HOLDER_STEPS_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .bind(holder)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn plusd_window_sums(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+        holder: &str,
+        after_ledger: i64,
+        up_to_ledger: i64,
+    ) -> anyhow::Result<PlusdWindowSums> {
+        let sums = sqlx::query_as::<_, PlusdWindowSums>(PLUSD_WINDOW_SUMS_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .bind(holder)
+            .bind(after_ledger)
+            .bind(up_to_ledger)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(sums)
+    }
+
+    pub async fn plusd_coverage_start(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+    ) -> anyhow::Result<Option<PlusdCoverage>> {
+        let row = sqlx::query_as::<_, PlusdCoverage>(PLUSD_COVERAGE_START_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row)
     }
 
     /// `LoanStatusUpdated`/`LoanDefaulted`/`LoanClosed` events emitted by `contract_address`
@@ -909,6 +1251,7 @@ impl ContractLogsRepo {
         executor: E,
         chain_id: i64,
         to_unix: i64,
+        rate_sets: &[RateSetPoint],
     ) -> anyhow::Result<Vec<WithdrawalQueueRow>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
@@ -924,11 +1267,62 @@ impl ContractLogsRepo {
         let rows = rows
             .into_iter()
             .map(|mut r| {
+                let rate = current_rate(rate_sets, Some(&r.contract_address));
+                r.value = normalize_usdc_amount(chain_kind, &convert_to_assets(&r.amount, &rate));
                 r.amount = normalize_usdc_amount(chain_kind, &r.amount);
                 r
             })
             .collect();
         Ok(rows)
+    }
+
+    pub async fn list_withdrawal_rate_sets<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<RateSetPoint>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows: Vec<(String, i64, i64, BigDecimal)> =
+            sqlx::query_as(LIST_WITHDRAWAL_RATE_SETS_SQL)
+                .bind(chain_id)
+                .bind(to_unix)
+                .fetch_all(executor)
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(contract_address, block_number, log_index, new_rate)| RateSetPoint {
+                    contract_address,
+                    position: LogPosition {
+                        block_number,
+                        log_index,
+                    },
+                    new_rate,
+                },
+            )
+            .collect())
+    }
+
+    pub async fn get_withdrawal_queue_totals<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+        contract_address: &str,
+    ) -> anyhow::Result<(BigDecimal, BigDecimal)>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let totals: (BigDecimal, BigDecimal) = sqlx::query_as(WITHDRAWAL_QUEUE_TOTALS_SQL)
+            .bind(chain_id)
+            .bind(to_unix)
+            .bind(contract_address)
+            .fetch_one(executor)
+            .await?;
+        Ok(totals)
     }
 
     /// The PLUSD supply ledger of one chain with `block_timestamp <= to_unix`: signed steps,
@@ -1473,7 +1867,6 @@ impl ContractLogsRepo {
                AND event_name = 'DealRegistered'
                AND params->>'loan_id' IS NOT NULL
                AND params->>'debt' IS NOT NULL
-               AND params->>'cargo' IS NOT NULL
              ORDER BY block_number ASC, log_index ASC",
         )
         .bind(chain_id)

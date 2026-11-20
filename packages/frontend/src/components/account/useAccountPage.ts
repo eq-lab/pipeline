@@ -18,6 +18,7 @@ import {
   checkLpSubmission,
   type SubmissionResult,
 } from "./submitLpForReview";
+import { useSettlementBankAccountDraft } from "./useSettlementBankAccountDraft";
 import { useAccountDocuments } from "./useAccountDocuments";
 import {
   reconcileUploadedDocuments,
@@ -63,7 +64,10 @@ function uploadErrorResponse(error: ApiError): UploadDocumentsResponse | null {
   return payload as UploadDocumentsResponse;
 }
 
-export function useAccountPage(enabled = true) {
+export function useAccountPage(
+  enabled = true,
+  onLpAdopted?: (lp: LpResponse) => void,
+) {
   const { token, email: sessionEmail } = useAuthSession();
   const [readState, setReadState] = useState<ReadState>("loading");
   const [suspended, setSuspended] = useState(false);
@@ -84,6 +88,10 @@ export function useAccountPage(enabled = true) {
   const identity = useRef<string | undefined>(undefined);
   const request = useRef(0);
   const documents = useAccountDocuments();
+  const bank = useSettlementBankAccountDraft();
+  const resetBank = bank.reset;
+  const onLpAdoptedRef = useRef(onLpAdopted);
+  onLpAdoptedRef.current = onLpAdopted;
 
   const current = useCallback(
     (expected: string) => readSession()?.token === expected,
@@ -101,12 +109,14 @@ export function useAccountPage(enabled = true) {
         setLegalName(profile.legalName);
         setCountry(profile.country);
         setBaseline(profile);
+        resetBank();
         identity.current = nextIdentity;
       }
       setLp(next);
       setReadState(next ? "loaded" : "absent");
+      if (next) onLpAdoptedRef.current?.(next);
     },
-    [current],
+    [current, resetBank],
   );
 
   const refresh = useCallback(
@@ -152,6 +162,7 @@ export function useAccountPage(enabled = true) {
     uploadPending.current = false;
     setAmbiguousNames([]);
     setBusy(false);
+    resetBank();
     if (!enabled) return;
     if (!token) {
       setReadState("error");
@@ -164,7 +175,7 @@ export function useAccountPage(enabled = true) {
     return () => {
       controller.abort();
     };
-  }, [enabled, token, refresh]);
+  }, [enabled, token, refresh, resetBank]);
 
   const email =
     lp?.contact_email ?? (readState === "absent" ? sessionEmail : undefined);
@@ -183,11 +194,12 @@ export function useAccountPage(enabled = true) {
   const canSaveProfile =
     canWrite &&
     legalName.trim().length > 0 &&
-    (readState === "absent" || profileChanged);
+    (readState === "absent" || profileChanged || bank.dirty);
   const canUpload =
     canWrite &&
     !uncertainIds &&
     documents.canSave &&
+    !bank.dirty &&
     (readState === "absent" || !profileChanged) &&
     (readState === "loaded" || legalName.trim().length > 0);
 
@@ -196,7 +208,8 @@ export function useAccountPage(enabled = true) {
     eligibleForReview(lp) &&
     !uncertainIds &&
     documents.files.length === 0 &&
-    !profileChanged;
+    !profileChanged &&
+    !bank.dirty;
 
   function applySubmission(result: SubmissionResult, expected: string) {
     if (!current(expected) || result.cancelled) return;
@@ -245,8 +258,10 @@ export function useAccountPage(enabled = true) {
         legal_name: legalName.trim(),
         country: country.trim() || null,
         contact_email: email,
+        ...(bank.dirty ? { settlement_bank_account: bank.payload() } : {}),
       });
       if (!current(token)) return;
+      bank.reset();
       adopt(saved, token);
       const profile = {
         legalName: saved.legal_name,
@@ -257,9 +272,12 @@ export function useAccountPage(enabled = true) {
       setBaseline(profile);
     } catch (error) {
       if (!current(token)) return;
+      if (bank.applyError(error)) return;
       setActionError(message(error));
-      if (error instanceof ApiError && error.status === 409)
+      if (error instanceof ApiError && error.status === 409) {
+        bank.reset();
         await refresh(token);
+      }
     } finally {
       if (current(token)) setBusy(false);
     }
@@ -430,6 +448,8 @@ export function useAccountPage(enabled = true) {
     savedCountry: baseline.country,
     setCountry,
     writable,
+    bank,
+    bankAccount: lp?.settlement_bank_account ?? null,
     busy,
     actionError,
     uncertainIds,

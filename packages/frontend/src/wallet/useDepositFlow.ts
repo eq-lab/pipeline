@@ -48,7 +48,7 @@ import {
 import type { WrongNetworkInfo } from "@/wallet";
 import {
   useRequests,
-  useInvalidateRequests,
+  useActionConfirmedRefresh,
   useDepositVoucher,
   useWithdrawalVoucher,
   useStellarDepositVoucher,
@@ -68,6 +68,7 @@ import {
   selectWithdrawClaimHint,
   WITHDRAW_REQUEST_HINT,
 } from "./withdrawClaimHint";
+import { useSuccessEdge } from "./useSuccessEdge";
 import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
 import { balanceChipAmount } from "@/utils/quickAmount";
 import {
@@ -178,6 +179,13 @@ export interface FlowState {
   isReady: boolean;
   /** Deposit: balance >= minDeposit.  Withdraw: true when balance loaded. */
   hasBalance: boolean | undefined;
+  /**
+   * Deposit: the balance is below the minimum and no deposit request is
+   * confirmed, so the page shows the low-balance banner instead of the steps
+   * card. A request waiting for verification or its claim keeps the steps card
+   * (BUG-40). Withdraw: always false.
+   */
+  isBelowMinimum: boolean;
   meetsMin: boolean;
   exceedsBalance: boolean;
   /** True while the active-direction balance query OR the requests API query is still loading,
@@ -249,6 +257,7 @@ export interface FlowState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
 const REQUESTS_POLL_MS = 60_000;
 const REQUESTS_FAST_POLL_MS = 5_000;
 
@@ -416,7 +425,8 @@ export function useDepositFlow(
         ? REQUESTS_FAST_POLL_MS
         : REQUESTS_POLL_MS,
   });
-  const invalidateRequests = useInvalidateRequests();
+  const confirmAction = useActionConfirmedRefresh();
+  const claimIdRef = useRef<string | undefined>(undefined);
 
   const isRequestListed = (
     type: "Deposit" | "Withdraw",
@@ -428,18 +438,38 @@ export function useDepositFlow(
     ) ??
       false);
 
-  useEffect(() => {
-    if (evmRequestDeposit.isSuccess) invalidateRequests();
-  }, [evmRequestDeposit.isSuccess, invalidateRequests]);
-  useEffect(() => {
-    if (evmRequestWithdrawal.isSuccess) invalidateRequests();
-  }, [evmRequestWithdrawal.isSuccess, invalidateRequests]);
-  useEffect(() => {
-    if (stellarRequestDeposit.isSuccess) invalidateRequests();
-  }, [stellarRequestDeposit.isSuccess, invalidateRequests]);
-  useEffect(() => {
-    if (stellarRequestWithdrawal.isSuccess) invalidateRequests();
-  }, [stellarRequestWithdrawal.isSuccess, invalidateRequests]);
+  useSuccessEdge(evmRequestDeposit.isSuccess, () =>
+    confirmAction({
+      type: "Deposit",
+      requestId: evmRequestDeposit.data?.requestId,
+    }),
+  );
+  useSuccessEdge(evmRequestWithdrawal.isSuccess, () =>
+    confirmAction({
+      type: "Withdraw",
+      requestId: evmRequestWithdrawal.data?.requestId,
+    }),
+  );
+  useSuccessEdge(stellarRequestDeposit.isSuccess, () =>
+    confirmAction({
+      type: "Deposit",
+      requestId: stellarRequestDeposit.data?.requestId,
+    }),
+  );
+  useSuccessEdge(stellarRequestWithdrawal.isSuccess, () =>
+    confirmAction({
+      type: "Withdraw",
+      requestId: stellarRequestWithdrawal.data?.requestId,
+    }),
+  );
+  const confirmClaim = (type: "Deposit" | "Withdraw") =>
+    confirmAction({ type, requestId: claimIdRef.current, claimed: true });
+  useSuccessEdge(evmClaim.isSuccess, () => confirmClaim("Deposit"));
+  useSuccessEdge(evmClaimWithdrawal.isSuccess, () => confirmClaim("Withdraw"));
+  useSuccessEdge(stellarClaim.isSuccess, () => confirmClaim("Deposit"));
+  useSuccessEdge(stellarClaimWithdrawal.isSuccess, () =>
+    confirmClaim("Withdraw"),
+  );
 
   // ── EVM request state machines ─────────────────────────────────────────────
   const evmDepositActiveRequest =
@@ -1210,6 +1240,8 @@ export function useDepositFlow(
       minChipLabel: evmMinChipLabel,
       isReady: isEvmReady,
       hasBalance: evmHasBalance,
+      isBelowMinimum:
+        isDeposit && evmHasBalance === false && !evmDepositRequestIsConfirmed,
       meetsMin: evmMeetsMin,
       exceedsBalance:
         evmActiveRequest === null &&
@@ -1295,6 +1327,7 @@ export function useDepositFlow(
         hint: evmStep3State === "success" ? undefined : queueClaimHint,
         onAction: () => {
           if (evmRequestId === undefined || !evmVoucher.data?.signature) return;
+          claimIdRef.current = evmRequestId;
           if (isDeposit) {
             evmClaim.write(
               BigInt(evmRequestId),
@@ -1601,6 +1634,10 @@ export function useDepositFlow(
     minChipLabel: stellarMinChipLabel,
     isReady: isStellarReady,
     hasBalance: stellarHasBalance,
+    isBelowMinimum:
+      isDeposit &&
+      stellarHasBalance === false &&
+      !stellarDepositRequestIsConfirmed,
     meetsMin: stellarMeetsMin,
     exceedsBalance:
       !stellarRequestIsConfirmed &&
@@ -1699,6 +1736,7 @@ export function useDepositFlow(
             ? BigInt(deadlineRaw)
             : undefined;
         if (!sig || deadline === undefined) return;
+        claimIdRef.current = String(stellarRequestIdBigInt);
         if (isDeposit) {
           stellarClaim.write(stellarRequestIdBigInt, sig, deadline);
         } else {

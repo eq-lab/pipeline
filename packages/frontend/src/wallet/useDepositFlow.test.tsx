@@ -49,6 +49,7 @@ const ctl = vi.hoisted(() => ({
   },
   stellarRequestDepositSuccess: false,
   stellarMinDeposit: 10_000_000_000n as bigint | undefined,
+  evmMinDeposit: 1_000_000_000n,
   requests: undefined as
     | {
         type: string;
@@ -58,7 +59,21 @@ const ctl = vi.hoisted(() => ({
         created_at: string;
       }[]
     | undefined,
-  invalidate: vi.fn(),
+  confirm: vi.fn(),
+  evmVoucherSig: undefined as string | undefined,
+  ok: {
+    evmReqW: false,
+    evmClaim: false,
+    evmClaimW: false,
+    stReqW: false,
+    stClaim: false,
+    stClaimW: false,
+  },
+  evmWithdrawData: undefined as
+    | { hash: string; requestId?: string }
+    | undefined,
+  stDepositData: undefined as { hash: string; requestId?: bigint } | undefined,
+  stWithdrawData: undefined as { hash: string; requestId?: bigint } | undefined,
   stellarClaimError: null as Error | null,
   stellarClaimReset: vi.fn(),
   voucherInvalidate: vi.fn(),
@@ -97,7 +112,7 @@ vi.mock("@/wallet", async () => ({
   }),
   useDepositManagerAddresses: () => ({ plusd: undefined, usdc: undefined }),
   useDepositManagerMinDeposit: () => ({
-    minDeposit: ctl.evmConnected ? 1_000_000_000n : undefined,
+    minDeposit: ctl.evmConnected ? ctl.evmMinDeposit : undefined,
   }),
   useEvmToken: () => ({
     decimals: ctl.evmConnected ? 6 : undefined,
@@ -121,22 +136,22 @@ vi.mock("@/wallet", async () => ({
   }),
   useClaim: () => ({
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.evmClaim,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
   }),
   useRequestWithdrawal: () => ({
-    data: undefined,
+    data: ctl.evmWithdrawData,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.evmReqW,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
   }),
   useClaimWithdrawal: () => ({
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.evmClaimW,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
@@ -178,7 +193,7 @@ vi.mock("@/wallet", async () => ({
   SAC_DECIMALS: 7,
   sacDisplayToRaw: (v: string) => BigInt(Math.round(parseFloat(v) * 1e7)),
   useStellarRequestDeposit: () => ({
-    data: undefined,
+    data: ctl.stDepositData,
     isPending: false,
     isSuccess: ctl.stellarRequestDepositSuccess,
     error: null,
@@ -188,7 +203,7 @@ vi.mock("@/wallet", async () => ({
   useStellarClaim: () => ({
     write: mockStellarClaimWrite,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.stClaim,
     error: ctl.stellarClaimError,
     reset: ctl.stellarClaimReset,
     data: undefined,
@@ -202,9 +217,9 @@ vi.mock("@/wallet", async () => ({
     submit: vi.fn(),
   }),
   useStellarRequestWithdrawal: () => ({
-    data: undefined,
+    data: ctl.stWithdrawData,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.stReqW,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
@@ -212,7 +227,7 @@ vi.mock("@/wallet", async () => ({
   useStellarClaimWithdrawal: () => ({
     write: mockStellarClaimWithdrawalWrite,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.ok.stClaimW,
     error: null,
     reset: vi.fn(),
     data: undefined,
@@ -257,15 +272,15 @@ vi.mock("@/api", () => ({
       refetch: vi.fn(),
     };
   },
-  useInvalidateRequests: () => ctl.invalidate,
+  useActionConfirmedRefresh: () => ctl.confirm,
   useDepositVoucher: () => ({
-    data: undefined,
+    data: ctl.evmVoucherSig ? { signature: ctl.evmVoucherSig } : undefined,
     status: "idle",
     error: null,
     refetch: vi.fn(),
   }),
   useWithdrawalVoucher: () => ({
-    data: undefined,
+    data: ctl.evmVoucherSig ? { signature: ctl.evmVoucherSig } : undefined,
     status: "idle",
     error: null,
     refetch: vi.fn(),
@@ -360,7 +375,20 @@ function resetCtl() {
   ctl.evmDepositInflight = undefined;
   ctl.evmRequestDeposit = { data: undefined, isSuccess: false };
   ctl.stellarRequestDepositSuccess = false;
+  ctl.evmVoucherSig = undefined;
+  ctl.ok = {
+    evmReqW: false,
+    evmClaim: false,
+    evmClaimW: false,
+    stReqW: false,
+    stClaim: false,
+    stClaimW: false,
+  };
+  ctl.evmWithdrawData = undefined;
+  ctl.stDepositData = undefined;
+  ctl.stWithdrawData = undefined;
   ctl.stellarMinDeposit = 10_000_000_000n;
+  ctl.evmMinDeposit = 1_000_000_000n;
   ctl.requests = undefined;
   ctl.stellarClaimError = null;
   ctl.refetchIntervalFn = undefined;
@@ -680,39 +708,185 @@ describe("useDepositFlow — EVM in-flight reload guard (#1658)", () => {
   });
 });
 
-describe("useDepositFlow — requests invalidation (#1658)", () => {
+describe("useDepositFlow — activity refresh on confirmed writes (#1810)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetCtl();
   });
 
-  it("invalidates once when the EVM request mutation succeeds", () => {
+  it("confirms an EVM deposit request once with its request id", () => {
     mockXlmState.kind = "evm";
     ctl.evmConnected = true;
     ctl.requests = [];
     const { rerender } = renderHook(() =>
       useDepositFlow("deposit", 0n, vi.fn()),
     );
-    expect(ctl.invalidate).not.toHaveBeenCalled();
+    expect(ctl.confirm).not.toHaveBeenCalled();
     ctl.evmRequestDeposit = {
       data: { hash: "0xabc", requestId: "7" },
       isSuccess: true,
     };
     rerender();
     rerender();
-    expect(ctl.invalidate).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Deposit",
+      requestId: "7",
+    });
   });
 
-  it("invalidates once when the Stellar request mutation succeeds", () => {
+  it("confirms an EVM withdrawal request once with its request id", () => {
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.requests = [];
+    const { rerender } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    ctl.evmWithdrawData = { hash: "0xdef", requestId: "9" };
+    ctl.ok.evmReqW = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Withdraw",
+      requestId: "9",
+    });
+  });
+
+  it("confirms a Stellar deposit request once with its bigint request id", () => {
     mockXlmState.kind = "stellar";
     const { rerender } = renderHook(() =>
       useDepositFlow("deposit", 0n, vi.fn()),
     );
-    expect(ctl.invalidate).not.toHaveBeenCalled();
+    expect(ctl.confirm).not.toHaveBeenCalled();
+    ctl.stDepositData = { hash: "h", requestId: 5n };
     ctl.stellarRequestDepositSuccess = true;
     rerender();
     rerender();
-    expect(ctl.invalidate).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Deposit",
+      requestId: 5n,
+    });
+  });
+
+  it("confirms a Stellar withdrawal request once", () => {
+    mockXlmState.kind = "stellar";
+    const { rerender } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    ctl.stWithdrawData = { hash: "h", requestId: 6n };
+    ctl.ok.stReqW = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Withdraw",
+      requestId: 6n,
+    });
+  });
+
+  it("confirms an EVM deposit claim with the id captured at onAction", () => {
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.evmVoucherSig = "0xsig";
+    ctl.requests = [
+      {
+        type: "Deposit",
+        request_id: "7",
+        amount: "1",
+        status: "PendingClaim",
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const { result, rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    act(() => {
+      result.current.step3.onAction();
+    });
+    expect(ctl.confirm).not.toHaveBeenCalled();
+    ctl.ok.evmClaim = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Deposit",
+      requestId: "7",
+      claimed: true,
+    });
+  });
+
+  it("confirms an EVM withdrawal claim with the id captured at onAction", () => {
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.evmVoucherSig = "0xsig";
+    ctl.requests = [
+      {
+        type: "Withdraw",
+        request_id: "8",
+        amount: "1",
+        status: "PendingClaim",
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const { result, rerender } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    act(() => {
+      result.current.step3.onAction();
+    });
+    ctl.ok.evmClaimW = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Withdraw",
+      requestId: "8",
+      claimed: true,
+    });
+  });
+
+  it("confirms a Stellar deposit claim with the id captured at onAction", () => {
+    mockXlmState.kind = "stellar";
+    mockStellarDepositVoucherData = { deadline: "1800000000" };
+    const { result, rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    act(() => {
+      result.current.step3.onAction();
+    });
+    ctl.ok.stClaim = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Deposit",
+      requestId: "42",
+      claimed: true,
+    });
+    mockStellarDepositVoucherData = undefined;
+  });
+
+  it("confirms a Stellar withdrawal claim with the id captured at onAction", () => {
+    mockXlmState.kind = "stellar";
+    mockStellarWithdrawVoucherData = { deadline: "1800000000" };
+    const { result, rerender } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    act(() => {
+      result.current.step3.onAction();
+    });
+    ctl.ok.stClaimW = true;
+    rerender();
+    rerender();
+    expect(ctl.confirm).toHaveBeenCalledTimes(1);
+    expect(ctl.confirm).toHaveBeenCalledWith({
+      type: "Withdraw",
+      requestId: "43",
+      claimed: true,
+    });
+    mockStellarWithdrawVoucherData = undefined;
   });
 });
 
@@ -758,6 +932,104 @@ describe("useDepositFlow — Stellar min deposit from the contract (#1658)", () 
       result.current.onQuickAmount(0);
     });
     expect(setAmount).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositFlow — isBelowMinimum keeps a pending claim reachable (BUG-40)", () => {
+  const deposit = (status: string) => ({
+    type: "Deposit",
+    request_id: "42",
+    amount: "10000000000",
+    status,
+    created_at: new Date().toISOString(),
+  });
+  const pendingClaimDeposit = () => [deposit("PendingClaim")];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+  });
+
+  describe("EVM (balance 5,000 USDC, minimum 10,000)", () => {
+    beforeEach(() => {
+      mockXlmState.kind = "evm";
+      ctl.evmConnected = true;
+      ctl.evmMinDeposit = 10_000_000_000n;
+    });
+
+    it("is true with no deposit request", () => {
+      ctl.requests = [];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+
+    it("is false while a deposit awaits its claim", () => {
+      ctl.requests = pendingClaimDeposit();
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is false while an in-flight deposit is not yet listed", () => {
+      ctl.requests = [];
+      ctl.evmDepositInflight = {
+        requestId: "9",
+        amount: "5000000000",
+        txHash: "0xdead",
+        createdAt: 1,
+      };
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is true again once the deposit is Completed", () => {
+      ctl.requests = [deposit("Completed")];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+  });
+
+  describe("Stellar (balance 1,000 USDC, minimum 2,000)", () => {
+    beforeEach(() => {
+      mockXlmState.kind = "stellar";
+      ctl.stellarMinDeposit = 20_000_000_000n;
+    });
+
+    it("is true with no deposit request", () => {
+      ctl.requests = [];
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(true);
+    });
+
+    it("is false while a deposit awaits its claim", () => {
+      ctl.requests = pendingClaimDeposit();
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.hasBalance).toBe(false);
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
+
+    it("is false right after the deposit request succeeds", () => {
+      ctl.requests = [];
+      ctl.stellarRequestDepositSuccess = true;
+      const { result } = renderHook(() =>
+        useDepositFlow("deposit", 0n, vi.fn()),
+      );
+      expect(result.current.isBelowMinimum).toBe(false);
+    });
   });
 });
 

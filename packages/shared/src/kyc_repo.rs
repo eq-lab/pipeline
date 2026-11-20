@@ -3,6 +3,8 @@ use sqlx::PgPool;
 
 use crate::chains::ChainKind;
 use crate::sumsub::models::{AmlStatus, KycReviewStatus, KycStatus};
+use crate::withdrawal_rate::{convert_to_assets, rate_one};
+use bigdecimal::BigDecimal;
 
 pub struct KycRepo {
     pub pool: PgPool,
@@ -66,6 +68,10 @@ pub struct RequestEventRow {
     pub block_timestamp: i64,
     pub is_claimed: bool,
     pub on_chain_allowed: bool,
+    pub queued: Option<bigdecimal::BigDecimal>,
+    pub claim_block_number: Option<i64>,
+    pub claim_log_index: Option<i64>,
+    pub rate_set_rate: Option<bigdecimal::BigDecimal>,
 }
 
 #[derive(serde::Serialize)]
@@ -82,6 +88,10 @@ pub struct GroupedRequest {
     pub shares: Option<String>,
     pub status: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued_through: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usdc_paid: Option<String>,
 }
 
 /// Whether the KYT gate applies to a chain kind: EVM follows Crystal, Stellar follows Elliptic.
@@ -133,7 +143,7 @@ pub fn feed_status(
 }
 
 impl GroupedRequest {
-    fn from_row(row: RequestEventRow, kyt_gate_enabled: bool) -> Self {
+    pub fn from_row(row: RequestEventRow, kyt_gate_enabled: bool, kind: Option<ChainKind>) -> Self {
         let request_type = match row.event_name.as_str() {
             "DepositRequested" => "Deposit",
             "WithdrawalRequested" => "Withdraw",
@@ -151,19 +161,118 @@ impl GroupedRequest {
         );
 
         let created_at = chrono::DateTime::from_timestamp(row.block_timestamp, 0)
-            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-            .unwrap_or_default();
+            .map_or_else(Default::default, |dt| {
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            });
+
+        let stellar_withdraw =
+            kind == Some(ChainKind::Stellar) && row.event_name == "WithdrawalRequested";
+        let queued_through = stellar_withdraw
+            .then(|| row.queued.as_ref().map(BigDecimal::to_plain_string))
+            .flatten();
+        let usdc_paid = if stellar_withdraw && row.claim_block_number.is_some() {
+            row.amount.as_ref().map(|amount| {
+                let rate = row.rate_set_rate.clone().unwrap_or_else(rate_one);
+                convert_to_assets(amount, &rate).to_plain_string()
+            })
+        } else {
+            None
+        };
 
         Self {
             chain_id: row.chain_id,
             request_type: request_type.to_owned(),
             request_id: row.request_id.map(|r| r.to_string()),
-            amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
+            amount: row.amount.map_or_else(Default::default, |a| a.to_string()),
             assets: row.assets.map(|a| a.to_string()),
             shares: row.shares.map(|s| s.to_string()),
             status: status.to_owned(),
             created_at,
+            queued_through,
+            usdc_paid,
         }
+    }
+}
+
+pub fn all_requests_sql(chain_scoped: bool, pending_only: bool) -> String {
+    // Derive the "sender" from params depending on the event type.
+    // DepositRequested / RequestClaimed  -> params->>'user'
+    // WithdrawalRequested               -> params->>'withdrawer'
+    // StakingDeposit / StakingWithdrawal -> params->>'owner'
+    //
+    // Legacy Stellar `StakingDeposit` rows (pre EVM-parity normalization in the
+    // parser) lack `owner` and instead expose the share holder under `from`. The
+    // CASE branch below keeps those rows queryable without a one-off backfill.
+    // Scoped to `StakingDeposit` so withdrawals — where `from`/`receiver` would
+    // be semantically wrong (receiver may differ from owner) — are unaffected.
+    let sender_expr = "COALESCE(
+        r.params->>'user',
+        r.params->>'withdrawer',
+        r.params->>'owner',
+        CASE WHEN r.event_name = 'StakingDeposit' THEN r.params->>'from' END
+    )";
+    let chain_clause = if chain_scoped {
+        " AND r.chain_id = $2"
+    } else {
+        ""
+    };
+    let base = format!(
+        "SELECT r.chain_id,
+                       r.event_name,
+                       (r.params->>'request_id')::numeric AS request_id,
+                       COALESCE(
+                           (r.params->>'assets')::numeric,
+                           (r.params->>'amount')::numeric
+                       ) AS amount,
+                       (r.params->>'assets')::numeric AS assets,
+                       (r.params->>'shares')::numeric AS shares,
+                       r.kyt_status,
+                       r.block_timestamp,
+                       (claim.block_number IS NOT NULL) AS is_claimed,
+                       COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed,
+                       (r.params->>'queued')::numeric AS queued,
+                       claim.block_number AS claim_block_number,
+                       claim.log_index AS claim_log_index,
+                       rs.new_rate AS rate_set_rate
+                FROM contract_logs r
+                LEFT JOIN lp_profiles p ON p.chain_id = r.chain_id
+                    AND LOWER(p.wallet_address) = LOWER({sender_expr})
+                LEFT JOIN LATERAL (
+                    SELECT c3.block_number, c3.log_index::bigint AS log_index
+                    FROM contract_logs c3
+                    WHERE c3.chain_id = r.chain_id
+                      AND c3.contract_address = r.contract_address
+                      AND c3.event_name = 'RequestClaimed'
+                      AND c3.params->>'request_id' = r.params->>'request_id'
+                    ORDER BY c3.block_number, c3.log_index
+                    LIMIT 1
+                ) claim ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT (s.params->>'new_rate')::numeric AS new_rate
+                    FROM contract_logs s
+                    WHERE r.event_name = 'WithdrawalRequested'
+                      AND claim.block_number IS NOT NULL
+                      AND s.chain_id = r.chain_id
+                      AND s.contract_address = r.contract_address
+                      AND s.event_name = 'WithdrawalRateSet'
+                      AND s.params ? 'new_rate'
+                      AND (s.block_number, s.log_index::bigint) < (claim.block_number, claim.log_index)
+                    ORDER BY s.block_number DESC, s.log_index DESC
+                    LIMIT 1
+                ) rs ON TRUE
+                WHERE LOWER({sender_expr}) = $1
+                  AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal'){chain_clause}"
+    );
+
+    if pending_only {
+        format!(
+            "{base}
+                  AND claim.block_number IS NULL
+                  AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')
+                ORDER BY r.block_timestamp DESC, r.id DESC"
+        )
+    } else {
+        format!("{base} ORDER BY r.block_timestamp DESC, r.id DESC")
     }
 }
 
@@ -174,6 +283,50 @@ pub struct KytTransferResult<'a> {
     pub sender_risk: Option<f32>,
     pub sender_signals: Option<&'a serde_json::Value>,
     pub screened_at: DateTime<Utc>,
+}
+
+pub const POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL: &str =
+    "INSERT INTO lp_profiles (chain_id, wallet_address)
+     SELECT $1, l.stellar_address FROM lps l
+     WHERE l.kyb_status = 'Passed' AND l.stellar_address IS NOT NULL
+       AND l.address_linked_at IS NOT NULL
+     ON CONFLICT (chain_id, wallet_address) DO NOTHING";
+
+pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
+    let deposit_kyt = if elliptic_enabled {
+        " AND c.kyt_status = 1"
+    } else {
+        ""
+    };
+    let sumsub = if sumsub_enabled {
+        " AND p.sumsub_kyc_status = 2 AND p.sumsub_review_status = 2 AND p.sumsub_aml_status = 2"
+    } else {
+        ""
+    };
+    let profile_kyt = if elliptic_enabled {
+        " AND p.kyt_status = 1"
+    } else {
+        ""
+    };
+    format!(
+        "SELECT p.wallet_address FROM lp_profiles p
+         WHERE p.chain_id = $1
+           AND p.on_chain_allowed = FALSE{profile_kyt}
+           AND (
+             (EXISTS (
+                SELECT 1 FROM contract_logs c
+                WHERE c.chain_id = $1
+                  AND c.event_name = 'DepositRequested'
+                  AND c.params->>'user' = p.wallet_address{deposit_kyt}
+              ){sumsub})
+             OR EXISTS (
+                SELECT 1 FROM lps l
+                WHERE l.stellar_address = p.wallet_address
+                  AND l.kyb_status = 'Passed'
+                  AND l.address_linked_at IS NOT NULL
+             )
+           )"
+    )
 }
 
 impl KycRepo {
@@ -439,42 +592,13 @@ impl KycRepo {
         Ok(rows)
     }
 
-    /// Stellar variant of `fetch_profiles_to_allow` — case-sensitive match.
-    /// Requires KYT-clear (`kyt_status = 1`) when `elliptic_enabled` is true.
     pub async fn fetch_profiles_to_allow_stellar(
         &self,
         chain_id: i64,
         sumsub_enabled: bool,
         elliptic_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        // When Elliptic KYT is enabled, the deposit itself must have passed
-        // transaction screening (`c.kyt_status = 1`), mirroring the EVM/Crystal
-        // gate — otherwise an unscreened or screening-errored deposit could be
-        // whitelisted on the strength of the address screen alone.
-        let deposit_kyt = if elliptic_enabled {
-            " AND c.kyt_status = 1"
-        } else {
-            ""
-        };
-        let mut sql = format!(
-            "SELECT p.wallet_address FROM lp_profiles p
-             WHERE p.chain_id = $1
-               AND p.on_chain_allowed = FALSE
-               AND EXISTS (
-                   SELECT 1 FROM contract_logs c
-                   WHERE c.chain_id = $1
-                     AND c.event_name = 'DepositRequested'
-                     AND c.params->>'user' = p.wallet_address{deposit_kyt}
-               )"
-        );
-        if sumsub_enabled {
-            sql.push_str(
-                " AND p.sumsub_kyc_status = 2 AND p.sumsub_review_status = 2 AND p.sumsub_aml_status = 2",
-            );
-        }
-        if elliptic_enabled {
-            sql.push_str(" AND p.kyt_status = 1");
-        }
+        let sql = stellar_allow_candidates_sql(sumsub_enabled, elliptic_enabled);
         let rows = sqlx::query_as::<_, WhitelistCandidate>(&sql)
             .bind(chain_id)
             .fetch_all(&self.pool)
@@ -586,6 +710,17 @@ impl KycRepo {
         .bind(chain_id)
         .execute(&self.pool)
         .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn populate_profiles_from_linked_settlement_addresses_stellar(
+        &self,
+        chain_id: i64,
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL)
+            .bind(chain_id)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected())
     }
 
@@ -923,73 +1058,11 @@ impl KycRepo {
         &self,
         wallet: &str,
         pending_only: bool,
-        kyt_gate_for_chain: impl Fn(i64) -> bool,
+        chain_kind: impl Fn(i64) -> Option<ChainKind>,
+        kyt_gate_for_kind: impl Fn(ChainKind) -> bool,
         chain_id: Option<i64>,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
-        // Derive the "sender" from params depending on the event type.
-        // DepositRequested / RequestClaimed  -> params->>'user'
-        // WithdrawalRequested               -> params->>'withdrawer'
-        // StakingDeposit / StakingWithdrawal -> params->>'owner'
-        //
-        // Legacy Stellar `StakingDeposit` rows (pre EVM-parity normalization in the
-        // parser) lack `owner` and instead expose the share holder under `from`. The
-        // CASE branch below keeps those rows queryable without a one-off backfill.
-        // Scoped to `StakingDeposit` so withdrawals — where `from`/`receiver` would
-        // be semantically wrong (receiver may differ from owner) — are unaffected.
-        let sender_expr = "COALESCE(
-            r.params->>'user',
-            r.params->>'withdrawer',
-            r.params->>'owner',
-            CASE WHEN r.event_name = 'StakingDeposit' THEN r.params->>'from' END
-        )";
-        let chain_clause = if chain_id.is_some() {
-            " AND r.chain_id = $2"
-        } else {
-            ""
-        };
-        let base = format!(
-            "SELECT r.chain_id,
-                           r.event_name,
-                           (r.params->>'request_id')::numeric AS request_id,
-                           COALESCE(
-                               (r.params->>'assets')::numeric,
-                               (r.params->>'amount')::numeric
-                           ) AS amount,
-                           (r.params->>'assets')::numeric AS assets,
-                           (r.params->>'shares')::numeric AS shares,
-                           r.kyt_status,
-                           r.block_timestamp,
-                           EXISTS (
-                               SELECT 1 FROM contract_logs c2
-                               WHERE c2.event_name = 'RequestClaimed'
-                                 AND c2.params->>'request_id' = r.params->>'request_id'
-                                 AND c2.contract_address = r.contract_address
-                                 AND c2.chain_id = r.chain_id
-                           ) AS is_claimed,
-                           COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
-                    FROM contract_logs r
-                    LEFT JOIN lp_profiles p ON p.chain_id = r.chain_id
-                        AND LOWER(p.wallet_address) = LOWER({sender_expr})
-                    WHERE LOWER({sender_expr}) = $1
-                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal'){chain_clause}"
-        );
-
-        let query = if pending_only {
-            format!(
-                "{base}
-                      AND NOT EXISTS (
-                          SELECT 1 FROM contract_logs c2
-                          WHERE c2.event_name = 'RequestClaimed'
-                            AND c2.params->>'request_id' = r.params->>'request_id'
-                            AND c2.contract_address = r.contract_address
-                            AND c2.chain_id = r.chain_id
-                      )
-                      AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')
-                    ORDER BY r.block_timestamp DESC, r.id DESC"
-            )
-        } else {
-            format!("{base} ORDER BY r.block_timestamp DESC, r.id DESC")
-        };
+        let query = all_requests_sql(chain_id.is_some(), pending_only);
 
         let mut q = sqlx::query_as::<_, RequestEventRow>(&query).bind(wallet);
         if let Some(id) = chain_id {
@@ -999,8 +1072,9 @@ impl KycRepo {
         Ok(rows
             .into_iter()
             .map(|row| {
-                let gate = kyt_gate_for_chain(row.chain_id);
-                GroupedRequest::from_row(row, gate)
+                let kind = chain_kind(row.chain_id);
+                let gate = kyt_gate_for_kind(kind.unwrap_or(ChainKind::Evm));
+                GroupedRequest::from_row(row, gate, kind)
             })
             .collect())
     }

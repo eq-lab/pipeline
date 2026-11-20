@@ -47,6 +47,7 @@ pub fn reject_core_collision(
 pub struct DealTokenRegistry {
     factory: Address,
     tokens: RwLock<HashMap<Address, DealTokenInfo>>,
+    excluded: Option<Address>,
 }
 
 impl DealTokenRegistry {
@@ -54,7 +55,13 @@ impl DealTokenRegistry {
         Self {
             factory,
             tokens: RwLock::new(HashMap::new()),
+            excluded: None,
         }
+    }
+
+    pub fn excluding(mut self, excluded: Option<Address>) -> Self {
+        self.excluded = excluded;
+        self
     }
 
     pub fn factory(&self) -> Address {
@@ -69,10 +76,35 @@ impl DealTokenRegistry {
             .cloned()
     }
 
-    pub fn insert_deal(&self, loan_id: &str, debt: Address, cargo: Address) -> Vec<Address> {
+    pub fn insert_deal(
+        &self,
+        loan_id: &str,
+        debt: Address,
+        cargo: Option<Address>,
+    ) -> Vec<Address> {
+        self.insert_tokens(
+            loan_id,
+            std::iter::once((debt, DealTokenKind::Debt))
+                .chain(cargo.map(|c| (c, DealTokenKind::Cargo))),
+        )
+    }
+
+    fn insert_tokens(
+        &self,
+        loan_id: &str,
+        pairs: impl IntoIterator<Item = (Address, DealTokenKind)>,
+    ) -> Vec<Address> {
         let mut tokens = self.tokens.write().expect("deal token registry lock");
         let mut added = Vec::new();
-        for (addr, kind) in [(debt, DealTokenKind::Debt), (cargo, DealTokenKind::Cargo)] {
+        for (addr, kind) in pairs {
+            if self.excluded == Some(addr) {
+                tracing::warn!(
+                    loan_id,
+                    token = %addr,
+                    "ignoring a deal token that is the indexed PLUSD address"
+                );
+                continue;
+            }
             if let std::collections::hash_map::Entry::Vacant(slot) = tokens.entry(addr) {
                 slot.insert(DealTokenInfo {
                     loan_id: loan_id.to_owned(),
@@ -87,16 +119,24 @@ impl DealTokenRegistry {
     pub fn seed(&self, rows: &[DealRegistrationRow]) -> usize {
         let mut inserted = 0;
         for row in rows {
-            let parsed = (row.debt.parse::<Address>(), row.cargo.parse::<Address>());
-            if let (Ok(debt), Ok(cargo)) = parsed {
-                if !self.insert_deal(&row.loan_id, debt, cargo).is_empty() {
+            let debt = row.debt.parse::<Address>();
+            let cargo = row.cargo.as_deref().map(str::parse::<Address>).transpose();
+            if let (Ok(debt), Ok(cargo)) = (debt, cargo) {
+                let pairs = [
+                    Some((debt, DealTokenKind::Debt)),
+                    cargo.map(|c| (c, DealTokenKind::Cargo)),
+                ];
+                if !self
+                    .insert_tokens(&row.loan_id, pairs.into_iter().flatten())
+                    .is_empty()
+                {
                     inserted += 1;
                 }
             } else {
                 tracing::warn!(
                     loan_id = %row.loan_id,
                     debt = %row.debt,
-                    cargo = %row.cargo,
+                    cargo = ?row.cargo,
                     "skipping DealRegistered row with unparseable token address"
                 );
             }

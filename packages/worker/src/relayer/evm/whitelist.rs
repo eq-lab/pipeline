@@ -10,7 +10,7 @@ use alloy::transports::Transport;
 use anyhow::{Context, Result};
 use shared::kyc_repo::KycRepo;
 
-const CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
+const CONFIRM_TIMEOUT: Duration = Duration::from_mins(2);
 
 sol! {
     #[sol(rpc)]

@@ -4,18 +4,21 @@
 
 use async_trait::async_trait;
 use pipeline_api::routes::loan_book::{
-    extract_documents, resolve_review, validate_metadata_uri, validate_submission,
-    CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanBookDoc, LoanDocumentDto,
-    LocationInput, ReviewDecision, ReviewRequest, SubmissionView, SubmitLoanRequest,
+    extract_documents, normalize_data_room_id, resolve_review, validate_metadata_uri,
+    validate_submission, CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanBookDoc,
+    LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest, SubmissionView,
+    SubmitLoanRequest,
 };
+use shared::chains::ChainKind;
 use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
 use utoipa::OpenApi;
 
 fn valid_request() -> SubmitLoanRequest {
     SubmitLoanRequest {
-        to: "GORIGINATOR".to_owned(),
+        to: Some("GORIGINATOR".to_owned()),
         metadata_uri: "ipfs://Qm_doc".to_owned(),
+        data_room_id: Some("DR-0001".to_owned()),
         originator: "Open Mineral".to_owned(),
         borrower_id: "BRW-1".to_owned(),
         commodity: "Copper Concentrate".to_owned(),
@@ -33,13 +36,13 @@ fn valid_request() -> SubmitLoanRequest {
             origination_date: 1_700_000_000,
             original_maturity_date: 1_715_000_000,
         },
-        initial_ccr: 1_500_000,
-        initial_location: LocationInput {
+        initial_ccr: Some(1_500_000),
+        initial_location: Some(LocationInput {
             location_type: "Warehouse".to_owned(),
             location_identifier: "WH-1".to_owned(),
             tracking_url: "https://track.example.com/WH-1".to_owned(),
             updated_at: 1_700_000_000,
-        },
+        }),
         collateral_valuation: CollateralValuationInput {
             valuation_mode: "StandardGoods".to_owned(),
             asset: "XCU".to_owned(),
@@ -62,11 +65,111 @@ fn valid_submission_passes() {
     assert!(validate_submission(&valid_request()).is_ok());
 }
 
+fn legacy_json(with_legacy: bool, with_data_room: bool) -> serde_json::Value {
+    let mut v = serde_json::json!({
+        "metadata_uri": "ipfs://doc",
+        "originator": "O",
+        "borrower_id": "B",
+        "commodity": "C",
+        "corridor": "X-Y",
+        "governing_law": "EN",
+        "economics": {
+            "original_facility_size": "100000.000000",
+            "original_senior_tranche": "80000.000000",
+            "original_equity_tranche": "20000.000000",
+            "original_offtaker_price": "105000.000000",
+            "senior_interest_rate_bps": 1200,
+            "origination_date": 1_700_000_000_u64,
+            "original_maturity_date": 1_715_000_000_u64
+        },
+        "collateral_valuation": {
+            "valuation_mode": "StandardGoods",
+            "asset": "XCU",
+            "price_provider": "metal_price",
+            "haircut_pct": "0.20",
+            "quantity_dmt": "1000"
+        },
+        "fee_schedule": {
+            "mgmt_fee_rate_bps": 50,
+            "perf_fee_rate_bps": 2000,
+            "oet_alloc_rate_bps": 10
+        }
+    });
+    let obj = v.as_object_mut().unwrap();
+    if with_legacy {
+        obj.insert("to".into(), "GADDR".into());
+        obj.insert("initial_ccr".into(), 1_500_000.into());
+        obj.insert(
+            "initial_location".into(),
+            serde_json::json!({
+                "location_type": "Vessel",
+                "location_identifier": "V-1",
+                "tracking_url": "https://track/V-1",
+                "updated_at": 1_700_000_000_u64
+            }),
+        );
+    }
+    if with_data_room {
+        obj.insert("data_room_id".into(), "DR-0001".into());
+    }
+    v
+}
+
 #[test]
-fn empty_to_is_rejected() {
+fn legacy_fields_are_not_validated() {
     let mut r = valid_request();
-    r.to = "  ".to_owned();
-    assert!(validate_submission(&r).is_err());
+    r.to = Some("  ".to_owned());
+    r.initial_ccr = Some(0);
+    r.initial_location.as_mut().unwrap().location_type = "Moon".to_owned();
+    assert!(validate_submission(&r).is_ok());
+}
+
+#[test]
+fn submission_still_sending_legacy_fields_is_accepted() {
+    let req: SubmitLoanRequest = serde_json::from_value(legacy_json(true, false)).unwrap();
+    assert!(validate_submission(&req).is_ok());
+    let v = serde_json::to_value(&req).unwrap();
+    assert_eq!(v["to"], "GADDR");
+    assert_eq!(v["initial_ccr"], 1_500_000);
+    assert_eq!(v["initial_location"]["location_type"], "Vessel");
+}
+
+#[test]
+fn submission_without_legacy_fields_is_accepted() {
+    let req: SubmitLoanRequest = serde_json::from_value(legacy_json(false, true)).unwrap();
+    assert!(validate_submission(&req).is_ok());
+    let v = serde_json::to_value(&req).unwrap();
+    for k in ["to", "initial_ccr", "initial_location"] {
+        assert!(v.get(k).is_none(), "{k} must be absent, not null");
+    }
+}
+
+#[test]
+fn submission_without_data_room_id_is_accepted() {
+    let req: SubmitLoanRequest = serde_json::from_value(legacy_json(false, false)).unwrap();
+    assert!(validate_submission(&req).is_ok());
+    assert_eq!(req.data_room_id, None);
+    assert!(serde_json::to_value(&req)
+        .unwrap()
+        .get("data_room_id")
+        .is_none());
+}
+
+#[test]
+fn collateral_valuation_is_still_required() {
+    let mut v = legacy_json(false, true);
+    v.as_object_mut().unwrap().remove("collateral_valuation");
+    assert!(serde_json::from_value::<SubmitLoanRequest>(v).is_err());
+}
+
+#[test]
+fn normalize_data_room_id_trims_and_drops_empty() {
+    assert_eq!(
+        normalize_data_room_id(Some("  DR-0001\n".to_owned())),
+        Some("DR-0001".to_owned())
+    );
+    assert_eq!(normalize_data_room_id(Some("   ".to_owned())), None);
+    assert_eq!(normalize_data_room_id(None), None);
 }
 
 #[test]
@@ -101,26 +204,23 @@ fn offtaker_price_must_cover_facility() {
 }
 
 #[test]
-fn ccr_below_one_is_rejected() {
-    let mut r = valid_request();
-    r.initial_ccr = 999_999;
-    let err = validate_submission(&r).unwrap_err();
-    assert!(err.contains("initial_ccr"), "unexpected error: {err}");
-}
-
-#[test]
-fn ccr_exactly_one_is_allowed() {
-    let mut r = valid_request();
-    r.initial_ccr = 1_000_000;
-    assert!(validate_submission(&r).is_ok());
-}
-
-#[test]
-fn unknown_location_type_is_rejected() {
-    let mut r = valid_request();
-    r.initial_location.location_type = "Moon".to_owned();
-    let err = validate_submission(&r).unwrap_err();
-    assert!(err.contains("location_type"), "unexpected error: {err}");
+fn amounts_outside_the_decimal_format_are_rejected_with_field_name() {
+    for bad in [
+        "1e3",
+        "1_000",
+        "+1",
+        ".5",
+        "1.",
+        " 1",
+        "-1",
+        "1.1234567",
+        "1e9223372036854775800",
+    ] {
+        let mut r = valid_request();
+        r.economics.original_offtaker_price = bad.to_owned();
+        let err = validate_submission(&r).unwrap_err();
+        assert!(err.contains("original_offtaker_price"), "{bad}: {err}");
+    }
 }
 
 #[test]
@@ -343,6 +443,7 @@ fn submit_request_round_trips_through_json() {
     let back: SubmitLoanRequest = serde_json::from_value(value).expect("deserialize");
     // Spot-check a few representative fields across the nested structures.
     assert_eq!(back.to, req.to);
+    assert_eq!(back.data_room_id.as_deref(), Some("DR-0001"));
     assert_eq!(back.protection, "LC at sight");
     assert_eq!(
         back.economics.original_facility_size,
@@ -350,8 +451,8 @@ fn submit_request_round_trips_through_json() {
     );
     assert_eq!(back.initial_ccr, req.initial_ccr);
     assert_eq!(
-        back.initial_location.location_type,
-        req.initial_location.location_type
+        back.initial_location.unwrap().location_type,
+        req.initial_location.unwrap().location_type
     );
 }
 
@@ -541,16 +642,30 @@ fn row(chain_id: Option<i64>, loan_id: Option<&str>) -> SubmittedLoanRow {
 
 #[test]
 fn submission_view_exposes_target_chain_for_undrawn_row() {
-    let v = serde_json::to_value(SubmissionView::from(row(None, None))).unwrap();
+    let v = serde_json::to_value(SubmissionView::from_row(
+        row(None, None),
+        Some(ChainKind::Stellar),
+    ))
+    .unwrap();
     assert_eq!(v["target_chain_id"], 7);
     assert!(v["chain_id"].is_null());
 }
 
 #[test]
 fn submission_view_exposes_both_chains_for_drawn_row() {
-    let v = serde_json::to_value(SubmissionView::from(row(Some(7), Some("3")))).unwrap();
+    let v = serde_json::to_value(SubmissionView::from_row(
+        row(Some(7), Some("3")),
+        Some(ChainKind::Stellar),
+    ))
+    .unwrap();
     assert_eq!(v["target_chain_id"], 7);
     assert_eq!(v["chain_id"], 7);
+}
+
+#[test]
+fn submission_view_unconfigured_chain_has_null_draw_loan() {
+    let v = serde_json::to_value(SubmissionView::from_row(row(None, None), None)).unwrap();
+    assert!(v["draw_loan"].is_null());
 }
 
 fn param<'a>(
@@ -604,4 +719,41 @@ fn openapi_list_submissions_chain_id_is_lenient() {
     let d = p["description"].as_str().unwrap();
     assert!(d.contains("200 with an empty list"));
     assert!(!d.contains("not in CHAINS → 400"));
+}
+
+#[test]
+fn openapi_submit_request_schema_relaxes_legacy_fields() {
+    let spec = serde_json::to_value(LoanBookDoc::openapi()).unwrap();
+    let schema = &spec["components"]["schemas"]["SubmitLoanRequest"];
+    let required: Vec<&str> = schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.as_str().unwrap())
+        .collect();
+    for k in ["to", "initial_ccr", "initial_location", "data_room_id"] {
+        assert!(!required.contains(&k), "{k} must not be required");
+        assert!(
+            schema["properties"][k].is_object(),
+            "{k} must be a property"
+        );
+    }
+    for k in [
+        "metadata_uri",
+        "economics",
+        "collateral_valuation",
+        "fee_schedule",
+    ] {
+        assert!(required.contains(&k), "{k} must stay required");
+    }
+}
+
+#[test]
+fn openapi_serves_draw_loan_on_view_and_response() {
+    let spec = serde_json::to_value(LoanBookDoc::openapi()).unwrap();
+    let schemas = &spec["components"]["schemas"];
+    assert!(schemas["SubmissionView"]["properties"]["draw_loan"].is_object());
+    assert!(schemas["SubmitLoanResponse"]["properties"]["draw_loan"].is_object());
+    assert!(schemas["DrawLoanArgs"].is_object());
+    assert!(schemas["DrawLoanEconomics"].is_object());
 }

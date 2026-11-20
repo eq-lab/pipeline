@@ -38,18 +38,14 @@ pub struct StellarIndexerSettings {
     pub loan_registry_id: Option<String>,
     /// The minter contract — optional; set only after it is deployed to the target
     /// chain. When `None`, its indexer branch is a no-op (ships dark).
-    ///
-    /// Named for the contract's former identity: `pipeline-stellar-contracts` #33
-    /// renamed `yield-minter` to `minter` and rewrote it. Historically one id also
-    /// served `YieldMinted` (a pre-#33, EVM-parity event feeding the dashboard's
-    /// cumulative yield); that parser is retired (#1433) since the rework stopped
-    /// emitting it, so this id now serves only `WireIn`/`WireInAssigned` (#1416,
-    /// read by the relayer's wire-in matching phase). The dashboard's
-    /// cumulative-yield metrics read historical `YieldMinted` rows only.
     /// Read from `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
-    pub yield_minter_id: Option<String>,
+    pub minter_id: Option<String>,
     pub collateral_registry_id: Option<String>,
     pub deal_token_factory_id: Option<String>,
+    pub pocket_id: Option<String>,
+    pub security_registry_id: Option<String>,
+    pub access_manager_id: Option<String>,
+    pub plusd_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
     /// is also set, every transfer touching it (one-sided: either side, any
@@ -107,7 +103,7 @@ impl StellarIndexerSettings {
         let wq_key = format!("{ip}WITHDRAWAL_QUEUE_ADDRESS");
         let splusd_key = format!("{ip}STAKED_PLUSD_ADDRESS");
         let lr_key = format!("{ip}LOAN_REGISTRY_ADDRESS");
-        let ym_key = format!("{ip}MINTER_ADDRESS");
+        let minter_key = format!("{ip}MINTER_ADDRESS");
         let cr_key = format!("{ip}COLLATERAL_REGISTRY_ADDRESS");
         let deposit_manager_id = validate_contract_id(&dm_key, env_require(&dm_key)?)?;
         let withdrawal_queue_id = validate_contract_id(&wq_key, env_require(&wq_key)?)?;
@@ -118,16 +114,16 @@ impl StellarIndexerSettings {
             _ => None,
         };
 
-        let yield_minter_id = match env::var(&ym_key) {
+        let minter_id = match env::var(&minter_key) {
             Ok(raw) if !raw.trim().is_empty() => {
-                let validated = validate_contract_id(&ym_key, raw)?;
+                let validated = validate_contract_id(&minter_key, raw)?;
                 // `validate_contract_id` checks length and alphabet, not the
                 // Strkey CRC16. The relayer parses this same variable strictly
                 // (`relayer::config`), so without this the two components would
                 // disagree about what is a valid id — one booting, the other
                 // refusing, on one typo.
                 stellar_strkey::Contract::from_string(&validated)
-                    .map_err(|e| anyhow::anyhow!("{ym_key} failed Strkey parse: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("{minter_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -138,6 +134,51 @@ impl StellarIndexerSettings {
                 let validated = validate_contract_id(&cr_key, raw)?;
                 stellar_strkey::Contract::from_string(&validated)
                     .map_err(|e| anyhow::anyhow!("{cr_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let pocket_key = format!("{ip}POCKET_ADDRESS");
+        let pocket_id = match env::var(&pocket_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&pocket_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{pocket_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let security_key = format!("{ip}SECURITY_REGISTRY_ADDRESS");
+        let security_registry_id = match env::var(&security_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&security_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{security_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let access_manager_key = format!("{ip}ACCESS_MANAGER_ADDRESS");
+        let access_manager_id = match env::var(&access_manager_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&access_manager_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated).map_err(|e| {
+                    anyhow::anyhow!("{access_manager_key} failed Strkey parse: {e}")
+                })?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let plusd_key = format!("{ip}PLUSD_ADDRESS");
+        let plusd_id = match env::var(&plusd_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&plusd_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{plusd_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -244,8 +285,7 @@ impl StellarIndexerSettings {
         if let Some(id) = &loan_registry_id {
             roles.push(("LOAN_REGISTRY_ADDRESS", id));
         }
-        // Include yield_minter_id in the distinctness check when configured.
-        if let Some(id) = &yield_minter_id {
+        if let Some(id) = &minter_id {
             roles.push(("MINTER_ADDRESS", id));
         }
         if let Some(id) = &collateral_registry_id {
@@ -253,6 +293,18 @@ impl StellarIndexerSettings {
         }
         if let Some(id) = &deal_token_factory_id {
             roles.push(("DEAL_TOKEN_FACTORY_ADDRESS", id));
+        }
+        if let Some(id) = &pocket_id {
+            roles.push(("POCKET_ADDRESS", id));
+        }
+        if let Some(id) = &security_registry_id {
+            roles.push(("SECURITY_REGISTRY_ADDRESS", id));
+        }
+        if let Some(id) = &access_manager_id {
+            roles.push(("ACCESS_MANAGER_ADDRESS", id));
+        }
+        if let Some(id) = &plusd_id {
+            roles.push(("PLUSD_ADDRESS", id));
         }
         // Include the asset id when transfer tracking is enabled — it is polled
         // alongside the other roles and routed by the same if/else dispatch ladder.
@@ -281,9 +333,13 @@ impl StellarIndexerSettings {
             withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
-            yield_minter_id,
+            minter_id,
             collateral_registry_id,
             deal_token_factory_id,
+            pocket_id,
+            security_registry_id,
+            access_manager_id,
+            plusd_id,
             asset_id,
             custody_addresses,
             ramp_addresses,
@@ -353,6 +409,9 @@ pub struct IndexerJobSettings {
     pub minter_address: String,
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
+    pub plusd_address: Option<Address>,
+    pub access_manager_address: Option<Address>,
+    pub security_registry: Option<EvmSecurityRegistry>,
     pub asset_tracking: Option<EvmAssetTracking>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
@@ -383,6 +442,19 @@ impl IndexerJobSettings {
                 Ok(raw) if !raw.trim().is_empty() => Some(raw.trim().to_owned()),
                 _ => None,
             },
+            plusd_address: {
+                let plusd_key = format!("{ip}PLUSD_ADDRESS");
+                env_nonblank(&plusd_key)
+                    .map(|raw| parse_evm_address(&plusd_key, &raw))
+                    .transpose()?
+            },
+            access_manager_address: {
+                let access_manager_key = format!("{ip}ACCESS_MANAGER_ADDRESS");
+                env_nonblank(&access_manager_key)
+                    .map(|raw| parse_evm_address(&access_manager_key, &raw))
+                    .transpose()?
+            },
+            security_registry: evm_security_registry_from_env(chain_id)?,
             asset_tracking: evm_asset_tracking_from_env(chain_id)?,
             polling_block_range: require_nonzero(
                 chain_id,
@@ -417,6 +489,40 @@ impl IndexerJobSettings {
             .map(IndexerJobSettings::from_chain_env)
             .collect()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EvmSecurityRegistry {
+    pub registry: Address,
+    pub record_nft: Address,
+    pub reader: Address,
+}
+
+fn evm_security_registry_from_env(chain_id: i64) -> Result<Option<EvmSecurityRegistry>> {
+    let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
+    let keys = [
+        format!("{ip}SECURITY_REGISTRY_ADDRESS"),
+        format!("{ip}SECURITY_RECORD_NFT_ADDRESS"),
+        format!("{ip}SECURITY_REGISTRY_READER_ADDRESS"),
+    ];
+    let raws = keys.each_ref().map(|k| env_nonblank(k));
+    let Some(present) = raws.iter().position(Option::is_some) else {
+        return Ok(None);
+    };
+    if let Some(missing) = raws.iter().position(Option::is_none) {
+        anyhow::bail!(
+            "{} must be set when {} is set; the SecurityRegistry, RecordNft and Reader keys are set together",
+            keys[missing],
+            keys[present]
+        );
+    }
+    let [registry, record_nft, reader] =
+        [0, 1, 2].map(|i| parse_evm_address(&keys[i], raws[i].as_deref().unwrap_or_default()));
+    Ok(Some(EvmSecurityRegistry {
+        registry: registry?,
+        record_nft: record_nft?,
+        reader: reader?,
+    }))
 }
 
 /// USDC `Transfer` tracking on one EVM chain, from `JOB_INDEXER_EVM_<id>_ASSET_ADDRESS`,
@@ -518,14 +624,13 @@ fn env_require(key: &str) -> Result<String> {
 /// validate only once asset-transfer tracking is fully configured (so a typo in a
 /// partial/disabled config doesn't crash startup).
 fn split_csv_raw(raw: Option<&str>) -> Vec<String> {
-    raw.map(|v| {
+    raw.map_or_else(Default::default, |v| {
         v.split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_owned)
             .collect()
     })
-    .unwrap_or_default()
 }
 
 pub fn env_bool(key: &str) -> bool {

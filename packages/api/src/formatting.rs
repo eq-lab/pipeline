@@ -38,6 +38,31 @@ pub fn base6_to_decimal_string(base_units: &BigDecimal) -> String {
         .to_plain_string()
 }
 
+const PENDING_DISPLAY_MAX_ABS_SCALE: u64 = 64;
+
+pub fn pending_bank_deposits_display(total: &BigDecimal) -> Result<String, &'static str> {
+    if total.fractional_digit_count().unsigned_abs() > PENDING_DISPLAY_MAX_ABS_SCALE {
+        return Err("pending bank deposits total out of range");
+    }
+    Ok(total.with_scale(2).to_plain_string())
+}
+
+pub fn pending_bank_deposits_field<E: std::fmt::Display>(
+    lp_id: i64,
+    read: Result<BigDecimal, E>,
+) -> Option<String> {
+    let outcome = read
+        .map_err(|e| e.to_string())
+        .and_then(|total| pending_bank_deposits_display(&total).map_err(str::to_owned));
+    match outcome {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(lp_id, %error, "could not read pending bank deposits");
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

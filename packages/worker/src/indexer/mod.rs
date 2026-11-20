@@ -1,7 +1,11 @@
+pub mod access_manager_evm_parsers;
+pub mod access_manager_evm_sync;
+pub mod access_manager_sync;
 pub mod asset_transfers;
 pub mod chain_poller;
 pub mod collateral_registry_parsers;
 pub mod config;
+pub mod cursor;
 pub mod deal_token_parsers;
 pub mod deal_tokens;
 pub mod evm_parsers;
@@ -10,8 +14,13 @@ pub mod loan_metadata;
 pub mod loan_registry_reader;
 pub mod mappers;
 pub mod parsers;
+pub mod plusd_transfers;
 pub mod poller;
+pub mod security_registry_parsers;
+pub mod security_registry_sync;
+pub mod security_registry_views;
 pub mod stellar;
+pub mod supervise;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,8 +31,13 @@ use tracing::Instrument;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, metadata_fetcher::MetadataFetcher,
+    security_registry::EVM_SECURITY_PARAMS, security_registry_repo::SecurityRegistryRepo,
 };
 
+use access_manager_evm_parsers::{
+    register_access_manager_handler, reject_access_manager_collision, EvmTargets,
+};
+use access_manager_evm_sync::{run_access_manager_sync_loop, EvmAmSyncConfig};
 use alloy::primitives::{Address, U256};
 use chain_poller::ChainEventPoller;
 use config::IndexerJobSettings;
@@ -33,6 +47,11 @@ use loan_metadata::{
 };
 use loan_registry_reader::LoanRegistryReader;
 use poller::EvmEventPollerBuilder;
+use security_registry_parsers::reject_security_collision;
+use security_registry_sync::run_security_sync_loop;
+use security_registry_views::EvmSecurityViewSource;
+use shared::access_manager_repo::AccessManagerRepo;
+use supervise::spawn_supervised;
 
 pub fn parse_collateral_registry_contracts(
     chain_id: i64,
@@ -99,6 +118,9 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         &settings.loan_registry_address,
     )?];
     let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
+    let loan_registry_checksum = loan_registry_contracts[0].to_checksum(None);
+    let loan_registry_address = loan_registry_contracts[0];
+    let minter_address = yield_minter_contracts[0];
     let collateral_registry_contracts = parse_collateral_registry_contracts(
         settings.chain_id,
         settings.collateral_registry_address.as_deref(),
@@ -114,9 +136,11 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
     let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
-    let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
-        MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
-    ));
+    let fetcher: Arc<dyn LoanMetadataFetcher> =
+        Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(
+            shared::http_client::http_client(),
+            settings.ipfs_gateway_url.clone(),
+        )));
     let reader = Arc::new(
         LoanRegistryReader::new(&settings.eth_rpc_url)
             .expect("LoanRegistryReader: valid eth_rpc_url"),
@@ -143,12 +167,32 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             .map(|a| ("COLLATERAL_REGISTRY_ADDRESS", *a)),
     );
 
+    if let Some(sr) = &settings.security_registry {
+        for (label, addr) in [
+            ("SECURITY_REGISTRY_ADDRESS", sr.registry),
+            ("SECURITY_RECORD_NFT_ADDRESS", sr.record_nft),
+            ("SECURITY_REGISTRY_READER_ADDRESS", sr.reader),
+        ] {
+            reject_security_collision(chain_id, label, addr, &core_roles)?;
+            core_roles.push((label, addr));
+        }
+        tracing::info!(
+            chain_id,
+            security_registry = %sr.registry,
+            record_nft = %sr.record_nft,
+            reader = %sr.reader,
+            "EVM SecurityRegistry indexer enabled"
+        );
+    }
+
     let deal_tokens = match settings.deal_token_factory_address.as_deref() {
         Some(raw) => {
             let factory = parse_address("DEAL_TOKEN_FACTORY_ADDRESS", raw)?;
             deal_tokens::reject_core_collision(chain_id, factory, &core_roles)?;
             core_roles.push(("DEAL_TOKEN_FACTORY_ADDRESS", factory));
-            let registry = Arc::new(deal_tokens::DealTokenRegistry::new(factory));
+            let registry = Arc::new(
+                deal_tokens::DealTokenRegistry::new(factory).excluding(settings.plusd_address),
+            );
             let rows = contract_logs_repo.list_deal_registrations(chain_id).await?;
             let deals = registry.seed(&rows);
             tracing::info!(chain_id, deals, "deal-token registry seeded");
@@ -167,6 +211,9 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             loan_registry_contracts,
             yield_minter_contracts,
             collateral_registry_contracts,
+            security_registry: settings
+                .security_registry
+                .map(|sr| (sr.registry, sr.record_nft)),
         },
         evm_parsers::EvmRepos {
             repo: repo.clone(),
@@ -198,7 +245,94 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         }
         None => builder,
     };
+    let builder = match settings.plusd_address {
+        Some(plusd) => {
+            let mut roles = core_roles.clone();
+            if let Some(tracking) = &settings.asset_tracking {
+                roles.push(("ASSET_ADDRESS", tracking.asset));
+            }
+            plusd_transfers::reject_plusd_collision(chain_id, plusd, &roles)?;
+            tracing::info!(chain_id, plusd = %plusd, "EVM PLUSD transfer indexing enabled");
+            plusd_transfers::register_plusd_transfer_handler(builder, chain_id, plusd, repo.clone())
+        }
+        None => builder,
+    };
+    let (builder, _access_manager_guard) = match settings.access_manager_address {
+        Some(am) => {
+            let mut roles = core_roles.clone();
+            if let Some(tracking) = &settings.asset_tracking {
+                roles.push(("ASSET_ADDRESS", tracking.asset));
+            }
+            if let Some(plusd) = settings.plusd_address {
+                roles.push(("PLUSD_ADDRESS", plusd));
+            }
+            reject_access_manager_collision(chain_id, am, &roles)?;
+            tracing::info!(chain_id, access_manager = %am, "EVM AccessManager indexer enabled");
+            let builder = register_access_manager_handler(builder, chain_id, am, repo.clone());
+            let cfg = EvmAmSyncConfig {
+                contract_id: am.to_checksum(None),
+                targets: EvmTargets {
+                    loan_registry: loan_registry_address,
+                    minter: minter_address,
+                    security_registry: settings.security_registry.map(|s| s.registry),
+                    record_nft: settings.security_registry.map(|s| s.record_nft),
+                },
+            };
+            let pool = pool.clone();
+            let guard = spawn_supervised("access-manager-sync", chain_id, move || {
+                run_access_manager_sync_loop(
+                    AccessManagerRepo::new(pool.clone()),
+                    chain_id,
+                    cfg.clone(),
+                )
+            });
+            (builder, Some(guard))
+        }
+        None => (builder, None),
+    };
     let poller = builder.build();
+
+    let _security_guard = match settings.security_registry {
+        Some(sr) => {
+            let rpc_url = settings.eth_rpc_url.clone();
+            let loan_registry = loan_registry_checksum.clone();
+            let confirmations = settings.log_confirmations_delay;
+            let pool = pool.clone();
+            Some(spawn_supervised(
+                "security-registry-sync",
+                chain_id,
+                move || {
+                    let pool = pool.clone();
+                    let rpc_url = rpc_url.clone();
+                    let loan_registry = loan_registry.clone();
+                    async move {
+                        let source = EvmSecurityViewSource::new(
+                            &rpc_url,
+                            sr.registry,
+                            sr.record_nft,
+                            sr.reader,
+                            confirmations,
+                        )?;
+                        run_security_sync_loop(
+                            source,
+                            SecurityRegistryRepo::new(pool.clone()),
+                            EventRepo::new(pool),
+                            chain_id,
+                            sr.registry.to_checksum(None),
+                            vec![
+                                sr.registry.to_checksum(None),
+                                sr.record_nft.to_checksum(None),
+                            ],
+                            Some(loan_registry),
+                            &EVM_SECURITY_PARAMS,
+                        )
+                        .await
+                    }
+                },
+            ))
+        }
+        None => None,
+    };
 
     index_loop(
         "indexer",
@@ -258,7 +392,17 @@ async fn index_once<P: ChainEventPoller>(
 
     let end = (cursor + block_range - 1).min(latest - confirmations_delay);
 
-    let mut mappers = poller.poll(cursor, end).await?;
+    let mut batch = poller.poll(cursor, end).await?;
+    let Some(commit) = cursor::commit_end(cursor, end, batch.covered_to) else {
+        tracing::debug!(
+            cursor,
+            covered_to = batch.covered_to,
+            "RPC has not ingested the cursor ledger yet"
+        );
+        return Ok(());
+    };
+    batch.mappers.retain(|m| m.block_number() <= commit);
+    let mut mappers = batch.mappers;
 
     let mut tx = repo.pool.begin().await?;
     let mut timestamp_cache: HashMap<u64, u64> = HashMap::new();
@@ -273,12 +417,13 @@ async fn index_once<P: ChainEventPoller>(
         }
     }
 
-    repo.set_cursor(&mut tx, chain_id, end + 1).await?;
+    repo.set_cursor(&mut tx, chain_id, commit + 1).await?;
     tx.commit().await?;
 
     tracing::info!(
         from = cursor,
-        to = end,
+        to = commit,
+        requested_to = end,
         count = mappers.len(),
         "indexed block range"
     );

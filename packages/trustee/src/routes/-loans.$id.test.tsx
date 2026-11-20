@@ -1,19 +1,14 @@
-/**
- * Render tests for the Loan detail route (`loans.$id.tsx`, issues #845 / #847).
- * The view-model hook `useLoanDetail` is mocked so the component is exercised as
- * a pure render function (FRONTEND.md rule 2); the presenter's own logic is
- * covered by `-useLoanDetail.test.ts`. `Link` and `Route.useParams` are patched
- * (no real router tree), mirroring `-origination-detail-page.test.tsx`.
- *
- * Asserts the live hero (identity + band chip), the live Price & collateral card
- * (provider note, two-tone spot, rows, `missing_inputs` note, plus its own
- * loading / error states), the static action sections, the back link, and the
- * top-level loading / error states.
- */
+// spec: docs/frontend/trustee-flows.md#security-card
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
+import type { SecurityCardView } from "./-loanSecurity";
+import {
+  buildSecurityRecords,
+  type SecurityRecordsView,
+} from "./-loanSecurityRecords";
+import { securityResult } from "./-riskCouncilFixtures";
 import {
   CLOSED_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
@@ -27,17 +22,37 @@ vi.mock("@tanstack/react-router", async () => {
   );
   return {
     ...actual,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
+    Link: ({
+      children,
+      to,
+      search,
+      "data-testid": testId,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      search?: unknown;
+      "data-testid"?: string;
+    }) => (
+      <a
+        href={to}
+        data-testid={testId}
+        data-search={search === undefined ? undefined : JSON.stringify(search)}
+      >
+        {children}
+      </a>
     ),
     useNavigate: () => mockNavigate,
   };
 });
 
 const mockUseLoanDetail = vi.fn<() => UseLoanDetailResult>();
-vi.mock("./-useLoanDetail", () => ({
-  useLoanDetail: () => mockUseLoanDetail(),
-}));
+vi.mock("./-useLoanDetail", async () => {
+  const actual =
+    await vi.importActual<typeof import("./-useLoanDetail")>(
+      "./-useLoanDetail",
+    );
+  return { ...actual, useLoanDetail: () => mockUseLoanDetail() };
+});
 
 // The page calls `useCompleteDisbursement` (a mutation) unconditionally; mock it
 // so the render tests need no QueryClientProvider. Mutable fields are set per test.
@@ -82,8 +97,16 @@ const { mockUpdateLifecycle } = vi.hoisted(() => ({
     stage: null,
   },
 }));
+const { mockMutableState } = vi.hoisted(() => ({
+  mockMutableState: {
+    data: undefined as { status: string; metadataUri: string } | undefined,
+    isLoading: false,
+    error: null as Error | null,
+  },
+}));
 vi.mock("@/api/useUpdateLifecycle", () => ({
   useUpdateLifecycle: () => mockUpdateLifecycle,
+  useLoanMutableState: () => mockMutableState,
 }));
 
 const { mockRecoveryCard } = vi.hoisted(() => ({
@@ -101,22 +124,128 @@ vi.mock("./-RepaymentRecoveryDialog", () => ({
     open ? <div data-testid="recovery-dialog-stub" /> : null,
 }));
 
+vi.mock("./-RegisterDebtTokenAction", () => ({
+  RegisterDebtTokenAction: (props: {
+    chainId: number;
+    loanId: number | null;
+    variant: string;
+  }) => (
+    <div
+      data-testid="register-debt-token-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-variant={props.variant}
+    />
+  ),
+}));
+
+vi.mock("./-DisburseAction", () => ({
+  DisburseAction: (props: { chainId: number; loanId: number | null }) => (
+    <div
+      data-testid="disburse-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+    />
+  ),
+}));
+
+vi.mock("./-SecurityActionsCard", () => ({
+  SecurityActionsCard: (props: {
+    chainId: number;
+    loanId: number | null;
+    view: { state: string };
+  }) => (
+    <div
+      data-testid="security-actions-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-state={props.view.state}
+    />
+  ),
+}));
+
+vi.mock("@/api/useSecurityMarks", () => ({
+  securityMarksConfigured: () => false,
+  useSecurityRegistryAccess: () => ({ data: undefined }),
+}));
+
+vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: () => ({ address: null, isConnected: false }),
+}));
+
 import { Route } from "./loans.$id";
+import { rememberLoanBookSearch } from "./-loanBookSearch";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
 // it directly since the route isn't mounted in a real router tree here.
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4488",
 });
+let routeChain = 99_000_001;
 (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
   () => ({
-    chain: 99_000_001,
+    chain: routeChain,
   });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
+
+function securityView(
+  overrides: Partial<SecurityCardView> = {},
+): SecurityCardView {
+  return {
+    state: "ready",
+    errorMessage: null,
+    errorDetails: null,
+    ltv: "81.3%",
+    ltvTone: "attention",
+    rows: [
+      { label: "Advance ratio", value: "80%" },
+      { label: "Margin-call ratio", value: "85%" },
+      { label: "Security value", value: "$2,106,000" },
+      { label: "Amount owed", value: "$1,710,000" },
+      { label: "Margin call", value: "None" },
+    ],
+    priceStale: true,
+    refreshPending: false,
+    notes: [],
+    actionLabel: "Security actions",
+    ...overrides,
+  };
+}
+
+const RECORDS_VIEW: SecurityRecordsView = buildSecurityRecords(
+  securityResult({
+    data: {
+      terms: { advance_ratio_bps: 8000 },
+      records: [
+        {
+          record_id: "7",
+          protection: "warehouse_receipt",
+          commodity: "Copper Cathode",
+          unit: "MT",
+          status: "Active",
+          open: true,
+          attestation_stale: true,
+          reference_quantity: "1250.0000000",
+          mark: { value_per_unit: "9500.5000000", benchmark: "LME Copper" },
+          valuation: { counted_quantity: "1200.0000000", value: "11400600.0" },
+          inspections: [
+            { inspection_id: "11", kind: "periodic", approved_by: null },
+            { inspection_id: "12", kind: "spot", approved_by: "GAPPROVER" },
+          ],
+        },
+        {
+          record_id: "8",
+          protection: "cash_cover",
+          counts_toward_value: false,
+        },
+      ],
+    },
+  }),
+);
 
 function makeResult(
   overrides: Partial<UseLoanDetailResult> = {},
@@ -126,8 +255,6 @@ function makeResult(
     errorMessage: null,
     errorDetails: null,
     variant: "performing",
-    lifecycleStatus: "Performing",
-    ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
     documents: [],
@@ -147,7 +274,7 @@ function makeResult(
       },
       {
         label: "Disbursing",
-        sub: "drawned, not yet funded",
+        sub: "drawn, not yet funded",
         state: "done",
         index: 2,
       },
@@ -162,7 +289,7 @@ function makeResult(
     tiles: [
       {
         label: "Facility / disbursed",
-        value: "$4.8M / $3.96M",
+        value: "$4.8M / $4.8M",
         sub: "funded",
         subTone: "positive",
       },
@@ -203,25 +330,18 @@ function makeResult(
     },
     currentStage: null,
     otherActions: PERFORMING_OTHER_ACTIONS,
-    priceCollateral: {
-      state: "ready",
-      errorMessage: null,
-      errorDetails: null,
-      providerNote: "via coingecko",
-      spot: { main: "$10,450", change: "−1.2% 7d", changeNegative: true },
-      rows: [
-        { label: "Quantity", value: "620 dmt" },
-        { label: "Collateral value (after 10% haircut)", value: "$5,831,100" },
-        { label: "Senior outstanding", value: "$4,950,000" },
-        { label: "CCR", value: "117.80%" },
-      ],
-      missingNote: null,
-    },
+    security: securityView(),
+    securityRecords: RECORDS_VIEW,
+    securityActions: { state: "ready", consents: [], notes: [] },
     ...overrides,
   };
 }
 
 beforeEach(() => {
+  mockMutableState.data = { status: "Performing", metadataUri: "ipfs://cur" };
+  mockMutableState.isLoading = false;
+  mockMutableState.error = null;
+  routeChain = 99_000_001;
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
   mockComplete.mutate = vi.fn();
@@ -262,111 +382,166 @@ describe("Loan detail route — hero (live)", () => {
       "/loans",
     );
   });
+
+  it("carries the loan book's last tab and chain filter on the back link (#2080)", () => {
+    rememberLoanBookSearch({ tab: "Watchlist", chain: 560048 });
+    renderRoute();
+    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ tab: "Watchlist", chain: 560048 }),
+    );
+    rememberLoanBookSearch({});
+  });
 });
 
-describe("Loan detail route — Price & collateral (live)", () => {
-  it("renders the provider note, two-tone spot, and the four rows", () => {
+describe("Loan detail route — Security card", () => {
+  it("renders the LTV, ratios, margin-call state and the price-stale chip", () => {
     renderRoute();
-    const pc = screen.getByTestId("loan-detail-price-collateral");
-    expect(within(pc).getByText("via coingecko")).toBeInTheDocument();
-    expect(within(pc).getByText("$10,450")).toBeInTheDocument();
-    expect(within(pc).getByText("−1.2% 7d")).toBeInTheDocument();
-    expect(within(pc).getByText("620 dmt")).toBeInTheDocument();
+    const card = screen.getByTestId("loan-detail-security");
+    expect(within(card).getByText("Security")).toBeInTheDocument();
+    const ltv = within(card).getByTestId("loan-detail-security-ltv");
+    expect(ltv).toHaveTextContent("81.3%");
+    expect(ltv).toHaveStyle({ color: "#6e6400" });
+    expect(within(card).getByText("80%")).toBeInTheDocument();
+    expect(within(card).getByText("85%")).toBeInTheDocument();
+    expect(within(card).getByText("$2,106,000")).toBeInTheDocument();
+    expect(within(card).getByText("None")).toBeInTheDocument();
     expect(
-      within(pc).getByText("Collateral value (after 10% haircut)"),
-    ).toBeInTheDocument();
-    expect(within(pc).getByText("$5,831,100")).toBeInTheDocument();
-    expect(within(pc).getByText("117.80%")).toBeInTheDocument();
-  });
-
-  it("renders the missing-inputs note when the valuation is incomplete", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        priceCollateral: {
-          state: "ready",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [
-            { label: "Quantity", value: "—" },
-            { label: "Collateral value (after 10% haircut)", value: "—" },
-            { label: "Senior outstanding", value: "—" },
-            { label: "CCR", value: "—" },
-          ],
-          missingNote: "Awaiting: reference_price, quantity",
-        },
-      }),
-    );
-    renderRoute();
-    expect(
-      screen.getByTestId("loan-detail-price-collateral-missing"),
-    ).toHaveTextContent("Awaiting: reference_price, quantity");
-  });
-
-  it("renders the P&C loading skeleton while the valuation loads", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        priceCollateral: {
-          state: "loading",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [],
-          missingNote: null,
-        },
-      }),
-    );
-    renderRoute();
-    expect(
-      screen.getByTestId("loan-detail-price-collateral-loading"),
+      within(card).getByTestId("loan-detail-security-price-stale"),
     ).toBeInTheDocument();
   });
 
-  it("renders a neutral 'no valuation' note for a 404 (empty state)", () => {
+  it("paints the LTV red for a negative tone and omits the chip when fresh", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        priceCollateral: {
-          state: "empty",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [],
-          missingNote: "No valuation on record for this loan.",
-        },
+        security: securityView({ ltvTone: "negative", priceStale: false }),
       }),
     );
     renderRoute();
+    expect(screen.getByTestId("loan-detail-security-ltv")).toHaveStyle({
+      color: "#b20000",
+    });
     expect(
-      screen.getByTestId("loan-detail-price-collateral-empty"),
-    ).toHaveTextContent("No valuation on record for this loan.");
-    // Not a red error alert.
-    expect(
-      screen.queryByTestId("loan-detail-price-collateral-error"),
+      screen.queryByTestId("loan-detail-security-price-stale"),
     ).not.toBeInTheDocument();
   });
 
-  it("renders the P&C error message when the valuation fails", () => {
+  it("shows the refresh note while an on-chain refresh is pending", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ security: securityView({ refreshPending: true }) }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-refresh"),
+    ).toHaveTextContent("Updating from chain…");
+  });
+
+  it("renders the loading skeleton", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ security: securityView({ state: "loading", rows: [] }) }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-loading"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the no-terms note", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        priceCollateral: {
-          state: "error",
-          errorMessage: "boom",
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
+        security: securityView({
+          state: "no-terms",
           rows: [],
-          missingNote: null,
-        },
+          notes: ["No security terms are set for this loan."],
+        }),
       }),
     );
     renderRoute();
     expect(
-      screen.getByTestId("loan-detail-price-collateral-error"),
-    ).toHaveTextContent("boom");
+      screen.getByTestId("loan-detail-security-no-terms"),
+    ).toHaveTextContent("No security terms are set for this loan.");
   });
+
+  it("links the ready card to the security actions page", () => {
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-actions"),
+    ).toHaveTextContent("Security actions");
+    expect(screen.getByTestId("loan-detail-security-actions")).toHaveAttribute(
+      "href",
+      "/risk-council/security/$id",
+    );
+  });
+
+  it("offers Set security terms in the no-terms state and no link on error", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "no-terms",
+          rows: [],
+          actionLabel: "Set security terms",
+        }),
+      }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-actions"),
+    ).toHaveTextContent("Set security terms");
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "error",
+          errorMessage: "boom",
+          rows: [],
+          actionLabel: null,
+        }),
+      }),
+    );
+    renderRoute();
+    expect(screen.getAllByTestId("loan-detail-security-actions")).toHaveLength(
+      1,
+    );
+  });
+
+  it("shows an inline error without breaking the rest of the page", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "error",
+          errorMessage: "boom",
+          rows: [],
+        }),
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-security-error")).toHaveTextContent(
+      "boom",
+    );
+    expect(screen.getByTestId("loan-detail-registry")).toBeInTheDocument();
+    expect(screen.getByTestId("loan-detail-tiles")).toBeInTheDocument();
+  });
+
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "renders no card and no placeholder row when hidden on the %s layout",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(
+        makeResult({
+          variant,
+          security: securityView({ state: "hidden", rows: [] }),
+        }),
+      );
+      renderRoute();
+      expect(
+        screen.queryByTestId("loan-detail-security"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("loan-detail-price-collateral"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("loan-detail-ccr-trend"),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
 
 describe("Loan detail route — Registry state & derived (live)", () => {
@@ -443,6 +618,20 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   });
 });
 
+describe("Loan detail route — Register debt token (#1766)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "hosts the action on the %s layout with the numeric loan id",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const stub = screen.getByTestId("register-debt-token-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-chain", "99000001");
+      expect(stub).toHaveAttribute("data-variant", "card");
+    },
+  );
+});
+
 describe("Loan detail route — static action sections", () => {
   it("renders the 4-node spine and NOT risk states as steps (#854)", () => {
     renderRoute();
@@ -486,7 +675,7 @@ describe("Loan detail route — static action sections", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the Other actions buttons + timelock note", () => {
+  it("renders the Other actions buttons + Risk Council note", () => {
     renderRoute();
     const actions = screen.getByTestId("loan-detail-other-actions");
     for (const label of PERFORMING_OTHER_ACTIONS.actions) {
@@ -495,8 +684,65 @@ describe("Loan detail route — static action sections", () => {
       ).toBeInTheDocument();
     }
     expect(
-      within(actions).getByText(/Risk Council proposals under a 24h timelock/),
+      within(actions).getByText(
+        /Declaring default, cure, write-down and amendments belong to the Risk Council/,
+      ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Security records card (#1767)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "renders the records, chips and inspections on the %s layout",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const card = screen.getByTestId("loan-detail-security-records");
+      expect(within(card).getByText("Security records")).toBeInTheDocument();
+      const records = within(card).getAllByTestId(
+        "loan-detail-security-record",
+      );
+      expect(records).toHaveLength(2);
+      expect(records[0]).toHaveAttribute("data-record-id", "7");
+      expect(records[0]).toHaveTextContent("Record #7 · warehouse_receipt");
+      expect(records[0]).toHaveTextContent("LME Copper · $9,500.5 per MT");
+      expect(records[0]).toHaveTextContent("Attestation stale");
+      expect(records[1]).toHaveTextContent("Not counted");
+      const inspections = within(card).getAllByTestId(
+        "loan-detail-security-inspection",
+      );
+      expect(inspections).toHaveLength(2);
+      expect(inspections[0]).toHaveTextContent("Awaiting approval");
+      expect(records[1]).toHaveTextContent("No inspections.");
+    },
+  );
+
+  it("renders the security actions card under the records card with the chain and loan", () => {
+    renderRoute();
+    const stub = screen.getByTestId("security-actions-stub");
+    expect(stub).toHaveAttribute("data-chain", "99000001");
+    expect(stub).toHaveAttribute("data-loan", "4488");
+    expect(stub).toHaveAttribute("data-state", "ready");
+  });
+
+  it("shows the empty line when no records are registered", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ securityRecords: { state: "empty", records: [] } }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-records-empty"),
+    ).toHaveTextContent("No security records are registered for this loan.");
+  });
+
+  it("renders no records card when hidden", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ securityRecords: { state: "hidden", records: [] } }),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-security-records"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -600,7 +846,25 @@ describe("Loan detail route — Matured variant (#866)", () => {
       newRateBps: 1450,
       // 2026-09-30T00:00:00Z in Unix seconds.
       newMaturity: Math.floor(Date.parse("2026-09-30T00:00:00Z") / 1000),
+      chainId: 99_000_001,
     });
+  });
+
+  it("submits the rollover with the EVM chain id on an EVM loan (#1574)", () => {
+    routeChain = 560_048;
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    fireEvent.change(screen.getByTestId("rollover-rate"), {
+      target: { value: "14.5" },
+    });
+    fireEvent.change(screen.getByTestId("rollover-maturity"), {
+      target: { value: "2026-09-30" },
+    });
+    fireEvent.click(screen.getByTestId("rollover-submit"));
+    expect(mockRollover.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ newRateBps: 1450, chainId: 560_048 }),
+    );
   });
 
   it("rejects a rate with more than two decimals or out of range and keeps submit disabled (#1625)", () => {
@@ -653,8 +917,13 @@ describe("Loan detail route — Matured variant (#866)", () => {
     renderRoute();
     const notice = screen.getByTestId("loan-detail-past-due-notice");
     expect(notice).toHaveTextContent("Past due");
+    expect(notice).toHaveTextContent(
+      "escalate the loan to the Risk Council. Default is never automatic.",
+    );
+    expect(
+      screen.getByTestId("loan-detail-past-due-escalate"),
+    ).toHaveTextContent("Escalate to Risk Council");
 
-    // "Record payment" → the existing full-page Record-coupon route.
     fireEvent.click(screen.getByTestId("loan-detail-past-due-record"));
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id/record-coupon",
@@ -662,7 +931,6 @@ describe("Loan detail route — Matured variant (#866)", () => {
       search: { chain: 99_000_001 },
     });
 
-    // "Escalate to default" → the existing Escalate-to-Default route.
     fireEvent.click(screen.getByTestId("loan-detail-past-due-escalate"));
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/risk-council/escalate/$id",
@@ -683,9 +951,9 @@ describe("Loan detail route — Matured variant (#866)", () => {
   });
 });
 
-describe("Loan detail route — non-Stellar loan gate (#1537)", () => {
+describe("Loan detail route — unknown-chain loan gate (#1537, #1574)", () => {
   const REASON =
-    "On-chain actions run on Stellar only — this loan lives on Hoodi, and signing them from the Trustee app is not supported yet.";
+    "On-chain actions run on Stellar only — this loan lives on Chain 1234, and signing them from the Trustee app is not supported yet.";
 
   it("disables the on-chain actions, shows the reason, and keeps Escalate enabled", () => {
     mockUseLoanDetail.mockReturnValue(
@@ -825,16 +1093,33 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
   });
 });
 
+function openUpdateDialog() {
+  mockUseLoanDetail.mockReturnValue(makeResult());
+  renderRoute();
+  fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+}
+
+function statusOptions() {
+  return within(screen.getByTestId("update-lifecycle-status"))
+    .queryAllByRole("option")
+    .map((o) => (o as HTMLOptionElement).value);
+}
+
 describe("Loan detail route — Update lifecycle (#872)", () => {
-  it("opens the update-lifecycle modal from the Update lifecycle action", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult());
-    renderRoute();
-    expect(
-      screen.queryByTestId("update-lifecycle-dialog"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+  it("opens the modal with no CCR or location inputs and the on-chain values prefilled", () => {
+    openUpdateDialog();
     expect(screen.getByTestId("update-lifecycle-dialog")).toBeInTheDocument();
-    // Submit is disabled until CCR + location are entered.
+    for (const id of ["ccr", "location", "location-type", "tracking"]) {
+      expect(
+        screen.queryByTestId(`update-lifecycle-${id}`),
+      ).not.toBeInTheDocument();
+    }
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+      "Performing",
+    );
+    expect(screen.getByTestId("update-lifecycle-metadata")).toHaveValue(
+      "ipfs://cur",
+    );
     expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
   });
 
@@ -855,113 +1140,105 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
     );
   });
 
-  it("submits update_mutable with status + CCR% + location + metadataURI", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult());
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+  it("moves Performing to WatchList and keeps the stored metadata URI", () => {
+    openUpdateDialog();
     fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
       target: { value: "WatchList" },
     });
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "135" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location-type"), {
-      target: { value: "Vessel" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes · IMO 9741205" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-tracking"), {
-      target: { value: "https://track.example/9741205" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
-      target: { value: "ipfs://assay" },
-    });
     fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    // Location is submitted as the on-chain `LocationUpdate` struct (not a bare
-    // string — a string traps the contract; issue #872).
     expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       status: "WatchList",
-      ccrPercent: 135,
-      location: {
-        location_type: "Vessel",
-        location_identifier: "MV Andes · IMO 9741205",
-        tracking_url: "https://track.example/9741205",
-        updated_at: expect.any(Number),
-      },
-      metadataUri: "ipfs://assay",
+      metadataUri: "ipfs://cur",
+      chainId: 99_000_001,
     });
   });
 
-  it.each([
-    ["matured", "Matured"],
-    ["disbursing", "Disbursing"],
-  ] as const)(
-    "preselects WatchList on a %s loan that is WatchList on chain (#1621)",
-    (variant, chip) => {
-      mockUseLoanDetail.mockReturnValue(
-        makeResult({
-          variant,
-          lifecycleStatus: "WatchList",
-          hero: { ...makeResult().hero, status: { label: chip, band: "info" } },
-        }),
-      );
-      renderRoute();
-      fireEvent.click(
-        screen.getByTestId("loan-detail-action-Update lifecycle"),
-      );
-      expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
-        "WatchList",
-      );
-    },
-  );
-
-  it("submits WatchList when only CCR and location are filled on a Matured WatchList loan (#1621)", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        variant: "matured",
-        lifecycleStatus: "WatchList",
-        hero: {
-          ...makeResult().hero,
-          status: { label: "Matured", band: "attention" },
-        },
-      }),
-    );
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "125" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes" },
+  it("sends the EVM chain id with the lifecycle update on an EVM loan (#1574)", () => {
+    routeChain = 560_048;
+    openUpdateDialog();
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "WatchList" },
     });
     fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "WatchList" }),
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "WatchList",
+      metadataUri: "ipfs://cur",
+      chainId: 560_048,
+    });
+  });
+
+  it("offers Performing and WatchList on a WatchList loan, preselecting WatchList", () => {
+    mockMutableState.data = { status: "WatchList", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Performing", "WatchList"]);
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+      "WatchList",
     );
   });
 
-  it("preselects nothing and blocks Confirm until a status is chosen when the on-chain status is unknown (#1621)", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult({ lifecycleStatus: null }));
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
-    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue("");
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "125" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes" },
-    });
+  it("offers only Approved on an Approved loan and sends a metadata-only update", () => {
+    mockMutableState.data = { status: "Approved", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Approved"]);
     expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "ipfs://new" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "Approved",
+      metadataUri: "ipfs://new",
+      chainId: 99_000_001,
+    });
+  });
+
+  it("offers only Default on a Default loan", () => {
+    mockMutableState.data = { status: "Default", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Default"]);
+  });
+
+  it("shows the reason and blocks submit on a Closed loan", () => {
+    mockMutableState.data = { status: "Closed", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual([""]);
+    expect(screen.getByTestId("update-lifecycle-no-targets")).toHaveTextContent(
+      "This loan's on-chain status does not allow a lifecycle update.",
+    );
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("blocks submit when a non-empty stored URI is cleared", () => {
+    openUpdateDialog();
     fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
-      target: { value: "Performing" },
+      target: { value: "WatchList" },
     });
     expect(screen.getByTestId("update-lifecycle-submit")).toBeEnabled();
-    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "Performing" }),
-    );
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("blocks submit while the on-chain read is loading", () => {
+    mockMutableState.data = undefined;
+    mockMutableState.isLoading = true;
+    openUpdateDialog();
+    expect(screen.getByTestId("update-lifecycle-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("shows the read error and blocks submit when the on-chain read fails", () => {
+    mockMutableState.data = undefined;
+    mockMutableState.error = new Error("rpc down");
+    openUpdateDialog();
+    expect(
+      screen.getByTestId("update-lifecycle-read-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
   });
 });
 
@@ -1054,7 +1331,7 @@ describe("Loan detail route — Repayment recovery card (#1711)", () => {
     expect(screen.getByTestId("loan-detail-open-recovery")).toBeEnabled();
   });
 
-  it("is disabled with the Stellar-only reason on an EVM loan", () => {
+  it("is disabled with the Stellar-only reason on an unknown EVM chain", () => {
     mockRecoveryCard.state = "blocked-evm";
     mockRecoveryCard.blockedReason = "On-chain actions run on Stellar only.";
     mockUseLoanDetail.mockReturnValue(makeResult());
@@ -1086,12 +1363,16 @@ describe("Loan detail route — top-level states", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({ state: "error", errorMessage: "kaboom" }),
     );
+    rememberLoanBookSearch({ chain: 560048 });
     renderRoute();
     expect(screen.getByTestId("loan-detail-error")).toHaveTextContent("kaboom");
-    expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
-      "href",
-      "/loans",
+    const back = screen.getByText("‹ Loans").closest("a");
+    expect(back).toHaveAttribute("href", "/loans");
+    expect(back).toHaveAttribute(
+      "data-search",
+      JSON.stringify({ chain: 560048 }),
     );
+    rememberLoanBookSearch({});
   });
 });
 
@@ -1268,25 +1549,16 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
         actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
         note: "",
       },
-      ccrTrend: {
-        points: [146, 132, 121, 114],
-        startLabel: "146% · 1 May 2026",
-        currentLabel: "114%",
-        thresholds: [
-          { pct: 120, label: "120%" },
-          { pct: 110, label: "110%" },
-        ],
-      },
     });
   }
 
-  it("renders the CCR-trend chart and the Days-on-watchlist tile", () => {
+  it("renders the Security card with no CCR trend, and the Days-on-watchlist tile", () => {
     mockUseLoanDetail.mockReturnValue(watchlistResult());
     renderRoute();
-    const chart = screen.getByTestId("loan-detail-ccr-trend");
-    expect(chart).toBeInTheDocument();
-    expect(within(chart).getByText("146% · 1 May 2026")).toBeInTheDocument();
-    expect(within(chart).getByText("114%")).toBeInTheDocument();
+    expect(screen.getByTestId("loan-detail-security")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-ccr-trend"),
+    ).not.toBeInTheDocument();
     expect(
       within(screen.getByTestId("loan-detail-tiles")).getByText(
         "Days on watchlist",
@@ -1312,4 +1584,17 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
       screen.queryByTestId("loan-detail-current-stage"),
     ).not.toBeInTheDocument();
   });
+});
+
+describe("Loan detail route — Disburse (#1898)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "hosts the card on the %s layout with the numeric loan id",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const stub = screen.getByTestId("disburse-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-chain", "99000001");
+    },
+  );
 });

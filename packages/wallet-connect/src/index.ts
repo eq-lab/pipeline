@@ -70,6 +70,7 @@ export {
 
 // ── Stellar namespace ─────────────────────────────────────────────────────────
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
+export { registerStellarE2EWallet } from "./stellar/config";
 export {
   useStellarWallet,
   useStellarConnectors,
@@ -90,19 +91,17 @@ export type { GetSacBalanceParams } from "./stellar/sacBalance";
  * `drawLoan` (issue #831) — trustee-wallet-signed on-chain `draw_loan` mint,
  * reached through the executor/access-control contract's `execute`. Also a
  * plain async function (not a hook), same reasoning as `getSacBalance`.
- * `encodeDrawLoanArgs` and `parseUsdcToU128` are exported for direct
- * unit testing of the ScVal transform matrix.
+ * `encodeDrawLoanArgs` is exported for direct unit testing of the ScVal
+ * transform matrix.
  */
 export {
   drawLoan,
   buildDrawLoanEnvelope,
   encodeDrawLoanArgs,
-  parseUsdcToU128,
-  STELLAR_USDC_DECIMALS,
 } from "./stellar/contracts/loanRegistry";
 export type {
-  SubmitLoanRequest,
-  EconomicsInput,
+  DrawLoanArgs,
+  DrawLoanEconomics,
   LocationInput,
   DrawLoanParams,
   DrawLoanResult,
@@ -127,8 +126,11 @@ export {
   readNextRepaymentId,
   readRepaymentData,
   readIsRepaymentReversed,
+  readLoanDisbursementState,
+  readLoanOwner,
 } from "./stellar/contracts/loanRegistry";
 export type {
+  LoanDisbursementState,
   RepaymentInput,
   ReadNextRepaymentIdParams,
   ReadRepaymentParams,
@@ -194,7 +196,13 @@ export {
   buildRequestWireOutEnvelope,
   requestWireOut,
   readMinterWireOut,
-  readMinterPaused,
+  recordIncome,
+  buildRecordIncomeEnvelope,
+  encodeRecordIncomeArgs,
+  readRefHashSeen,
+  bankReferenceRefHash,
+  disburse,
+  encodeDisburseArgs,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -220,8 +228,82 @@ export type {
   MinterWireOut,
   MinterWireOutStatus,
   ReadMinterWireOutParams,
-  ReadMinterPausedParams,
+  RecordIncomeArgs,
+  RecordIncomeParams,
+  RecordIncomeResult,
+  RecordIncomeStage,
+  BuildRecordIncomeEnvelopeParams,
+  ReadRefHashSeenParams,
+  DisburseArgs,
+  DisburseParams,
 } from "./stellar/contracts/minter";
+
+export {
+  readMinterWireIn,
+  readMinterPlusdId,
+  readPlusdAuthorization,
+  readWireInRefHashSeen,
+  wireInReturnRefHash,
+  encodeAssignWireInArgs,
+  encodeReturnWireInArgs,
+  assignWireIn,
+  returnWireIn,
+} from "./stellar/contracts/wireInEscrow";
+export type {
+  WireInStatus,
+  MinterWireIn,
+  PlusdAuthorization,
+  ReadMinterWireInParams,
+  ReadMinterPlusdIdParams,
+  ReadPlusdAuthorizationParams,
+  ReadWireInRefHashSeenParams,
+  AssignWireInArgs,
+  ReturnWireInArgs,
+  AssignWireInParams,
+  ReturnWireInParams,
+} from "./stellar/contracts/wireInEscrow";
+
+export {
+  readWireOutRecord,
+  encodeSettleWireOutArgs,
+  encodeCancelWireOutArgs,
+  settleWireOut,
+  cancelWireOut,
+} from "./stellar/contracts/wireOutSettlement";
+export type {
+  WireOutRecordStatus,
+  WireOutRecord,
+  ReadWireOutRecordParams,
+  SettleWireOutArgs,
+  CancelWireOutArgs,
+  SettleWireOutParams,
+  CancelWireOutParams,
+} from "./stellar/contracts/wireOutSettlement";
+
+export {
+  readMinterRamp,
+  readMinterPoolState,
+  readMinterPaused,
+  encodeOpenRampArgs,
+  encodeCloseRampArgs,
+  encodeRecordExpenseArgs,
+  openRamp,
+  closeRamp,
+  recordExpense,
+} from "./stellar/contracts/minterRamps";
+export type {
+  RampDirection,
+  MinterRamp,
+  MinterPoolState,
+  ReadMinterRampParams,
+  ReadMinterPoolStateParams,
+  OpenRampArgs,
+  CloseRampArgs,
+  RecordExpenseArgs,
+  OpenRampParams,
+  CloseRampParams,
+  RecordExpenseParams,
+} from "./stellar/contracts/minterRamps";
 
 export {
   readCanCall,
@@ -242,13 +324,232 @@ export type {
 } from "./stellar/contracts/accessManager";
 
 export {
+  readDeal,
+  readDebtTrustline,
+  registerDeal,
+  registerDealArgs,
+} from "./stellar/contracts/dealTokenFactory";
+export type {
+  DealRead,
+  ReadDealParams,
+  ReadDebtTrustlineParams,
+  RegisterDealParams,
+} from "./stellar/contracts/dealTokenFactory";
+
+export {
+  encodeRiskCouncilArgs,
+  riskCouncilArgsXdr,
+  relayRiskCouncil,
+  readRiskCouncilSchedule,
+  riskCouncilReasonHash,
+  readLoanMoney,
+  readLoanChainState,
+} from "./stellar/contracts/riskCouncil";
+export type {
+  RiskCouncilCall,
+  RiskCouncilClosureReason,
+  RiskCouncilRelayParams,
+  ReadRiskCouncilScheduleParams,
+  LoanMoney,
+  LoanChainState,
+  ReadLoanParams,
+} from "./stellar/contracts/riskCouncil";
+
+export {
+  decodeOperationArgs,
+  operationArgsXdr,
+  readScheduledOperation,
+  executeScheduledOperation,
+} from "./stellar/contracts/scheduledOperation";
+export type {
+  ScheduledOperationParams,
+  ExecuteScheduledOperationParams,
+} from "./stellar/contracts/scheduledOperation";
+
+export {
+  encodeSecurityRegistryArgs,
+  securityRegistryArgsXdr,
+  relaySecurityRegistry,
+  readSecurityRegistrySchedule,
+  readSecurityInspectors,
+  securityReasonHash,
+  isInspectorAddress,
+  isSecurityBenchmark,
+  decimal7ToI128,
+  buildCheckCoverageEnvelope,
+  checkCoverage,
+  SECURITY_PAYMENT_TERMS,
+  FLAG_OUTCOMES,
+} from "./stellar/contracts/securityRegistry";
+export type {
+  SecurityPaymentTerm,
+  FlagOutcome,
+  SecurityTermsInput,
+  SecurityRegistryCall,
+  SecurityRegistryRelayParams,
+  ReadSecurityRegistryScheduleParams,
+  ReadSecurityInspectorsParams,
+  BuildCheckCoverageEnvelopeParams,
+  CheckCoverageParams,
+} from "./stellar/contracts/securityRegistry";
+
+// ── EVM Risk Council ──────────────────────────────────────────────────────────
+export {
+  EVM_TX_GAS_CAP,
+  EIP1967_IMPLEMENTATION_SLOT,
+  readEvmContract,
+  readEvmContractCode,
+  sendEvmContractCall,
+  sendEvmContractCallChecked,
+} from "./evm/contracts/write";
+export type {
+  ReadEvmContractParams,
+  SendEvmContractCallParams,
+  SendEvmContractCallResult,
+} from "./evm/contracts/write";
+export {
+  accessManagerAbi,
+  readEvmCanCall,
+  readEvmOperationSchedule,
+  relayEvm,
+  readEvmScheduledOperation,
+  executeEvmScheduledOperation,
+} from "./evm/contracts/accessManager";
+export type {
+  EvmAccessManagerCallParams,
+  ReadEvmCanCallParams,
+  ReadEvmOperationScheduleParams,
+  RelayEvmParams,
+  ReadEvmScheduledOperationParams,
+  ExecuteEvmScheduledOperationParams,
+} from "./evm/contracts/accessManager";
+export {
+  evmSecurityRegistryAbi,
+  evmSecurityRegistryTerms12Abi,
+  evmSecurityRecordNftAbi,
+  evmSecurityErrorAbi,
+  EVM_SECURITY_FUNCTION_NAMES,
+  EVM_SET_TERMS_SELECTORS,
+  evmSecuritySelector,
+  type EvmSecurityFn,
+  evmSecurityTermsShapeFromCode,
+  readEvmSecurityTermsShape,
+  encodeEvmSecurityRegistryCalldata,
+  evmSecurityTarget,
+  relayEvmSecurityRegistry,
+  readEvmSecurityRegistrySchedule,
+  readEvmSecurityInspectors,
+  isEvmInspectorAddress,
+  normalizeEvmAddress,
+} from "./evm/contracts/securityRegistry";
+export type {
+  EvmSecurityAddresses,
+  EvmSecurityCallParams,
+  EvmSecurityTermsShape,
+  RelayEvmSecurityRegistryParams,
+} from "./evm/contracts/securityRegistry";
+
+export {
+  evmLoanRegistryRiskCouncilAbi,
+  evmLoanRegistryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  EVM_RISK_COUNCIL_FUNCTION_NAMES,
+  EVM_LOAN_STATUSES,
+  EVM_CLOSURE_REASONS,
+  evmRiskCouncilSelector,
+  encodeEvmRiskCouncilCalldata,
+  relayEvmRiskCouncil,
+  readEvmRiskCouncilSchedule,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+  readEvmLoanDisbursementState,
+} from "./evm/contracts/riskCouncil";
+export type {
+  EvmRiskCouncilCallParams,
+  RelayEvmRiskCouncilParams,
+  ReadEvmLoanParams,
+} from "./evm/contracts/riskCouncil";
+
+export {
+  drawEvmLoan,
+  encodeEvmDrawLoanCalldata,
+  evmLoanRegistryDrawAbi,
+  readEvmDrawnLoanId,
+  rolloverEvmLoan,
+  updateEvmMutable,
+  closeEvmLoan,
+  encodeEvmRolloverCalldata,
+  encodeEvmUpdateMutableCalldata,
+  encodeEvmCloseLoanCalldata,
+  evmLoanRegistryLifecycleAbi,
+} from "./evm/contracts/loanRegistry";
+export type {
+  DrawEvmLoanParams,
+  DrawEvmLoanResult,
+  EvmLoanRegistryCallParams,
+} from "./evm/contracts/loanRegistry";
+
+export {
+  readEvmDeal,
+  evmDealTokenFactoryAbi,
+  evmRegisterDealSelector,
+  encodeEvmRegisterDealCalldata,
+  evmRegisterDealErrorAbi,
+  relayEvmRegisterDeal,
+} from "./evm/contracts/dealTokenFactory";
+export type { RelayEvmRegisterDealParams } from "./evm/contracts/dealTokenFactory";
+
+export {
   minterRecoveryAbi,
   minterWireOutAbi,
   EVM_WIRE_OUT_STATUS,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
+  evmMinterErrorAbi,
+  evmRecoveryErrorAbi,
+  evmReverseRepaySelector,
+  evmRepaySelector,
+  evmReverseRepayRefHash,
+  relayEvmReverseRepay,
+  scheduleEvmReverseRepay,
+  executeEvmReverseRepay,
+  readEvmReverseRepaySchedule,
+  readEvmNextRepaymentId,
+  readEvmMinterRepayment,
+  readEvmRecoveryRepayments,
+  repayEvmLoan,
+  evmRepaymentRefHash,
+  readEvmRepaymentId,
+  evmRepayErrorAbi,
+  disburseEvmLoan,
+  encodeEvmDisburseCalldata,
+  evmDisburseSelector,
+  evmDisburseErrorAbi,
+  readEvmMinterPaused,
+  readEvmMinterBankCash,
+  readEvmRefHashSeen,
 } from "./evm/contracts/minter";
-export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
+export type {
+  EvmReverseRepayArgs,
+  EvmRepayArgs,
+  EvmReverseRepayCallParams,
+  RelayEvmReverseRepayParams,
+  ScheduleEvmReverseRepayParams,
+  EvmMinterRepaymentRecord,
+  EvmRecoveryRepayment,
+  ReadEvmRecoveryRepaymentsParams,
+  RepayEvmLoanParams,
+  DisburseEvmLoanParams,
+  EvmDisburseArgs,
+} from "./evm/contracts/minter";
+
+export {
+  EVM_LOG_CHUNK_BLOCKS,
+  isTransientRpcError,
+  readEvmHeadBlock,
+  scanEvmLogs,
+} from "./evm/contracts/logs";
+export type { ScanEvmLogsParams } from "./evm/contracts/logs";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

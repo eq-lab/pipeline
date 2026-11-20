@@ -118,17 +118,37 @@ The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher r
 
 ## Stellar Relayer Whitelist (Issue #562)
 
-The relayer's Phase 0 (profile population) and Phase 3 (whitelist sync) run for Stellar chains in parallel to the EVM path. `RelayerSettings::all_from_env` dispatches on `CHAIN_<id>_TYPE`; Stellar chains run `run_stellar_relayer_job` instead of `run_relayer_job`. Phases 1 (Sumsub) and 4 (yield-mint) are skipped.
+The relayer's Phase 0 and 0b (profile population) and Phase 3 (whitelist sync) run for Stellar chains in parallel to the EVM path. `RelayerSettings::all_from_env` dispatches on `CHAIN_<id>_TYPE`; Stellar chains run `run_stellar_relayer_job` instead of `run_relayer_job`. Phases 1 (Sumsub) and 4 (yield-mint) are skipped.
 
 ### On-chain mechanism
 
-Where EVM calls `WhitelistRegistry.allow(address)`, Stellar invokes `access_manager.execute(operation, caller)` where `operation = { target: PLUSD_SAC, function: "set_authorized", args: [Address(user), Bool(true)], predecessor: 0x00…, salt: <random 32 bytes> }`. The access-manager's `#[only_role(caller, "executor")]` macro requires the caller (the relayer's `G…` account, which doubles as the tx source) to hold the `executor` role — granted out-of-band via `just grant-executor <G-address>` in `pipeline-stellar-contracts/deployments`.
+Where EVM calls `WhitelistRegistry.allow(address)`, Stellar invokes `access_manager.execute(target = PLUSD_SAC, function = "set_authorized", args = [Address(user), Bool(true)], caller = relayer G…)`, four positional arguments (`worker/src/relayer/stellar/whitelist.rs`). The caller (the relayer's `G…` account, which doubles as the tx source) must hold `WHITELIST_ADMIN` with execution delay 0, granted by the contracts' `setup-access` or `just grant-role WHITELIST_ADMIN <G-address>` in `pipeline-stellar-contracts/deployments`.
 
-The `Operation` struct is encoded as `ScVal::Map` with entries alphabetically sorted by field name (`args`, `function`, `predecessor`, `salt`, `target`) — matches `soroban-sdk`'s `to_xdr(e)` for `#[contracttype]` structs, the same convention reused by `shared::stellar_voucher` for the voucher digest. A fresh random salt per submit makes `hash_operation(...)` unique, so the access-manager's dedup never collides across cycles.
+There is no operation struct or salt: an immediate caller executes directly. See [backend.md](../references/backend.md#stellar-contract-ids-and-signer-roles) for the signer-role check.
+
+### Linked settlement addresses (Issue #1889)
+
+A wire-only lender never emits `DepositRequested`, so Phase 0 alone never creates its `lp_profiles` row and the address is never PLUSD-authorised; `record_wire_in` then traps. Phase 0b (`populate_profiles_from_linked_settlement_addresses_stellar`) seeds an `lp_profiles` row, on every Stellar relayer chain, for the `lps.stellar_address` of every LP with `kyb_status = 'Passed'` whose `address_linked_at` is non-null, the same "linked" condition under which the Trustee mints to the address (legacy addresses with `stellar_signer_address IS NULL` included). The existing Elliptic address screen then screens the row like any other.
+
+The candidate rule (`stellar_allow_candidates_sql`) admits a profile through either branch:
+
+- **Deposit branch (unchanged).** The wallet has an indexed `DepositRequested`; with Sumsub enabled it also needs the three Sumsub statuses at 2, and with Elliptic enabled the deposit log needs `kyt_status = 1`.
+- **Linked branch.** The wallet is the `stellar_address` of a KYB `Passed` LP with `address_linked_at` non-null (the Stellar link timestamp; the EVM link has its own `evm_address_linked_at`). KYB `Passed` replaces the wallet Sumsub checks (product decision 2026-11-12), so Sumsub does not apply to this branch.
+
+Because the API's Stellar voucher gate reads only `lp_profiles.on_chain_allowed`, a linked address authorised through this branch also passes the deposit and withdrawal voucher check without wallet Sumsub; see [lp-onboarding.md](../product-specs/lp-onboarding.md) and open decision [#1890](https://github.com/eq-lab/pipeline/issues/1890).
+
+When Elliptic is enabled, `p.kyt_status = 1` applies to both branches. The whitelister accepts `G…` accounts and `C…` contracts as holders (`holder_scval`); the SAC creates the balance entry for a `C…` on `set_authorized`. Whether Elliptic screens a contract address is unverified; if it errors the profile never reaches `kyt_status = 1`, so it is never authorised while Elliptic is on (fails closed).
 
 ### Idempotency
 
-Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction` (no signing or submit) before each `set_authorized` call. On `true`, it skips the submit and flips `lp_profiles.on_chain_allowed` to keep the DB in sync. On error (e.g., the SAC view is unavailable), it falls through to submit — the salt-based on-chain dedup means a duplicate submit is just a wasted fee, not a correctness bug.
+Phase 3 calls the SAC's `authorized(holder) -> bool` view via `simulateTransaction` (no signing or submit) before each `set_authorized` call and classifies the result (`classify_authorized_simulate`):
+
+- `true` (`Authorized`): skip the submit and flip `lp_profiles.on_chain_allowed` to keep the DB in sync.
+- `false` (`NotAuthorized`): submit.
+- `Error(Contract, #13)` (`NoTrustline`): a `G…` with no PLUSD trustline. Only the holder can create one (`changeTrust`), and `set_authorized` would trap the same way, so the candidate is skipped at `debug` level without submitting and does not count against `batch_size`.
+- Any other error, or a missing or non-bool result (`Unknown`): fall through to submit. `set_authorized(addr, true)` is idempotent on the SAC, so a duplicate submit is just a wasted fee, not a correctness bug.
+
+`batch_size` counts submissions, not candidates, so trustline-less linked addresses cannot starve deposit-path candidates.
 
 ### Case sensitivity
 

@@ -9,6 +9,7 @@ use crate::indexer::stellar::parsers::{
     extract_bytes32_from_map, extract_i128_from_map, synthesise_log_index, StellarLog,
 };
 use crate::indexer::stellar::rpc::RawEvent;
+use crate::indexer::stellar::security_registry_parsers::warn_if_security_registry_topic;
 
 const TOPICS: [(&str, &str); 11] = [
     ("pledged", "Pledged"),
@@ -230,6 +231,10 @@ pub fn dispatch_collateral_registry(raw: &RawEvent) -> Option<StellarLog> {
         .or_else(|| parse_released(raw))
         .or_else(|| parse_liquidated(raw))
         .or_else(|| parse_margin_call(raw));
+    if parsed.is_none() {
+        let legacy: Vec<&str> = TOPICS.iter().map(|(t, _)| *t).collect();
+        warn_if_security_registry_topic(raw, &legacy);
+    }
     if parsed.is_none() && TOPICS.iter().any(|(t, _)| *t == raw.event_name) {
         tracing::warn!(
             contract_id = %raw.contract_id,

@@ -15,8 +15,9 @@
 import { useState } from "react";
 import { useReviewSubmission } from "@/api/useReviewSubmission";
 import { useDrawLoan, type DrawLoanStage } from "@/api/useDrawLoan";
-import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
+import { drawChainReason } from "@/lib/targetChains";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import { drawLoanBlockedReason, readyDrawLoanArgs } from "@/lib/drawLoanArgs";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
 export interface UseOriginationReviewResult {
@@ -28,10 +29,16 @@ export interface UseOriginationReviewResult {
    */
   approve: () => void;
   /**
-   * Why Approve is unavailable for this submission (#1536: the on-chain draw
-   * runs on Stellar only), or `null` when it can proceed.
+   * Why Approve is unavailable for this submission (#1536/#1573: the on-chain
+   * draw runs on Stellar and the configured EVM chain), or `null` when it can proceed.
    */
   approveBlockedReason: string | null;
+  /**
+   * Set when the loan is already on-chain (drawn this session, or the served
+   * submission is still InReview with a `loan_id`): Confirm only records the
+   * review, no draw.
+   */
+  approveReviewOnlyNotice: string | null;
   /** Opens the approve & mint confirmation dialog (issue #838). */
   openApprove: () => void;
   /** Closes the approve & mint dialog without minting. */
@@ -108,6 +115,14 @@ function mapMintError(error: Error): UserFacingError {
       isSpecific: true,
     };
   }
+  if (/invalid draw_loan input/i.test(details)) {
+    return {
+      message:
+        "This submission's on-chain inputs are incomplete. No signature was requested.",
+      details,
+      isSpecific: true,
+    };
+  }
   if (/not configured/i.test(details)) {
     return {
       message: "On-chain minting isn't configured for this environment.",
@@ -156,12 +171,19 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   // never triggers a second network fetch.
   const { data: submissions } = useLoanSubmissions();
   const submission = submissions?.find((s) => s.id === submissionId);
+  const alreadyDrawn =
+    !!submission &&
+    submission.status === "InReview" &&
+    submission.loan_id != null;
+  const reviewOnly = drawLoanMutation.isSuccess || alreadyDrawn;
+  const approveReviewOnlyNotice = reviewOnly
+    ? "Already on-chain — confirm to record the review."
+    : null;
   const approveBlockedReason =
-    submission && !isStellarTarget(submission.target_chain_id)
-      ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
-          submission.target_chain_id,
-        )} from the Trustee app is not supported yet. Reject or request changes instead.`
-      : null;
+    !submission || reviewOnly
+      ? null
+      : (drawChainReason(submission.target_chain_id) ??
+        drawLoanBlockedReason(submission.draw_loan));
 
   // Fires the review call and, on success, closes the approve dialog (issue
   // #838) — the footer then flips to the Approved banner via the existing
@@ -174,21 +196,26 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   }
 
   function approve() {
-    if (!submission || approveBlockedReason) return;
+    if (!submission) return;
     // No-double-mint guard: an already-Approved submission needs no further
     // on-chain action.
     if (submission.status === "Approved") return;
 
     // Idempotency guard — spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
-    if (drawLoanMutation.isSuccess) {
+    if (reviewOnly) {
       fireApprovalReview();
       return;
     }
+    if (approveBlockedReason) return;
 
-    const loanData = submission.loan_data;
+    const args = readyDrawLoanArgs(submission.draw_loan);
+    if (!args) return;
     void (async () => {
       try {
-        await drawLoanMutation.mutateAsync({ loanData });
+        await drawLoanMutation.mutateAsync({
+          args,
+          chainId: submission.target_chain_id,
+        });
       } catch {
         // Mint failed / wallet rejected — stay InReview, no review call.
         return;
@@ -260,7 +287,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
       ? drawLoanMutation.isSuccess
         ? {
             message:
-              "The loan minted on-chain successfully, but marking it Approved failed. This is a known limitation — contact support rather than retrying (Approve would attempt another on-chain mint).",
+              "The loan was drawn on-chain, but marking it Approved failed. Click Approve again — it only records the review and does not draw the loan again.",
             details: reviewMutation.error.message || "unknown error",
             isSpecific: true,
           }
@@ -276,6 +303,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   return {
     approve,
     approveBlockedReason,
+    approveReviewOnlyNotice,
     openApprove,
     cancelApprove,
     openReject,

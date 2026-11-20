@@ -47,3 +47,19 @@ The append-only audit log is mirrored in near-real-time to a third-party log sin
 - Over-rate-limit deposits revert at contract; LPs retry when window headroom opens. No bridge-side queue — single bridge instance is not a deposit bottleneck.
 - LoanRegistry on-chain queries are unbounded in the MVP — a pagination layer is needed at >100 active loans.
 - Price feed polling is single-threaded per commodity — parallel polling required at >20 active loan commodities.
+
+## Selective verification
+
+`scripts/check-changes.sh` runs only the checks that the changed paths need: the diff since the merge-base with `origin/main` (or `CODING_FLOW_BASE_SHA`), plus staged files when `CODING_FLOW_CHECK_STAGE=commit` (the default). It is the gate for automated runners and can be run by hand. It prints the plan, runs every selected step even after a failure, and exits non-zero if any step failed.
+
+| Changed paths | Checks |
+|---------------|--------|
+| `docs/**`, `*.md` only | doc lint |
+| `packages/api`, `worker`, `shared`, `Cargo.*`, Rust config | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo nextest run --workspace` (falls back to `cargo test --all` with a warning), migration-version check for new migrations |
+| `packages/ui` | comment lint, plus everything for `wallet-connect`, `frontend`, `trustee` |
+| `packages/wallet-connect` | tests, plus everything for `frontend`, `trustee` |
+| `packages/frontend` | comment lint, build (`tsc -b && vite build`), vitest |
+| `packages/trustee` | comment lint, build, vitest |
+| root config (`package.json`, `yarn.lock`, `.yarnrc.yml`, `tsconfig*`), `scripts/`, `.github/`, `.husky/`, `Dockerfile`, `docker/`, any other path | everything above |
+
+Doc lint and `yarn install --immutable` always run. With `CODING_FLOW_CHECK_STAGE=setup` the script only installs JS dependencies. `CARGO_TARGET_DIR` is respected, so worktrees can share one build directory. `integration` selects like `commit` but ignores staged files.

@@ -42,7 +42,18 @@ vi.mock("@/api/useSubmitLoan", async () => {
   return { ...actual, useSubmitLoan: () => mockSubmit };
 });
 
+vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
+import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./origination.new";
+
+const mockServed = vi.mocked(useServedTargetChains);
+const STELLAR = { id: 99_000_001, label: "Stellar" };
+const HOODI = { id: 560048, label: "Hoodi" };
+const BOTH = {
+  options: [STELLAR, HOODI],
+  defaultChainId: 99_000_001,
+  isLoading: false,
+};
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -50,8 +61,8 @@ function renderRoute() {
 }
 
 const EXAMPLE_JSON = JSON.stringify({
-  to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
   metadata_uri: "https://example.com/ipfs/QmeaPY",
+  data_room_id: "DR-0001",
   originator: "Alan Walkovitz",
   borrower_id: "Open Mineral",
   commodity: "Jet fuel JET A-1",
@@ -67,13 +78,6 @@ const EXAMPLE_JSON = JSON.stringify({
     senior_interest_rate_bps: 1000,
     origination_date: 1781806657,
     original_maturity_date: 1881806657,
-  },
-  initial_ccr: 1500000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO 9834521",
-    tracking_url: "https://track.example.com/IMO9834521",
-    updated_at: 1781806657,
   },
 });
 
@@ -104,6 +108,7 @@ function fillMissingBlocks() {
 }
 
 beforeEach(() => {
+  mockServed.mockReturnValue(BOTH);
   mockNavigate.mockReset();
   mockSubmit.mutateAsync = vi.fn<(input: unknown) => Promise<{ id: number }>>(
     () => Promise.resolve({ id: 42 }),
@@ -129,7 +134,6 @@ describe("Submit a loan page — shell", () => {
     for (const section of [
       "Loan & metadata",
       "Economics",
-      "Collateral",
       "Collateral valuation",
       "Fee schedule",
       "Documents",
@@ -138,6 +142,13 @@ describe("Submit a loan page — shell", () => {
         screen.getByTestId(`submit-loan-section-${section}`),
       ).toBeInTheDocument();
     }
+    expect(
+      screen.queryByTestId("submit-loan-section-Collateral"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Data room ID/)).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("submit-loan-field-to"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("submit-loan-import-open")).toBeInTheDocument();
     expect(screen.getByTestId("submit-loan-submit")).toBeEnabled();
   });
@@ -149,8 +160,8 @@ describe("Submit a loan page — Import from JSON", () => {
     importJson(EXAMPLE_JSON);
 
     expect(screen.queryByTestId("import-json-dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("submit-loan-field-to")).toHaveValue(
-      "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+    expect(screen.getByTestId("submit-loan-field-data_room_id")).toHaveValue(
+      "DR-0001",
     );
     expect(
       screen.getByTestId("submit-loan-field-economics.original_facility_size"),
@@ -202,7 +213,9 @@ describe("Submit a loan page — Import from JSON", () => {
     expect(screen.getByTestId("import-json-error")).toHaveTextContent(
       "Not valid JSON",
     );
-    expect(screen.getByTestId("submit-loan-field-to")).toHaveValue("");
+    expect(screen.getByTestId("submit-loan-field-data_room_id")).toHaveValue(
+      "",
+    );
     expect(
       screen.queryByTestId("submit-loan-import-warning"),
     ).not.toBeInTheDocument();
@@ -239,9 +252,9 @@ describe("Submit a loan page — validation + submit", () => {
     expect(
       screen.getByTestId("submit-loan-validation-summary"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("submit-loan-field-error-to")).toHaveTextContent(
-      "Required.",
-    );
+    expect(
+      screen.getByTestId("submit-loan-field-error-data_room_id"),
+    ).toHaveTextContent("Required.");
   });
 
   it("submits the built payload and navigates back to /origination on success", async () => {
@@ -257,9 +270,8 @@ describe("Submit a loan page — validation + submit", () => {
     };
     expect(variables.chainId).toBe(99_000_001);
     expect(variables.input).toMatchObject({
-      to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+      data_room_id: "DR-0001",
       protection: "LC at sight",
-      initial_ccr: 1500000,
       economics: {
         original_facility_size: "1200000.000000",
         senior_interest_rate_bps: 1000,
@@ -270,6 +282,10 @@ describe("Submit a loan page — validation + submit", () => {
         { name: "Agreement", uri: "https://example.com/ipfs/QmPm7z" },
       ],
     });
+
+    expect(variables.input).not.toHaveProperty("to");
+    expect(variables.input).not.toHaveProperty("initial_ccr");
+    expect(variables.input).not.toHaveProperty("initial_location");
 
     await vi.waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({ to: "/origination" }),
@@ -325,9 +341,7 @@ describe("Submit a loan page — target chain (#1536)", () => {
       "Stellar",
       "Hoodi",
     ]);
-    expect(
-      screen.getByText("Mint to (address on the target chain)"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Borrower")).toBeInTheDocument();
   });
 
   it("choosing the EVM chain sends its id as chainId and survives a JSON import", async () => {
@@ -353,5 +367,66 @@ describe("Submit a loan page — target chain (#1536)", () => {
     await vi.waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({ to: "/origination" }),
     );
+  });
+});
+
+describe("Submit a loan page — served target chains (#1667)", () => {
+  const select = () =>
+    screen.getByTestId(
+      "submit-loan-field-target_chain_id",
+    ) as HTMLSelectElement;
+
+  it("disables the selector with no options while the served list loads", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: true,
+    });
+    renderRoute();
+    expect(select()).toBeDisabled();
+    expect(select().options).toHaveLength(0);
+  });
+
+  it("offers only served chains", () => {
+    mockServed.mockReturnValue({
+      options: [STELLAR],
+      defaultChainId: 99_000_001,
+      isLoading: false,
+    });
+    renderRoute();
+    expect(select()).toBeEnabled();
+    expect(Array.from(select().options).map((o) => o.textContent)).toEqual([
+      "Stellar",
+    ]);
+  });
+
+  it("preselects the served default and submits it as chainId", () => {
+    mockServed.mockReturnValue({ ...BOTH, defaultChainId: 560048 });
+    renderRoute();
+    expect(select().value).toBe("560048");
+    importJson(EXAMPLE_JSON);
+    fillMissingBlocks();
+    fireEvent.click(screen.getByTestId("submit-loan-submit"));
+    const variables = vi.mocked(mockSubmit.mutateAsync).mock.calls[0]![0] as {
+      chainId: number;
+    };
+    expect(variables.chainId).toBe(560048);
+  });
+
+  it("an empty intersection leaves a disabled empty selector and submit reports Required.", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: false,
+    });
+    renderRoute();
+    expect(select()).toBeDisabled();
+    importJson(EXAMPLE_JSON);
+    fillMissingBlocks();
+    fireEvent.click(screen.getByTestId("submit-loan-submit"));
+    expect(
+      screen.getByTestId("submit-loan-field-error-target_chain_id"),
+    ).toHaveTextContent("Required.");
+    expect(mockSubmit.mutateAsync).not.toHaveBeenCalled();
   });
 });

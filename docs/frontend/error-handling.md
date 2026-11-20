@@ -260,8 +260,8 @@ full normalized raw text — never truncated — on every branch, matched or not
 1. **Wallet / user rejection** — same regex list as the LP's `toUserError` (ported verbatim) →
    `"You cancelled the transaction in your wallet."`. Checked first because a rejection can arrive
    wrapped inside a simulation/revert string.
-2. **Trustee preflight guard** — the five on-chain hooks (`useDrawLoan`, `useRollover`,
-   `useUpdateLifecycle`, `useRecordPayment`, `useCloseLoan`) throw these BEFORE any RPC call, and
+2. **Trustee preflight guard** — the on-chain hooks (`useDrawLoan`, `useRollover`,
+   `useUpdateLifecycle`, `useRecordPayment`, `useCloseLoan`, `useDisburse`) throw these BEFORE any RPC call (the EVM arm's "wallet not connected" guard comes from `evmPreflight`), and
    the text is already a short, hook-specific, human sentence — not a diagnostic dump:
    - `/not configured for this environment/i` → the guard's own sentence, rendered verbatim (e.g.
      "On-chain payment recording is not configured for this environment.").
@@ -313,6 +313,7 @@ only the raw interpolation moved out of the rendered sentence and into `details`
 | review default | `` `Something went wrong: ${raw}` `` | `"Something went wrong. Please try again."` + `details` |
 | mint simulation | `` `Could not verify the loan on-chain (${raw}). No signature was requested — safe to retry.` `` | same sentence minus the parenthetical; `raw` → `details` |
 | mint reject/cancel | `"Signature cancelled. Click Approve again to retry."` | unchanged + `details` |
+| mint invalid draw_loan input (#1805) | new | `"This submission's on-chain inputs are incomplete. No signature was requested."` + `details` (thrown by `encodeDrawLoanArgs` before any RPC call) |
 | mint not-configured | `"On-chain minting isn't configured for this environment."` | unchanged + `details` |
 | mint not-connected | `"Connect your trustee wallet to approve on-chain."` | unchanged + `details` |
 | mint default | `` `The on-chain transaction failed (${raw}). Please try again.` `` | same sentence minus the parenthetical; `raw` → `details` |
@@ -361,6 +362,6 @@ copy with `details: ""`.
   discard the raw value at the `catch` and never read `.message`, so they already meet the
   acceptance bar without adopting `toUserError`.
 - **Trustee T-Bills swap form / On-off-ramp `SwapDialog`** (#1037, #983/#943) — UI shells with no
-  wired error state at all (execution blocked on Type-2 MPC #781) — nothing to adopt.
+  wired error state at all; both were removed by #1765 (conversions use `conversionErrorCopy`).
 - **Trustee risk-council submit errors** (#1037) — the three risk-council pages have no mutations
   wired yet, only load errors (which the sweep does cover).

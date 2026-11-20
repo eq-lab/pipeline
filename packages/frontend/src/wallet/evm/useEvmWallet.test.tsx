@@ -64,6 +64,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 vi.mock("./config", () => ({
   wagmiConfig: {},
   wagmiAdapter: {},
+  E2E_EVM_WALLET_ID: undefined,
 }));
 
 // ── Mock FirstConnectionModal to avoid portal/DOM issues ────────────────────
@@ -110,6 +111,11 @@ describe("useEvmWallet — no mocks, no real wallet", () => {
     const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(false);
     expect(result.current.address).toBeUndefined();
+  });
+
+  it("does not expose message signing", () => {
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    expect(result.current).not.toHaveProperty("signMessage");
   });
 });
 

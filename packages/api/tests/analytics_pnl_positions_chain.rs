@@ -5,7 +5,12 @@ use std::sync::Arc;
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use pipeline_api::config::ConfiguredChain;
-use pipeline_api::routes::analytics::{self, AnalyticsDoc};
+use pipeline_api::minter_cash_book::{CashBookWireIn, WireInStatus};
+use pipeline_api::routes::analytics::{
+    self, degrade_minter_list, lp_wire_in_items, minter_chains_in_scope, AnalyticsDoc,
+    RequestsResponse,
+};
+use pipeline_api::routes::common::{stellar_minter, ChainScope};
 use pipeline_api::routes::pnl::{self, PnlDoc};
 use pipeline_api::AppState;
 use shared::chains::ChainKind;
@@ -46,6 +51,14 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        minter_addresses: HashMap::new(),
+        capital_allocation_from_minter: std::collections::HashSet::new(),
+        withdrawal_queue_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
+        security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -74,6 +87,11 @@ fn make_test_state() -> AppState {
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         lp_bank_deposit_repo: shared::lp_bank_deposit_repo::LpBankDepositRepo::new(pool.clone()),
+        system_configuration_repo: shared::system_configuration_repo::SystemConfigurationRepo::new(
+            pool.clone(),
+        ),
+        lp_requested_bank_details_repo:
+            shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
         object_store: shared::object_store::ObjectStore::new(
             "test-key",
@@ -208,7 +226,7 @@ async fn requests_unconfigured_chain_id_is_200_empty_without_db() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, r#"{"requests":[]}"#);
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
 }
 
 // ── OpenAPI ─────────────────────────────────────────────────────────────────
@@ -230,6 +248,41 @@ fn openapi_marks_chain_id_required_on_pnl_and_positions() {
 }
 
 #[test]
+fn openapi_exposes_composite_balance_fields_as_optional() {
+    let doc = serde_json::to_value(PnlDoc::openapi()).unwrap();
+    let schemas = &doc["components"]["schemas"];
+    let item = &schemas["PositionHistoryItem"];
+    for field in [
+        "splusd_value",
+        "wire_out_escrow",
+        "plusd_balance",
+        "total_balance",
+    ] {
+        assert!(item["properties"][field].is_object(), "{field}");
+        assert!(
+            !item["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == field),
+            "{field}"
+        );
+    }
+    let response = &schemas["PositionHistoryResponse"];
+    for field in ["splusd_value", "total_balance"] {
+        assert!(response["properties"][field].is_object(), "{field}");
+        assert!(
+            !response["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == field),
+            "{field}"
+        );
+    }
+}
+
+#[test]
 fn openapi_marks_chain_id_optional_on_requests_and_exposes_it_on_items() {
     let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
     assert_eq!(chain_param(&doc, "/v1/requests")["required"], false);
@@ -241,4 +294,214 @@ fn openapi_marks_chain_id_optional_on_requests_and_exposes_it_on_items() {
         .unwrap()
         .iter()
         .any(|v| v == "chain_id"));
+}
+
+// ── LP wire-outs on /v1/requests ────────────────────────────────────────────
+
+const STELLAR_MINTER: &str = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX";
+const STELLAR_B: ConfiguredChain = ConfiguredChain {
+    chain_id: 99_000_002,
+    kind: ChainKind::Stellar,
+};
+
+fn minters() -> HashMap<i64, String> {
+    HashMap::from([(STELLAR.chain_id, STELLAR_MINTER.to_owned())])
+}
+
+#[test]
+fn no_minter_chain_is_in_scope_for_evm_unconfigured_or_minterless_stellar() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    assert!(minter_chains_in_scope(ChainScope::One(EVM), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::Unconfigured(5), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::One(STELLAR_B), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::All, &all, &HashMap::new()).is_empty());
+}
+
+#[test]
+fn an_evm_chain_with_the_minter_key_set_is_still_out_of_the_minter_series() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    let mut with_evm = minters();
+    with_evm.insert(
+        EVM.chain_id,
+        "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+    );
+    assert!(minter_chains_in_scope(ChainScope::One(EVM), &all, &with_evm).is_empty());
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::All, &all, &with_evm),
+        minter_chains_in_scope(ChainScope::All, &all, &minters())
+    );
+}
+
+#[test]
+fn only_minter_chains_are_in_scope_for_all_and_one() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    let expected = vec![(STELLAR.chain_id, STELLAR_MINTER.to_owned())];
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::All, &all, &minters()),
+        expected
+    );
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::One(STELLAR), &all, &minters()),
+        expected
+    );
+}
+
+#[test]
+fn a_response_without_wire_outs_serialises_without_the_key() {
+    let body = serde_json::to_string(&RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+        wire_ins: None,
+    })
+    .unwrap();
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
+}
+
+#[test]
+fn a_response_with_wire_outs_serialises_the_list() {
+    let body = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: Some(Vec::new()),
+        wire_ins: None,
+    })
+    .unwrap();
+    assert_eq!(body["wire_outs"], serde_json::json!([]));
+}
+
+#[test]
+fn openapi_exposes_wire_outs_as_optional() {
+    let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
+    let schema = &doc["components"]["schemas"]["RequestsResponse"];
+    assert!(schema["properties"]["wire_outs"].is_object());
+    assert!(!schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "wire_outs"));
+    assert!(doc["components"]["schemas"]["LpWireOutItem"].is_object());
+}
+
+#[test]
+fn a_failed_minter_list_lookup_degrades_to_an_omitted_list() {
+    assert!(degrade_minter_list::<u8>("wire-outs", Err(anyhow::anyhow!("db down"))).is_none());
+    assert_eq!(
+        degrade_minter_list::<u8>("wire-ins", Ok(Some(Vec::new()))).map(|v| v.len()),
+        Some(0)
+    );
+    assert!(degrade_minter_list::<u8>("wire-ins", Ok(None)).is_none());
+}
+
+fn lp_wire(id: i64, status: WireInStatus, recorded: i64, assigned: Option<i64>) -> CashBookWireIn {
+    CashBookWireIn {
+        id,
+        status,
+        receiver: STELLAR_ADDR.to_owned(),
+        amount: 12_345_678,
+        value_date: 1_700_000_000,
+        ref_hash: "aa".to_owned(),
+        recorded_at: recorded,
+        assigned_at: assigned,
+        returned_at: None,
+        return_ref_hash: None,
+    }
+}
+
+#[test]
+fn lp_wire_in_items_map_amount_dates_and_omit_assigned_at_for_direct() {
+    let items = lp_wire_in_items(vec![(
+        STELLAR.chain_id,
+        vec![lp_wire(7, WireInStatus::Direct, 1_700_000_100, None)],
+    )]);
+    let v = serde_json::to_value(&items).unwrap();
+    assert_eq!(
+        v[0],
+        serde_json::json!({
+            "chain_id": STELLAR.chain_id,
+            "id": 7,
+            "status": "Direct",
+            "amount": "1.234567",
+            "value_date": "2023-11-14T22:13:20Z",
+            "ref_hash": "aa",
+            "recorded_at": "2023-11-14T22:15:00Z",
+        })
+    );
+}
+
+#[test]
+fn lp_wire_in_items_sort_by_assignment_time_then_chain_then_id() {
+    let items = lp_wire_in_items(vec![
+        (
+            STELLAR_B.chain_id,
+            vec![lp_wire(1, WireInStatus::Direct, 500, None)],
+        ),
+        (
+            STELLAR.chain_id,
+            vec![
+                lp_wire(3, WireInStatus::Direct, 500, None),
+                lp_wire(2, WireInStatus::Direct, 500, None),
+                lp_wire(9, WireInStatus::Assigned, 100, Some(900)),
+                lp_wire(8, WireInStatus::Direct, 700, None),
+            ],
+        ),
+    ]);
+    let order: Vec<(i64, i64)> = items.iter().map(|i| (i.chain_id, i.id)).collect();
+    assert_eq!(
+        order,
+        vec![
+            (STELLAR.chain_id, 9),
+            (STELLAR.chain_id, 8),
+            (STELLAR.chain_id, 2),
+            (STELLAR.chain_id, 3),
+            (STELLAR_B.chain_id, 1),
+        ]
+    );
+    assert!(items[0].assigned_at.is_some());
+}
+
+#[test]
+fn a_response_serialises_wire_ins_only_when_present() {
+    let some = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+        wire_ins: Some(Vec::new()),
+    })
+    .unwrap();
+    assert_eq!(some["wire_ins"], serde_json::json!([]));
+    let none = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+        wire_ins: None,
+    })
+    .unwrap();
+    assert!(none.get("wire_ins").is_none());
+}
+
+#[test]
+fn openapi_exposes_wire_ins_as_optional() {
+    let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
+    let schema = &doc["components"]["schemas"]["RequestsResponse"];
+    assert!(schema["properties"]["wire_ins"].is_object());
+    assert!(!schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "wire_ins"));
+    assert!(doc["components"]["schemas"]["LpWireInItem"].is_object());
+}
+
+#[test]
+fn pnl_wire_out_minter_is_stellar_only_even_with_an_evm_minter_key_set() {
+    let minters = HashMap::from([
+        (1_i64, "0xEvmMinter".to_owned()),
+        (2_i64, "CMINTER".to_owned()),
+    ]);
+    assert_eq!(stellar_minter(ChainKind::Evm, &minters, 1), None);
+    assert_eq!(
+        stellar_minter(ChainKind::Stellar, &minters, 2).map(String::as_str),
+        Some("CMINTER")
+    );
 }

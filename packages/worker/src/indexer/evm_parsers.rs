@@ -25,6 +25,7 @@ use super::{
         parse_withdrawal_requested,
     },
     poller::EvmEventPollerBuilder,
+    security_registry_parsers::dispatch_security_registry,
 };
 
 /// EVM contract addresses for a single chain.
@@ -35,6 +36,7 @@ pub struct EvmContractAddresses {
     pub loan_registry_contracts: Vec<Address>,
     pub yield_minter_contracts: Vec<Address>,
     pub collateral_registry_contracts: Vec<Address>,
+    pub security_registry: Option<(Address, Address)>,
 }
 
 /// Shared DB repositories used by EVM event handlers.
@@ -83,6 +85,18 @@ pub fn register_evm_handlers(
     let immutable_resolver = loan_deps.immutable_resolver;
     let mutable_resolver = loan_deps.mutable_resolver;
 
+    let builder = match contracts.security_registry {
+        Some((registry, nft)) => {
+            let security_repo = repos.repo.clone();
+            builder.add_event_handler(vec![registry, nft], move |log| {
+                dispatch_security_registry(log, registry, nft).map(|ev| {
+                    Box::new(ContractLogMapper::new(ev, chain_id, security_repo.clone()))
+                        as Box<dyn shared::log_mapper::LogMapper>
+                })
+            })
+        }
+        None => builder,
+    };
     let builder = builder
         .add_event_handler(contracts.dm_contracts, move |log| {
             parse_deposit_requested(log)

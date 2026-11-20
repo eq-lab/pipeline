@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-159.**
+**Next free number: TD-197.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,22 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-192: The LP app's e2e test wallets share one flag but need a key per chain
+
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/config.ts`, `packages/frontend/src/wallet/evm/config.ts`, `scripts/e2e/lib/env.ts` — Issue #1968.
+- **Gap:** `VITE_E2E_WALLET` turns on both the Stellar module and the EVM connector. A `--chains evm` stack sets it and keeps the apps on the standalone Stellar passphrase, but has no `E2E_WALLET_SECRET`, so the Stellar module's dynamic import rejects ("E2E_WALLET_SECRET is not") and the Soroban tab lists an **E2E test wallet** row that does nothing. A `--chains stellar` stack is unaffected (its EVM chain id is not `31337`).
+- **Impact:** A console error and a dead row on the Soroban tab of an EVM-only stack; the EVM walk is unaffected.
+- **Suggested fix:** Show each wallet row only when that chain's key is present, or give each chain its own flag.
+
+### TD-191: The e2e stack patches pipeline-contracts' anvil values to read them from the env
+
+- **Date:** 2026-11-18
+- **Location:** `scripts/e2e/stack.ts` (`patchChainValues`, `EVM_ROLES`) — Issue #1966.
+- **Gap:** `script/base/ChainValues.sol` at `3b74e98` hard-codes anvil's default-mnemonic accounts and mainnet USDC for chain `31337`. The contracts cache build rewrites those addresses to `vm.envAddress("E2E_EVM_<name>")` so a per-run mnemonic and the mock USDC can hold the roles.
+- **Impact:** A ref that renames, adds or drops an anvil value stops the cache build until `EVM_ROLES` is updated; the cache directory is keyed by ref only, so a change to the patch itself needs the old `pipeline-contracts@<ref>` cache removed by hand.
+- **Suggested fix:** Have pipeline-contracts read the anvil values (or all of them) from the env with the current addresses as defaults, then drop the patch.
 
 ### TD-144: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
 
@@ -106,13 +122,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
 - **Resolution (2026-10-28, #1671):** `git check-ignore packages/frontend/tsconfig.tsbuildinfo` matches and the file is not tracked.
 
-### TD-6: No Foundation/Tokens Storybook story
+### TD-6: No Foundation/Tokens Storybook story [RESOLVED 2026-11-18 / #1329]
 
 - **Date:** 2026-05-12
-- **Location:** packages/ui/src/stories/
+- **Location:** packages/ui/src/foundation/
 - **Gap:** There is no Storybook story that previews every `--color-pipeline-*`, `--text-pipeline-*`, `--radius-pipeline-*` token so reviewers can compare values to Figma visually. Deferred from Issue #41 to keep that issue tightly scoped to the `@theme` declaration.
 - **Impact:** Token verification is manual (DevTools console); visual regression is invisible until a consuming component breaks.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
+- **Resolution (2026-11-18, #1329):** `packages/ui/src/foundation/Tokens.stories.tsx` (`Foundation/Tokens`: `Colors`, `TypeRamp`, `Radii`) enumerates the tokens from the `@theme` block of `theme.css`.
 
 ### TD-100: Same-tab mock bridge not testable in jsdom
 
@@ -244,7 +261,9 @@ line, whichever section it lands in.
 - **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
 
-### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
+### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23] [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22 (incident 2026-06-23)
 - **Location:** `packages/shared/src/yield_mint_outbox_repo.rs` — `YieldMintOutboxRepo::discover_pending_stellar`
@@ -254,7 +273,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a DB-backed (or fixture-driven `contract_logs` → outbox) integration test that inserts a `PaymentRecorded` row in the indexer's exact enriched shape and asserts a pending outbox row is discovered with non-null `loan_id`/`repayment_id`. Gate it to skip gracefully when no test DB is available, matching the existing `discover_*` test convention.
 - **Dedup note:** post-fix, `discover_pending_stellar` is byte-identical to `discover_pending` (only the caller's `contract_address` bind value differs). Candidate to collapse into one method; kept separate for now (deliberate choice 2026-06-23) — fold into the integration-test work above.
 
-### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op
+### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` — `confirm_submitted_stellar`, the `row.tx_hash` `None` arm
@@ -270,7 +291,9 @@ line, whichever section it lands in.
 - **Impact:** Cosmetic only — row corners are square instead of 4px rounded as in Figma. No functional or accessibility impact.
 - **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
 
-### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
+### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`) [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
@@ -425,21 +448,21 @@ line, whichever section it lands in.
   deposit/withdraw/stake contract hooks, the terms-acknowledgement flag) in
   `packages/frontend/src/wallet`.
 
-### TD-36: Trustee sidebar nav badges have no backend count source
+### TD-36: Trustee sidebar nav badges have no backend count source [RESOLVED 2026-11-16 / #1350]
 
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
 - **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
   (4), and Cash Management (3) — presumably counts of pending/actionable items per section.
-  There is no backend endpoint serving these counts today, so per the project rule [no
-  frontend-computed metrics] issue #786 omits the numbers entirely rather than deriving them
-  client-side. The badge slot (`NavBadge`) is built and renders nothing when
+  The backend source now exists (`GET /v1/attention-counts`, #1864); the frontend wiring is #1350.
+  Until then issue #786 omits the numbers entirely rather than deriving them client-side. The badge slot (`NavBadge`) is built and renders nothing when
   `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
 - **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
   lands; no functional impact, just a deferred visual/product feature.
-- **Suggested fix:** When a backend endpoint for per-section pending-item counts exists,
-  populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS` entries (likely via a query hook
-  passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
+- **Resolved:** Badges are wired to `GET /v1/attention-counts` via `useNavBadgeCounts`.
+- **Suggested fix:** In #1350, populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS`
+  entries from `GET /v1/attention-counts` (via a query hook passed into
+  `TrusteeSidebar`/`NavItem`, not a hardcoded value).
 
 ### TD-37: Trustee sidebar has no mobile/responsive behavior
 
@@ -564,7 +587,9 @@ line, whichever section it lands in.
   `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
   #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
   `formatMaturityDate` / `formatSubmittedDate` (`packages/frontend/src/utils/formatDate.ts`)
-  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`.
+  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`;
+  further pair (issue #1667): `packages/frontend/src/api/useChainServed.ts` ↔
+  `packages/trustee/src/api/useChains.ts` (`ChainItem` / `ChainsResponse` types and the `["chains"]` query).
 - **Gap:** The Trustee Origination page and the LP Protocol Dashboard's In-Origination tab (#814)
   both read `GET /v1/loan-book/submissions` and now render the **same eight-column field set**
   (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), but the two apps
@@ -605,18 +630,17 @@ line, whichever section it lands in.
   (`docs/exec-plans/completed/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
 
-  **Addendum (issues #845 / #847, Trustee Loan detail page — a fifth hand-mirroring):** the Loan
-  detail page's Price & collateral section hand-mirrors the backend
-  `CollateralValuationResponse` DTO (`packages/api/src/routes/collateral_valuation.rs`) as
-  `packages/trustee/src/api/useLoanValuation.ts`'s self-contained
-  `LoanValuationResponse`/`ValuationInputs`/`Waterfall`/`ValuationCcr`/`MetalInput`/`PenaltyInput`
-  types — same epic-#775 app-separation constraint, no LP counterpart exists. **Scale note:** unlike
-  `/v1/loan-book`, this endpoint recomputes money in **plain USD** (not the base-6/registry scale),
-  so its amount fields are already correct — the #840 `scaleRegistryAmount` ×1000 workaround is
-  **NOT** applied here (a documented divergence from the loan-book hand-mirror above). Also on this
-  branch the loan-book `LoanBookEntry` hand-mirror gained the `loan_id`/`chain_id` fields (added
-  backend-side in "add loan and chain ids to loan-book endpoint"), used as the `/loans/$id` route
-  param + the valuation path segment — port them if the LP hook ever adopts them.
+  **Addendum (issues #845 / #847, replaced by #1906 — a fifth hand-mirroring):** the Loan detail
+  page's Security card hand-mirrors a subset of the backend `LoanSecurityResponse`
+  (`packages/api/src/security_state.rs`) as `packages/trustee/src/api/useLoanSecurity.ts`'s
+  self-contained `LoanSecurityResponse` (terms ratios, valuation value/debt/LTV/stale flag, margin
+  call, prices, `refresh_pending`; every field optional; since #1767 also the record and inspection
+  display fields) — same epic-#775 app-separation
+  constraint, no LP counterpart. It replaced the earlier `useLoanValuation.ts` mirror of
+  `CollateralValuationResponse`, removed with the `/valuations` endpoint (backend #1786). The
+  loan-book `LoanBookEntry` hand-mirror also carries the `loan_id`/`chain_id` fields (used as the
+  `/loans/$id` route param and the `/security` path segment) and the additive `ltv_bps` /
+  `margin_call_open` / `price_stale` fields.
 
   **Addendum (issue #852, Trustee Loan detail — a sixth hand-mirroring):** the loan detail's
   "Registry state & derived" section hand-mirrors the backend `LoanFinancialsResponse` DTO
@@ -652,6 +676,11 @@ line, whichever section it lands in.
   sub-line, and wire a submission-review route (separate Type-1 sub-issue of epic #775) to make
   the trustee's Review button live.
 
+  **Addendum (issue #1805):** the API's `draw_loan` block (`DrawLoanArgs` / `DrawLoanEconomics`,
+  `loan_book.rs`) is now hand-mirrored in three places: the API Rust types, the trustee
+  `useLoanSubmissions.ts` (nullable fields) and the wallet-connect `DrawLoanArgs` (non-null
+  variant, validated at encode time).
+
 ### TD-43: `draw_loan` mint↔review reconciliation has no backend fallback; `SubmitLoanRequest` gains a third hand-mirrored copy
 
 - **Date:** 2026-07-10
@@ -682,6 +711,7 @@ line, whichever section it lands in.
   event, closing the reload gap without any frontend change. Consider the same shared
   `loan_data`-parsing package suggested by TD-42's fix, extended to also host the ScVal-encoding
   transform matrix, if a third on-chain consumer ever needs it.
+- **2026-11-06 (#1792):** the API now serves contract-ready `draw_loan` args (`SubmissionView.draw_loan`), so the wallet-connect transform can shrink to ScVal encoding in the frontend follow-up #1805. The hand-mirrored `SubmitLoanRequest` copies remain.
 
 ### TD-44: Stellar vault `assets`/`shares` (`StakingDeposit`/`StakingWithdrawal`) have no read-time USDC normalization yet
 
@@ -807,7 +837,7 @@ line, whichever section it lands in.
   contract source (contracts repo / `stellar contract info`), then correct or confirm the
   table entry — a one-line change.
 
-### TD-50: Trustee Loan detail's Documents card is a stand-in for the v3 §S5 tab strip
+### TD-50: Trustee Loan detail's Documents card is a stand-in for the v3 §S5 tab strip [RESOLVED-BY-DECISION 2026-11-18 / #1686]
 
 - **Date:** 2026-08-07 (#1039)
 - **Location:** `packages/trustee/src/routes/loans.$id.tsx` (`DocumentsCard`);
@@ -821,6 +851,11 @@ line, whichever section it lands in.
   migration will need to relocate this card's content rather than build it fresh.
 - **Suggested fix:** Scope the §S5 tab-strip migration as its own issue once prioritized; move the
   Documents card's list markup into the new Documents tab body unchanged.
+- **Resolution (2026-11-18, #1686):** #1686 closed as not planned. The v3 §S5 tab strip was a
+  design assignment whose Figma file was never delivered, and its S5 content is stale (CCR retired
+  by #1786, proposals replaced by AccessManager scheduled operations #1920, MPC retired by the user
+  docs #1747). The Documents card is the loan-detail documents surface; any restructure comes as a
+  fresh issue with real frames.
 
 ### TD-51: `packages/trustee` has the same pre-existing Prettier formatting drift as TD-47/TD-12 (`packages/frontend`) [RESOLVED 2026-08-07 / #1037]
 
@@ -944,7 +979,9 @@ line, whichever section it lands in.
   the existing `state="error"` treatment. Not built as part of #1234 — that issue only fixed the
   specific parsing bug; this is the containment gap around it.
 
-### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership
+### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership [RESOLVED 2026-11-02 / #1824]
+
+- **Resolved:** #1824 deleted `POST /v1/lps/me/link-address` and links addresses only through a signed challenge (`GET`/`POST /v1/lps/me/link-address/{challenge,verify}`); see `docs/product-specs/kyb-lp-verification.md` § Settlement Address. Rows linked before it are kept with a `NULL` (unproven) signer. The original entry follows.
 
 - **Date:** 2026-09-15 (narrowed 2026-09-15, widened 2026-09-30 — see below)
 - **Location:** `packages/api/src/routes/lps.rs` — `link_address`
@@ -1247,6 +1284,7 @@ line, whichever section it lands in.
   nullable `lp_id` on `lp_bank_deposits`), with a `GET` for the queue and a `POST .../match` that moves a
   row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
   `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
+- **Update (#1839):** an unattributable wire now goes to on-chain escrow (#1763), and `GET /v1/lps?payment_details=` plus the optional `payment_details` on the record route cover attributable ones.
 
 ### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart [RESOLVED 2026-10-19 / #1579]
 
@@ -1462,8 +1500,11 @@ line, whichever section it lands in.
 - **Suggested fix:** Fold the read into #1285 (which already owns the LP-visible trust-account
   surface), raise a dedicated backend sub-issue, or accept the details as a hardcoded product
   constant — a designer/PM + backend decision, not a frontend one.
+- **Update (2026-11-02, #1815):** The backend source landed as `GET /v1/lps/me/payment-details`
+  (see `docs/product-specs/deposits.md` § LP Funding Details). Only the frontend wiring (#1817)
+  remains, so this stays open until that merges.
 
-### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination
+### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination [RESOLVED 2026-11-03 / #1817]
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`.
@@ -1473,6 +1514,8 @@ line, whichever section it lands in.
 - **Impact:** None today — the surface isn't mounted in production yet.
 - **Suggested fix:** Designer ask: define the real destination (mailto, support page, chat widget)
   before #1282 mounts the modal.
+- **Resolution (2026-11-03, #1817 live review):** `Contact Support` is `<a href="mailto:support@pipeline.one">`
+  (`SUPPORT_EMAIL` in `FundingDetailsModal.tsx`); the `onContactSupport` seam was removed.
 
 ### TD-90: `AddUsdCard`'s "Verifying account…" typo-correction diverges from its home-card source
 
@@ -1640,6 +1683,7 @@ line, whichever section it lands in.
   on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
   column, both work; the choice belongs with whatever first needs to display it.
 - **Update (#1480):** `WireInReturned` is now indexed; the remaining gap is only the deposit's terminal state in `lp_bank_deposits` / the matching phase.
+- **Update (#1285):** the LP pending-deposit read excludes returned wires at read time. A deposit the Trustee returned off-chain without ever minting still reads as pending; a Trustee "mark returned" write is the follow-up.
 
 ---
 
@@ -1682,6 +1726,7 @@ line, whichever section it lands in.
   `WireIn` row for this chain and contract — reported beside the other three, and worth a `warn`
   once it has been non-zero for longer than an operator would take to act. Pairs naturally with
   TD-116, which wants the same row to distinguish `Returned`.
+- **Update 2026-11-09 (#1763):** the Trustee console now lists escrowed wires (Cash Management → Escrowed wires); the worker-side count and warn are still open.
 
 ---
 
@@ -1715,7 +1760,7 @@ line, whichever section it lands in.
 - **Gap:** The indexer's cursor is per chain, not per contract. Adding a contract id to an
   already-running chain starts polling it from the chain's *current* ledger, and nothing rewinds
   to pick up what that contract emitted before. This is not new to #1416 — `loan_registry_id` and
-  `yield_minter_id` have always had it — but #1416 makes it consequential, because the expected
+  `minter_id` (renamed in #1793) have always had it — but #1416 makes it consequential, because the expected
   rollout is exactly "ship the var unset, set it once the minter is deployed".
 - **Impact:** Every `WireIn` emitted between the contract going live and the variable being set is
   never indexed, so those deposits stay `is_minted = false` permanently. They are invisible to the
@@ -1728,19 +1773,18 @@ line, whichever section it lands in.
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
-### TD-140: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+### TD-140: The BitGo client has no caller
 
 - **Date:** 2026-10-08
-- **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
-  (`discover_pending`, `OutboxStore::mark_submitted`). Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
-- **Gap:** The EVM yield-mint phase was their only consumer and is deleted: the reworked EVM
-  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. Both
-  were kept because the outbox trait is shared with the Stellar yield-mint phase, and BitGo is the
-  architecture's named MPC vendor. Any EVM rows already in `yield_mint_outbox` are inert.
+- **Location:** `packages/shared/src/bitgo/`. Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
+- **Outbox half:** resolved 2026-11-03 / #1793 (module deleted; table + LEGACY_YIELD_MINTED_SQL kept).
+- **Gap:** The EVM yield-mint phase was its only consumer and is deleted: the reworked EVM
+  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. It was
+  kept because BitGo is the architecture's named MPC vendor. Tracked by #1705.
 - **Impact:** Dead code that still compiles and reads like a live path; `BITGO_*` env vars are
   gone from `.env.example`, so the client cannot be configured from it.
-- **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
-  Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
+- **Suggested fix:** Delete `shared::bitgo` and `pub mod bitgo;` (and update the BitGo mention in
+  `ARCHITECTURE.md`), or reconnect it when a BitGo signer returns.
 
 ### TD-141: An EVM `allow` stuck in the mempool blocks every later one
 
@@ -1754,6 +1798,16 @@ line, whichever section it lands in.
   lost once it clears.
 - **Suggested fix:** On timeout, rebroadcast the same nonce with bumped fees, or keep a per-chain
   nonce in the relayer and replace stale transactions explicitly.
+
+### TD-159: `GET /v1/lps/me/payment-details` issues an unbounded number of references per LP
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs`, `lp_requested_bank_details`.
+- **Gap:** There is no rate limit or per-LP cap, and every successful call adds a row.
+- **Impact:** An eligible LP (`Passed` with a linked address) can grow the table without bound.
+  Every row still resolves to one LP, so attribution is not at risk.
+- **Suggested fix:** A per-LP rate limit, or reusing the most recent reference within a short
+  window, if product agrees.
 
 ---
 
@@ -1975,7 +2029,7 @@ line, whichever section it lands in.
 - **Date:** 2026-10-08
 - **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (`cumulative_repayment_data` → `None`), `packages/worker/src/indexer/loan_mapper.rs` (`reconstruct_cumulative`, `accumulate_repayments`) — Issue #1434, finding F3, decision D3, risk R1.
 - **Gap:** `cumulativeRepaymentData()` no longer exists on the reworked EVM contract; its replacement `RepaymentTotals` (`LoanRegistryUpgradeable.sol:28-32,96`) is a private, lossy 3-field mapping (`mgmtFee`+`perfFee` merged into `interestFees` at `:331`; `equityDistributed`/`oetAlloc` not accumulated at all). The mapper reconstructs the full 7-field total from indexed `PaymentRecorded`/`PaymentUnrecorded` rows instead. `senior_principal_repaid` is overridden from `mutable.repaid` and self-heals even if a row was never indexed; the other six fields (`offtaker_received`, `senior_interest`, `equity_distributed`, `mgmt_fee`, `perf_fee`, `oet_alloc`) do not.
-- **Impact:** A `PaymentRecorded` row that is never indexed (RPC gap, a `start_block` set past existing payments, a parser regression) leaves those six fields permanently understated, with no on-chain read to correct them. Not reachable today — no EVM chain runs (see TD-131) — but live the day one does.
+- **Impact:** A `PaymentRecorded` row that is never indexed (RPC gap, a `start_block` set past existing payments, a parser regression) leaves those six fields permanently understated, with no on-chain read to correct them. Reachable on stage, which runs Hoodi (560048, see TD-131); no on-chain read corrects the six fields.
 - **Suggested fix:** A reconciliation job comparing `loanMoney().accruedInterest` against `gross − (senior_interest + mgmt_fee + perf_fee) + interest_adjustment` would detect drift; not part of this Issue.
 
 ### TD-130: EVM relayer's yield-mint phase targets a contract that no longer exists [RESOLVED 2026-10-13 / feature/evm-relayer]
@@ -1983,18 +2037,18 @@ line, whichever section it lands in.
 - **Date:** 2026-10-08
 - **Location:** `relayer/config.rs:27-29` (`yield_minter_address` doc comment), `relayer/yield_mint/mod.rs` — Issue #1434, finding F14.
 - **Gap:** Both still document and submit against `PipelineYieldMinter`, which does not exist anywhere in `pipeline-contracts/src/` — it was replaced by `PipelineMinter` in the contracts rework.
-- **Impact:** Latent, not live — no EVM chain runs today (TD-131), so this relayer phase never executes against a real deployment. Will need a rewrite before any EVM relayer goes live.
+- **Impact:** Was latent while no EVM chain ran; stage now runs Hoodi (560048, TD-131). Resolved by deleting the phase.
 - **Suggested fix:** Out of epic #1431 scope (decision 4) — track as its own issue once the relayer's EVM arm is scheduled for work.
 - **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
 - **Follow-up (#1595):** `YieldMinted` is no longer indexed, so the Dashboard's `cumulative_yield_total` and `/v1/dashboard/yield-history` froze; they now add Minter `CashRepaid` mints (net of `CashRepaymentReversed`) to the historical `YieldMinted` rows (#1533), as the LoanBook `minted_yield` does (#1525). The portfolio `GET /v1/stats/yield` is a separate gross-accrual estimate and is unaffected.
 
-### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
+### TD-131: No Ethereum mainnet deployment of the reworked contracts, and no prod environment mapping for EVM [PARTIALLY RESOLVED 2026-11-18 / #1503]
 
-- **Date:** 2026-10-08
-- **Location:** `pipeline-contracts/deployments/` (4 months stale, pre-rework), `argocd/pipeline/test.yaml`, `argocd/pipeline/prod.yaml` (both: `CHAINS` is Stellar-only, zero `CHAIN_*_ETH_RPC_URL`/EVM keys) — Issue #1434, finding F9.
-- **Gap:** `pipeline-contracts` has no deploy CI job and no docs naming which deployment serves which environment; the only configured chain anywhere (`script/base/ChainValues.sol`) is Hoodi, whose deployment JSONs are pre-rework and un-configured in either argocd environment.
-- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
-- **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
+- **Date:** 2026-10-08 (narrowed 2026-11-18)
+- **Location:** `pipeline-contracts/deployments/` (only `hoodi-v5.json` is post-rework; no mainnet file), `argocd/pipeline/prod.yaml` (`CHAINS="99000002"`, zero `VITE_*` EVM addresses) — Issue #1434, finding F9.
+- **Gap:** A post-rework Hoodi deployment exists (`hoodi-v5.json`, contracts #50/#53) and stage (`argocd/pipeline/test.yaml`) runs it: `CHAINS="99000001,560048"`, API/worker `CHAIN_560048_*` and LP/Trustee `VITE_EVM_*` addresses are mapped (argocd #498–#501). What remains is mainnet only: no Ethereum mainnet deployment of the reworked contracts, so there are no addresses or deploy block to put in `prod.yaml`, and `pipeline-contracts` still has no deploy CI job or doc naming which deployment serves which environment.
+- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance. Prod EVM stays dark by design. The exact variables to flip once a mainnet deployment exists are in the #1436 comment; the repo-side env docs (`.env.example`, `docs/FRONTEND.md`) are current for Hoodi v5 (#1503).
+- **Suggested fix:** Deploy the reworked contracts to mainnet, then follow #1436; stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` has for `test.yaml`'s deployment-id references.
 
 ### TD-132: `outstanding` is defined two ways between the EVM contract and the API [PARTIALLY RESOLVED 2026-10-15 / #1524]
 
@@ -2010,7 +2064,7 @@ line, whichever section it lands in.
 - **Date:** 2026-10-08
 - **Location:** Future `relayer/evm/wire_in_match.rs` (does not exist yet); precedent at `relayer/stellar/wire_in_match.rs` — Issue #1434, finding F12.
 - **Gap:** The EVM Minter parser writes `receiver` as `to_checksum(None)` (mixed-case EIP-55); `CHAIN_<id>_YIELD_MINTER_CONTRACTS` is typically configured lowercase in env. A matcher ported verbatim from the Stellar arm's `l.params->>'receiver' <> $2` string comparison would be true for every row.
-- **Impact:** Latent — no EVM `WireInMatcher` exists yet, and no EVM chain runs (TD-131). Recorded so its author does not inherit a silent bug.
+- **Impact:** Latent while no EVM `WireInMatcher` existed; stage now runs Hoodi (560048, TD-131). Recorded so its author does not inherit a silent bug.
 - **Suggested fix:** Lowercase (or checksum) both sides of the comparison before the EVM matcher is written.
 - **Resolution:** The EVM relayer reuses the shared `phase_match_wire_ins` and binds the minter as `EvmRelayerSettings::minter_id()`, which re-renders `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` with `to_checksum(None)` whatever case it is configured in, so both sides of `receiver <> minter` and the `contract_address` filter are EIP-55. Pinned by `tests/evm_relayer_config.rs`; exercised end to end on a Hoodi v5 fork, where an escrowed wire (receiver = minter) stayed unmatched until its `WireInAssigned`.
 
@@ -2119,22 +2173,26 @@ line, whichever section it lands in.
 - **Impact:** After a redeploy on the same chain, a reused `loan_id` collides with the old registry's link. `link_drawn` skips it, the indexer logs a `warn`, and the new submission stays unlinked until an operator unlinks the stale row.
 - **Suggested fix:** #1545 adds the registry address to the link and the unique index.
 
-### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions
+### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions [RESOLVED 2026-11-18 / #1573]
 
+- **Resolved (#1573):** `useDrawLoan` has an EVM arm (`drawEvmLoan`, `AccessManager.execute(registry, drawLoan)`), the API serves the EVM `draw_loan` block at 6 decimals, and Approve opens on `ENV.EVM_CHAIN_ID` (`drawChainReason`); other chain ids keep the gate.
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useOriginationReview.ts` (`approveBlockedReason`), `packages/trustee/src/api/useDrawLoan.ts`
 - **Gap:** Submissions can now target an EVM chain (#1529 backend, #1536 form), but the trustee's chain-first Approve (#831) only knows the Stellar executor → `draw_loan` path. #1536 therefore disables Approve for a non-Stellar target with an explanatory line; Reject / Request changes still work.
 - **Impact:** An EVM-targeted submission cannot be approved from the Trustee app until an EVM draw path exists (the LoanRegistry `mintLoan`/draw call signed by the trustee's EVM wallet, plus the same simulate-then-sign ordering and idempotency guard). Until then such submissions sit `InReview` or are drawn out-of-band and linked by the indexer.
 - **Suggested fix:** An EVM `useDrawLoan` arm selected by `target_chain_id`, reusing the `@pipeline/wallet-connect` EVM wallet; drop the gate once it lands.
 
-### TD-152: Trustee on-chain loan actions are Stellar-only — gated for non-Stellar loans
+### TD-152: Trustee on-chain loan actions are Stellar-only — gated for non-Stellar loans [PARTIALLY RESOLVED 2026-11-19 / #1574 / #1892]
 
 - **Date:** 2026-10-16
-- **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
-- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
+- **Location:** `packages/trustee/src/lib/targetChains.ts` (`loanActionChainReason`, the gate since #1574), `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carried the same gate until #1943, which opened them (and recovery step 1) on the configured EVM chain.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
-- **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
+- **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
+- **Repayment recovery (#1711):** step 1 (`MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` through the EVM AccessManager, `MINTER_OPS_ROLE`) runs on EVM since #1943, with the candidates read as described in TD-190. Step 2, the corrected `Minter.repay` (`MINT_CALLER_ROLE`), runs on EVM since #1574 through the `useRecordPayment` EVM arm.
+- **EVM client (#1942):** the reusable EVM write client now exists (`packages/wallet-connect/src/evm/contracts/write.ts`: `sendEvmContractCall`, `readEvmContract`), with the AccessManager bindings (`accessManager.ts`: `relayEvm`, `executeEvmScheduledOperation`). #1573 reused it (`sendEvmContractCall` now also returns the receipt); #1574 reuses it and `evm/contracts/loanRegistry.ts` for the lifecycle writes, adds `sendEvmContractCallChecked` (simulate-before-sign wrap) and a direct `PipelineMinter.repay` / `AccessManager.execute(minter, disburse)` in `minter.ts`; the LP app's `wallet/evm` hooks keep their own pipeline.
+- **Status (#1943, #1574):** the Risk Council hub, Escalate, Amend economics, Default resolution and the recovery card and dialog run on the configured EVM chain (`packages/wallet-connect/src/evm/contracts/{riskCouncil,minter,logs}.ts`). Since #1574, Roll over, Update lifecycle, Record coupon / Record repayment (including recovery step 2), Close loan and Disburse run on the configured EVM chain too (`loanActionChainReason`; any other non-Stellar chain id keeps the Stellar-only copy). Register debt token runs on the configured EVM chain since #1892 (`AccessManager.execute(factory, registerDeal(uint256))`, `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, a separate trustee signature after Approve), and registering clears the Disbursement card's "Register this loan's debt token first.". What remains for EVM is the cash reporter bookings above (`record_wire_in`, #1501; `record_income`).
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
@@ -2162,13 +2220,14 @@ line, whichever section it lands in.
 - **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
 - **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
 
-### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session [RESOLVED 2026-11-09 / #1765]
 
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
 - **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
 - **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
 - **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
+- **Resolution:** Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more.
 
 ### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
 
@@ -2177,6 +2236,7 @@ line, whichever section it lands in.
 - **Gap:** `registry.disburse` moves a loan `Approved → Performing` and is reached only through `Minter.disburse` (`only_owner`, so through the AccessManager role `TRUSTEE`). The trustee app records "Disbursement complete" in the database only and never makes that call.
 - **Impact:** A loan drawn from the trustee app stays `Approved` on chain. `Minter.repay` (the Record Coupon / Record Repayment path since #1712) then reverts with registry `#3 WrongCurrentStatus` until someone disburses out of band. The testnet registry currently holds no loans, so the end-to-end path has not been simulated successfully.
 - **Suggested fix:** A wallet-connect `Minter.disburse` binding through the executor, signed by the trustee wallet, called from the "Disbursement complete" action with the usual simulate-then-sign ordering and an idempotency guard.
+- **Resolved:** #1898 (wallet-connect `disburse` binding, Trustee Disburse card on `/loans/$id`).
 
 ### TD-158: `@tanstack/react-router` 1.168.x lets a thrown `undefined` white-screen the app; upgrade to >= 1.170
 
@@ -2186,14 +2246,13 @@ line, whichever section it lands in.
 - **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
 - **Suggested fix:** Still worthwhile, but no longer tied to auth navigation (the trustee no longer navigates on auth changes; #1749). Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.
 
-### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay`
+### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay` or Risk Council operation
 
 - **Date:** 2026-10-28
-- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
-- **Gap:** The repayment recovery dialog (#1711) schedules and executes the reversal through `AM.schedule` / `AM.execute` but has no `AM.cancel`. Cancelling is admin or guardian only for other callers.
-- **Impact:** A wrongly scheduled reversal can only be left to expire (7 days after its ready time) or cancelled outside the app.
+- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/trustee/src/api/useRiskCouncil.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
+- **Gap:** The repayment recovery dialog (#1711) and the Risk Council pages (#1761: `amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, `cure`, and `set_default` while it is delayed) schedule and execute through `AM.schedule` / `AM.execute` but have no `AM.cancel`. Cancelling is the scheduler, the Guardian or the Admin only.
+- **Impact:** A wrongly scheduled reversal or Risk Council operation can only be left to expire (7 days after its ready time) or cancelled outside the app.
 - **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).
-
 ### TD-160: EVM vouchers carry no deadline, so the 24-hour voucher validity is unenforced on EVM
 
 - **Date:** 2026-10-29
@@ -2202,7 +2261,271 @@ line, whichever section it lands in.
 - **Impact:** The documented 24-hour expiry and fresh-voucher behaviour only exist on Stellar.
 - **Suggested fix:** Backend follow-up #1798: add a deadline to the EVM `VerifiedRequests` digest and serve it.
 
-### TD-161: The withdraw page's wire-out list still reads the audit log although `GET /v1/requests` serves `wire_outs[]`
+### TD-161: The interim `"passed-staked"` home grid has no staked-balance card and no `Unstake` entry
+
+- **Date:** 2026-11-02
+- **Location:** `packages/frontend/src/routes/index.tsx` (`"passed-staked"` branch), `packages/frontend/src/components/StakeCard.tsx` (compact layout)
+- **Gap:** #1819 shows the `unlocked` AddUsdCard to every connected `Passed` LP. For sPLUSD holders it uses the compact grid, whose compact `StakeCard` has only the marketing variant; the designed state-5 frame (`6701:97136`) has a compact "Staked PLUSD / value / Stake More / Unstake" card (`6701:97273`) that does not exist in code. The legacy grid's full `StakeCard` used to show the staked value and `Unstake` here.
+- **Impact:** A verified, staked LP sees their sPLUSD value only in the hero's Total Balance and reaches `Unstake` via `/stake?tab=unstake`, not from the home grid (user decision 2026-11-02, option (a) on #1819).
+- **Suggested fix:** #1425 (home state 5) builds the compact staked-balance card and takes over the `"passed-staked"` composition; #1820 swaps in the `funded` card.
+
+### TD-162: A settlement address with a separate signer is proven only through that signer
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`)
+- **Gap:** When `signer_address` differs from the settlement address, the challenge signature proves control of the signer only. This is required for a Stellar `C…` contract, and allowed by user decision (2026-11-02) for any `G…` or `0x…` address, so that Stellar multisig accounts and EVM smart wallets (Safe) can be linked. Nothing checks, on-chain or off, that the signer controls or is authorized for the settlement address.
+- **Impact:** An LP can link any well-formed address it does not control, as long as it signs with a key it does hold. A typo is caught by the Strkey or EIP-55 checksum (EIP-55 only for mixed-case input), but a valid address belonging to someone else is not. Only `signer_address = address` proves ownership of the settlement address itself.
+- **Suggested fix:** Verify the signer's authority per address type: Stellar account signers via Horizon, `C…` via the contract or an allow-list, EVM smart wallets via EIP-1271. Alternatively, require `signer_address = address` except where such a check exists. Until then the Trustee view (#1826) can flag links whose signer differs from the address.
+
+### TD-163: A settlement address can be relinked at any time on session authority alone
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`), `KybStatus::allows_address_write` in `packages/shared/src/lp_repo.rs`
+- **Gap:** By user decision (2026-11-02, #1831) an LP may relink its settlement address at any status except `Failed`, including after `Passed`, with a valid signed challenge for the new address and nothing else. There is no signature by the current address, no Trustee approval and no notification on change.
+- **Impact:** A hijacked LP session links an address it controls (with TD-162, even one it does not own) and receives every later mint.
+- **Suggested fix:** Any of a signature by the current address, Trustee approval of a change after `Passed`, or an email to the account's verified address on every change. `lp_settlement_address_history` makes changes auditable meanwhile.
+
+### TD-164: Bank deposits carry no chain or matched payment reference
+
+- **Date:** 2026-11-03
+- **Location:** `BankDepositResponse` in `packages/api/src/routes/lp_bank_deposits.rs`; `packages/trustee/src/routes/-useLpBankDeposits.ts`
+- **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
+- **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
+- **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+- **Update (#1839):** the deposit now serves `matched_reference` (`chain_id`, `receiver_address`); the console default and receiver display are still open.
+- **Update (#1887):** matched deposits now drive the mint chain (a deposit matched to another chain blocks the mint) and show the receiver shown at issue; hand-attributed deposits still carry no chain, so this stays open.
+
+### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
+
+- **Date:** 2026-11-03
+- **Location:** `docs/generated/stellar-protocol-contracts.md`
+- **Gap:** The generated reference is a 2026-06-10 snapshot: its contract ids and WASM interfaces predate deployment #36.
+- **Impact:** Misleading contract ids for ops and agents.
+- **Suggested fix:** Regenerate it from `stellar contract info interface` against the #36 / #37 ids, or delete it in favour of the key map in `docs/references/backend.md#stellar-contract-ids-and-signer-roles`. Found while working on #1794.
+
+### TD-166: The LP app links only the connected wallet, never a `C…` address or a separate signer [RESOLVED 2026-11-05 / #1849]
+
+- **Date:** 2026-11-04
+- **Location:** `packages/frontend/src/auth/useSettlementAddressLink.ts`, `packages/frontend/src/components/account/SettlementAddressRow.tsx`
+- **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
+- **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
+- **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
+- **Resolved by #1849 (PR #1850):** each settlement row has an opt-in `Use a different address` form; the typed address (Stellar `G…`/`C…`, EVM `0x…`) is linked with the connected wallet as `signer_address` when it differs. A signer other than the connected wallet and EIP-1271 signers remain out of scope (see `docs/frontend/account-page.md#settlement-address`).
+
+### TD-167: The minter cash-book fold is recomputed on every request
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs`, `GET /v1/cash-book`, `GET /v1/capital-allocation` (flagged chains)
+- **Gap:** Every request reads the minter's full event history from `contract_logs` and folds it in memory. Nothing is materialised.
+- **Impact:** Cost grows with the minter's event count; `/v1/capital-allocation` is polled by the Trustee Overview card.
+- **Suggested fix:** Materialise the fold per `(chain_id, minter)` from the latest snapshot, or cache it keyed by the indexer cursor, once volume warrants it.
+
+### TD-168: Cash-book completeness depends on an operator-emitted snapshot
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs` (`fold_cash`), `docs/product-specs/minter-cash-book.md`
+- **Gap:** The minter emits no event at deploy and `log_collector_state` keeps only the current cursor, so the API cannot prove the indexer covered the minter from its deploy ledger. `complete` is `true` only when a `MinterSnapshot` exists, and someone must call `snapshot()` after each worker rollout. Completeness means no gap since the latest snapshot the indexer stored, not proof that no event was dropped: an event the worker could not decode is skipped while the cursor advances and the fold cannot see it.
+- **Impact:** Until `snapshot()` is called on a network, `summary.complete` is `false` and the Capital Allocation switch cannot engage. A snapshot emitted under an older worker is lost.
+- **Suggested fix:** Record the first indexed ledger and every dropped event per contract in the indexer so the fold can be complete from genesis, or have the relayer emit `snapshot()` after each rollout. Until then, call `snapshot()` again before setting the Capital Allocation flag and compare it with the fold.
+
+### TD-169: The EVM minter has no cash book
+
+- **Date:** 2026-11-05
+- **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
+- **Gap:** The cash book, the LP `wire_ins` / `wire_outs` lists and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
+- **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is served only when `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` is set (#1865), with the minter inferred from the wallet's latest `WireOutRequested` row; a minter redeploy hides earlier minters' requests until an EVM API minter key exists.
+
+### TD-170: Pocket `complete` is not verified against the key having stayed configured
+
+- **Date:** 2026-11-05
+- **Location:** `shared::pocket::fold_pocket` in `packages/shared/src/pocket.rs`
+- **Gap:** Any indexed `PocketOpened` makes the fold `complete = true` with no check that later pocket events were all indexed. If `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` was unset for a period after the open, events in that gap are missing and the fold is silently short.
+- **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
+- **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.
+
+### TD-171: SecurityRegistry valuation and snapshots are current-state reads; pre-key history is view-seeded
+
+- **Date:** 2026-11-06
+- **Location:** `packages/worker/src/indexer/security_registry_sync.rs` (shared by Stellar and EVM), `shared::security_registry`
+- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. On EVM (#1938) pinning is possible but the source deliberately reads at its head, as Stellar does, so the same two-read skew applies to `coverageDetail` and `loanMoney` there (each read is at its own head, a block or two apart). History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
+- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history. The API's computed staleness flags (`GET /v1/loan-book/{loan_id}/security`, #1780) use the API clock, not the ledger timestamp, so they can flip a few seconds apart from the contract's.
+- **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
+
+### TD-172: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+
+- **Date:** 2026-11-05
+- **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`
+- **Gap:** `useDepositFlow` polls `/v1/requests` every 5 s while a known request id is unlisted, and the activity-expectation store (#1810) now polls every 3 s for the same condition. `useRequests` takes the shorter of the two.
+- **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
+- **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
+
+### TD-173: Per-loan `contract_logs` reads written as `params->>'x' = …` cannot use the GIN index
+
+- **Date:** 2026-11-06
+- **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
+- **Gap:** `contract_logs.params` has a GIN index, `idx_contract_logs_params` (`20260521000001_contract_logs_jsonb.sql`), but it only serves containment (`params @> jsonb_build_object(…)`). Filters and joins written as `params->>'loan_id' = …` (for example the correlated `v.params->>'loan_id' = r.params->>'loan_id'` in `LIST_SALE_REPAYMENTS_SQL`) cannot use it and scan the scoped contract(s).
+- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow with each contract's log count where they are not written with `@>`.
+- **Suggested fix:** rewrite those predicates with `@>` (`LOAN_LOG_WATERMARKS_SQL` already does), and only add an expression index if a correlated join still cannot use the GIN index; measure on pipeline-test first.
+- **Also:** the share-price reads in `position_repo.rs` (incl. #1313's closing-price query) filter `LOWER(vault_address) = …`, which keeps `idx_share_prices_latest` from serving the vault column; same cleanup.
+
+### TD-174: Attention counts are recomputed per request over full minter and transfer history
+
+- **Date:** 2026-11-09
+- **Location:** `packages/api/src/routes/attention_counts.rs`, `ContractLogsRepo::list_minter_events`, `ContractLogsRepo::list_asset_transfers`, `LpBankDepositRepo::count_pending`
+- **Gap:** `GET /v1/attention-counts` re-reads each in-scope chain's whole minter cash-book event history and `AssetTransfer` list, plus an `lp_bank_deposits` / `contract_logs` anti-join, on every call. Nothing is materialised or cached. The pending bank deposit count is also chain-agnostic because `lp_bank_deposits` has no `chain_id` (TD-117).
+- **Impact:** The Trustee sidebar polls this on every page (#1350), so the cost grows with history and with open Trustee sessions.
+- **Suggested fix:** Materialise the counts (or the folded minter and ramp state) in the indexer or relayer tick, or add a short server-side cache; add `chain_id` to `lp_bank_deposits` and serve the deposit count per chain.
+
+### TD-175: Stellar PLUSD history predates indexing; `plusd_balance` off on 99000001/99000002
+
+- **Date:** 2026-11-09
+- **Location:** `packages/worker/src/indexer/stellar/plusd_parsers.rs`, `packages/api/src/routes/pnl.rs` (`plusd_series`), `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`
+- **Gap:** The Stellar PLUSD SACs (testnet `CDGHLVGY…`, mainnet `CD5CFMJ4…`, deployment #37) predate the `…_STELLAR_INDEXER_PLUSD_ADDRESS` key and Soroban RPC retention (about 7 days). A fold over indexed rows alone starts from a zero balance that is not the wallet's real one, so the API key stays unset on both chains and `GET /v1/positions/history` serves no `plusd_balance` there. The EVM arm is unaffected once the cursor is rewound to the PLUSD deploy block.
+- **Impact:** Stellar LPs' Total Balance excludes PLUSD held in the wallet (it still includes sPLUSD and wire-out escrow); the card cannot show the PLUSD part on Stellar.
+- **Resolved by #1878:** `plusd_balance_seeds` plus a supervised seed and drift-check loop (`stellar/plusd_seed.rs`); the API folds from the wallet's latest seed, back-computed to the coverage bound (the chain's earliest `PlusdTransfer`), and omits the term for an unseeded wallet. Classic-payment check (manual step 3 of `docs/user-stories/epic-1247/1878-plusd-balance-seed.md`): NOT RUN by the coder (needs a signed classic payment on testnet); until it is run, the drift check is the only guard for classic PLUSD payments after the seed (one read per holder every 6 h) and the pre-seed back-compute cannot see a classic payment between the coverage bound and the seed, see TD-176.
+- **Original suggested fix:** #1878 — a one-off per-holder starting balance: Soroban `simulateTransaction` of the SAC `balance(holder)` (the `pocket_seeds` pattern, `simulate_view` plus a supervised loop), stored in `plusd_balance_seeds (chain_id, token_address, holder, as_of_ledger, balance, created_at)` for the chain's whitelisted LP wallets; at read time the balance is the seed plus the deltas with `block_number > as_of_ledger`, so the fold takes the seed as one leading step. Decide the buckets before the seed, the SAC `balance` result for a missing trustline, and candidate refresh for newly whitelisted wallets.
+- **Also:** Classic PLUSD payments (CAP-67) reach `getEvents` only when the RPC emits unified classic events (protocol 23+). The testnet RPC reports protocol 30, but the coder did not confirm that a classic payment between two G-accounts produces a `PlusdTransfer` row (it needs a signed classic payment, which was not sent). Confirm it with the Stellar manual step in `docs/user-stories/epic-1247/1865-plusd-balance.md` before relying on the term for a wallet that moved PLUSD classically.
+
+### TD-176: PLUSD balance seed trusts indexed rows between the coverage bound and the seed
+
+- **Date:** 2026-11-10
+- **Location:** `packages/shared/src/plusd_seed.rs` (`seeded_plusd`), `packages/worker/src/indexer/stellar/plusd_seed.rs`
+- **Gap:** The drift check verifies a holder only after its seed. The pre-seed back-compute (`seed − Σ deltas`) assumes every PLUSD movement between the coverage bound and the seed was indexed. If classic PLUSD payments do not reach `getEvents` (unconfirmed, see TD-175 "Also"), a classic payment in that window silently shifts every back-computed value before it unless a value goes negative. After the seed, the same payments are caught by the drift check (one read per seeded holder every 6 h, 10 per minute) and re-anchored.
+- **Impact:** A wrong early part of a Stellar LP's PLUSD history for a wallet that moved PLUSD with classic payments before its seed.
+- **Suggested fix:** Run the classic-payment check (manual step 3 of the #1878 user stories). If classic events are visible, close this item. If not, drop the back-compute for chains where it is proven wrong (treat every seed as NoCoverage) or verify the first seed against a Horizon payment history.
+
+### TD-177: Risk Council hub cannot list operations scheduled elsewhere [RESOLVED 2026-11-16 / #1924]
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-risk-council-hub.ts`, `packages/trustee/src/api/useRiskCouncil.ts` (`useRiskCouncilHubLookups`)
+- **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, and the SecurityRegistry `set_terms`, `resolve_flag`, `release_with_consent`, `set_inspectors`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
+- **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
+- **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.
+- **Status:** Done: indexer #1921 (`access_manager_operations`, see `docs/references/access-manager-events.md`), API #1922 (`pending_operations` on `GET /v1/loan-book` and `/security`), Security page #1923, hub and LoanRegistry / Minter pages #1924 (pending operations from the API with Execute from any session; the page-local store is only a bridge until the indexer catches up).
+
+### TD-178: Escrow bindings carry local copies of the ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` (`readWireInRefHashSeen`, `wireInReturnRefHash`) — Issue #1763.
+- **Gap:** #1874 (#1762) adds `readRefHashSeen` / `bankReferenceRefHash` to `minter.ts` and #1873 (#1761) moves `sha256Hex` into `stellar/contracts/hash.ts`. Neither was on `main` when #1763 was built, so the escrow bindings hold their own `ref_hash_seen` read and sha256-of-trimmed-reference helper.
+- **Impact:** Two copies of the same on-chain read and hash rule can drift.
+- **Suggested fix:** After #1873 and #1874 merge, drop the local helpers and import `readRefHashSeen` / `bankReferenceRefHash` from `@pipeline/wallet-connect`.
+
+### TD-179: Wire-out bindings duplicate the epic's reader and the date and ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` (`readWireOutRecord`), `packages/trustee/src/lib/wireOut.ts` (`valueDateSeconds`, `todayUtcDateInput`), `packages/trustee/src/routes/-wire-outs.ts` (`wireInReturnRefHash` / `readWireInRefHashSeen` for the bank reference), `packages/trustee/src/routes/-conversions.ts` (the same ref-hash helpers, plus `lib/wireOut.ts`'s date helpers) — Issues #1764, #1765.
+- **Gap:** `epic/1795-lp-ui` adds `readMinterWireOut` / `MinterWireOut` to `stellar/contracts/minter.ts` (no `ref_hash`). #1761 and #1762 add `dateInputToUnixUtc` / `dateInputToValueDate`, and #1762 adds `bankReferenceRefHash` / `readRefHashSeen`. None was on this branch, so #1764 holds its own wire-out reader and UTC date helpers and reuses #1763's wire-in-named ref-hash helpers for a wire-out reference.
+- **Impact:** Several copies of the same on-chain read, date conversion and sha256 rule can drift.
+- **Suggested fix:** After #1761, #1762, #1763 and the epic land, add one `minterRefs.ts` (ref-hash read and hash) and one date helper, merge the two wire-out readers, and drop the wire-in names.
+
+### TD-180: The Cash Management pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-conversions.ts` (`summary`), `packages/trustee/src/api/useConversions.ts` (`useMinterPoolState`), `packages/api/src/routes/cash_book.rs` (`CashBookSummary`) — Issue #1765.
+- **Gap:** `summary` serves `bank_cash` and `in_flight` but not `total_assets` or the snapshot's `read_failed`. So the three summary figures come from one on-chain `pool_state()` read of the app's minter instead of the API.
+- **Impact:** The summary needs an RPC read and the app's minter, and it cannot show a figure for a chain the app has no minter for.
+- **Suggested fix:** Serve `total_assets` and `read_failed` from the cash book, then switch the summary to the served values and drop `readMinterPoolState`.
+
+### TD-181: The Withdrawal Queue tab still renders the #945 "Top up" MPC co-sign shell
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/cash-management.tsx` (`WithdrawalTopUpDialog`) — found while fixing #1765.
+- **Gap:** The dialog shows a Capital Wallet MPC 3-of-5 co-sign flow, but `trustee-dashboard.md` flow note C now says a top-up is a custody-to-custody transfer under the custody signing policy, which the console does not co-sign.
+- **Impact:** The Trustee sees a co-sign shell for an action the console does not perform.
+- **Suggested fix:** Retire the dialog and its "Top up" button in a follow-up frontend issue.
+
+### TD-182: LP settlement bank account: plaintext at rest, no change history, no read audit, no post-`Passed` change path
+
+- **Date:** 2026-11-10
+- **Location:** `lps.settlement_bank_account` (`packages/shared/migrations/20261110000002_lps_settlement_bank_account.sql`), `packages/api/src/routes/lps.rs`, `packages/api/src/routes/cash_book.rs` — Issue #1812.
+- **Gap:** The account number and IBAN are stored as plaintext JSONB, like `legal_name` and `contact_email`. Changes are not recorded, and Trustee reads of the full account (`GET /v1/lps/{id}`, `GET /v1/cash-book`) are not logged. The account freezes with the KYB record, so once KYB is `Passed` nothing in the API can change it, and LPs that passed before this feature have none. Both gaps are closed by ops SQL.
+- **Impact:** A database or backup leak exposes every LP's bank account. A change to the account, or a Trustee read of it, leaves no record. A `Passed` LP that wants a different or a first account needs an ops request.
+- **Suggested fix:** Encrypt the account number and IBAN at the application level, add an append-only `lp_settlement_bank_account_history` and a Trustee read log, and add a trustee-only write (or a `Passed` to `ChangesRequested` transition) for changes after `Passed`.
+
+### TD-183: Update lifecycle reads `mutable_loan_data` on-chain for the current `metadata_uri`
+- **Date:** 2026-11-11
+- **Location:** `packages/trustee/src/api/useUpdateLifecycle.ts` (`useLoanMutableState`), `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts` (`readLoanChainState`), `packages/api/src/routes/loan_book.rs:396` — Issue #1893.
+- **Gap:** `GET /v1/loan-book` does not serve the loan's current `metadata_uri` (only the submission's `draw_loan` URI, which `update_mutable` can replace) and serves `onchain_status` from the indexer, which can lag.
+- **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
+- **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.
+
+### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain
+
+- **Date:** 2026-11-12
+- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs`, `packages/shared/src/kyc_repo.rs` (`stellar_allow_candidates_sql`) — Issue #1889.
+- **Gap:** The relayer authorises the linked Stellar settlement address of every KYB `Passed` LP, but the Stellar disallow pass is DB-only. A relink (allowed any time, no Trustee approval; for a `C…` or a separate signer the signature does not prove control, TD-162) or a later KYT failure leaves the old address authorised on-chain.
+- **Impact:** Each relink can leave one more PLUSD-authorised address. With Elliptic off, nothing screens them beyond KYB `Passed`.
+- **Suggested fix:** Add an on-chain `set_authorized(addr, false)` path for relinked and KYT-failed addresses.
+
+### TD-185: EVM wire-in receivers have the same PLUSD access gap
+
+- **Date:** 2026-11-12
+- **Location:** `MinterUpgradeable._stakeFor` (`MinterReceiverNotAllowed`), `packages/worker/src/relayer/evm/` — Issue #1889.
+- **Gap:** An EVM wire-only lender's linked `evm_address` is never put on the whitelist, because the EVM relayer only allows depositors. The Stellar fix (Phase 0b) has no EVM counterpart.
+- **Impact:** EVM bank-wire mints to a never-depositing lender revert once EVM Mint PLUSD is wired in the Trustee app (#1501).
+- **Suggested fix:** A follow-up issue to allow the linked `evm_address` of KYB `Passed` LPs on the EVM relayer, landing with #1501.
+
+### TD-186: Inspector panel page reads the current list on-chain
+
+- **Date:** 2026-11-13
+- **Location:** `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` (`readSecurityInspectors`), `packages/trustee/src/api/useRiskCouncil.ts` (`useSecurityInspectors`) — Issue #1858.
+- **Gap:** The backend serves `inspectors` only inside the per-loan `GET /v1/loan-book/{id}/security`, so `/risk-council/inspectors` (contract-wide, no loan) reads the `inspectors()` view with `simulateRead`. Decided with the user on #1858 over reading it from any loan's `/security` or adding an endpoint.
+- **Impact:** The panel list is read from the chain directly (not the projection), so it can differ from the `inspectors` a loan's `/security` serves for up to one fold (30 s). One extra RPC read per page load.
+- **Suggested fix:** If a contract-wide security-registry state endpoint is ever added, serve `inspectors` and `paused` from `security_registry_state` and drop the RPC read.
+- **EVM (#1942):** the same read exists on the RecordNft: `packages/wallet-connect/src/evm/contracts/securityRegistry.ts` (`readEvmSecurityInspectors`), used by `useSecurityInspectors` on EVM.
+
+### TD-187: AccessManager operations whose transaction left RPC retention lose their arguments or stay pending
+
+- **Date:** 2026-11-16
+- **Location:** `packages/worker/src/indexer/stellar/access_manager_sync.rs` (`resolve_schedule`, `resolve_execute`) — Issue #1921.
+- **Gap:** The sync loop recovers a scheduled call's arguments from `getTransaction`, which shares the RPC retention window (about 7 days). A raw row whose transaction left retention before the loop reached it (worker down for days, or a row stuck in retries) yields a schedule with `args = NULL`, or an execute that leaves its row `pending`.
+- **Impact:** A schedule without arguments cannot be executed from the console. A row whose execute was missed reads as `pending` until `expires_at`, then as expired.
+- **Known limitation (immediate execute):** If a caller's role delay drops to 0 and it executes the same arguments immediately, `resolve_execute` marks a still-live pending schedule `executed`; on chain it stays cancelable.
+- **Known limitation (sub-call execute):** An `AM.execute` of a delayed operation made by a contract as a sub-call without an auth entry yields no candidate, so the row stays `pending` until it reads as expired.
+- **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state. This also resolves both limitations above.
+
+### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp [RESOLVED 2026-11-18 / #1940]
+
+- **Date:** 2026-11-17
+- **Location:** `packages/shared/src/security_marks.rs` and the API's `/security` response builder — Issue #1938.
+- **Gap:** The SecurityRegistry indexer stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assumed the Stellar 7 dp scale.
+- **Resolution (shared and API scope):** `SecurityChainParams.decimals` (7 Stellar, 6 EVM) now drives the amount strings, the per-record value, `agent_release`, the mark suggestions and the report `value_per_unit=` line; Stellar output is unchanged. See `docs/product-specs/loan-security-state-evm.md`.
+- **Remaining (#1942):** the Trustee reads the `/security` strings as 7 dp; its EVM writes (`revalue`, inspections) must parse them at the chain's decimals.
+
+### TD-189: Trustee does not show the EVM `default_breach`
+
+- **Date:** 2026-11-18
+- **Location:** `packages/trustee/src/routes/-loanSecurity.ts` (Security card) and `-risk-council-security.ts` (security page) — Issue #1942.
+- **Gap:** `GET /v1/loan-book/{id}/security` serves `default_breach` for EVM loans (#1940), an EVM-only concept (`defaultBreachAt` in the 15-field `Terms`), and nothing in the Trustee renders it. The Trustee pages mirror Stellar, which has no breach.
+- **Impact:** An EVM loan past its default breach threshold shows no signal on the security page or the loan-detail Security card.
+- **Suggested fix:** Add a "Default breach" row and notes mirroring the margin-call row on the Security card and the security page.
+
+### TD-190: EVM repayment recovery reads repayments by scanning logs in the browser
+
+- **Date:** 2026-11-18
+- **Location:** `packages/wallet-connect/src/evm/contracts/{minter,logs}.ts` (`readEvmRecoveryRepayments`, `readEvmMinterRepayment`, `scanEvmLogs`), `packages/trustee/src/api/useRepaymentRecovery.ts` (`useRecoveryCandidates`) — Issue #1943.
+- **Gap:** No EVM view returns a recorded repayment's full `RepaymentData` or its reversed flag (`LoanRegistryStorage.repayments` and `reversedRepayments` are private). The Trustee therefore scans `eth_getLogs` for `PaymentRecorded`, `PaymentUnrecorded` and `CashRepaid` of the loan from `VITE_EVM_START_BLOCK` in 50 000-block chunks (the default publicnode RPC rejects wider ranges), and reads the Minter's stored record through `extsload` at the ERC-7201 slot of `pipeline.storage.Minter` (field 19, `repayments`).
+- **Impact:** The cost grows with chain age (about 7 200 blocks a day on Hoodi, so one more call about every week; about 81 calls from block 0, hence `VITE_EVM_START_BLOCK` must be the LoanRegistry deploy block). It depends on the RPC provider's `eth_getLogs` limits, and it is coupled to the Minter storage layout (a layout change breaks the read; the Minter must expose `extsload` where the legacy view is absent). It runs for every EVM loan in `Performing..Default` that opens the loan detail page.
+- **Hoodi Minter caveat (#1574), resolved by #2074 (2026-11-19):** the Hoodi Minter (source `f92d719`) has no `extsload`, so `readEvmMinterRepayment` used to revert there and the EVM recovery list failed on Hoodi. It now calls the legacy `repayment(uint256,uint256)` view first and reads `extsload` only when that view reverts with empty data (a `150631a` Minter), the pattern `readEvmMinterBankCash` / `readEvmRefHashSeen` use. The log scan stays (this entry's gap).
+- **Suggested fix:** Serve per-repayment rows from the indexed logs on an existing per-loan endpoint (the data is already in `contract_logs`), and read from the API instead of the chain.
+
+### TD-194: BitGo client has no HTTP timeout
+
+- **Location:** `packages/shared/src/bitgo/client.rs` (`reqwest::Client::new()`) — Issue #1739.
+- **Gap:** Every other outbound client uses `shared::http_client` (30 s request, 5 s connect). BitGo is left without a timeout because `POST /txrequests` carries no idempotency key: a client-side timeout after BitGo accepted the request would surface a slow success as an error, and a caller that retries could pay out twice.
+- **Impact:** A hung BitGo connection blocks the calling task indefinitely.
+- **Suggested fix:** Add a timeout together with an idempotency key (or a lookup of the txrequest by our own reference before any retry), then switch the client to `shared::http_client::http_client()`.
+
+### TD-195: EVM indexer commits the requested end, not the node's head
+
+- **Location:** `packages/worker/src/indexer/poller.rs` (`ChainEventPoller::poll` returns `covered_to: to`) — Issue #1739.
+- **Gap:** The Stellar poller caps the committed range at the minimum `latestLedger` the RPC reported. On EVM, `eth_getLogs` against a load-balanced node that is behind the head often clamps to its own head without an error, so a range can be committed with its last block unseen. `LOG_CONFIRMATIONS_DELAY` lowers the odds but does not remove them.
+- **Impact:** A log in the last block or blocks of a polled range can be skipped silently when the node serving `eth_getLogs` lags the node that served `eth_blockNumber`.
+- **Suggested fix:** Read `eth_blockNumber` from the same provider immediately after `eth_getLogs` and report `covered_to = min(to, that head)`.
+
+### TD-196: The withdraw page's wire-out list still reads the audit log although `GET /v1/requests` serves `wire_outs[]`
 
 - **Date:** 2026-11-19
 - **Location:** `packages/frontend/src/api/useWireOutRequests.ts`, `packages/frontend/src/components/withdraw/useWireOutList.ts`

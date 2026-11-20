@@ -1,14 +1,18 @@
 /** Tests for -origination-new.ts pure transforms (#1100). */
 import { describe, it, expect } from "vitest";
+import { renderHook } from "@testing-library/react";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
 import {
   buildSubmitLoanInput,
   emptyFormValues,
   parseSubmissionJson,
+  prefillFromSubmission,
+  useOriginationNewForm,
 } from "./-origination-new";
 
 const EXAMPLE_JSON = JSON.stringify({
-  to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
   metadata_uri: "https://example.com/ipfs/QmeaPY",
+  data_room_id: "DR-0001",
   originator: "Alan Walkovitz",
   borrower_id: "Open Mineral",
   commodity: "Jet fuel JET A-1",
@@ -29,20 +33,14 @@ const EXAMPLE_JSON = JSON.stringify({
     origination_date: 1781806657,
     original_maturity_date: 1881806657,
   },
-  initial_ccr: 1500000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO 9834521",
-    tracking_url: "https://track.example.com/IMO9834521",
-    updated_at: 1781806657,
-  },
 });
 
 function completeValues(): Record<string, string> {
-  const parsed = parseSubmissionJson(EXAMPLE_JSON);
+  const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
   if (!parsed.ok) throw new Error("example must parse");
   return {
     ...emptyFormValues(),
+    target_chain_id: "99000001",
     ...parsed.values,
     "collateral_valuation.valuation_mode": "MetalConcentrate",
     "collateral_valuation.asset": "XAU",
@@ -55,22 +53,18 @@ function completeValues(): Record<string, string> {
   };
 }
 
+const OFFERED = [99_000_001, 560048];
+
 describe("parseSubmissionJson", () => {
   it("autofills every field present and lists exactly the missing required paths (issue example)", () => {
-    const parsed = parseSubmissionJson(EXAMPLE_JSON);
+    const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
 
-    expect(parsed.values["to"]).toBe(
-      "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
-    );
+    expect(parsed.values["data_room_id"]).toBe("DR-0001");
     expect(parsed.values["economics.original_facility_size"]).toBe(
       "1200000.000000",
     );
     expect(parsed.values["economics.senior_interest_rate_bps"]).toBe("1000");
-    expect(parsed.values["initial_ccr"]).toBe("1500000");
-    expect(parsed.values["initial_location.location_identifier"]).toBe(
-      "IMO 9834521",
-    );
 
     expect(parsed.missingFields).toEqual([
       "collateral_valuation.valuation_mode",
@@ -84,8 +78,29 @@ describe("parseSubmissionJson", () => {
     ]);
   });
 
+  it("imports a legacy payload: ignores to / initial_* and lists data_room_id as missing", () => {
+    const legacy = JSON.parse(EXAMPLE_JSON);
+    delete legacy.data_room_id;
+    const parsed = parseSubmissionJson(
+      JSON.stringify({
+        ...legacy,
+        to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+        initial_ccr: 1500000,
+        initial_location: { location_type: "Vessel" },
+      }),
+      OFFERED,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.values["metadata_uri"]).toBe(
+      "https://example.com/ipfs/QmeaPY",
+    );
+    expect("to" in parsed.values).toBe(false);
+    expect("initial_ccr" in parsed.values).toBe(false);
+    expect(parsed.missingFields).toContain("data_room_id");
+  });
+
   it("imports documents rows and drops malformed entries", () => {
-    const parsed = parseSubmissionJson(EXAMPLE_JSON);
+    const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
     expect(parsed.documents).toEqual([
       { name: "Agreement", uri: "https://example.com/ipfs/QmPm7z" },
@@ -96,22 +111,23 @@ describe("parseSubmissionJson", () => {
       JSON.stringify({
         documents: [{ name: "ok", uri: "u" }, { name: 3 }, "x"],
       }),
+      OFFERED,
     );
     if (!withBadDoc.ok) throw new Error(withBadDoc.error);
     expect(withBadDoc.documents).toEqual([{ name: "ok", uri: "u" }]);
   });
 
   it("does not list optional fields (protection / secondary_metadata_uri) as missing", () => {
-    const parsed = parseSubmissionJson("{}");
+    const parsed = parseSubmissionJson("{}", OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
     expect(parsed.missingFields).not.toContain("protection");
     expect(parsed.missingFields).not.toContain("secondary_metadata_uri");
-    expect(parsed.missingFields).toContain("to");
+    expect(parsed.missingFields).toContain("data_room_id");
     expect(parsed.missingFields).toContain("metadata_uri");
   });
 
   it("rejects malformed JSON with a parse error", () => {
-    const parsed = parseSubmissionJson("{ nope");
+    const parsed = parseSubmissionJson("{ nope", OFFERED);
     expect(parsed).toEqual({
       ok: false,
       error: "Not valid JSON — nothing was imported.",
@@ -120,7 +136,7 @@ describe("parseSubmissionJson", () => {
 
   it("rejects a non-object root (arrays, strings) — single object only", () => {
     for (const text of ["[]", '"str"', "42", "null"]) {
-      const parsed = parseSubmissionJson(text);
+      const parsed = parseSubmissionJson(text, OFFERED);
       expect(parsed.ok).toBe(false);
     }
   });
@@ -136,7 +152,10 @@ describe("buildSubmitLoanInput", () => {
     expect(built.input.economics.original_facility_size).toBe("1200000.000000");
     expect(built.input.economics.senior_interest_rate_bps).toBe(1000);
     expect(built.input.economics.origination_date).toBe(1781806657);
-    expect(built.input.initial_ccr).toBe(1500000);
+    expect(built.input.data_room_id).toBe("DR-0001");
+    expect("to" in built.input).toBe(false);
+    expect("initial_ccr" in built.input).toBe(false);
+    expect("initial_location" in built.input).toBe(false);
     expect(built.input.fee_schedule).toEqual({
       mgmt_fee_rate_bps: 100,
       perf_fee_rate_bps: 2000,
@@ -166,16 +185,25 @@ describe("buildSubmitLoanInput", () => {
   it("flags empty required fields and non-numeric numeric fields, never building a payload", () => {
     const values = {
       ...completeValues(),
-      to: "",
+      data_room_id: "   ",
       "economics.senior_interest_rate_bps": "10.5",
     };
     const built = buildSubmitLoanInput(values, []);
     expect(built.ok).toBe(false);
     if (built.ok) return;
-    expect(built.fieldErrors["to"]).toBe("Required.");
+    expect(built.fieldErrors["data_room_id"]).toBe("Required.");
     expect(built.fieldErrors["economics.senior_interest_rate_bps"]).toBe(
       "Must be a whole non-negative number.",
     );
+  });
+
+  it("trims data_room_id in the built input", () => {
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), data_room_id: "  DR-0002  " },
+      [],
+    );
+    if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
+    expect(built.input.data_room_id).toBe("DR-0002");
   });
 
   it("flags document rows with a missing name or URI", () => {
@@ -191,12 +219,25 @@ describe("buildSubmitLoanInput", () => {
 });
 
 describe("target chain (#1536)", () => {
-  it("defaults the selector to the Stellar chain and sends it as chainId, not in the body", () => {
-    expect(emptyFormValues().target_chain_id).toBe("99000001");
-    const built = buildSubmitLoanInput(completeValues(), []);
+  it("starts with no chosen chain, and sends the chosen one as chainId, not in the body", () => {
+    expect(emptyFormValues().target_chain_id).toBe("");
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), target_chain_id: "99000001" },
+      [],
+    );
     if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
     expect(built.chainId).toBe(99_000_001);
     expect("target_chain_id" in built.input).toBe(false);
+  });
+
+  it("rejects an empty target chain as Required.", () => {
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), target_chain_id: "" },
+      [],
+    );
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.fieldErrors.target_chain_id).toBe("Required.");
   });
 
   it("uses the selected EVM chain id", () => {
@@ -208,9 +249,20 @@ describe("target chain (#1536)", () => {
     expect(built.chainId).toBe(560048);
   });
 
-  it("JSON import: a configured target_chain_id sets the selector, anything else leaves it alone, and it is never 'missing'", () => {
+  it("JSON import: a target_chain_id that is not offered is ignored", () => {
+    const parsed = parseSubmissionJson(
+      JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 560048 }),
+      [99_000_001],
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect("target_chain_id" in parsed.values).toBe(false);
+    expect(parsed.missingFields).not.toContain("target_chain_id");
+  });
+
+  it("JSON import: an offered target_chain_id sets the selector, anything else leaves it alone, and it is never 'missing'", () => {
     const withEvm = parseSubmissionJson(
       JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 560048 }),
+      OFFERED,
     );
     if (!withEvm.ok) throw new Error(withEvm.error);
     expect(withEvm.values.target_chain_id).toBe("560048");
@@ -218,11 +270,12 @@ describe("target chain (#1536)", () => {
 
     const unknown = parseSubmissionJson(
       JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 5 }),
+      OFFERED,
     );
     if (!unknown.ok) throw new Error(unknown.error);
     expect("target_chain_id" in unknown.values).toBe(false);
 
-    const absent = parseSubmissionJson(EXAMPLE_JSON);
+    const absent = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!absent.ok) throw new Error(absent.error);
     expect("target_chain_id" in absent.values).toBe(false);
     expect(absent.missingFields).not.toContain("target_chain_id");
@@ -263,5 +316,133 @@ describe("USDC amount fields (#1620)", () => {
           /at most 6 decimals/,
         );
     }
+  });
+});
+
+const FULL_LOAN_DATA = {
+  metadata_uri: "ipfs://meta",
+  secondary_metadata_uri: "ipfs://meta2",
+  data_room_id: "DR-9",
+  originator: "Alan",
+  borrower_id: "Open Mineral",
+  commodity: "Copper",
+  corridor: "PE-CN",
+  governing_law: "English law",
+  protection: "LC",
+  to: "legacy-address",
+  initial_ccr: 12,
+  initial_location: "somewhere",
+  documents: [
+    { name: "Agreement", uri: "https://example.com/a" },
+    { name: "License", uri: "https://example.com/b" },
+  ],
+  economics: {
+    original_facility_size: "1200000.5",
+    original_senior_tranche: "1000000",
+    original_equity_tranche: "200000.5",
+    original_offtaker_price: "1250000",
+    senior_interest_rate_bps: 1000,
+    origination_date: 1781806657,
+    original_maturity_date: 1881806657,
+  },
+  collateral_valuation: {
+    valuation_mode: "StandardGoods",
+    asset: "XAU",
+    price_provider: "coingecko",
+    haircut_pct: "0.15",
+    quantity_dmt: "620",
+  },
+  fee_schedule: {
+    mgmt_fee_rate_bps: 100,
+    perf_fee_rate_bps: 2000,
+    oet_alloc_rate_bps: 50,
+  },
+};
+
+function submission(
+  loanData: unknown,
+  chainId: number | undefined = 99000001,
+): SubmissionView {
+  return {
+    id: 7,
+    status: "ChangesRequested",
+    reason: "Fix it",
+    originator: "GABC",
+    target_chain_id: chainId,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+    documents: [],
+    loan_data: loanData as SubmissionView["loan_data"],
+  };
+}
+
+describe("prefillFromSubmission (#1913)", () => {
+  it("fills every field verbatim from the served loan_data", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    expect(prefill.missingFields).toEqual([]);
+    expect(prefill.values["economics.original_facility_size"]).toBe(
+      "1200000.5",
+    );
+    expect(prefill.values["economics.senior_interest_rate_bps"]).toBe("1000");
+    expect(prefill.values["collateral_valuation.haircut_pct"]).toBe("0.15");
+    expect(prefill.values["fee_schedule.perf_fee_rate_bps"]).toBe("2000");
+    expect(prefill.values.target_chain_id).toBe("99000001");
+    expect(prefill.documents).toEqual(FULL_LOAN_DATA.documents);
+  });
+
+  it("round-trips into the same request body without legacy keys", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    const built = buildSubmitLoanInput(prefill.values, prefill.documents);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.input).not.toHaveProperty("to");
+    expect(built.input).not.toHaveProperty("initial_ccr");
+    expect(built.input).not.toHaveProperty("initial_location");
+    expect(built.input.economics.original_facility_size).toBe("1200000.5");
+    expect(built.input.documents).toEqual(FULL_LOAN_DATA.documents);
+  });
+
+  it("lists required paths missing from a legacy payload", () => {
+    const legacy: Record<string, unknown> = { ...FULL_LOAN_DATA };
+    delete legacy.data_room_id;
+    delete legacy.collateral_valuation;
+    delete legacy.fee_schedule;
+    const prefill = prefillFromSubmission(submission(legacy));
+    expect(prefill.missingFields).toContain("data_room_id");
+    expect(prefill.missingFields).toContain("collateral_valuation.asset");
+    expect(prefill.missingFields).toContain("fee_schedule.mgmt_fee_rate_bps");
+    expect(prefill.missingFields).not.toContain("metadata_uri");
+  });
+
+  it("handles a non-object loan_data", () => {
+    const prefill = prefillFromSubmission(submission(null));
+    expect(prefill.documents).toEqual([]);
+    expect(prefill.missingFields).toContain("metadata_uri");
+    expect(prefill.values.target_chain_id).toBe("99000001");
+  });
+});
+
+describe("useOriginationNewForm initial seed (#1913)", () => {
+  const chains = {
+    options: [{ id: 99000001, label: "Stellar" }],
+    defaultChainId: 99000001,
+  };
+
+  it("seeds values and documents from initial", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    const { result } = renderHook(() =>
+      useOriginationNewForm(chains, {
+        values: prefill.values,
+        documents: prefill.documents,
+      }),
+    );
+    expect(result.current.values.metadata_uri).toBe("ipfs://meta");
+    expect(result.current.documents).toHaveLength(2);
+  });
+
+  it("starts empty without initial", () => {
+    const { result } = renderHook(() => useOriginationNewForm(chains));
+    expect(result.current.values.metadata_uri).toBe("");
+    expect(result.current.documents).toEqual([]);
   });
 });

@@ -29,6 +29,7 @@ export interface ConnectModalContextValue {
   open(): void;
   /** Closes the ConnectWalletModal. */
   close(): void;
+  onCancel(listener: () => void): () => void;
 }
 
 export const ConnectModalContext =
@@ -38,6 +39,7 @@ export const ConnectModalContext =
 const NO_OP_MODAL: ConnectModalContextValue = {
   open: () => {},
   close: () => {},
+  onCancel: () => () => {},
 };
 
 /**

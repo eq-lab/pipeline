@@ -75,7 +75,7 @@ export function ImportJsonDialog({
           rows={14}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
-          placeholder='{ "to": "G…", "metadata_uri": "…", … }'
+          placeholder='{ "metadata_uri": "…", "data_room_id": "…", … }'
           className="mt-[14px] w-full resize-y rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[12px] font-mono text-[13px] leading-[18.2px] text-[#262524] placeholder:text-[#757575]"
         />
         {parseError && (

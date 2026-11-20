@@ -8,10 +8,10 @@
 //! returns the record with its documents inline (each carrying a presigned
 //! download URL); `POST /v1/lps/me` upserts the profile as JSON;
 //! `POST /v1/lps/me/documents` appends files as `multipart/form-data`;
-//! `DELETE /v1/lps/me/documents/{doc}` removes one; `POST
-//! /v1/lps/me/link-address` sets or replaces the settlement account at any
-//! status short of a terminal verdict; fixed once `Passed` holds one, refused
-//! outright at `Failed`; `POST /v1/lps/me/submit` asks for review.
+//! `DELETE /v1/lps/me/documents/{doc}` removes one; `GET
+//! /v1/lps/me/link-address/challenge` and `POST /v1/lps/me/link-address/verify`
+//! (`routes::lp_settlement_address`) link a settlement address per chain kind
+//! by signed proof; `POST /v1/lps/me/submit` asks for review.
 //!
 //! Profile and documents are separate endpoints on purpose. They were one
 //! request at first, which read as the smaller surface — but the profile is a
@@ -61,26 +61,25 @@
 //! Documents are **untyped**: no `doc_type`, no `subject`, no slots, no
 //! versioning. Replacing a document is delete-then-upload.
 //!
-//! `stellar_address` is a separate identity from the login one — see the
-//! migration's module comment. `link_address` still trusts the client-supplied
-//! `stellar_address` with no proof of key ownership over *that* address; see
-//! `docs/exec-plans/tech-debt-tracker.md` TD-57. Since Issue #1379 removed the
-//! `kyb_status` gate on this endpoint, authorization (`/me` +
-//! `owner_account_id`) is the *only* remaining control.
+//! Settlement addresses are separate identities from the login one. They are
+//! linked through the signed challenge/verify pair in
+//! `routes::lp_settlement_address`, not by this module.
 
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 use uuid::Uuid;
 
-use shared::chains::validate_stellar_address;
+use shared::bank_account::{
+    self, account_last4, SettlementBankAccount, SettlementBankAccountInput,
+};
 use shared::email::{
     render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
     OutboundEmail, RejectedDocument,
@@ -89,10 +88,12 @@ use shared::kyb_document_repo::{DocumentStatus, KybDocumentRepo, KybDocumentRow}
 use shared::lp_repo::{KybStatus, LpRow};
 use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPTED_CONTENT_TYPES};
 
-use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
+use crate::auth::{AuthClaims, Claims, SecurityAddon};
 use crate::config::KybLimits;
-use crate::error::{is_unique_violation, ApiError};
-use crate::formatting::iso_utc;
+use crate::error::ApiError;
+use crate::formatting::{iso_utc, pending_bank_deposits_field};
+use crate::routes::common::require_trustee;
+use crate::routes::lp_bank_deposits::lp_id_for_payment_details;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -111,11 +112,14 @@ pub struct LpResponse {
     pub country: Option<String>,
     #[schema(example = "ops@acme.example")]
     pub contact_email: String,
-    /// Settable at any status short of a terminal verdict, fixed once
-    /// `Passed` holds one, never settable at `Failed`.
+    /// Replaceable at any status except `Failed` (signed link).
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,
+    pub stellar_signer_address: Option<String>,
+    pub evm_address: Option<String>,
+    pub evm_signer_address: Option<String>,
+    pub evm_address_linked_at: Option<String>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `ChangesRequested` |
     /// `Passed` | `Failed`.
     #[schema(example = "InProgress")]
@@ -147,10 +151,97 @@ pub struct LpResponse {
     /// ISO-8601 UTC.
     pub created_at: String,
     pub documents: Vec<DocumentResponse>,
+    #[schema(example = "1500.00")]
+    pub pending_bank_deposits: Option<String>,
+    /// Masked view of the LP's settlement bank account, `null` when none is on file.
+    pub settlement_bank_account: Option<SettlementBankAccountSummary>,
+    /// Every field of the account. Trustee responses only: the key is omitted for the owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_bank_account_details: Option<SettlementBankAccountDetails>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SettlementBankAccountSummary {
+    #[schema(example = "Acme Trading Ltd")]
+    pub account_holder_name: String,
+    #[schema(example = "Example Bank N.A.")]
+    pub bank_name: String,
+    /// Last 4 characters of the IBAN (else the account number); `null` when that identifier has 4 or fewer.
+    #[schema(example = "7654")]
+    pub account_last4: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SettlementBankAccountDetails {
+    pub account_holder_name: String,
+    pub bank_name: String,
+    #[schema(required = true, nullable)]
+    pub bank_address: Option<String>,
+    #[schema(required = true, nullable)]
+    pub account_number: Option<String>,
+    #[schema(required = true, nullable)]
+    pub iban: Option<String>,
+    #[schema(required = true, nullable)]
+    pub swift_bic_code: Option<String>,
+    #[schema(required = true, nullable)]
+    pub routing_number: Option<String>,
+}
+
+impl std::fmt::Debug for SettlementBankAccountDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettlementBankAccountDetails")
+            .finish_non_exhaustive()
+    }
+}
+
+impl From<&SettlementBankAccount> for SettlementBankAccountDetails {
+    fn from(a: &SettlementBankAccount) -> Self {
+        Self {
+            account_holder_name: a.account_holder_name.clone(),
+            bank_name: a.bank_name.clone(),
+            bank_address: a.bank_address.clone(),
+            account_number: a.account_number.clone(),
+            iban: a.iban.clone(),
+            swift_bic_code: a.swift_bic_code.clone(),
+            routing_number: a.routing_number.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LpAudience {
+    Owner,
+    Trustee,
+}
+
+pub fn bank_account_views(
+    account: Option<&SettlementBankAccount>,
+    audience: LpAudience,
+) -> (
+    Option<SettlementBankAccountSummary>,
+    Option<SettlementBankAccountDetails>,
+) {
+    let Some(a) = account else {
+        return (None, None);
+    };
+    let summary = SettlementBankAccountSummary {
+        account_holder_name: a.account_holder_name.clone(),
+        bank_name: a.bank_name.clone(),
+        account_last4: account_last4(a),
+    };
+    let details = (audience == LpAudience::Trustee).then(|| a.into());
+    (Some(summary), details)
 }
 
 impl LpResponse {
-    fn new(row: LpRow, documents: Vec<DocumentResponse>) -> Self {
+    fn new(
+        row: LpRow,
+        documents: Vec<DocumentResponse>,
+        pending_bank_deposits: Option<String>,
+        audience: LpAudience,
+    ) -> Self {
+        let (settlement_bank_account, settlement_bank_account_details) =
+            bank_account_views(row.settlement_bank_account.as_ref().map(|j| &j.0), audience);
         let writable = KybStatus::from_str(&row.kyb_status).is_ok_and(|s| s.allows_owner_writes());
         Self {
             id: row.id,
@@ -159,6 +250,10 @@ impl LpResponse {
             contact_email: row.contact_email,
             stellar_address: row.stellar_address,
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
+            stellar_signer_address: row.stellar_signer_address,
+            evm_address: row.evm_address,
+            evm_signer_address: row.evm_signer_address,
+            evm_address_linked_at: row.evm_address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             writable,
             notify_on_review: row.notify_on_review,
@@ -170,6 +265,9 @@ impl LpResponse {
             owner_address: row.owner_address,
             created_at: iso_utc(&row.created_at),
             documents,
+            pending_bank_deposits,
+            settlement_bank_account,
+            settlement_bank_account_details,
         }
     }
 }
@@ -190,6 +288,11 @@ pub struct LpSummary {
     pub country: Option<String>,
     pub contact_email: String,
     pub stellar_address: Option<String>,
+    pub address_linked_at: Option<String>,
+    pub stellar_signer_address: Option<String>,
+    pub evm_address: Option<String>,
+    pub evm_signer_address: Option<String>,
+    pub evm_address_linked_at: Option<String>,
     pub kyb_status: String,
     /// ISO-8601 UTC. Also orders and filters the trustee review queue, which
     /// is `GET /v1/lps` filtered to `UnderReview` client-side.
@@ -210,6 +313,11 @@ impl From<LpRow> for LpSummary {
             country: row.country,
             contact_email: row.contact_email,
             stellar_address: row.stellar_address,
+            address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
+            stellar_signer_address: row.stellar_signer_address,
+            evm_address: row.evm_address,
+            evm_signer_address: row.evm_signer_address,
+            evm_address_linked_at: row.evm_address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             kyb_submitted_at: row.kyb_submitted_at.as_ref().map(iso_utc),
             kyb_decided_at: row.kyb_decided_at.as_ref().map(iso_utc),
@@ -297,13 +405,6 @@ pub struct UploadDocumentsResponse {
     pub files: Vec<FileResult>,
 }
 
-/// Request body for `POST /v1/lps/me/link-address`.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct LinkAddressRequest {
-    /// A Stellar account (`G…`) or contract (`C…`) Strkey.
-    pub stellar_address: String,
-}
-
 /// The staff decision in `POST /v1/lps/{id}/documents/{doc}/review`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 pub enum DocumentReviewDecision {
@@ -344,6 +445,11 @@ pub struct UpsertLpRequest {
     #[serde(default)]
     #[schema(example = true, nullable)]
     pub notify_on_review: Option<bool>,
+    /// USD settlement bank account for wire-outs. Absent or `null` means *do not change*;
+    /// frozen with the KYB record at `UnderReview` / `Passed` / `Failed`.
+    #[serde(default)]
+    #[schema(nullable)]
+    pub settlement_bank_account: Option<SettlementBankAccountInput>,
 }
 
 /// The `multipart/form-data` body of `POST /v1/lps/me/documents`.
@@ -383,7 +489,6 @@ pub struct UploadDocumentsForm {
         upload_my_documents,
         delete_my_document,
         review_document,
-        link_address,
         submit_my_lp,
         decide_kyb
     ),
@@ -394,16 +499,18 @@ pub struct UploadDocumentsForm {
         DocumentResponse,
         FileResult,
         UpsertLpRequest,
+        SettlementBankAccountInput,
+        SettlementBankAccountSummary,
+        SettlementBankAccountDetails,
         UploadDocumentsResponse,
         UploadDocumentsForm,
-        LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
         KybDecision,
         KybDecisionRequest,
     )),
     modifiers(&SecurityAddon),
-    tags((name = "Lps", description = "KYB: LP registration, documents, and Stellar address linking"))
+    tags((name = "Lps", description = "KYB: LP registration, documents, and settlement address linking"))
 )]
 pub struct LpsDoc;
 
@@ -422,7 +529,6 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
             post(upload_my_documents).layer(DefaultBodyLimit::max(limits.max_request_bytes())),
         )
         .route("/lps/me/documents/{doc}", delete(delete_my_document))
-        .route("/lps/me/link-address", post(link_address))
         .route("/lps/me/submit", post(submit_my_lp))
         .route("/lps/{id}", get(get_lp))
         .route("/lps/{id}/documents/{doc}/review", post(review_document))
@@ -431,11 +537,21 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
 
 // ── Handlers: trustee ────────────────────────────────────────────────────────
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct LpsQuery {
+    /// Wire matching: return only the LP the issued `PL-…` reference belongs to
+    /// (`lps: []` when it was never issued). Case, hyphens and whitespace are ignored; a blank
+    /// value is treated as absent and returns every LP.
+    pub payment_details: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/v1/lps",
+    params(LpsQuery),
     responses(
-        (status = 200, description = "All registered LPs, newest first", body = LpsResponse),
+        (status = 200, description = "All registered LPs, newest first; with a non-blank `payment_details`, only the LP that reference was issued to", body = LpsResponse),
+        (status = 400, description = "Malformed `payment_details`"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
     ),
@@ -445,9 +561,22 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
 async fn list_lps(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
+    Query(query): Query<LpsQuery>,
 ) -> Result<Json<LpsResponse>, ApiError> {
     require_trustee(&claims)?;
-    let lps = state.lp_repo.list().await?;
+    let lps = match query
+        .payment_details
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+    {
+        None => state.lp_repo.list().await?,
+        Some(raw) => {
+            match lp_id_for_payment_details(&state.lp_requested_bank_details_repo, raw).await? {
+                None => Vec::new(),
+                Some(lp_id) => state.lp_repo.find(lp_id).await?.into_iter().collect(),
+            }
+        }
+    };
     Ok(Json(LpsResponse {
         lps: lps.into_iter().map(LpSummary::from).collect(),
     }))
@@ -479,7 +608,7 @@ async fn get_lp(
         .find(id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
-    Ok(Json(with_documents(&state, lp).await?))
+    Ok(Json(with_documents(&state, lp, LpAudience::Trustee).await?))
 }
 
 /// Approve or reject an LP's document. Trustee-only, and only while the LP
@@ -656,7 +785,9 @@ async fn decide_kyb(
         }
     }
 
-    Ok(Json(with_documents_rows(&state, row, docs).await?))
+    Ok(Json(
+        with_documents_rows(&state, row, docs, LpAudience::Trustee).await?,
+    ))
 }
 
 // ── Handlers: owner ──────────────────────────────────────────────────────────
@@ -682,7 +813,7 @@ async fn get_my_lp(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LpResponse>, ApiError> {
     let lp = my_lp(&claims, &state).await?;
-    Ok(Json(with_documents(&state, lp).await?))
+    Ok(Json(with_documents(&state, lp, LpAudience::Owner).await?))
 }
 
 /// Register or update the caller's LP.
@@ -707,9 +838,9 @@ async fn get_my_lp(
     responses(
         (status = 200, description = "LP updated, or only notify_on_review updated", body = LpResponse),
         (status = 201, description = "LP registered", body = LpResponse),
-        (status = 400, description = "legal_name or contact_email empty, or a field over its length limit"),
+        (status = 400, description = "legal_name or contact_email empty, a field over its length limit, or an invalid settlement_bank_account (the message names the field, never the value)"),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 409, description = "The LP is frozen and the submitted profile differs from the stored one"),
+        (status = 409, description = "The LP is frozen and the submitted profile or settlement bank account differs from the stored one"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -736,7 +867,7 @@ async fn upsert_my_lp(
             == UpsertOutcome::Refuse
         {
             return Err(ApiError::Conflict(format!(
-                "this LP is {} and its profile can no longer be changed; \
+                "this LP is {} and its profile and settlement bank account can no longer be changed; \
                  notify_on_review may still be updated",
                 lp.kyb_status
             )));
@@ -753,12 +884,13 @@ async fn upsert_my_lp(
             claims.chain_id,
             claims.chain_id.map(|_| claims.sub.as_str()),
             req.notify_on_review,
+            profile.bank_account.as_ref(),
         )
         .await?
         .ok_or_else(|| {
             ApiError::Conflict(
-                "this LP was frozen before the change was applied, and the submitted profile \
-                 differs from the stored one"
+                "this LP was frozen before the change was applied, and the submitted profile or \
+                 settlement bank account differs from the stored one"
                     .to_owned(),
             )
         })?;
@@ -773,7 +905,11 @@ async fn upsert_my_lp(
     } else {
         StatusCode::OK
     };
-    Ok((status, Json(with_documents(&state, lp).await?)).into_response())
+    Ok((
+        status,
+        Json(with_documents(&state, lp, LpAudience::Owner).await?),
+    )
+        .into_response())
 }
 
 /// Append documents to the caller's LP.
@@ -833,7 +969,7 @@ async fn upload_my_documents(
         ApiError::Internal(anyhow::anyhow!("LP {} vanished during upload", lp.id))
     })?;
     let body = UploadDocumentsResponse {
-        lp: with_documents(&state, refreshed).await?,
+        lp: with_documents(&state, refreshed, LpAudience::Owner).await?,
         files: results,
     };
 
@@ -904,85 +1040,6 @@ async fn delete_my_document(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Sets or replaces the LP's settlement address; refused outright at `Failed`,
-/// and at `Passed` only when the LP already holds an address (see
-/// [`KybStatus::allows_address_write`]).
-///
-/// Deliberately not folded into [`upsert_my_lp`]: this endpoint is exempt from
-/// [`guard_writable`]'s freeze — the address is not evidence a review decision
-/// was made about, so it stays settable while the profile is frozen (e.g.
-/// `UnderReview`). `Failed` closes both, but for independent reasons: the
-/// profile because the verdict is final, the address because the column is
-/// UNIQUE across LPs and a refused applicant left writable could burn a real
-/// LP's address. Do not add a `guard_writable` call here; that would remove
-/// the exemption the rule depends on.
-#[utoipa::path(
-    post,
-    path = "/v1/lps/me/link-address",
-    request_body = LinkAddressRequest,
-    responses(
-        (status = 200, description = "Address linked", body = LpResponse),
-        (status = 400, description = "stellar_address is not a valid Strkey"),
-        (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "This LP was refused at KYB, or has passed and its address is fixed, or stellar_address belongs to another LP"),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "Lps"
-)]
-async fn link_address(
-    AuthClaims(claims): AuthClaims,
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<LinkAddressRequest>,
-) -> Result<Json<LpResponse>, ApiError> {
-    let stellar_address = validate_stellar_address("stellar_address", req.stellar_address)
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-
-    let lp = my_lp(&claims, &state).await?;
-
-    let status =
-        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
-    if !status.allows_address_write(lp.stellar_address.is_some()) {
-        return Err(ApiError::Conflict(match status {
-            KybStatus::Failed => format!(
-                "LP {} was refused at KYB and cannot set a settlement address",
-                lp.id
-            ),
-            _ => format!(
-                "LP {} has passed KYB; its settlement address is fixed",
-                lp.id
-            ),
-        }));
-    }
-
-    let linked = state
-        .lp_repo
-        .link_address(lp.id, &stellar_address)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                return ApiError::Conflict(format!(
-                    "stellar_address `{stellar_address}` is already linked to another LP"
-                ));
-            }
-            ApiError::from(e)
-        })?;
-    if !linked {
-        return Err(ApiError::Conflict(format!(
-            "LP {} is no longer eligible to set a settlement address",
-            lp.id
-        )));
-    }
-
-    let row = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
-        ApiError::Internal(anyhow::anyhow!(
-            "LP {} vanished immediately after linking",
-            lp.id
-        ))
-    })?;
-    Ok(Json(with_documents(&state, row).await?))
-}
-
 /// Submit the caller's LP for trustee review. Legal only from `NotStarted` or
 /// `ChangesRequested` ([`KybStatus::SUBMITTABLE`]) — **not** `InProgress`,
 /// which is writable but unreachable and therefore never submittable. Refused
@@ -1029,7 +1086,7 @@ async fn submit_my_lp(
             lp.id
         ))
     })?;
-    Ok(Json(with_documents(&state, row).await?))
+    Ok(Json(with_documents(&state, row, LpAudience::Owner).await?))
 }
 
 // ── Upload plumbing ──────────────────────────────────────────────────────────
@@ -1326,19 +1383,10 @@ async fn store_one(state: &AppState, lp_id: i64, file: UploadedFile) -> FileResu
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        return Ok(());
-    }
-    Err(ApiError::Forbidden(format!(
-        "this endpoint requires the `{TRUSTEE_ROLE}` role"
-    )))
-}
-
 /// The caller's LP, or `404`. Replaces the old `lp_owner_guard`: with the owner
 /// routes keyed on `/me`, ownership is not something to check after the fact —
 /// the lookup is by `owner_account_id`, so a caller can only ever reach its own.
-async fn my_lp(claims: &Claims, state: &AppState) -> Result<LpRow, ApiError> {
+pub(crate) async fn my_lp(claims: &Claims, state: &AppState) -> Result<LpRow, ApiError> {
     state
         .lp_repo
         .find_by_owner_account_id(claims.account_id)
@@ -1362,15 +1410,20 @@ fn guard_writable(lp: &LpRow) -> Result<(), ApiError> {
 /// A presigning failure degrades that one document to `download_url: null`
 /// rather than failing the read — the rest of the record is still useful, and
 /// the client can retry.
-async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
+pub(crate) async fn with_documents(
+    state: &AppState,
+    lp: LpRow,
+    audience: LpAudience,
+) -> Result<LpResponse, ApiError> {
     let rows = state.kyb_document_repo.list_for_lp(lp.id).await?;
-    with_documents_rows(state, lp, rows).await
+    with_documents_rows(state, lp, rows, audience).await
 }
 
 async fn with_documents_rows(
     state: &AppState,
     lp: LpRow,
     rows: Vec<KybDocumentRow>,
+    audience: LpAudience,
 ) -> Result<LpResponse, ApiError> {
     let mut documents = Vec::with_capacity(rows.len());
     for row in rows {
@@ -1392,7 +1445,14 @@ async fn with_documents_rows(
         };
         documents.push(DocumentResponse::new(row, url));
     }
-    Ok(LpResponse::new(lp, documents))
+    let pending = pending_bank_deposits_field(
+        lp.id,
+        state
+            .lp_bank_deposit_repo
+            .pending_bank_deposits_for_lp(lp.id)
+            .await,
+    );
+    Ok(LpResponse::new(lp, documents, pending, audience))
 }
 
 /// An LP's documents as `(id, status)` pairs, for [`submit_blockers`] and
@@ -1438,6 +1498,7 @@ pub struct ValidatedProfile<'a> {
     pub legal_name: &'a str,
     pub country: Option<&'a str>,
     pub contact_email: &'a str,
+    pub bank_account: Option<SettlementBankAccount>,
 }
 
 /// Check the profile half of an upsert. `country` collapses blank to `None`, so
@@ -1478,6 +1539,12 @@ pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, 
     if let Some(country) = form.country.as_deref() {
         bounded("country", country.trim(), MAX_COUNTRY_LEN)?;
     }
+    let bank_account = form
+        .settlement_bank_account
+        .as_ref()
+        .map(bank_account::normalize)
+        .transpose()
+        .map_err(|e| ApiError::BadRequest(format!("settlement_bank_account.{e}")))?;
     Ok(ValidatedProfile {
         legal_name,
         country: form
@@ -1486,6 +1553,7 @@ pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, 
             .map(str::trim)
             .filter(|c| !c.is_empty()),
         contact_email,
+        bank_account,
     })
 }
 
@@ -1497,6 +1565,7 @@ pub struct StoredProfile<'a> {
     pub legal_name: &'a str,
     pub country: Option<&'a str>,
     pub contact_email: &'a str,
+    pub bank_account: Option<&'a SettlementBankAccount>,
 }
 
 impl<'a> From<&'a LpRow> for StoredProfile<'a> {
@@ -1505,6 +1574,7 @@ impl<'a> From<&'a LpRow> for StoredProfile<'a> {
             legal_name: &row.legal_name,
             country: row.country.as_deref(),
             contact_email: &row.contact_email,
+            bank_account: row.settlement_bank_account.as_ref().map(|j| &j.0),
         }
     }
 }
@@ -1535,6 +1605,10 @@ pub fn profile_is_unchanged(stored: StoredProfile<'_>, submitted: &ValidatedProf
     stored.legal_name == submitted.legal_name
         && stored.country == submitted.country
         && stored.contact_email == submitted.contact_email
+        && submitted
+            .bank_account
+            .as_ref()
+            .is_none_or(|b| stored.bank_account == Some(b))
 }
 
 /// The narrowed freeze in one place (spec § Review Notifications). Restated,

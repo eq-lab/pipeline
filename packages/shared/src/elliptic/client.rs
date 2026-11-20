@@ -14,7 +14,7 @@ pub struct EllipticClient {
 impl EllipticClient {
     pub fn new(settings: EllipticSettings) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http_client::http_client(),
             settings,
         }
     }

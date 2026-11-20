@@ -11,7 +11,12 @@ import {
   SegmentedTabs,
   useCopyToClipboard,
 } from "@pipeline/ui";
-import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
+import {
+  useDepositFlow,
+  useWalletView,
+  useConnectModal,
+  useWalletPresence,
+} from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import {
@@ -95,6 +100,7 @@ function Deposit() {
   const amountBig = parseUsdc(amountInput, lastDecimals);
 
   // ── Flow adapter ──────────────────────────────────────────────────────
+  const { isConnectionPending } = useWalletPresence();
   const flow = useDepositFlow(
     direction,
     amountBig,
@@ -577,7 +583,7 @@ function Deposit() {
                 flow={flow}
                 tabs={withdrawTabs}
                 onSwap={onSwap}
-                connectBanner={connectWalletBanner}
+                connectBanner={isConnectionPending ? null : connectWalletBanner}
                 onShowErrorDetails={setErrorDialog}
               />
             ) : (
@@ -682,6 +688,17 @@ function Deposit() {
                   />
                 )}
 
+                {isDeposit &&
+                  !flow.exceedsBalance &&
+                  flow.minDeposit !== undefined &&
+                  amountBig > 0n &&
+                  amountBig < flow.minDeposit && (
+                    <InlineError
+                      message={`Minimum deposit is ${flow.minChipLabel.replace(" (Min)", "")}`}
+                      className="self-end"
+                    />
+                  )}
+
                 {!isDeposit && flow.isConnected && (
                   <WithdrawQueueCard
                     queue={flow.withdrawQueue}
@@ -690,7 +707,7 @@ function Deposit() {
                 )}
 
                 {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
-                {!flow.isConnected ? (
+                {isConnectionPending ? null : !flow.isConnected ? (
                   connectWalletBanner
                 ) : isInitialDataLoad ? null : isStellar &&
                   flow.needsXlmFunding ? (
@@ -698,7 +715,7 @@ function Deposit() {
                 ) : isStellar &&
                   isDeposit &&
                   usdcTrustline?.needsTrustline &&
-                  flow.hasBalance === false ? (
+                  flow.isBelowMinimum ? (
                   <Card
                     variant="yellow"
                     data-testid="usdc-trustline-banner"
@@ -731,7 +748,7 @@ function Deposit() {
                       {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
                     </Button>
                   </Card>
-                ) : isDeposit && flow.hasBalance === false ? (
+                ) : isDeposit && flow.isBelowMinimum ? (
                   <Card
                     variant="yellow"
                     data-testid="low-balance-banner"

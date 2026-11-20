@@ -8,7 +8,8 @@ import type {
   SubmitLoanInput,
   SubmitLoanVariables,
 } from "@/api/useSubmitLoan";
-import { DEFAULT_TARGET_CHAIN_ID, TARGET_CHAINS } from "@/lib/targetChains";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
+import type { ServedTargetChains } from "@/lib/targetChains";
 
 // ── Field model ───────────────────────────────────────────────────────────────
 
@@ -39,15 +40,7 @@ export const FORM_SECTIONS: SectionDef[] = [
         path: TARGET_CHAIN_FIELD,
         label: "Target chain",
         required: true,
-        options: TARGET_CHAINS.map((chain) => ({
-          value: String(chain.id),
-          label: chain.label,
-        })),
-      },
-      {
-        path: "to",
-        label: "Mint to (address on the target chain)",
-        required: true,
+        options: [],
       },
       { path: "metadata_uri", label: "Metadata URI", required: true },
       {
@@ -57,6 +50,7 @@ export const FORM_SECTIONS: SectionDef[] = [
       },
       { path: "originator", label: "Originator", required: true },
       { path: "borrower_id", label: "Borrower", required: true },
+      { path: "data_room_id", label: "Data room ID", required: true },
       { path: "commodity", label: "Commodity", required: true },
       { path: "corridor", label: "Corridor", required: true },
       { path: "governing_law", label: "Governing law", required: true },
@@ -111,39 +105,6 @@ export const FORM_SECTIONS: SectionDef[] = [
       {
         path: "economics.original_maturity_date",
         label: "Maturity date (unix seconds)",
-        required: true,
-        numeric: true,
-      },
-    ],
-  },
-  {
-    title: "Collateral",
-    fields: [
-      {
-        path: "initial_ccr",
-        label: "Initial CCR (1e6-scaled, min 1000000)",
-        required: true,
-        numeric: true,
-      },
-      {
-        path: "initial_location.location_type",
-        label: "Location type (Vessel / Warehouse / TankFarm / Other)",
-        required: true,
-      },
-      {
-        path: "initial_location.location_identifier",
-        label: "Location identifier",
-        required: true,
-        placeholder: "IMO 9834521",
-      },
-      {
-        path: "initial_location.tracking_url",
-        label: "Tracking URL",
-        required: true,
-      },
-      {
-        path: "initial_location.updated_at",
-        label: "Location updated at (unix seconds)",
         required: true,
         numeric: true,
       },
@@ -211,7 +172,7 @@ const ALL_FIELDS: FieldDef[] = FORM_SECTIONS.flatMap((s) => s.fields);
 export function emptyFormValues(): Record<string, string> {
   return {
     ...Object.fromEntries(ALL_FIELDS.map((f) => [f.path, ""])),
-    [TARGET_CHAIN_FIELD]: String(DEFAULT_TARGET_CHAIN_ID),
+    [TARGET_CHAIN_FIELD]: "",
   };
 }
 
@@ -233,13 +194,23 @@ function readPath(root: unknown, path: string): unknown {
   }, root);
 }
 
-export function parseSubmissionJson(text: string): ParsedSubmissionJson {
+export function parseSubmissionJson(
+  text: string,
+  targetChainIds: ReadonlyArray<number>,
+): ParsedSubmissionJson {
   let root: unknown;
   try {
     root = JSON.parse(text);
   } catch {
     return { ok: false, error: "Not valid JSON — nothing was imported." };
   }
+  return parseSubmissionObject(root, targetChainIds);
+}
+
+export function parseSubmissionObject(
+  root: unknown,
+  targetChainIds: ReadonlyArray<number>,
+): ParsedSubmissionJson {
   if (typeof root !== "object" || root === null || Array.isArray(root)) {
     return {
       ok: false,
@@ -256,10 +227,11 @@ export function parseSubmissionJson(text: string): ParsedSubmissionJson {
         ? String(raw)
         : undefined;
     if (field.options) {
-      if (
-        candidate !== undefined &&
-        field.options.some((option) => option.value === candidate)
-      ) {
+      const offered =
+        field.path === TARGET_CHAIN_FIELD
+          ? targetChainIds.map(String)
+          : field.options.map((option) => option.value);
+      if (candidate !== undefined && offered.includes(candidate)) {
         values[field.path] = candidate;
       }
     } else if (candidate !== undefined) {
@@ -282,6 +254,39 @@ export function parseSubmissionJson(text: string): ParsedSubmissionJson {
   }
 
   return { ok: true, values, documents, missingFields };
+}
+
+export interface SubmissionPrefill {
+  values: Record<string, string>;
+  documents: LoanDocumentInput[];
+  missingFields: string[];
+}
+
+export function prefillFromSubmission(
+  submission: SubmissionView,
+): SubmissionPrefill {
+  const chainId = submission.target_chain_id;
+  const parsed = parseSubmissionObject(
+    submission.loan_data,
+    chainId == null ? [] : [chainId],
+  );
+  const chainValue = chainId == null ? "" : String(chainId);
+  if (!parsed.ok) {
+    return {
+      values: { ...emptyFormValues(), [TARGET_CHAIN_FIELD]: chainValue },
+      documents: [],
+      missingFields: ALL_FIELDS.filter((f) => f.required).map((f) => f.path),
+    };
+  }
+  return {
+    values: {
+      ...emptyFormValues(),
+      ...parsed.values,
+      [TARGET_CHAIN_FIELD]: chainValue,
+    },
+    documents: parsed.documents ?? [],
+    missingFields: parsed.missingFields,
+  };
 }
 
 // ── Form → request payload ────────────────────────────────────────────────────
@@ -325,8 +330,8 @@ export function buildSubmitLoanInput(
     ok: true,
     chainId: Number.parseInt(get(TARGET_CHAIN_FIELD), 10),
     input: {
-      to: get("to"),
       metadata_uri: get("metadata_uri"),
+      data_room_id: get("data_room_id"),
       originator: get("originator"),
       borrower_id: get("borrower_id"),
       commodity: get("commodity"),
@@ -346,13 +351,6 @@ export function buildSubmitLoanInput(
         senior_interest_rate_bps: num("economics.senior_interest_rate_bps"),
         origination_date: num("economics.origination_date"),
         original_maturity_date: num("economics.original_maturity_date"),
-      },
-      initial_ccr: num("initial_ccr"),
-      initial_location: {
-        location_type: get("initial_location.location_type"),
-        location_identifier: get("initial_location.location_identifier"),
-        tracking_url: get("initial_location.tracking_url"),
-        updated_at: num("initial_location.updated_at"),
       },
       collateral_valuation: {
         valuation_mode: get("collateral_valuation.valuation_mode"),
@@ -382,14 +380,36 @@ export interface OriginationNewForm {
   importWarning: string[] | null;
   importFromJson: (text: string) => string | null;
   fieldErrors: Record<string, string>;
+  targetChainOptions: ReadonlyArray<{ value: string; label: string }>;
   buildForSubmit: () => SubmitLoanVariables | null;
 }
 
-export function useOriginationNewForm(): OriginationNewForm {
-  const [values, setValues] = useState<Record<string, string>>(emptyFormValues);
-  const [documents, setDocuments] = useState<LoanDocumentInput[]>([]);
+export function useOriginationNewForm(
+  targetChains: Pick<ServedTargetChains, "options" | "defaultChainId">,
+  initial?: { values: Record<string, string>; documents: LoanDocumentInput[] },
+): OriginationNewForm {
+  const [storedValues, setValues] = useState<Record<string, string>>(
+    () => initial?.values ?? emptyFormValues(),
+  );
+  const [documents, setDocuments] = useState<LoanDocumentInput[]>(
+    () => initial?.documents ?? [],
+  );
   const [importWarning, setImportWarning] = useState<string[] | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const targetChainOptions = targetChains.options.map((option) => ({
+    value: String(option.id),
+    label: option.label,
+  }));
+  const storedTarget = storedValues[TARGET_CHAIN_FIELD] ?? "";
+  const targetChainValue = targetChainOptions.some(
+    (option) => option.value === storedTarget,
+  )
+    ? storedTarget
+    : targetChains.defaultChainId == null
+      ? ""
+      : String(targetChains.defaultChainId);
+  const values = { ...storedValues, [TARGET_CHAIN_FIELD]: targetChainValue };
 
   const setValue = (path: string, value: string) => {
     setValues((prev) => ({ ...prev, [path]: value }));
@@ -402,12 +422,14 @@ export function useOriginationNewForm(): OriginationNewForm {
   };
 
   const importFromJson = (text: string): string | null => {
-    const parsed = parseSubmissionJson(text);
+    const parsed = parseSubmissionJson(
+      text,
+      targetChains.options.map((option) => option.id),
+    );
     if (!parsed.ok) return parsed.error;
-    setValues((prev) => ({
+    setValues(() => ({
       ...emptyFormValues(),
-      [TARGET_CHAIN_FIELD]:
-        prev[TARGET_CHAIN_FIELD] ?? String(DEFAULT_TARGET_CHAIN_ID),
+      [TARGET_CHAIN_FIELD]: targetChainValue,
       ...parsed.values,
     }));
     setDocuments(parsed.documents ?? []);
@@ -440,6 +462,7 @@ export function useOriginationNewForm(): OriginationNewForm {
     importWarning,
     importFromJson,
     fieldErrors,
+    targetChainOptions,
     buildForSubmit,
   };
 }

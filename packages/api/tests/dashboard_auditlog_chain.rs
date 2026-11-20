@@ -8,8 +8,8 @@ use bigdecimal::BigDecimal;
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::routes::audit_log::{self, build_response, format_action, AuditLogDoc};
 use pipeline_api::routes::dashboard::{
-    self, chain_yield_deltas, compute_summary, compute_tvl_history, compute_yield_history,
-    merge_flows, merge_yield_deltas, DashboardDoc,
+    self, chain_yield_deltas, chain_yield_deltas_counting_recoveries, compute_summary,
+    compute_tvl_history, compute_yield_history, merge_flows, merge_yield_deltas, DashboardDoc,
 };
 use pipeline_api::AppState;
 use serde_json::{json, Value};
@@ -55,6 +55,14 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        minter_addresses: HashMap::new(),
+        capital_allocation_from_minter: std::collections::HashSet::new(),
+        withdrawal_queue_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
+        security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -83,6 +91,11 @@ fn make_test_state() -> AppState {
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         lp_bank_deposit_repo: shared::lp_bank_deposit_repo::LpBankDepositRepo::new(pool.clone()),
+        system_configuration_repo: shared::system_configuration_repo::SystemConfigurationRepo::new(
+            pool.clone(),
+        ),
+        lp_requested_bank_details_repo:
+            shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
         object_store: shared::object_store::ObjectStore::new(
             "test-key",
@@ -765,6 +778,27 @@ fn allow_list_has_the_new_events_and_not_deal_token_transfer() {
         "YieldMinted",
         "LoanCCRUpdated",
         "LoanLocationUpdated",
+        "SecurityRecordRegistered",
+        "SecurityRecordPerfected",
+        "SecurityRecordHandedOver",
+        "SecurityRecordAttested",
+        "SecurityDocAdded",
+        "SecurityRecordReleased",
+        "SecurityMandateBreach",
+        "SecurityEnforcementStarted",
+        "SecurityRecordEnforced",
+        "SecurityTermsSet",
+        "SecurityRevalued",
+        "SecurityMarginCall",
+        "SecurityPriceStale",
+        "SecurityMarginCallCured",
+        "SecurityInspectionRecorded",
+        "SecurityInspectionApproved",
+        "SecurityFlagResolved",
+        "SecurityExtensionConsent",
+        "SecurityInspectorsSet",
+        "SecurityRegistryPaused",
+        "SecurityRegistryUnpaused",
     ] {
         assert!(audit_log::AUDIT_EVENT_NAMES.contains(&name), "{name}");
     }
@@ -914,7 +948,7 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "bps": 1500 }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Haircut set — 1500 bps");
+    assert_eq!(a, "Haircut set — 1500 bps (legacy collateral registry)");
     assert_eq!(d["bps"], "1500");
 
     let (a, _) = act(
@@ -931,7 +965,7 @@ fn collateral_registry_events_render_on_both_arms() {
     let stellar = json!({ "loan_id": "7", "lot_id": "2", "value_per_unit": "10000000", "benchmark": "PAR", "report_hash": "ab" });
     assert_eq!(
         act("Revalued", stellar, ChainKind::Stellar).0,
-        "Collateral revalued — $1.000000/unit (PAR)"
+        "Collateral revalued — $1.000000/unit (PAR) (legacy collateral registry)"
     );
 
     let located = json!({
@@ -941,11 +975,12 @@ fn collateral_registry_events_render_on_both_arms() {
     let (a, d) = act("StageUpdated", located, ChainKind::Evm);
     assert_eq!(a, "Lot stage updated → InStorage");
     assert_eq!(d["location"]["identifier"], "W1");
-    let (_, d) = act(
+    let (a, d) = act(
         "StageUpdated",
         json!({ "loan_id": "7", "lot_id": "2", "stage": "Sold", "location": null }),
         ChainKind::Stellar,
     );
+    assert_eq!(a, "Lot stage updated → Sold (legacy collateral registry)");
     assert_eq!(d["location"], Value::Null);
 
     let (a, d) = act(
@@ -961,7 +996,7 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "kind": "Assay", "hash": "ab" }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Document added — Assay");
+    assert_eq!(a, "Document added — Assay (legacy collateral registry)");
     assert_eq!(d["hash"], "ab");
 
     let evm = json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "5000000", "new_quantity": "4000000", "reason": "shrink", "hash": "ab" });
@@ -971,7 +1006,7 @@ fn collateral_registry_events_render_on_both_arms() {
     let stellar = json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "50000000", "new_quantity": "40000000", "reason": "shrink", "hash": "ab" });
     assert_eq!(
         act("QuantityAdjusted", stellar, ChainKind::Stellar).0,
-        "Quantity adjusted — 5.000000 → 4.000000"
+        "Quantity adjusted — 5.000000 → 4.000000 (legacy collateral registry)"
     );
 
     let (a, d) = act(
@@ -979,7 +1014,10 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "quantity": "10000000", "reason": "Payment", "ref_hash": "ab" }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Collateral released — Payment");
+    assert_eq!(
+        a,
+        "Collateral released — Payment (legacy collateral registry)"
+    );
     assert_eq!(d["quantity"], "1.000000");
 
     let (a, d) = act(
@@ -1000,6 +1038,186 @@ fn collateral_registry_events_render_on_both_arms() {
 }
 
 #[test]
+fn evm_collateral_registry_rows_render_byte_identically() {
+    let located = json!({
+        "loan_id": "7", "lot_id": "2", "stage": "InStorage",
+        "location": { "location_type": "Warehouse", "identifier": "W1", "tracking_url": "" },
+    });
+    let events: Vec<(&str, Value)> = vec![
+        ("Pledged", json!({ "loan_id": "7", "lot_id": "2" })),
+        (
+            "HaircutSet",
+            json!({ "loan_id": "7", "lot_id": "2", "bps": 1500 }),
+        ),
+        ("FloorSet", json!({ "loan_id": "7", "bps": 12000 })),
+        (
+            "Revalued",
+            json!({ "loan_id": "7", "lot_id": "2", "value_per_unit": "1000000", "benchmark": "PAR", "report_hash": "ab" }),
+        ),
+        ("StageUpdated", located),
+        (
+            "ControlUpdated",
+            json!({ "loan_id": "7", "lot_id": "2", "control": { "kind": "Cma", "ref": "R1" } }),
+        ),
+        (
+            "DocAdded",
+            json!({ "loan_id": "7", "lot_id": "2", "kind": "Assay", "hash": "ab" }),
+        ),
+        (
+            "QuantityAdjusted",
+            json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "5000000", "new_quantity": "4000000", "reason": "shrink", "hash": "ab" }),
+        ),
+        (
+            "Released",
+            json!({ "loan_id": "7", "lot_id": "2", "quantity": "10000000", "reason": "Payment", "ref_hash": "ab" }),
+        ),
+        (
+            "Liquidated",
+            json!({ "loan_id": "7", "lot_id": "2", "sale_id": "4", "quantity": "3000000" }),
+        ),
+        (
+            "MarginCall",
+            json!({ "loan_id": "7", "coverage_bps": 9000, "floor_bps": 12000 }),
+        ),
+        (
+            "LoanCCRUpdated",
+            json!({ "loan_id": "7", "new_ccr": 1_500_000 }),
+        ),
+        (
+            "CashRepaid",
+            json!({
+                "loan_id": "7", "repayment_id": "2", "sale_id": "0", "cash": "100000000",
+                "interest_minted": "5000000", "fee_shares": "400000", "value_date": "1700000000", "ref_hash": "ab",
+            }),
+        ),
+        (
+            "CashRepaymentReversed",
+            json!({ "loan_id": "7", "repayment_id": "2", "cash": "100000000", "ref_hash": "ab" }),
+        ),
+    ];
+    let rows: Vec<AuditLogRow> = events
+        .into_iter()
+        .enumerate()
+        .map(|(i, (name, params))| {
+            let i = i as i64;
+            log_row(
+                i + 1,
+                1,
+                (1_700_000_000 - 60 * i, 100 - i, 0),
+                name,
+                Some("7"),
+                params,
+            )
+        })
+        .collect();
+    let resp = build_response(rows, &[EVM]);
+
+    let expected_rows: Vec<(&str, &str, Value)> = vec![
+        ("Pledged", "Collateral pledged", json!({ "lot_id": "2" })),
+        (
+            "HaircutSet",
+            "Haircut set — 1500 bps",
+            json!({ "lot_id": "2", "bps": "1500" }),
+        ),
+        (
+            "FloorSet",
+            "Coverage floor set — 12000 bps",
+            json!({ "bps": "12000" }),
+        ),
+        (
+            "Revalued",
+            "Collateral revalued — $1.000000/unit (PAR)",
+            json!({ "lot_id": "2", "value_per_unit": "1.000000", "benchmark": "PAR", "report_hash": "ab" }),
+        ),
+        (
+            "StageUpdated",
+            "Lot stage updated → InStorage",
+            json!({ "lot_id": "2", "stage": "InStorage", "location": { "location_type": "Warehouse", "identifier": "W1", "tracking_url": "" } }),
+        ),
+        (
+            "ControlUpdated",
+            "Lot control updated → Cma",
+            json!({ "lot_id": "2", "control": { "kind": "Cma", "ref": "R1" } }),
+        ),
+        (
+            "DocAdded",
+            "Document added — Assay",
+            json!({ "lot_id": "2", "kind": "Assay", "hash": "ab" }),
+        ),
+        (
+            "QuantityAdjusted",
+            "Quantity adjusted — 5.000000 → 4.000000",
+            json!({ "lot_id": "2", "old_quantity": "5.000000", "new_quantity": "4.000000", "reason": "shrink", "hash": "ab" }),
+        ),
+        (
+            "Released",
+            "Collateral released — Payment",
+            json!({ "lot_id": "2", "quantity": "10.000000", "reason": "Payment", "ref_hash": "ab" }),
+        ),
+        (
+            "Liquidated",
+            "Collateral liquidated",
+            json!({ "lot_id": "2", "sale_id": "4", "quantity": "3.000000" }),
+        ),
+        (
+            "MarginCall",
+            "Margin call — coverage 9000 bps vs floor 12000 bps",
+            json!({ "coverage_bps": "9000", "floor_bps": "12000" }),
+        ),
+        (
+            "LoanCCRUpdated",
+            "CCR written on-chain",
+            json!({ "new_ccr": 1_500_000 }),
+        ),
+        (
+            "CashRepaid",
+            "Cash repaid — $100.000000",
+            json!({ "repayment_id": "2", "sale_id": "0", "value_date": "1700000000", "fee_shares": "400000", "cash": "100.000000", "interest_minted": "5.000000" }),
+        ),
+        (
+            "CashRepaymentReversed",
+            "Cash repayment reversed — $100.000000",
+            json!({ "repayment_id": "2", "cash": "100.000000" }),
+        ),
+    ];
+    let stamps = [
+        "2023-11-14T22:13:20Z",
+        "2023-11-14T22:12:20Z",
+        "2023-11-14T22:11:20Z",
+        "2023-11-14T22:10:20Z",
+        "2023-11-14T22:09:20Z",
+        "2023-11-14T22:08:20Z",
+        "2023-11-14T22:07:20Z",
+        "2023-11-14T22:06:20Z",
+        "2023-11-14T22:05:20Z",
+        "2023-11-14T22:04:20Z",
+        "2023-11-14T22:03:20Z",
+        "2023-11-14T22:02:20Z",
+        "2023-11-14T22:01:20Z",
+        "2023-11-14T22:00:20Z",
+    ];
+    let items: Vec<Value> = expected_rows
+        .into_iter()
+        .zip(stamps)
+        .map(|((name, action, details), ts)| {
+            json!({
+                "chain_id": 1,
+                "timestamp": ts,
+                "action": action,
+                "scope": { "loan_id": "7", "label": "Loan #7" },
+                "reference": "",
+                "event_name": name,
+                "details": details,
+            })
+        })
+        .collect();
+    assert_eq!(
+        serde_json::to_value(&resp).unwrap(),
+        json!({ "items": items })
+    );
+}
+
+#[test]
 fn deal_token_factory_events_render_on_both_arms() {
     let (a, d) = act(
         "DealRegistered",
@@ -1008,6 +1226,23 @@ fn deal_token_factory_events_render_on_both_arms() {
     );
     assert_eq!(a, "Deal tokens registered");
     assert_eq!(d["cargo"], "0xC");
+
+    let (a, d) = act(
+        "DealRegistered",
+        json!({ "loan_id": "7", "debt": "0xD", "cargo": null }),
+        ChainKind::Evm,
+    );
+    assert_eq!(a, "Deal tokens registered");
+    assert_eq!(d, json!({ "debt": "0xD", "cargo": null }));
+
+    for params in [
+        json!({ "loan_id": "7", "debt": "CD", "cargo": null }),
+        json!({ "loan_id": "7", "debt": "CD" }),
+    ] {
+        let (a, d) = act("DealRegistered", params, ChainKind::Stellar);
+        assert_eq!(a, "Deal tokens registered");
+        assert_eq!(d, json!({ "debt": "CD", "cargo": null }));
+    }
 
     let evm = json!({ "loan_id": "7", "target": "9000000", "previous": "8000000", "minted": "1000000", "clawed": "0" });
     let (a, d) = act("DebtSynced", evm, ChainKind::Evm);
@@ -1228,4 +1463,103 @@ fn negative_cash_amounts_put_the_sign_before_the_dollar() {
         ChainKind::Stellar,
     );
     assert_eq!(a, "Cash recorded — Fee -$12.340000");
+}
+
+fn mixed_yield_fixture() -> (Vec<YieldMintRow>, Vec<RepaymentMintRow>) {
+    let carved = |loan: i64, day: i64, interest: i64, reversed: Option<i64>| RepaymentMintRow {
+        carved_out: true,
+        ..loan_repaid(loan, day, interest, None, reversed)
+    };
+    (
+        vec![legacy_mint(1, 5)],
+        vec![
+            loan_repaid(1, 2, 100_000_000, None, None),
+            carved(2, 3, 40_000_000, None),
+            loan_repaid(3, 4, 7_000_000, None, Some(6)),
+            carved(4, 5, 9_000_000, Some(7)),
+        ],
+    )
+}
+
+fn delta_vector(deltas: &[YieldMintRow]) -> Vec<(i64, BigDecimal)> {
+    deltas
+        .iter()
+        .map(|d| (d.block_timestamp / DAY, d.s_plusd_amount.clone()))
+        .collect()
+}
+
+fn expected(pairs: &[(i64, i64)]) -> Vec<(i64, BigDecimal)> {
+    pairs
+        .iter()
+        .map(|(day, amount)| (*day, BigDecimal::from(*amount)))
+        .collect()
+}
+
+#[test]
+fn evm_default_path_ignores_carved_out_rows_pinned() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas(ChainKind::Evm, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[
+            (1, 5_000_000),
+            (2, 100_000_000),
+            (4, 7_000_000),
+            (6, -7_000_000)
+        ])
+    );
+}
+
+#[test]
+fn stellar_default_path_is_unchanged_pinned() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas(ChainKind::Stellar, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[(1, 5_000_000), (2, 10_000_000), (4, 700_000), (6, -700_000)])
+    );
+}
+
+#[test]
+fn stellar_recoveries_count_at_release_and_net_at_reversal() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas_counting_recoveries(ChainKind::Stellar, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[
+            (1, 5_000_000),
+            (2, 10_000_000),
+            (3, 4_000_000),
+            (4, 700_000),
+            (5, 900_000),
+            (6, -700_000),
+            (7, -900_000),
+        ])
+    );
+    let at_release = compute_summary(&[], &[], &[], &deltas, 5 * DAY);
+    assert_eq!(at_release.cumulative_yield_total, "20.600000");
+    let after_reversals = compute_summary(&[], &[], &[], &deltas, 8 * DAY);
+    assert_eq!(after_reversals.cumulative_yield_total, "19.000000");
+}
+
+#[test]
+fn stellar_recoveries_path_with_no_rows_is_exactly_zero() {
+    let deltas = chain_yield_deltas_counting_recoveries(ChainKind::Stellar, &[], &[]);
+    assert!(deltas.is_empty());
+    let summary = compute_summary(&[], &[], &[], &deltas, 8 * DAY);
+    assert_eq!(summary.cumulative_yield_total, "0.000000");
+}
+
+#[test]
+fn recoveries_path_without_carved_rows_equals_default_path() {
+    let repaid = vec![
+        loan_repaid(1, 2, 100_000_000, Some(3_000_000), None),
+        loan_repaid(2, 3, 7_000_000, None, Some(5)),
+    ];
+    for kind in [ChainKind::Evm, ChainKind::Stellar] {
+        assert_eq!(
+            delta_vector(&chain_yield_deltas(kind, &[], &repaid)),
+            delta_vector(&chain_yield_deltas_counting_recoveries(kind, &[], &repaid))
+        );
+    }
 }

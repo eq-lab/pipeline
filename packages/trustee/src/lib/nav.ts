@@ -1,9 +1,4 @@
-/**
- * The six Trustee nav sections.
- *
- * spec: docs/frontend/trustee-flows.md#nav-sections-libnavts (Figma source,
- * #777→#786 taxonomy history, why `badgeCount` is unpopulated).
- */
+// spec: docs/frontend/trustee-flows.md#nav-sections-libnavts
 
 export interface TrusteeNavItem {
   /** TanStack Router path, e.g. "/origination". */
@@ -14,8 +9,6 @@ export interface TrusteeNavItem {
   heading: string;
   /** One-line placeholder description shown on the route body. */
   description: string;
-  /** Optional backend-served count for the nav badge; omitted = no badge. */
-  badgeCount?: number;
 }
 
 export const TRUSTEE_NAV_ITEMS: readonly TrusteeNavItem[] = [
@@ -58,7 +51,7 @@ export const TRUSTEE_NAV_ITEMS: readonly TrusteeNavItem[] = [
     navLabel: "Risk Council",
     heading: "Risk Council",
     description:
-      "RISK_COUNCIL proposals and timelock tracker (Type 3). See docs/product-specs/trustee-dashboard.md, 'Type 3 — RISK_COUNCIL proposals'. Content lands in a later sub-issue of epic #775.",
+      "Risk Council actions through the access manager: declare default, amend, write down, close, cure.",
   },
   {
     path: "/audit-log",

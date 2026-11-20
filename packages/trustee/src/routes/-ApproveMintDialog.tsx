@@ -24,6 +24,10 @@ export interface ApproveMintDialogProps {
   errorMessage: string | null;
   /** Full raw text behind `errorMessage`, for `InlineError`'s details dialog. */
   errorDetails: string | null;
+  /** Why Confirm is unavailable (the gate closed while the dialog was open), or `null`. */
+  blockedReason?: string | null;
+  /** Shown when Confirm only records the review (loan already on-chain), or `null`. */
+  notice?: string | null;
   preview: TransactionPreviewDisplay;
 }
 
@@ -38,6 +42,8 @@ export function ApproveMintDialog({
   mintingLabel,
   errorMessage,
   errorDetails,
+  blockedReason = null,
+  notice = null,
   preview,
 }: ApproveMintDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -117,6 +123,24 @@ export function ApproveMintDialog({
           </div>
         </div>
 
+        {blockedReason && (
+          <p
+            data-testid="approve-mint-blocked"
+            role="alert"
+            className="pt-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            {blockedReason}
+          </p>
+        )}
+        {!blockedReason && notice && (
+          <p
+            data-testid="approve-mint-notice"
+            className="pt-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            {notice}
+          </p>
+        )}
+
         {errorMessage && (
           <div data-testid="approve-mint-error" className="pt-[12px]">
             <InlineError
@@ -142,12 +166,12 @@ export function ApproveMintDialog({
           <button
             type="button"
             data-testid="approve-mint-confirm"
-            disabled={isSubmitting}
-            aria-disabled={isSubmitting}
+            disabled={isSubmitting || blockedReason !== null}
+            aria-disabled={isSubmitting || blockedReason !== null}
             onClick={onConfirm}
             className="h-[40px] rounded-[4px] bg-[#000080] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {mintingLabel ?? "Draw loan"}
+            {mintingLabel ?? (notice ? "Record approval" : "Draw loan")}
           </button>
         </div>
       </div>

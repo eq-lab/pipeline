@@ -18,8 +18,23 @@ export interface LpDocument {
   download_url: string | null;
 }
 
+export interface SettlementBankAccountSummary {
+  account_holder_name: string;
+  bank_name: string;
+  account_last4: string;
+}
+
+export interface SettlementBankAccountDetails {
+  account_holder_name: string;
+  bank_name: string;
+  bank_address: string | null;
+  account_number: string | null;
+  iban: string | null;
+  swift_bic_code: string | null;
+  routing_number: string | null;
+}
+
 export interface LpDetail extends LpSummary {
-  address_linked_at: string | null;
   writable: boolean;
   notify_on_review: boolean;
   kyb_submitted_at: string | null;
@@ -28,6 +43,8 @@ export interface LpDetail extends LpSummary {
   owner_chain_id: number | null;
   owner_address: string | null;
   documents: LpDocument[];
+  settlement_bank_account: SettlementBankAccountSummary | null;
+  settlement_bank_account_details?: SettlementBankAccountDetails;
 }
 
 export async function lpFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -49,10 +66,14 @@ export async function lpFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+export function fetchLp(id: number, signal?: AbortSignal): Promise<LpDetail> {
+  return lpFetch<LpDetail>(`/v1/lps/${id}`, { signal });
+}
+
 export function useLp(id: number) {
   return useQuery<LpDetail, Error>({
     queryKey: ["lp", id],
-    queryFn: ({ signal }) => lpFetch<LpDetail>(`/v1/lps/${id}`, { signal }),
+    queryFn: ({ signal }) => fetchLp(id, signal),
     enabled: Number.isSafeInteger(id) && id > 0,
     refetchInterval: 30_000,
     retry: (count, error) =>

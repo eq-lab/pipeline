@@ -1,14 +1,4 @@
-/**
- * Render tests for the Trustee Loans list route (`loans.index.tsx`, issue #843).
- *
- * `useLoanBook` is mocked so the page renders against a representative response
- * without the query layer. Asserts the heading, the five summary cards, the
- * tab-bar + per-status counts, the table rows, the pre-default (`<120%`) CCR
- * band styling, `—` on null cells, the client-side tab filter, and the
- * CCR-band footnote — plus the loading / error / empty states. Row-click now
- * navigates to `/loans/$id` with the served `loan_id` (`useNavigate` mocked;
- * the #847 in-page "fake nav" is gone).
- */
+// spec: docs/frontend/trustee-flows.md#loan-book--tables
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -28,7 +18,19 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
+vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
+import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./loans.index";
+import { lastLoanBookSearch, parseLoanBookSearch } from "./-loanBookSearch";
+const mockServed = vi.mocked(useServedTargetChains);
+const BOTH_CHAINS = {
+  options: [
+    { id: 99_000_001, label: "Stellar" },
+    { id: 560048, label: "Hoodi" },
+  ],
+  defaultChainId: 99_000_001,
+  isLoading: false,
+};
 const mockUseLoanBook = vi.mocked(useLoanBook);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -60,11 +62,6 @@ const RESPONSE: LoanBookResponse = {
       maturity: 1_785_000_000,
       next_payment_timestamp: 1_785_000_000,
       days_overdue: null,
-      spot_price: "4500.00",
-      spot_change_7d: "-0.1800",
-      collateral: "2100.000000", // displayed as served (issue #906) → $2.10K
-      ltv: null,
-      ccr_bps: 11_400, // served as-is (#888, no ÷1000) ⇒ 114% ⇒ margin-call (110–120%, #939)
       duration_days: 180,
       rate: "0.140000",
       protection: null,
@@ -88,11 +85,6 @@ const RESPONSE: LoanBookResponse = {
       maturity: 1_789_000_000,
       next_payment_timestamp: 1_789_000_000,
       days_overdue: null,
-      spot_price: null,
-      spot_change_7d: null,
-      collateral: null,
-      ltv: null,
-      ccr_bps: null,
       duration_days: 200,
       rate: "0.130000",
       protection: null,
@@ -107,7 +99,25 @@ const RESPONSE: LoanBookResponse = {
   ],
 };
 
-function renderRoute() {
+const STELLAR_ID = 99_000_001;
+
+function withLtvKeys(
+  overrides: Array<Partial<LoanBookResponse["loans"][number]>>,
+): LoanBookResponse {
+  const base = RESPONSE.loans[0]!;
+  return {
+    ...RESPONSE,
+    loans: overrides.map((o, i) => ({
+      ...base,
+      loan_id: String(5000 + i),
+      originator: `Orig ${i}`,
+      ...o,
+    })),
+  };
+}
+
+function renderRoute(search: { tab?: string; chain?: number } = {}) {
+  vi.spyOn(Route, "useSearch").mockReturnValue(search as never);
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
@@ -122,6 +132,7 @@ function ready(data: LoanBookResponse) {
 }
 
 beforeEach(() => {
+  mockServed.mockReturnValue(BOTH_CHAINS);
   mockUseLoanBook.mockReset();
   mockNavigate.mockReset();
 });
@@ -161,11 +172,7 @@ describe("Loans list route (ready)", () => {
     const headers = screen
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
-    expect(headers.slice(0, 3)).toEqual([
-      "Originator",
-      "Chain",
-      "Commodity · spot",
-    ]);
+    expect(headers.slice(0, 3)).toEqual(["Originator", "Chain", "Commodity"]);
     expect(
       screen.getByTestId("loans-chain-cell-99000001:4488"),
     ).toHaveTextContent("Stellar");
@@ -184,6 +191,80 @@ describe("Loans list route (ready)", () => {
       "all",
     );
     expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
+  });
+
+  it("restores tab and chain from the URL and writes changes back with replace", async () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(560048);
+    expect(screen.getByTestId("loans-tab-Watchlist")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId("loans-chain-filter"),
+      "all",
+    );
+    expect(mockNavigate).toHaveBeenLastCalledWith({
+      to: "/loans",
+      search: { tab: "Watchlist", chain: undefined },
+      replace: true,
+    });
+    expect(lastLoanBookSearch()).toEqual({
+      tab: "Watchlist",
+      chain: undefined,
+    });
+  });
+
+  it("remembers the restored filter for the detail page's back link", () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(lastLoanBookSearch()).toEqual({ tab: "Watchlist", chain: 560048 });
+  });
+
+  it("drops unknown tab and non-positive or non-integer chain values in validateSearch", () => {
+    expect(parseLoanBookSearch({ tab: "Watchlist", chain: "560048" })).toEqual({
+      tab: "Watchlist",
+      chain: 560048,
+    });
+    expect(parseLoanBookSearch({ tab: "Bogus", chain: "abc" })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: 1.5 })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: -1 }).chain).toBeUndefined();
+  });
+
+  it("offers only served chains in the filter, with All chains always present (#1667)", () => {
+    mockServed.mockReturnValue({
+      ...BOTH_CHAINS,
+      options: [BOTH_CHAINS.options[0]!],
+    });
+    renderRoute();
+    const select = screen.getByTestId(
+      "loans-chain-filter",
+    ) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "All chains",
+      "Stellar",
+    ]);
+  });
+
+  it("disables the filter with only All chains while the served list loads (#1667)", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: true,
+    });
+    renderRoute();
+    const select = screen.getByTestId(
+      "loans-chain-filter",
+    ) as HTMLSelectElement;
+    expect(select).toBeDisabled();
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "All chains",
+    ]);
   });
 
   it("renders the five summary cards with the Figma values", () => {
@@ -223,19 +304,26 @@ describe("Loans list route (ready)", () => {
     expect(screen.getByText("Sahel Cocoa")).toBeInTheDocument();
   });
 
-  it("shows the active (Performing) row with a margin-call orange CCR (114%)", () => {
+  it("shows the active (Performing) row without Spot, Collateral or CCR columns", () => {
     renderRoute();
     fireEvent.click(screen.getByTestId("loans-tab-Active"));
     const rows = screen.getAllByTestId("loans-row");
     expect(rows).toHaveLength(1);
     expect(screen.getByText("Delta Commodities")).toBeInTheDocument();
     expect(screen.getByText("$1.84K")).toBeInTheDocument();
-    const ccr = screen.getByTestId("loans-ccr");
-    expect(ccr).toHaveTextContent("114%");
-    // 114% is in the 110–120% margin-call band (orange) under the 4-band scheme (#939).
-    expect(ccr).toHaveAttribute("data-band", "margin-call");
-    expect(ccr).toHaveStyle({ color: "#b35900" });
-    // Nearest payment: not overdue (days_overdue null) → the date, no red (#941).
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers).toEqual([
+      "Originator",
+      "Chain",
+      "Commodity",
+      "Senior outst.",
+      "Nearest payment",
+      "Stage",
+    ]);
+    expect(screen.queryByTestId("loans-ccr")).not.toBeInTheDocument();
+    expect(screen.queryByText(/7d/)).not.toBeInTheDocument();
     expect(screen.getByTestId("loans-nearest-payment")).toHaveAttribute(
       "data-overdue",
       "false",
@@ -255,15 +343,11 @@ describe("Loans list route (ready)", () => {
     expect(nearest).toHaveStyle({ color: "#b20000" });
   });
 
-  it("filters to the Watchlist tab and renders — for the null collateral/CCR cells", () => {
+  it("filters to the Watchlist tab", () => {
     renderRoute();
     fireEvent.click(screen.getByTestId("loans-tab-Watchlist"));
     expect(screen.getByText("Sahel Cocoa")).toBeInTheDocument();
     expect(screen.queryByText("Delta Commodities")).not.toBeInTheDocument();
-    // No priced collateral and no CCR ⇒ em-dash, no CCR band chip.
-    expect(screen.queryByTestId("loans-ccr")).not.toBeInTheDocument();
-    const row = screen.getByTestId("loans-row");
-    expect(within(row).getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("shows the empty message for the (backend-unpopulated) Default tab", () => {
@@ -274,17 +358,84 @@ describe("Loans list route (ready)", () => {
     );
   });
 
-  it("renders the CCR-band footnote", () => {
+  it("hides the LTV column and footnote when the loan-book carries no LTV keys (pre-backend)", () => {
     renderRoute();
-    const footnote = screen.getByTestId("loans-footnote");
-    // The spec's 4 bands (#939): ≥130 healthy · 120–130 watchlist · 110–120 margin call · <110 hard.
-    expect(footnote).toHaveTextContent("≥130%");
-    expect(footnote).toHaveTextContent("120–130%");
-    expect(footnote).toHaveTextContent("110–120%");
-    expect(footnote).toHaveTextContent("<110%");
-    expect(footnote).toHaveTextContent("margin call");
-    expect(footnote).toHaveTextContent(
-      "Written on-chain only at threshold crossings.",
+    expect(screen.queryByText("LTV")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("loans-ltv")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("loans-footnote")).not.toBeInTheDocument();
+  });
+
+  it("hides the LTV column when every row serves the keys as null", () => {
+    ready(
+      withLtvKeys([
+        { ltv_bps: null, margin_call_open: null, price_stale: null },
+        {
+          chain_id: 560048,
+          ltv_bps: null,
+          margin_call_open: null,
+          price_stale: null,
+        },
+      ]),
+    );
+    renderRoute();
+    expect(screen.queryByText("LTV")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("loans-footnote")).not.toBeInTheDocument();
+  });
+
+  it("shows the LTV column with per-row values, flags and an EVM cell", () => {
+    ready(
+      withLtvKeys([
+        {
+          chain_id: STELLAR_ID,
+          ltv_bps: 8123,
+          margin_call_open: true,
+          price_stale: true,
+        },
+        {
+          chain_id: STELLAR_ID,
+          ltv_bps: null,
+          margin_call_open: null,
+          price_stale: null,
+        },
+        {
+          chain_id: STELLAR_ID,
+          ltv_bps: null,
+          margin_call_open: true,
+          price_stale: null,
+        },
+        {
+          chain_id: 560048,
+          ltv_bps: null,
+          margin_call_open: null,
+          price_stale: null,
+        },
+      ]),
+    );
+    renderRoute();
+    expect(
+      screen.getAllByRole("columnheader").map((h) => h.textContent),
+    ).toContain("LTV");
+    const rows = screen.getAllByTestId("loans-row");
+    const first = within(rows[0]!);
+    expect(first.getByTestId("loans-ltv")).toHaveTextContent("81.3%");
+    expect(first.getByTestId("loans-ltv")).toHaveStyle({ color: "#b20000" });
+    expect(first.getByText("Margin call")).toBeInTheDocument();
+    expect(first.getByText("Price stale")).toBeInTheDocument();
+    expect(within(rows[1]!).getByTestId("loans-ltv")).toHaveTextContent("—");
+    expect(within(rows[1]!).queryByText("Margin call")).toBeNull();
+    expect(within(rows[2]!).getByTestId("loans-ltv")).toHaveTextContent("—");
+    expect(within(rows[2]!).getByText("Margin call")).toBeInTheDocument();
+    expect(within(rows[3]!).getByTestId("loans-ltv")).toHaveTextContent("—");
+    expect(screen.getByTestId("loans-footnote")).toHaveTextContent(
+      "LTV = amount owed",
+    );
+  });
+
+  it("renders the sentinel as 'No security value', not a percentage", () => {
+    ready(withLtvKeys([{ ltv_bps: 4_294_967_295 }]));
+    renderRoute();
+    expect(screen.getByTestId("loans-ltv")).toHaveTextContent(
+      "No security value",
     );
   });
 

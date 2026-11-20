@@ -18,6 +18,8 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 3 | KYB pending, empty | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `UnderReview` | Implemented (#1423) |
 | 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Implemented (#1424) |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
+| 4a | Verified, empty (transfers unlocked) | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `Passed` | Implemented (#1819) — interim, no frame of its own |
+| 4b | Verified, staked (transfers unlocked) | wallet connected · sPLUSD > 0 (any PLUSD) · KYB `Passed` | Implemented (#1819) — interim until state 5 (#1425) |
 | 6 | KYB problem | KYB `ChangesRequested` or `Failed` (status alone — no wallet or balance condition) | Implemented (#1426) |
 | 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Implemented (#1460) |
 
@@ -44,7 +46,7 @@ wallet — EVM or Stellar, #1512) — the same input states 3/4/6 use — and th
 chart are all read from that chain. The balance inputs' conservative
 `false` defaults mean an unresolved or omitted balance keeps a sessionless visitor in state 1, not
 state 7. A connected wallet with a non-zero balance and no session is still undesigned and keeps
-falling through to state 1 until a frame exists.
+falling through to state 1 until a frame exists. In state 1 the Stake card navigates to `/stake?tab=stake` and Buy to `/deposit` (both pages show their `Connect your wallet first` row), Sell stays disabled, and sign-up stays on the Get Started promo only (#1809); while the wallet layer is still restoring a connection (`useWalletPresence().isConnectionPending`) `deriveHomeState` returns `"loading"` ahead of every branch, so a reconnecting wallet never renders state 1, state 2 or legacy (#1809).
 
 States 2–6 all presuppose an auth session — their KYB status comes from `GET /v1/lps/me`, which
 needs one.
@@ -72,13 +74,25 @@ resolves — the same in-flight shape tracked as TD-121.
 **State 4 (verified, holds PLUSD)** requires all five of: an auth session, a **connected** wallet,
 `lpRead === "loaded"`, `kyb_status === "Passed"`, and PLUSD rendering **non**-zero while sPLUSD
 renders zero at two decimal places (the same #1186 displayed-zero rule as state 3). `Passed` with
-PLUSD also display-zero, `Passed` with sPLUSD non-zero, `Passed` with no wallet connected, and a
-failed/absent LP read all fall through to `"legacy"` (an in-flight read renders `"loading"`) — none
-of these combinations is designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (TD-121), so a
-`Passed` LP who actually holds PLUSD can render briefly as `"legacy"` before the balance resolves.
-"Bank transfer unlocked" is not an independently served field — it is the
-`AddUsdCard variant="unlocked"` rendering, gated by the same `kyb_status === "Passed"` that defines
-the state itself; there is no separate "transfers unlocked" flag on `GET /v1/lps/me`.
+no wallet connected and a failed/absent LP read fall through to `"legacy"` (an in-flight read
+renders `"loading"`) — neither combination is designed. `Passed` with PLUSD also display-zero is
+state 4a and `Passed` with sPLUSD non-zero is state 4b (both #1819, below); as with state 3, an
+unresolved PLUSD balance reads as displayed-zero (TD-121), so a PLUSD holder can flash 4a first.
+
+**States 4a and 4b (verified, transfers unlocked — #1819)** make every signed-in,
+wallet-connected `Passed` LP see the "Transfers unlocked / Add Funds" card (`AddUsdCard
+variant="unlocked"`, Figma node `6701:97494`) whatever the balances (user decision 2026-11-02,
+option (a) on #1819). Both are evaluated after state 4 and before state 6 and share its gate (auth
+session, **connected** wallet, `lpRead === "loaded"`, `kyb_status === "Passed"`). **4a
+(`"passed-empty"`)** adds both balances displayed-zero and reuses state 3's composition with one
+card swap (`unlocked` for `verifying`; same reuse pattern as states 6 and 7 — no frame draws this
+combination, the card node is the reference). **4b (`"passed-staked"`)** adds sPLUSD displayed
+non-zero, any PLUSD; its designed frame is state 5 (`6701:97136`, #1425, blocked), whose compact
+"Staked PLUSD / Stake More / Unstake" card does not exist yet, so until #1425 ships it renders the
+interim compact grid (connected hero, compact Buy/Sell in balance mode when PLUSD is held, compact
+Stake, `unlocked` + Earnings) — the staked-value line and `Unstake` stay on `/stake` (TD-161).
+Compositions: [`dashboard-components.md#home-route`](../frontend/dashboard-components.md#home-route).
+"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`. `GET /v1/lps/me` does serve `pending_bank_deposits` (#1285); which card uses it is #1820's to specify.
 
 **State 6 (KYB problem)** requires only an auth session, `lpRead === "loaded"`, and
 `kyb_status` in (`"ChangesRequested"`, `"Failed"`) — **no wallet-connection condition and no
@@ -103,8 +117,8 @@ swap: the Shape B slot mounts `AddUsdCard variant="verify"` (the same card state
 `"verifying"`. `Start Verification` calls `openAddEmail()` rather than `openAccountSetup()`, because
 the latter is a no-op without a session (`AuthFlowProvider`'s `setup` is `null` until a token
 exists) — `openAddEmail()` opens the same Add email → OTP → session flow as the Account page's row
-(#1459). The Total Balance headline keeps the sPLUSD-position binding (`$0.00`, served, not a
-default — the same decision #1424 took for state 4). `Buy` and `Get PLUSD to start` both navigate to
+(#1459). The Total Balance headline is the served composite `total_balance` (#2057), `$0.00` for a zero
+wallet without history. `Buy` and `Get PLUSD to start` both navigate to
 `/deposit?direction=deposit`, exactly as they do for any connected visitor today — `/deposit` has no
 `beforeLoad` auth guard. After registering through `Start Verification`, the visitor is signed-in +
 connected + `lpRead: "absent"`, which lands in `"legacy"` (session + connected + `NotStarted` is an
@@ -113,9 +127,8 @@ undesigned combination, see the state 2 paragraph above) until that combination 
 `isConnected` alone (never on `homeState`), and this visitor already renders
 `mobileHomeState === "empty"`, the mobile reading of this exact state.
 
-Until state 5 lands, every other signed-in session renders today's pre-#1419
-wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
-`packages/frontend/src/components/homeState.ts`).
+Every other signed-in session (`Passed` + disconnected, `NotStarted` + connected, a failed LP
+read) renders the pre-#1419 layout (`deriveHomeState`'s `"legacy"` branch in `homeState.ts`).
 
 ## Heading
 
@@ -161,23 +174,20 @@ tinted `rgba(184,191,190,0.12)` with a primary-ink label, and Sell is untinted w
 label (the `--color-pipeline-ink-muted` token, not an opacity override) — scoped to this state's
 compact balance mode only; states 1–3's navy-Buy/ink-Sell pair is unchanged.
 
-In state 3 the Total Balance card keeps its served wiring — the heading is the real
-`formatBigintCurrency(splusdShares)` (which reads `$0.00` because sPLUSD is zero, a served value
-rather than a default) and the chart stays bound to `GET /v1/positions/history`. The
+In state 3 the Total Balance heading is the served composite `total_balance` (#2057; `$0.00` for a zero
+wallet without history, `—` otherwise) and the chart stays bound to `GET /v1/positions/history`. The
 `View Status` CTA on the Verifying card navigates to `/account`, per the Figma node's
 `Open Account` annotation and [kyb-lp-verification.md](./kyb-lp-verification.md), which freezes LP
 writes while `UnderReview`. The card's heading ships as `Verifying account…`; the Figma frame's
 "Veryfying account..." is a typo and is not reproduced.
 
-**State 4's Total Balance heading keeps the same sPLUSD-position binding as state 3** —
-`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — even though the
-Figma frame mocks `$1,000.00` (the PLUSD holding). No endpoint serves a combined PLUSD+sPLUSD
-total, and summing them client-side is the derived-metric the project forbids; a backend total is
-out of scope for #1424 (human decision, 2026-10-12). The sub-line below it,
+**State 4's Total Balance heading is the served composite `total_balance` (#2057)**, labelled
+`incl. PLUSD` when the API serves `plusd_balance` (the Figma frame's `$1,000.00`); `—` when none
+is served. Nothing is summed client-side. The sub-line below it,
 "Stake PLUSD or Add USD to start earning", carries two real actions in one underlined brand-navy
 sentence: "Stake PLUSD" navigates to `/stake?tab=stake`; "Add USD" opens the `FundingDetailsModal`
-(#1283) with no `details`, so all six rows render `—` — the same inert-modal decision #1282 shipped
-for `/test`, now reachable from `/` for the first time. `RecentActivityCard` needs no change: with
+(#1283), which fetches the served bank details and a payment reference (#1817), reachable from
+`/` since #1424. `RecentActivityCard` needs no change: with
 PLUSD held, `useRequests` already populates real rows and the `View All` link.
 
 Values on these cards stay backend-served: the staking APY renders exactly as `GET /v1/stats`

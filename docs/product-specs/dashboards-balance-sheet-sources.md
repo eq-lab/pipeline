@@ -20,7 +20,9 @@ for that row and never fails the panel; the row then counts as unsourced for the
 **Stellar sources:**
 
 - **PLUSD outstanding** (LIABILITY) — total PLUSD in circulation, read from Horizon:
-  `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → `balances.authorized`.
+  `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → the sum of all `balances`,
+  `contracts_amount` (e.g. PLUSD staked in the sPLUSD vault), `claimable_balances_amount` and
+  `liquidity_pools_amount`.
   The PLUSD SAC has no Soroban `total_supply()` method; Horizon `/assets` is the only
   source. Returns a Horizon human-decimal string (no SAC bigint scaling). The `1:1
 redeemable` caption is displayed on the PLUSD row. Configured via

@@ -103,9 +103,28 @@ async fn same_chunk_discovery_triggers_second_fetch() {
 }
 
 #[tokio::test]
+async fn same_chunk_discovery_debt_only() {
+    let registered = deal_registered_debt_only(U256::from(1u64), DEBT, 10, 0);
+    let mint = transfer(DEBT, Address::ZERO, HOLDER, 500, 10, 3);
+    let f = FakeFetcher::new(vec![mint, registered]);
+    let reg = Arc::new(DealTokenRegistry::new(FACTORY));
+    let logs = fetch_chunk_logs(&f, &[FACTORY], &sources(&reg), 0, 100)
+        .await
+        .unwrap();
+
+    let calls = f.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0], vec![FACTORY]);
+    assert_eq!(calls[1], vec![DEBT]);
+    assert_eq!(logs.len(), 2);
+    assert_eq!(logs[1].address(), DEBT);
+    assert_no_empty_calls(&f);
+}
+
+#[tokio::test]
 async fn seeded_registry_core_and_token_calls_are_separate() {
     let reg = Arc::new(DealTokenRegistry::new(FACTORY));
-    reg.insert_deal("1", DEBT, CARGO);
+    reg.insert_deal("1", DEBT, Some(CARGO));
     let f = FakeFetcher::new(vec![transfer(DEBT, Address::ZERO, HOLDER, 9, 20, 1)]);
     let logs = fetch_chunk_logs(&f, &[FACTORY], &sources(&reg), 0, 100)
         .await
@@ -145,7 +164,7 @@ async fn merged_logs_sorted_by_block_and_index() {
 #[test]
 fn transfer_from_unregistered_emitter_is_not_decoded() {
     let reg = DealTokenRegistry::new(FACTORY);
-    reg.insert_deal("1", DEBT, CARGO);
+    reg.insert_deal("1", DEBT, Some(CARGO));
     let log = transfer(SPLUSD, Address::ZERO, HOLDER, 1, 1, 0);
     let decoded = reg
         .lookup(&log.address())
@@ -160,7 +179,11 @@ fn token_addr(i: u64) -> Address {
 fn seeded_registry(deals: u64) -> Arc<DealTokenRegistry> {
     let reg = Arc::new(DealTokenRegistry::new(FACTORY));
     for i in 0..deals {
-        reg.insert_deal(&i.to_string(), token_addr(i * 2), token_addr(i * 2 + 1));
+        reg.insert_deal(
+            &i.to_string(),
+            token_addr(i * 2),
+            Some(token_addr(i * 2 + 1)),
+        );
     }
     reg
 }

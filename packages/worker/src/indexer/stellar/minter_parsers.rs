@@ -1,6 +1,6 @@
 // spec: docs/exec-plans/completed/issue-1480-stellar-minter-cash-events.md
 use serde_json::{json, Value};
-use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
+use stellar_xdr::curr::{Limits, ReadXdr, ScMap, ScVal};
 
 use crate::indexer::stellar::loan_registry_parsers::{
     enum_variant_name, extract_u32, extract_u32_from_map, extract_u64_from_map, get_map_entry,
@@ -10,8 +10,7 @@ use crate::indexer::stellar::parsers::{
     synthesise_log_index, StellarLog,
 };
 use crate::indexer::stellar::rpc::RawEvent;
-
-// ── Shared helpers ────────────────────────────────────────────────────────────
+use crate::stellar::scval::i128_from_parts;
 
 fn build(raw: &RawEvent, name: &str, params: Value) -> StellarLog {
     StellarLog {
@@ -48,8 +47,6 @@ fn date(raw: &RawEvent) -> Option<String> {
 fn ref_hash(raw: &RawEvent) -> Option<String> {
     extract_bytes32_from_map(&raw.value_base64, "ref_hash")
 }
-
-// ── Public parsers ────────────────────────────────────────────────────────────
 
 pub fn parse_wire_in_returned(raw: &RawEvent) -> Option<StellarLog> {
     if !matches(raw, "wire_in_returned", 2) {
@@ -216,4 +213,44 @@ pub fn parse_loss_absorbed(raw: &RawEvent) -> Option<StellarLog> {
         "pulled": amt(raw, "pulled")?,
     });
     Some(build(raw, "LossAbsorbed", params))
+}
+
+fn pool_field<'a>(pool: &'a ScMap, key: &str) -> Option<&'a ScVal> {
+    pool.0.iter().find_map(|entry| match &entry.key {
+        ScVal::Symbol(sym) if sym.0.to_utf8_string_lossy() == key => Some(&entry.val),
+        _ => None,
+    })
+}
+
+fn pool_i128(pool: &ScMap, key: &str) -> Option<String> {
+    match pool_field(pool, key)? {
+        ScVal::I128(parts) => Some(i128_from_parts(parts.hi, parts.lo).to_string()),
+        _ => None,
+    }
+}
+
+fn pool_bool(pool: &ScMap, key: &str) -> Option<bool> {
+    match pool_field(pool, key)? {
+        ScVal::Bool(v) => Some(*v),
+        _ => None,
+    }
+}
+
+pub fn parse_minter_snapshot(raw: &RawEvent) -> Option<StellarLog> {
+    if !matches(raw, "snapshot", 2) {
+        return None;
+    }
+    let ScVal::Map(Some(pool)) = get_map_entry(&raw.value_base64, "pool")? else {
+        return None;
+    };
+    let params = json!({
+        "ledger": id_topic(raw)?.to_string(),
+        "bank_cash": pool_i128(&pool, "bank_cash")?,
+        "in_flight": pool_i128(&pool, "in_flight")?,
+        "outstanding_total": pool_i128(&pool, "outstanding_total")?,
+        "unabsorbed_total": pool_i128(&pool, "unabsorbed_total")?,
+        "total_assets": pool_i128(&pool, "total_assets")?,
+        "read_failed": pool_bool(&pool, "read_failed")?,
+    });
+    Some(build(raw, "MinterSnapshot", params))
 }

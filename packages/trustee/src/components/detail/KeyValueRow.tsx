@@ -31,7 +31,7 @@ export function KeyValueRow({
           </span>
         )}
       </span>
-      <span className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]">
+      <span className="min-w-0 text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] [overflow-wrap:anywhere] text-[#262524]">
         {children}
       </span>
     </div>

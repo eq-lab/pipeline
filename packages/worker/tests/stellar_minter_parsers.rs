@@ -272,9 +272,6 @@ const SPLUSD_CONTRACT: &str = "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOT
 
 /// The routed event's stored name, or `None` when nothing claimed it.
 /// `StellarLog` is crate-private, so the name is what crosses the boundary.
-///
-/// The minter is configured under its former name — the `yield_minter_id`
-/// argument — because contracts #33 renamed `yield-minter` to `minter`.
 fn dispatched_event_name(raw: &RawEvent, minter_id: Option<&str>) -> Option<String> {
     pipeline_worker::indexer::stellar::parsers::dispatch_parser(
         raw,

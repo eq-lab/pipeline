@@ -30,9 +30,26 @@ export {
   upsertMyLp,
   uploadMyDocuments,
   deleteMyDocument,
+  getLinkAddressChallenge,
+  verifyLinkAddress,
+  getMyPaymentDetails,
 } from "./lps";
-export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
-export { useRequests, useInvalidateRequests } from "./useRequests";
+export type {
+  LpResponse,
+  LpDocument,
+  SettlementBankAccountInput,
+  SettlementBankAccountSummary,
+  LinkChallenge,
+  UploadDocumentsResponse,
+  PaymentDetailsResponse,
+} from "./lps";
+export { usePaymentDetails } from "./usePaymentDetails";
+export type {
+  PaymentDetailsRequest,
+  UsePaymentDetailsResult,
+} from "./usePaymentDetails";
+export { useRequests } from "./useRequests";
+export { useActionConfirmedRefresh } from "./activityRefresh";
 export type {
   RequestItem,
   WireInItem,

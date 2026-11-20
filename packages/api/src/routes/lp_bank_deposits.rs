@@ -1,24 +1,35 @@
-// spec: Issue #1413, epic #1269
+// spec: docs/product-specs/deposits.md#wire-matching-by-payment-reference
 
 use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::routing::get;
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, on, MethodFilter};
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
+use shared::chains::ChainKind;
 use shared::lp_bank_deposit_repo::{LpBankDepositRepo, LpBankDepositRow};
 use shared::lp_ledger_repo::LpLedgerRepo;
+use shared::lp_repo::KybStatus;
+use shared::lp_requested_bank_details_repo::{
+    InsertOutcome, IssuedReferenceLookup, IssuedReferenceRow, PaymentDetailsStore,
+};
+use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
-use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
-use crate::error::{is_unique_violation, ApiError};
+use crate::auth::{AuthClaims, SecurityAddon};
+use crate::config::ConfiguredChain;
+use crate::error::{is_foreign_key_violation, is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
+use crate::routes::common::{require_trustee, RequiredChain};
+use crate::routes::lps::my_lp;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -28,13 +39,29 @@ pub struct RecordBankDepositRequest {
     /// Plain dollar decimal string, > 0, at most 2 decimal places (e.g.
     /// `"50000.00"`) — matches `lp_bank_deposits.amount`'s `NUMERIC(20,2)`.
     pub amount: String,
-    /// The bank's reference for this wire. Required, and unique across every
-    /// deposit — it is what identifies the wire, and what `ref_hash` is taken
-    /// over. Stored trimmed.
+    /// The bank's own reference for this one wire, not the issued `PL-…`
+    /// reference. Required, and unique across every deposit — it is what
+    /// identifies the wire, and what `ref_hash` is taken over. Stored trimmed.
     pub payment_reference: String,
+    /// The issued `PL-XXXX-XXXX-XXXX` reference the LP quoted. Optional; omit it
+    /// to attribute the wire by hand; a blank value counts as omitted. Case, hyphens and
+    /// whitespace are ignored.
+    #[serde(default)]
+    pub payment_details: Option<String>,
     /// When the wire actually landed, ISO-8601 with an offset (e.g.
     /// `"2026-10-05T15:41:00Z"`). Stored, and reported back, as UTC.
     pub occurred_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MatchedReference {
+    pub payment_details: String,
+    /// `null` for a reference issued before the chain was recorded.
+    pub chain_id: Option<i64>,
+    /// `null` for a reference issued before the receiver was recorded.
+    pub receiver_address: Option<String>,
+    /// ISO-8601 UTC — when the reference was issued to the LP.
+    pub issued_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -56,10 +83,26 @@ pub struct BankDepositResponse {
     pub recorded_by: String,
     /// ISO-8601 UTC — when the row was written (`now()` at insert).
     pub created_at: String,
+    /// The issued reference this wire was matched to; `null` when the Trustee
+    /// attributed the wire by hand.
+    pub matched_reference: Option<MatchedReference>,
 }
 
 impl From<LpBankDepositRow> for BankDepositResponse {
     fn from(row: LpBankDepositRow) -> Self {
+        let matched_reference = match (
+            row.requested_bank_details_id,
+            row.matched_payment_details,
+            row.matched_issued_at,
+        ) {
+            (Some(_), Some(payment_details), Some(issued_at)) => Some(MatchedReference {
+                payment_details,
+                chain_id: row.matched_chain_id,
+                receiver_address: row.matched_receiver_address,
+                issued_at: iso_utc(&issued_at),
+            }),
+            _ => None,
+        };
         Self {
             id: row.id,
             lp_id: row.lp_id,
@@ -70,6 +113,7 @@ impl From<LpBankDepositRow> for BankDepositResponse {
             is_minted: row.is_minted,
             recorded_by: row.recorded_by,
             created_at: iso_utc(&row.created_at),
+            matched_reference,
         }
     }
 }
@@ -79,18 +123,54 @@ pub struct BankDepositsResponse {
     pub deposits: Vec<BankDepositResponse>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaymentDetailsResponse {
+    pub company_name: String,
+    pub bank_name: String,
+    pub bank_address: String,
+    pub account_number: String,
+    pub iban: String,
+    pub swift_bic_code: String,
+    pub payment_details: String,
+    pub chain_id: i64,
+    pub receiver_address: String,
+}
+
+impl PaymentDetailsResponse {
+    pub fn new(
+        details: SystemBankDetails,
+        payment_details: String,
+        chain_id: i64,
+        receiver_address: String,
+    ) -> Self {
+        Self {
+            company_name: details.company_name,
+            bank_name: details.bank_name,
+            bank_address: details.bank_address,
+            account_number: details.account_number,
+            iban: details.iban,
+            swift_bic_code: details.swift_bic_code,
+            payment_details,
+            chain_id,
+            receiver_address,
+        }
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_bank_deposits, record_bank_deposit),
+    paths(list_bank_deposits, record_bank_deposit, get_my_payment_details),
     components(schemas(
         RecordBankDepositRequest,
         BankDepositResponse,
-        BankDepositsResponse
+        MatchedReference,
+        BankDepositsResponse,
+        PaymentDetailsResponse
     )),
     modifiers(&SecurityAddon),
     tags((
         name = "LpBankDeposits",
-        description = "Per-LP record of wires received from that LP"
+        description = "Per-LP wires: where an LP sends a wire, and the record of wires received from it"
     ))
 )]
 pub struct LpBankDepositsDoc;
@@ -98,10 +178,15 @@ pub struct LpBankDepositsDoc;
 // ── Router ───────────────────────────────────────────────────────────────────
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route(
-        "/lps/{id}/bank-deposits",
-        get(list_bank_deposits).post(record_bank_deposit),
-    )
+    Router::new()
+        .route(
+            "/lps/me/payment-details",
+            on(MethodFilter::GET, get_my_payment_details).head(payment_details_head_not_allowed),
+        )
+        .route(
+            "/lps/{id}/bank-deposits",
+            get(list_bank_deposits).post(record_bank_deposit),
+        )
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -145,6 +230,7 @@ async fn list_bank_deposits(
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No LP with this id"),
         (status = 409, description = "This `payment_reference` is already recorded"),
+        (status = 422, description = "`payment_details` was never issued or was issued to another LP, `payment_reference` is itself an issued reference, or the deposit references a row that no longer exists"),
     ),
     security(("bearer_auth" = [])),
     tag = "LpBankDeposits"
@@ -158,6 +244,8 @@ async fn record_bank_deposit(
     require_trustee(&claims)?;
     let values = validate_record_bank_deposit(&payload).map_err(ApiError::BadRequest)?;
     known_lp(&state, id).await?;
+    let matched =
+        resolve_payment_details(&state.lp_requested_bank_details_repo, id, &values).await?;
 
     let mut tx = state.pool.begin().await?;
 
@@ -169,18 +257,10 @@ async fn record_bank_deposit(
         &values.ref_hash,
         values.occurred_at,
         &claims.sub,
+        matched.as_ref().map(|row| row.id),
     )
     .await
-    .map_err(|e| {
-        if is_unique_violation(&e) {
-            ApiError::Conflict(format!(
-                "a deposit with payment reference `{}` is already recorded",
-                values.payment_reference
-            ))
-        } else {
-            ApiError::from(e)
-        }
-    })?;
+    .map_err(|e| deposit_insert_error(e, &values.payment_reference))?;
 
     LpLedgerRepo::insert_deposit(
         &mut tx,
@@ -200,13 +280,59 @@ async fn record_bank_deposit(
     ))
 }
 
-fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        return Ok(());
+pub fn deposit_insert_error(e: sqlx::Error, payment_reference: &str) -> ApiError {
+    if is_unique_violation(&e) {
+        ApiError::Conflict(format!(
+            "a deposit with payment reference `{payment_reference}` is already recorded"
+        ))
+    } else if is_foreign_key_violation(&e) {
+        ApiError::UnprocessableEntity(
+            "the LP or the issued payment reference this deposit links to no longer exists; reload and retry".to_owned(),
+        )
+    } else {
+        ApiError::from(e)
     }
-    Err(ApiError::Forbidden(format!(
-        "this endpoint requires the `{TRUSTEE_ROLE}` role"
-    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/lps/me/payment-details",
+    params(RequiredChain),
+    responses(
+        (status = 200, description = "The bank details with a newly issued payment reference and the chain and receiver address; every call issues a new one", body = PaymentDetailsResponse),
+        (status = 400, description = "Missing, malformed, or unknown chain_id"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "This account has not registered an LP yet"),
+        (status = 409, description = "No linked settlement address of this chain's kind, or KYB status is not Passed"),
+        (status = 500, description = "The bank-details record is missing or malformed, or a unique reference could not be issued"),
+        (status = 503, description = "The bank-details record is not configured yet (a required field is blank); no reference is issued"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "LpBankDeposits"
+)]
+async fn get_my_payment_details(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
+) -> Result<Response, ApiError> {
+    let lp = my_lp(&claims, &state).await?;
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    let body = request_payment_details(
+        &state.system_configuration_repo,
+        &state.lp_requested_bank_details_repo,
+        lp.id,
+        status,
+        chain,
+        lp.settlement_address(chain.kind),
+        new_payment_details,
+    )
+    .await?;
+    Ok(payment_details_reply(body))
+}
+
+async fn payment_details_head_not_allowed() -> Response {
+    (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET")]).into_response()
 }
 
 async fn known_lp(state: &AppState, id: i64) -> Result<(), ApiError> {
@@ -224,6 +350,7 @@ async fn known_lp(state: &AppState, id: i64) -> Result<(), ApiError> {
 pub struct RecordBankDepositValues {
     pub amount: BigDecimal,
     pub payment_reference: String,
+    pub payment_details: Option<String>,
     pub ref_hash: [u8; 32],
     pub occurred_at: DateTime<Utc>,
 }
@@ -257,12 +384,20 @@ pub fn validate_record_bank_deposit(
         return Err("`payment_reference` must not be blank".to_owned());
     }
 
+    let payment_details = req
+        .payment_details
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+        .map(|raw| canonical_payment_details(raw).map_err(|e| format!("`payment_details` {e}")))
+        .transpose()?;
+
     let occurred_at = parse_iso8601("occurred_at", &req.occurred_at)?;
 
     Ok(RecordBankDepositValues {
         amount,
         ref_hash: reference_hash(payment_reference),
         payment_reference: payment_reference.to_owned(),
+        payment_details,
         occurred_at,
     })
 }
@@ -279,4 +414,211 @@ fn parse_iso8601(label: &str, raw: &str) -> Result<DateTime<Utc>, String> {
         .map_err(|_| {
             format!("`{label}` is not an ISO-8601 timestamp with an offset (e.g. `2026-10-05T15:41:00Z`): {raw}")
         })
+}
+
+// ── LP payment details (pure over the two store traits) ──────────────────────
+
+pub const PAYMENT_DETAILS_PREFIX: &str = "PL";
+
+const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+pub const MAX_ISSUE_ATTEMPTS: usize = 3;
+
+pub fn payment_details_access(
+    kyb_status: KybStatus,
+    kind: ChainKind,
+    settlement_address: Option<&str>,
+) -> Result<(), String> {
+    let status_ok = kyb_status == KybStatus::Passed;
+    let address_ok = settlement_address.is_some();
+    if status_ok && address_ok {
+        return Ok(());
+    }
+    let kind_name = kind.label();
+    let mut unmet = Vec::new();
+    if !address_ok {
+        unmet.push(format!("a linked {kind_name} settlement address"));
+    }
+    if !status_ok {
+        unmet.push("KYB status Passed".to_owned());
+    }
+    let address_state = if address_ok {
+        format!("with a linked {kind_name} address")
+    } else {
+        format!("with no linked {kind_name} address")
+    };
+    Err(format!(
+        "payment details require {} (this LP is {kyb_status} {address_state})",
+        unmet.join(" and ")
+    ))
+}
+
+pub fn payment_details_from(random: u64) -> String {
+    let bits = random & ((1u64 << 60) - 1);
+    let symbols: Vec<char> = (0..12)
+        .map(|i| CROCKFORD[((bits >> (5 * (11 - i))) & 0x1f) as usize] as char)
+        .collect();
+    let groups: Vec<String> = symbols.chunks(4).map(|g| g.iter().collect()).collect();
+    format!("{PAYMENT_DETAILS_PREFIX}-{}", groups.join("-"))
+}
+
+const MAX_RAW_PAYMENT_DETAILS_CHARS: usize = 140;
+
+pub fn canonical_payment_details(raw: &str) -> Result<String, String> {
+    let malformed = || {
+        format!(
+            "is not a payment reference: expected `{PAYMENT_DETAILS_PREFIX}-XXXX-XXXX-XXXX` (got `{}`)",
+            raw.chars().take(40).collect::<String>()
+        )
+    };
+    if raw.chars().count() > MAX_RAW_PAYMENT_DETAILS_CHARS {
+        return Err(malformed());
+    }
+    let squeezed: String = raw
+        .trim()
+        .to_ascii_uppercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
+    let symbols = squeezed
+        .strip_prefix(PAYMENT_DETAILS_PREFIX)
+        .ok_or_else(malformed)?;
+    if symbols.chars().count() != 12 {
+        return Err(malformed());
+    }
+    let mut decoded = String::with_capacity(12);
+    for c in symbols.chars() {
+        let c = match c {
+            'O' => '0',
+            'I' | 'L' => '1',
+            other => other,
+        };
+        if !c.is_ascii() || !CROCKFORD.contains(&(c as u8)) {
+            return Err(malformed());
+        }
+        decoded.push(c);
+    }
+    let groups: Vec<&str> = (0..3).map(|i| &decoded[i * 4..i * 4 + 4]).collect();
+    Ok(format!("{PAYMENT_DETAILS_PREFIX}-{}", groups.join("-")))
+}
+
+fn unprocessable(msg: String) -> ApiError {
+    ApiError::UnprocessableEntity(msg)
+}
+
+pub async fn resolve_payment_details<L: IssuedReferenceLookup + ?Sized>(
+    lookup: &L,
+    lp_id: i64,
+    values: &RecordBankDepositValues,
+) -> Result<Option<IssuedReferenceRow>, ApiError> {
+    let matched = match &values.payment_details {
+        None => None,
+        Some(canonical) => {
+            let row = lookup
+                .find_by_payment_details(canonical)
+                .await?
+                .ok_or_else(|| {
+                    unprocessable(format!(
+                        "payment reference `{canonical}` was never issued to any LP; record the wire without it to attribute it by hand, or book it to escrow"
+                    ))
+                })?;
+            if row.lp_id != lp_id {
+                return Err(unprocessable(format!(
+                    "payment reference `{canonical}` was issued to LP {}, not LP {lp_id}",
+                    row.lp_id
+                )));
+            }
+            Some(row)
+        }
+    };
+    if let Ok(canonical) = canonical_payment_details(&values.payment_reference) {
+        if lookup.find_by_payment_details(&canonical).await?.is_some() {
+            return Err(unprocessable(format!(
+                "`payment_reference` is an issued LP payment reference (`{canonical}`); enter the bank's own reference for this wire and pass the issued one as `payment_details`"
+            )));
+        }
+    }
+    Ok(matched)
+}
+
+pub async fn lp_id_for_payment_details<L: IssuedReferenceLookup + ?Sized>(
+    lookup: &L,
+    raw: &str,
+) -> Result<Option<i64>, ApiError> {
+    let canonical = canonical_payment_details(raw)
+        .map_err(|e| ApiError::BadRequest(format!("`payment_details` {e}")))?;
+    Ok(lookup
+        .find_by_payment_details(&canonical)
+        .await?
+        .map(|row| row.lp_id))
+}
+
+fn new_payment_details() -> String {
+    payment_details_from(OsRng.next_u64())
+}
+
+pub async fn issue_payment_details<S: PaymentDetailsStore + ?Sized>(
+    store: &S,
+    lp_id: i64,
+    chain_id: i64,
+    receiver_address: &str,
+    mut next: impl FnMut() -> String,
+) -> Result<String, ApiError> {
+    for _ in 0..MAX_ISSUE_ATTEMPTS {
+        let candidate = next();
+        match store
+            .insert(lp_id, chain_id, receiver_address, &candidate)
+            .await?
+        {
+            InsertOutcome::Inserted => return Ok(candidate),
+            InsertOutcome::ReferenceTaken => {}
+        }
+    }
+    Err(ApiError::Internal(anyhow::anyhow!(
+        "could not issue a unique payment reference for LP {lp_id} after {MAX_ISSUE_ATTEMPTS} attempts"
+    )))
+}
+
+pub async fn request_payment_details(
+    bank: &(impl BankDetailsSource + ?Sized),
+    store: &(impl PaymentDetailsStore + ?Sized),
+    lp_id: i64,
+    kyb_status: KybStatus,
+    chain: ConfiguredChain,
+    settlement_address: Option<&str>,
+    next: impl FnMut() -> String,
+) -> Result<PaymentDetailsResponse, ApiError> {
+    payment_details_access(kyb_status, chain.kind, settlement_address)
+        .map_err(ApiError::Conflict)?;
+    let receiver_address = settlement_address
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("settlement address vanished")))?;
+    let details = bank
+        .bank_details()
+        .await?
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("system_bank_details row is missing")))?;
+    let missing = details.missing_required_fields();
+    if !missing.is_empty() {
+        tracing::error!(missing = ?missing, "system_bank_details is not configured; no payment reference issued");
+        return Err(ApiError::ServiceUnavailable(
+            "funding details are not configured yet; no payment reference was issued, try again later"
+                .to_owned(),
+        ));
+    }
+    let payment_details =
+        issue_payment_details(store, lp_id, chain.chain_id, receiver_address, next).await?;
+    Ok(PaymentDetailsResponse::new(
+        details,
+        payment_details,
+        chain.chain_id,
+        receiver_address.to_owned(),
+    ))
+}
+
+pub fn payment_details_reply(body: PaymentDetailsResponse) -> Response {
+    (
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(body),
+    )
+        .into_response()
 }

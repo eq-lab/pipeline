@@ -22,19 +22,40 @@
  */
 import { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
 import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
+import type { ModuleInterface } from "@creit.tech/stellar-wallets-kit/types";
 import { getKitNetwork } from "./chain";
 
 let initialized = false;
+let e2eWallet: ModuleInterface | undefined;
+
+function init(): void {
+  StellarWalletsKit.init({
+    network: getKitNetwork(),
+    modules: e2eWallet ? [...defaultModules(), e2eWallet] : defaultModules(),
+    // selectedWalletId is left unset — authModal lets the user pick.
+  });
+}
 
 /** Initialises the StellarWalletsKit singleton on first call. Idempotent. */
 export function initStellarWalletConnect(): void {
   if (initialized) return;
-  StellarWalletsKit.init({
-    network: getKitNetwork(),
-    modules: defaultModules(),
-    // selectedWalletId is left unset — authModal lets the user pick.
-  });
+  init();
   initialized = true;
+}
+
+/**
+ * Adds the e2e test wallet module (`./e2eWallet`) to the kit, before or after
+ * `initStellarWalletConnect()`. The app decides whether to call it; see
+ * packages/frontend/src/wallet/README.md "E2E test wallet".
+ */
+export function registerStellarE2EWallet(module: ModuleInterface): void {
+  e2eWallet = module;
+  if (initialized) init();
+}
+
+/** The registered e2e test wallet's id; the Connect modal lists it first. */
+export function getStellarE2EWalletId(): string | undefined {
+  return e2eWallet?.productId;
 }
 
 /** Test helper — allows re-initialisation across tests. FOR TESTS ONLY. */

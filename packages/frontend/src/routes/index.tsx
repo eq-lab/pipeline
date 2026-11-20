@@ -1,5 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#home-route
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -14,6 +14,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useActiveChain,
   useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
@@ -45,8 +46,15 @@ import {
   LoadingBlock,
 } from "./-HomeDashboardGrid";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
+import { useFundingDetails } from "@/components/useFundingDetails";
+import type { FundingRequest } from "@/components/useFundingDetails";
 import { usePnl, usePositionsHistory } from "@/api";
-import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
+import {
+  DEFAULT_PERIOD_ID,
+  buildSeries,
+  formatMoney,
+  latestTotalBalance,
+} from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
 import { deriveHomeState } from "@/components/homeState";
 import { useChainServed } from "@/api";
@@ -66,11 +74,15 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  const [fundingDetailsOpen, setFundingDetailsOpen] = useState(false);
+  const [fundingRequest, setFundingRequest] = useState<FundingRequest | null>(
+    null,
+  );
+  const fundingOpenCounter = useRef(0);
+  const activeChain = useActiveChain();
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
-  const { isAnyConnected } = useWalletPresence();
+  const { isAnyConnected, isConnectionPending } = useWalletPresence();
   const { served: chainServed, chainName } = useChainServed();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
@@ -139,13 +151,17 @@ function Home() {
   const plusdDecimals = isStellar ? SAC_DECIMALS : evmPlusdDecimals;
   const splusdDecimals = isStellar ? SAC_DECIMALS : evmSplusdDecimals;
 
+  const plusdIsZero = isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const splusdIsZero = isDisplayZero(splusdSharesActive, splusdDecimals);
+
   const homeState = deriveHomeState({
     hasSession: isAuthenticated,
     isConnected,
     lpRead,
     kybStatus,
-    plusdIsZero: isDisplayZero(plusdBalanceActive, plusdDecimals),
-    splusdIsZero: isDisplayZero(splusdSharesActive, splusdDecimals),
+    plusdIsZero,
+    splusdIsZero,
+    walletPending: isConnectionPending,
   });
 
   const plusdFormattedActive: string | undefined = isStellar
@@ -166,15 +182,24 @@ function Home() {
     { signed: true, suffix: "unrealized" },
   );
 
-  const portfolioSeries = buildSeries(
-    positionsHistory.data?.history,
-    splusdDecimals,
-  );
+  const portfolioSeries = buildSeries(positionsHistory.data?.history);
 
-  const sharesStats = positionsHistory.data?.shares_balance;
+  const latestTotal = latestTotalBalance(positionsHistory.data?.history);
+  const totalBalanceFormatted =
+    latestTotal !== null
+      ? latestTotal.totalBalance === undefined ||
+        !Number.isFinite(Number(latestTotal.totalBalance))
+        ? "—"
+        : formatMoney(Number(latestTotal.totalBalance))
+      : plusdIsZero && splusdIsZero
+        ? "$0.00"
+        : "—";
+  const totalIncludesPlusd = latestTotal?.includesPlusd ?? false;
+
+  const totalBalanceMax = positionsHistory.data?.total_balance?.max;
   const portfolioAxisMax =
-    sharesStats?.max != null && splusdDecimals !== undefined
-      ? Number(sharesStats.max) / 10 ** splusdDecimals
+    totalBalanceMax != null && Number.isFinite(Number(totalBalanceMax))
+      ? Number(totalBalanceMax)
       : null;
   const portfolioAxis = computeAxisTicks(portfolioAxisMax);
 
@@ -194,38 +219,49 @@ function Home() {
         })
       : undefined;
 
-  const stakeDisabled =
-    isConnected && isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const stakeDisabled = isConnected && plusdIsZero;
 
-  const sellDisabled =
-    !isConnected || isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const sellDisabled = !isConnected || plusdIsZero;
 
+  const canProceed = isConnected || isConnectionPending;
+
+  const goDeposit = () =>
+    navigate({ to: "/deposit", search: { direction: "deposit" } });
+  const goStake = () => navigate({ to: "/stake", search: { tab: "stake" } });
   const onBuy = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
-    navigate({ to: "/deposit", search: { direction: "deposit" } });
+    goDeposit();
   };
   const onSell = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
     navigate({ to: "/deposit", search: { direction: "withdraw" } });
   };
   const onStake = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
-    navigate({ to: "/stake", search: { tab: "stake" } });
+    goStake();
   };
   const onUnstake = () =>
     navigate({ to: "/stake", search: { tab: "unstake" } });
   const onViewStatus = () =>
     navigate({ to: "/account", search: { state: undefined } });
-  const onAddFunds = () => setFundingDetailsOpen(true);
+  const fundingView = useFundingDetails(fundingRequest);
+  const onAddFunds = () => {
+    fundingOpenCounter.current += 1;
+    setFundingRequest({
+      openId: fundingOpenCounter.current,
+      chainId: activeChain.chainId,
+      kind: activeChain.kind,
+    });
+  };
 
   const onSignUp = () => openAuthFlow("create-account");
 
@@ -236,6 +272,7 @@ function Home() {
     series: portfolioSeries,
     yAxis: portfolioAxis,
     yAxisDomainMax: portfolioAxisMax,
+    includesPlusd: totalIncludesPlusd,
     "data-testid": "home-portfolio-placeholder",
   };
   const compactWalletActions = {
@@ -273,7 +310,8 @@ function Home() {
                 <PortfolioPlaceholderCard
                   className="min-h-[256px] md:min-h-[274px]"
                   mobileHomeState={mobileHomeState}
-                  balanceLabel={splusdBalanceFormatted}
+                  balanceLabel={totalBalanceFormatted}
+                  includesPlusd={totalIncludesPlusd}
                   unrealizedPnlLabel={unrealizedPnlFormatted}
                   activePeriodId={portfolioPeriodId}
                   onActivePeriodChange={setPortfolioPeriodId}
@@ -386,10 +424,10 @@ function Home() {
                   balancesNodeId="6701:98347"
                   balances={
                     <CompactBalances
-                      onBuy={onSignUp}
-                      onSell={onSignUp}
+                      onBuy={goDeposit}
+                      onSell={onSell}
                       sellDisabled
-                      onStake={onSignUp}
+                      onStake={goStake}
                       onUnstake={onSignUp}
                     />
                   }
@@ -408,7 +446,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="get-plusd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -460,7 +498,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="get-plusd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -482,7 +520,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="stake-or-add-usd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       onAddFunds={onAddFunds}
                       {...portfolioChartProps}
                     />
@@ -507,13 +545,73 @@ function Home() {
                     </CompactAddUsdStack>
                   }
                 />
+              ) : homeState === "passed-empty" ? (
+                <HomeDashboardGrid
+                  hero={
+                    <PortfolioPlaceholderCard
+                      variant="get-plusd"
+                      balanceLabel={totalBalanceFormatted}
+                      {...portfolioChartProps}
+                    />
+                  }
+                  activityPadding="md"
+                  balancesNodeId="6701:98773"
+                  balances={<CompactBalances {...compactWalletActions} />}
+                  third={
+                    <CompactAddUsdStack nodeId="6701:97493">
+                      <AddUsdCard
+                        variant="unlocked"
+                        className="flex-1"
+                        onAddFunds={onAddFunds}
+                        data-testid="home-add-usd-card"
+                      />
+                    </CompactAddUsdStack>
+                  }
+                />
+              ) : homeState === "passed-staked" ? (
+                <HomeDashboardGrid
+                  hero={
+                    <PortfolioPlaceholderCard
+                      mobileHomeState={mobileHomeState}
+                      balanceLabel={totalBalanceFormatted}
+                      unrealizedPnlLabel={unrealizedPnlFormatted}
+                      {...portfolioChartProps}
+                    />
+                  }
+                  activityPadding="md"
+                  balancesNodeId="6701:97257"
+                  balances={
+                    <CompactBalances
+                      {...compactWalletActions}
+                      {...(plusdIsZero
+                        ? {}
+                        : {
+                            compactVariant: "balance" as const,
+                            compactBalanceLabel: plusdFormattedActive,
+                          })}
+                    />
+                  }
+                  third={
+                    <CompactAddUsdStack
+                      nodeId="6701:97288"
+                      earnedPnlLabel={earnedPnlLabel}
+                    >
+                      <AddUsdCard
+                        variant="unlocked"
+                        className="flex-1"
+                        onAddFunds={onAddFunds}
+                        data-testid="home-add-usd-card"
+                      />
+                    </CompactAddUsdStack>
+                  }
+                />
               ) : homeState === "kyb-problem" ? (
                 <HomeDashboardGrid
                   hero={
                     <PortfolioPlaceholderCard
                       variant={isConnected ? "get-plusd" : "connect-wallet"}
                       onConnectWallet={openConnectModal}
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -536,7 +634,7 @@ function Home() {
                     isConnected ? (
                       <PortfolioPlaceholderCard
                         mobileHomeState={mobileHomeState}
-                        balanceLabel={splusdBalanceFormatted}
+                        balanceLabel={totalBalanceFormatted}
                         unrealizedPnlLabel={unrealizedPnlFormatted}
                         {...portfolioChartProps}
                       />
@@ -590,8 +688,13 @@ function Home() {
       </main>
 
       <FundingDetailsModal
-        open={fundingDetailsOpen}
-        onDismiss={() => setFundingDetailsOpen(false)}
+        open={fundingRequest !== null}
+        view={fundingView}
+        onDismiss={() => setFundingRequest(null)}
+        onOpenAccount={() => {
+          setFundingRequest(null);
+          navigate({ to: "/account", search: { state: undefined } });
+        }}
       />
     </div>
   );

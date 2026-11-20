@@ -1,134 +1,210 @@
-/**
- * View-model + data wiring for the Trustee Risk Council — Amend economics
- * (off-cycle re-term) page (`risk-council.reterm.$id.tsx`). Per
- * `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is JSX/styling
- * only; this hook owns the live fetches + value→display mapping (mirrors
- * `-risk-council-escalate.ts`).
- *
- * spec: docs/frontend/trustee-flows.md#amend-economics--off-cycle-re-term-flow-11--read-only-review
- * (flow, real-vs-mock data sourcing).
- */
-import { useLoanBook } from "@/api/useLoanBook";
-import { findLoanEntry } from "@/lib/loanRoute";
-import { useLoanFinancials } from "@/api/useLoanFinancials";
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
+import { useState } from "react";
+import { riskCouncilReasonHash } from "@pipeline/wallet-connect";
+import { chainAmountDecimals, riskCouncilTargetId } from "@/lib/targetChains";
+import { dateInputToUnixUtc, formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
-import { formatMaturityDate } from "@/utils/formatDate";
-import { toUserError } from "@/utils/userError";
+import { percentToBps } from "@/utils/rateUnits";
+import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
+import type { RiskCouncilCall } from "@/api/useRiskCouncil";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
+import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
+import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
+import {
+  amendEligibility,
+  formatLoanLabel,
+  formatSignedChainAmount,
+  notAvailableNote,
+  useRiskCouncilActionView,
+  useRiskCouncilLoanBase,
+  useTextHash,
+  type ActionView,
+  type PageState,
+} from "./-risk-council-shared";
 
-// ── Mock constants (see module doc — no proposal backend) ────────────────────
+export const AMEND_NO_ROLE =
+  "Changing loan economics belongs to the Risk Council.";
 
-/** MOCK — no proposal timestamp is served (the Safe/proposal layer is unbuilt). */
-export const MOCK_PROPOSAL_TIMESTAMP = "21 Jun 2026, 14:32 UTC";
-
-/** MOCK — the proposed `amendEconomics` payload; no backend serves a pending proposal. */
-export const MOCK_PROPOSED_TERMS = {
-  coupon: "14.5%",
-  maturityExtension: "+45 days",
-  covenant: "weekly reporting",
-  expectedStatus: "Watchlist",
-} as const;
-
-// ── Pure helpers (exported for unit tests) ──────────────────────────────────
-
-/** `"Delta Commodities — Coffee"` — originator + commodity; `—` for missing parts. */
-export function formatLoanLabel(
-  originator: string | null | undefined,
-  commodity: string | null | undefined,
-): string {
-  return `${originator ?? "—"} — ${commodity ?? "—"}`;
+export function parseSignedUsdDelta(
+  input: string,
+  chainId: number,
+): string | null {
+  const trimmed = input.trim();
+  const negative = trimmed.startsWith("-");
+  const base = usdInputToSacBaseUnits(
+    negative ? trimmed.slice(1) : trimmed,
+    chainAmountDecimals(chainId),
+  );
+  if (base == null) return null;
+  return negative ? `-${base}` : base;
 }
 
-// Current epoch APY, falling back to the loan-book `rate`; "—" when neither is available.
-export function formatCurrentCoupon(
-  apyBps: number | null | undefined,
-  rateDecimal: string | null | undefined,
-): string {
-  if (apyBps != null && Number.isFinite(apyBps)) return formatBpsRate(apyBps);
-  if (rateDecimal != null) {
-    const n = parseFloat(rateDecimal);
-    if (Number.isFinite(n)) return `${(n * 100).toFixed(1)}%`;
-  }
-  return "—";
+export function buildAmendCall(
+  loanId: number | null,
+  ratePercent: string,
+  maturityDate: string,
+): RiskCouncilCall | null {
+  const rateBps = percentToBps(ratePercent);
+  const maturity = dateInputToUnixUtc(maturityDate);
+  if (loanId === null || rateBps === null || maturity === null) return null;
+  return { fn: "amend_economics", loanId, rateBps, maturity };
 }
 
-/** `"114%"` (whole percent) from `ccr_bps`; `—` when unavailable. */
-export function formatCcrPct(ccrBps: number | null | undefined): string {
-  if (ccrBps == null || !Number.isFinite(ccrBps)) return "—";
-  return `${Math.round(ccrBps / 100)}%`;
+export function buildAdjustCall(
+  loanId: number | null,
+  deltaUsd: string,
+  reasonHash: string | null,
+  chainId: number,
+): RiskCouncilCall | null {
+  const delta = parseSignedUsdDelta(deltaUsd, chainId);
+  if (loanId === null || delta === null || reasonHash === null) return null;
+  return { fn: "adjust_interest", loanId, delta, reasonHash };
 }
-
-// ── View types ──────────────────────────────────────────────────────────────
 
 export interface RetermCurrentTerms {
   loan: string;
   coupon: string;
   maturity: string;
-  ccr: string;
+  ltv: string | null;
+  accruedInterest: string;
+  interestAdjustment: string;
 }
 
-/** All MOCK — no proposal backend (see module doc). */
-export interface RetermProposedTerms {
-  coupon: string;
-  maturityExtension: string;
-  covenant: string;
-  expectedStatus: string;
+export interface AmendFormView {
+  ratePercent: string;
+  setRatePercent: (value: string) => void;
+  maturityDate: string;
+  setMaturityDate: (value: string) => void;
+  bps: number | null;
+  rateInvalid: boolean;
+  action: ActionView;
+}
+
+export interface AdjustFormView {
+  deltaUsd: string;
+  setDeltaUsd: (value: string) => void;
+  deltaInvalid: boolean;
+  reason: string;
+  setReason: (value: string) => void;
+  reasonHash: string | null;
+  action: ActionView;
 }
 
 export interface RiskCouncilRetermView {
-  state: "loading" | "error" | "not-found" | "ready";
+  state: PageState;
   errorMessage: string | null;
   errorDetails: string | null;
   loanId: string;
-  /** MOCK — see module doc. */
-  timestamp: string;
   current: RetermCurrentTerms;
-  /** MOCK — see module doc. */
-  proposed: RetermProposedTerms;
+  eligibilityNote: string | null;
+  amend: AmendFormView;
+  adjust: AdjustFormView;
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGate: string | null;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+function useReasonHash(reason: string): string | null {
+  return useTextHash(reason, riskCouncilReasonHash);
+}
 
-/**
- * Wires the matching loan-book row (identity + CCR + maturity) and the loan's
- * financials (current epoch coupon) for `loanId`, composed with the still-mock
- * proposed-amendment section. Read-only — no submit.
- */
 export function useRiskCouncilReterm(
   chainId: number,
-  loanId: string,
+  loanIdParam: string,
 ): RiskCouncilRetermView {
-  const loanBook = useLoanBook();
-  const financials = useLoanFinancials(chainId, loanId);
+  const base = useRiskCouncilLoanBase(chainId, loanIdParam);
+  const security = useLoanSecurity(chainId, loanIdParam);
+  const [ratePercent, setRatePercent] = useState("");
+  const [maturityDate, setMaturityDate] = useState("");
+  const [deltaUsd, setDeltaUsd] = useState("");
+  const [reason, setReason] = useState("");
+  const reasonHash = useReasonHash(reason);
 
-  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
+  const bps = percentToBps(ratePercent);
+  const eligible = amendEligibility(base.chainStatus);
+  const amendCall = buildAmendCall(base.loanId, ratePercent, maturityDate);
+  const adjustCall = buildAdjustCall(
+    base.loanId,
+    deltaUsd,
+    reasonHash,
+    chainId,
+  );
 
-  const state: RiskCouncilRetermView["state"] = loanBook.isLoading
-    ? "loading"
-    : loanBook.error
-      ? "error"
-      : entry == null
-        ? "not-found"
-        : "ready";
+  const amend = useRiskCouncilActionView({
+    chainId,
+    call: amendCall,
+    fn: "amend_economics",
+    noRoleCopy: AMEND_NO_ROLE,
+    labels: {
+      now: "Amend economics",
+      schedule: "Schedule amendment",
+      execute: "Execute amendment",
+    },
+    enabled: eligible,
+  });
+  const adjust = useRiskCouncilActionView({
+    chainId,
+    call: adjustCall,
+    fn: "adjust_interest",
+    noRoleCopy: AMEND_NO_ROLE,
+    labels: {
+      now: "Adjust interest",
+      schedule: "Schedule adjustment",
+      execute: "Execute adjustment",
+    },
+    enabled: eligible,
+  });
 
-  const loanBookError = loanBook.error
-    ? toUserError(loanBook.error, "Failed to load the loan.")
-    : null;
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
+  const entry = base.entry;
+  const chain = base.chainState?.chain;
+  const money = base.chainState?.money;
 
   return {
-    state,
-    errorMessage: loanBookError?.message ?? null,
-    errorDetails: loanBookError?.details ?? null,
-    loanId,
-    timestamp: MOCK_PROPOSAL_TIMESTAMP,
+    state: base.state,
+    errorMessage: base.errorMessage,
+    errorDetails: base.errorDetails,
+    loanId: loanIdParam,
     current: {
       loan: formatLoanLabel(entry?.originator, entry?.commodity),
-      coupon: formatCurrentCoupon(
-        financials.data?.epoch?.current_apy_bps,
-        entry?.rate,
-      ),
-      maturity: entry != null ? formatMaturityDate(entry.maturity) : "—",
-      ccr: formatCcrPct(entry?.ccr_bps ?? null),
+      coupon: chain == null ? "—" : formatBpsRate(chain.currentRate / 100),
+      maturity: chain == null ? "—" : formatMaturityDate(chain.currentMaturity),
+      ltv: ltvRowText(buildSecurityCard(security), security.data),
+      accruedInterest:
+        money == null ? "—" : formatChainAmount(money.accruedInterest, chainId),
+      interestAdjustment:
+        chain == null
+          ? "—"
+          : formatSignedChainAmount(chain.interestAdjustment, chainId),
     },
-    proposed: { ...MOCK_PROPOSED_TERMS },
+    eligibilityNote: notAvailableNote(base.chainStatus),
+    amend: {
+      ratePercent,
+      setRatePercent,
+      maturityDate,
+      setMaturityDate,
+      bps,
+      rateInvalid: ratePercent.trim() !== "" && bps === null,
+      action: amend,
+    },
+    adjust: {
+      deltaUsd,
+      setDeltaUsd,
+      deltaInvalid:
+        deltaUsd.trim() !== "" &&
+        parseSignedUsdDelta(deltaUsd, chainId) === null,
+      reason,
+      setReason,
+      reasonHash,
+      action: adjust,
+    },
+    pending,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
+    pendingGate: notAvailableNote(base.chainStatus),
   };
 }

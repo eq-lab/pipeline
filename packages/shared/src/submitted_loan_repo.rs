@@ -1,8 +1,8 @@
 //! Originator-submitted loan applications awaiting trustee review.
 //!
 //! Backs the loan-submission workflow (see `docs/product-specs/api-authorization-loan-submission.md`
-//! and `routes::loan_book`). An originator submits the full set of `draw_loan`
-//! inputs, stored verbatim as JSONB in `loan_data`; a trustee then approves or
+//! and `routes::loan_book`). An originator submits a loan payload,
+//! stored verbatim as JSONB in `loan_data`; a trustee then approves or
 //! rejects each submission. The surrogate `id` is the submission identifier — the
 //! on-chain `loan_id` does not exist until the loan is actually drawn.
 
@@ -73,6 +73,22 @@ pub const LIST_SUBMISSIONS_SQL: &str =
      FROM submitted_loans \
      WHERE ($1::text IS NULL OR status = $1) AND ($2::bigint IS NULL OR target_chain_id = $2) \
      ORDER BY created_at DESC, id DESC";
+
+pub const COUNT_UNDRAWN_SUBMISSIONS_SQL: &str = "SELECT target_chain_id, \
+     COUNT(*) FILTER (WHERE status = 'InReview') AS in_review, \
+     COUNT(*) FILTER (WHERE status = 'ChangesRequested') AS changes_requested, \
+     COUNT(*) FILTER (WHERE status = 'Approved') AS approved_undrawn \
+     FROM submitted_loans \
+     WHERE loan_id IS NULL AND target_chain_id = ANY($1::bigint[]) \
+     GROUP BY target_chain_id ORDER BY target_chain_id";
+
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct SubmissionCountsRow {
+    pub target_chain_id: i64,
+    pub in_review: i64,
+    pub changes_requested: i64,
+    pub approved_undrawn: i64,
+}
 
 pub const FIND_SUBMISSION_SQL: &str =
     "SELECT id, loan_data, status, reason, originator, target_chain_id, \
@@ -165,7 +181,7 @@ pub fn classify_unlinked_draw(
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SubmittedLoanRow {
     pub id: i64,
-    /// The full submitted loan payload (all `draw_loan` inputs), stored verbatim.
+    /// The submitted loan payload, stored verbatim.
     pub loan_data: Value,
     /// `InReview` | `Approved` | `Rejected` | `ChangesRequested`.
     pub status: String,
@@ -227,6 +243,19 @@ impl SubmittedLoanRepo {
         sqlx::query_as::<_, SubmittedLoanRow>(LIST_SUBMISSIONS_SQL)
             .bind(status.map(|s| s.as_str()))
             .bind(target_chain_id)
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    pub async fn count_undrawn_by_chain(
+        &self,
+        chain_ids: &[i64],
+    ) -> Result<Vec<SubmissionCountsRow>, sqlx::Error> {
+        if chain_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        sqlx::query_as::<_, SubmissionCountsRow>(COUNT_UNDRAWN_SUBMISSIONS_SQL)
+            .bind(chain_ids)
             .fetch_all(&self.pool)
             .await
     }

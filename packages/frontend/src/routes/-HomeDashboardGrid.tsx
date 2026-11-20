@@ -113,9 +113,11 @@ export function CompactBalances({
 
 export function CompactAddUsdStack({
   nodeId,
+  earnedPnlLabel,
   children,
 }: {
   nodeId: string;
+  earnedPnlLabel?: string;
   children: ReactNode;
 }) {
   return (
@@ -125,7 +127,11 @@ export function CompactAddUsdStack({
       data-testid="home-add-usd-stack"
     >
       {children}
-      <EarnedCard layout="compact" data-testid="home-earned-card" />
+      <EarnedCard
+        layout="compact"
+        {...(earnedPnlLabel !== undefined ? { earnedPnlLabel } : {})}
+        data-testid="home-earned-card"
+      />
     </div>
   );
 }

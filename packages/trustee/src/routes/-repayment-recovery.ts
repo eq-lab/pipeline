@@ -1,10 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#repayment-recovery-1711
-import type {
-  CanCall,
-  MinterRepayment,
-  OperationSchedule,
-  RepaymentInput,
-} from "@pipeline/wallet-connect";
+import type { MinterRepayment, RepaymentInput } from "@pipeline/wallet-connect";
 import {
   RECOVERY_STATUSES,
   type RecoveryRow,
@@ -13,19 +8,27 @@ import type { AuditLogItem } from "@/api/useAuditLog";
 import type { WaterfallResponse } from "@/api/useLoanWaterfall";
 import { chainAmountDecimals } from "@/lib/targetChains";
 import { sacBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
+import {
+  accessAction,
+  amErrorCode,
+  evmErrorName,
+  formatDelayHours,
+  formatReadyAt,
+  LOAN_REGISTRY_PAUSED_COPY,
+  stageLabel,
+  type AccessAction,
+} from "@/lib/accessManagerAction";
 import { buildRepaymentInput } from "./-record-repayment";
+
+export type ReverseAction = AccessAction;
+export const reverseAction = accessAction;
+export { formatDelayHours, formatReadyAt, stageLabel };
 
 export type RecoveryCardState =
   | "hidden"
   | "eligible"
   | "awaiting-corrected-repayment"
   | "blocked-evm";
-
-export type ReverseAction =
-  | "execute-now"
-  | "schedule"
-  | "execute-scheduled"
-  | "no-role";
 
 export interface LabelValue {
   label: string;
@@ -175,26 +178,6 @@ export function reversalEffects(
   return effects;
 }
 
-export function reverseAction(
-  access: CanCall | undefined,
-  schedule: OperationSchedule | undefined,
-): ReverseAction | null {
-  if (access == null) return null;
-  if (access.immediate) return "execute-now";
-  if (access.delay === 0) return "no-role";
-  if (schedule == null) return null;
-  return schedule.readyAt > 0 ? "execute-scheduled" : "schedule";
-}
-
-export function formatDelayHours(delaySeconds: number): string {
-  return `${delaySeconds / 3600} h`;
-}
-
-export function formatReadyAt(readyAtSeconds: number): string {
-  const iso = new Date(readyAtSeconds * 1000).toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
-}
-
 export function originalValueDate(
   items: ReadonlyArray<AuditLogItem> | undefined,
   chainId: number,
@@ -235,25 +218,28 @@ export function recoveryErrorCopy(
   mode: "schedule" | "execute",
   details: string,
 ): string | null {
-  const code = details.match(/Error\(Contract,\s*#(\d+)\)/)?.[1];
+  const code = amErrorCode(details);
   return code == null ? null : (RECOVERY_ERROR_COPY[`${mode}:${code}`] ?? null);
+}
+
+const EVM_RECOVERY_ERROR_COPY: Record<string, string> = {
+  AccessManagerNotScheduled: RECOVERY_ERROR_COPY["execute:6"]!,
+  AccessManagerNotReady: RECOVERY_ERROR_COPY["execute:7"]!,
+  AccessManagerExpired: RECOVERY_ERROR_COPY["execute:8"]!,
+  MinterInsufficientBankCash: RECOVERY_ERROR_COPY["execute:8"]!,
+  LoanRegistryRepaymentAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
+  MinterAlreadyReversed: RECOVERY_ERROR_COPY["execute:25"]!,
+  AccessManagerAlreadyScheduled: RECOVERY_ERROR_COPY["schedule:9"]!,
+  EnforcedPause: LOAN_REGISTRY_PAUSED_COPY,
+};
+
+export function evmRecoveryErrorCopy(details: string): string | null {
+  const name = evmErrorName(details);
+  return name == null ? null : (EVM_RECOVERY_ERROR_COPY[name] ?? null);
 }
 
 export function formatValueDate(valueDateSeconds: number): string {
   return new Date(valueDateSeconds * 1000).toISOString().slice(0, 10);
-}
-
-export function stageLabel(stage: string | null, idle: string): string {
-  switch (stage) {
-    case "awaiting-signature":
-      return "Waiting for wallet signature…";
-    case "submitting":
-      return "Submitting on-chain…";
-    case "confirming":
-      return "Confirming…";
-    default:
-      return idle;
-  }
 }
 
 export function roleLine(

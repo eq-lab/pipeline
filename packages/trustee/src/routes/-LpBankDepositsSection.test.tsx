@@ -16,9 +16,43 @@ vi.mock("@/api/useLpBankDeposits", () => ({
   useRecordBankDeposit: vi.fn(),
   LP_BANK_DEPOSITS_REFETCH_MS: 30_000,
 }));
-vi.mock("@/api/useLp", () => ({ useLp: vi.fn() }));
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    to,
+    search,
+    children,
+    ...rest
+  }: {
+    to: string;
+    search?: Record<string, string>;
+    children: React.ReactNode;
+  }) => (
+    <a href={`${to}?${new URLSearchParams(search).toString()}`} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock("@/api/useLp", () => ({ useLp: vi.fn(), fetchLp: vi.fn() }));
+vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
 vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
-vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: vi.fn(),
+  readPlusdAuthorization: vi.fn(),
+}));
+vi.mock("@/api/useEscrowedWires", () => ({
+  ensureMinterPlusdId: vi.fn(),
+}));
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
+const roleMock = vi.hoisted(() => ({
+  reason: null as string | null,
+  calls: [] as { fn: string; enabled: boolean }[],
+}));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: (fn: string, enabled: boolean) => {
+    roleMock.calls.push({ fn, enabled });
+    return { reason: enabled ? roleMock.reason : null };
+  },
+}));
 
 const showToast = vi.fn();
 vi.mock("@/components/ToastProvider", () => ({
@@ -31,14 +65,17 @@ Object.defineProperty(navigator, "clipboard", {
   configurable: true,
 });
 
-const envMock = {
+const envMock = vi.hoisted(() => ({
+  STELLAR_CHAIN_ID: 99_000_001,
+  EVM_CHAIN_ID: 560048,
+  EVM_CAPITAL_WALLET_ADDRESS: "0xcap0000000000000000000000000000000000001",
   STELLAR_USDC_CUSTODY_ID:
     "GCUSTODY00000000000000000000000000000000000000000000000",
   STELLAR_CAPITAL_WALLET_ID:
     "GCAPITAL00000000000000000000000000000000000000000000000",
   STELLAR_YIELD_MINTER_ID:
     "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK",
-};
+}));
 
 vi.mock("@/lib/env", () => ({
   get ENV() {
@@ -50,17 +87,27 @@ import {
   useLpBankDeposits,
   useRecordBankDeposit,
 } from "@/api/useLpBankDeposits";
-import { useLp } from "@/api/useLp";
+import { fetchLp, useLp } from "@/api/useLp";
+import { useSessionState } from "@/auth/sessionStore";
 import { useRecordWireIn } from "@/api/useRecordWireIn";
-import { useStellarWallet } from "@pipeline/wallet-connect";
+import {
+  readPlusdAuthorization,
+  useStellarWallet,
+} from "@pipeline/wallet-connect";
+import { ensureMinterPlusdId } from "@/api/useEscrowedWires";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { MINT_PENDING_WINDOW_MS } from "./-useLpBankDeposits";
 
 const mockList = vi.mocked(useLpBankDeposits);
 const mockRecord = vi.mocked(useRecordBankDeposit);
 const mockLp = vi.mocked(useLp);
+const mockFetchLp = vi.mocked(fetchLp);
+const mockSession = vi.mocked(useSessionState);
+const lpRefetch = vi.fn();
 const mockMint = vi.mocked(useRecordWireIn);
 const mockWallet = vi.mocked(useStellarWallet);
+const mockAuth = vi.mocked(readPlusdAuthorization);
+const mockPlusdId = vi.mocked(ensureMinterPlusdId);
 const mutateAsync = vi.fn();
 const reset = vi.fn();
 const mintAsync = vi.fn();
@@ -69,6 +116,10 @@ const mintReset = vi.fn();
 const LP_WALLET = "GLPWALLET0000000000000000000000000000000000000000000000";
 const CUSTODY = envMock.STELLAR_USDC_CUSTODY_ID;
 const CAPITAL_WALLET = envMock.STELLAR_CAPITAL_WALLET_ID;
+const EVM_CAPITAL_WALLET = envMock.EVM_CAPITAL_WALLET_ADDRESS;
+const LP_EVM = "0xlp00000000000000000000000000000000000001";
+const WALLET_X = "GWALLETX0000000000000000000000000000000000000000000000";
+const WALLET_Y = "GWALLETY0000000000000000000000000000000000000000000000";
 
 const DEPOSIT: LpBankDeposit = {
   id: 3,
@@ -80,7 +131,19 @@ const DEPOSIT: LpBankDeposit = {
   is_minted: false,
   recorded_by: "GTRUSTEE",
   created_at: "2026-10-05T16:00:00Z",
+  matched_reference: null,
 };
+
+const MATCHED: LpBankDeposit["matched_reference"] = {
+  payment_details: "PL-7K3M-Q9TX-2ABC",
+  chain_id: 99_000_001,
+  receiver_address: "GSHOWN0000000000000000000000000000000000000000000000000",
+  issued_at: "2026-10-04T10:00:00Z",
+};
+
+function matchedDeposit(overrides: Partial<NonNullable<typeof MATCHED>> = {}) {
+  return { ...DEPOSIT, matched_reference: { ...MATCHED!, ...overrides } };
+}
 
 function list(state: {
   data?: { deposits: LpBankDeposit[] };
@@ -106,15 +169,43 @@ function recorder(error: Error | null = null, isPending = false) {
   } as unknown as ReturnType<typeof useRecordBankDeposit>);
 }
 
+function lpData(overrides: Partial<LpDetail> = {}) {
+  return {
+    id: 7,
+    stellar_address: LP_WALLET,
+    address_linked_at: "2026-09-01T00:00:00Z",
+    evm_address: null,
+    evm_address_linked_at: null,
+    ...overrides,
+  } as unknown as LpDetail;
+}
+
 function lp(overrides: Partial<LpDetail> = {}) {
+  const data = lpData(overrides);
   mockLp.mockReturnValue({
-    data: {
-      id: 7,
-      stellar_address: LP_WALLET,
-      address_linked_at: "2026-09-01T00:00:00Z",
-      ...overrides,
-    },
+    data,
+    refetch: lpRefetch,
   } as unknown as ReturnType<typeof useLp>);
+  mockFetchLp.mockResolvedValue(data);
+}
+
+function session(chainId: number | undefined) {
+  mockSession.mockReturnValue({ chainId } as unknown as ReturnType<
+    typeof useSessionState
+  >);
+}
+
+async function openMintDialog() {
+  const table = screen.getAllByRole("row")[1]!;
+  fireEvent.click(within(table).getByRole("button", { name: "Mint PLUSD" }));
+  await screen.findByTestId("lp-mint-receiver").catch(() => undefined);
+  return screen.getByTestId("lp-mint-confirm");
+}
+
+async function confirmMint() {
+  await act(async () => {
+    fireEvent.click(screen.getByTestId("lp-mint-confirm-submit"));
+  });
 }
 
 function minter(
@@ -148,6 +239,16 @@ beforeEach(() => {
   mockLp.mockReset();
   mockMint.mockReset();
   mockWallet.mockReset();
+  mockFetchLp.mockReset();
+  mockSession.mockReset();
+  mockAuth.mockReset();
+  mockAuth.mockResolvedValue("authorized");
+  mockPlusdId.mockReset();
+  mockPlusdId.mockResolvedValue("CPLUSD");
+  roleMock.reason = null;
+  roleMock.calls = [];
+  lpRefetch.mockReset();
+  session(undefined);
   mutateAsync.mockReset();
   reset.mockReset();
   mintAsync.mockReset();
@@ -157,6 +258,7 @@ beforeEach(() => {
   writeText.mockResolvedValue(undefined);
   envMock.STELLAR_USDC_CUSTODY_ID = CUSTODY;
   envMock.STELLAR_CAPITAL_WALLET_ID = CAPITAL_WALLET;
+  envMock.EVM_CAPITAL_WALLET_ADDRESS = EVM_CAPITAL_WALLET;
   envMock.STELLAR_YIELD_MINTER_ID =
     "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK";
   recorder();
@@ -193,7 +295,7 @@ describe("LpBankDepositsSection — list", () => {
     expect(headers).toEqual([
       "Received",
       "Amount",
-      "Payment reference",
+      "Bank reference",
       "Recorded by",
       "PLUSD",
     ]);
@@ -248,7 +350,7 @@ describe("LpBankDepositsSection — record", () => {
     fireEvent.change(screen.getByLabelText("Amount (USD)"), {
       target: { value: "50,000.00" },
     });
-    fireEvent.change(screen.getByLabelText("Payment reference"), {
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
       target: { value: "  WIRE-REF-2 " },
     });
     fireEvent.change(screen.getByLabelText("Received at (UTC)"), {
@@ -271,33 +373,329 @@ describe("LpBankDepositsSection — record", () => {
     );
   });
 
+  it("sends the trimmed LP payment reference only when filled", async () => {
+    mutateAsync.mockResolvedValue(DEPOSIT);
+    const dialog = openDialog();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/^LP payment reference/), {
+      target: { value: "  pl-7k3m q9tx  " },
+    });
+    fireEvent.click(
+      dialog.querySelector('button[type="submit"]') as HTMLButtonElement,
+    );
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_details: "pl-7k3m q9tx" }),
+      ),
+    );
+  });
+
+  it("omits payment_details when the LP payment reference is blank", async () => {
+    mutateAsync.mockResolvedValue(DEPOSIT);
+    const dialog = openDialog();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.click(
+      dialog.querySelector('button[type="submit"]') as HTMLButtonElement,
+    );
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(mutateAsync.mock.calls[0]![0].payment_details).toBeUndefined();
+  });
+
+  it("shows the served 422 text and the escrow link only when a reference was sent", async () => {
+    const served = "payment reference `PL-X` was never issued to any LP";
+    mutateAsync.mockRejectedValue(new ApiError(served, 422));
+    recorder(new ApiError(served, 422));
+    const view = openDialog();
+    expect(view).toHaveTextContent(served);
+    expect(screen.queryByTestId("lp-deposit-escrow-link")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/^LP payment reference/), {
+      target: { value: "PL-X" },
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.querySelector('button[type="submit"]') as HTMLButtonElement,
+      );
+    });
+    expect(screen.getByTestId("lp-deposit-escrow-link")).toHaveAttribute(
+      "href",
+      "/cash-management?tab=escrow",
+    );
+  });
+
+  it("opens pre-filled once from initialPaymentDetails and reports it consumed", () => {
+    list({ data: { deposits: [] } });
+    const consumed = vi.fn();
+    const { rerender } = render(
+      <LpBankDepositsSection
+        lpId={7}
+        legalName="Acme Ltd"
+        initialPaymentDetails="PL-AAAA"
+        onPrefillConsumed={consumed}
+      />,
+    );
+    expect(screen.getByLabelText(/^LP payment reference/)).toHaveValue(
+      "PL-AAAA",
+    );
+    expect(consumed).toHaveBeenCalledTimes(1);
+    rerender(
+      <LpBankDepositsSection
+        lpId={7}
+        legalName="Acme Ltd"
+        onPrefillConsumed={consumed}
+      />,
+    );
+    expect(consumed).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a duplicate-reference error and stays open", async () => {
     recorder(new ApiError("dup", 409));
     const dialog = openDialog();
     expect(dialog).toHaveTextContent(
-      "A deposit with this payment reference is already recorded.",
+      "A deposit with this bank reference is already recorded.",
     );
   });
 });
 
+describe("LpBankDepositsSection — attribution", () => {
+  it("shows the matched chip with the canonical reference and issue time", () => {
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    expect(screen.getByTestId("lp-deposit-matched")).toHaveTextContent(
+      "Matched by reference",
+    );
+    expect(screen.getByTestId("lp-deposit-matched-ref")).toHaveTextContent(
+      "PL-7K3M-Q9TX-2ABC · issued 4 Oct 2026, 10:00 UTC",
+    );
+    expect(screen.queryByTestId("lp-deposit-hand")).toBeNull();
+  });
+
+  it("shows Attributed by hand without a match", () => {
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    expect(screen.getByTestId("lp-deposit-hand")).toHaveTextContent(
+      "Attributed by hand",
+    );
+  });
+});
+
+describe("LpBankDepositsSection — matched mint", () => {
+  it("shows the reference and the receiver shown to the LP, no differs note when equal", async () => {
+    lp({ stellar_address: MATCHED!.receiver_address });
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    await openMintDialog();
+    const dialog = screen.getByTestId("lp-mint-confirm");
+    expect(dialog).toHaveTextContent("LP payment reference");
+    expect(dialog).toHaveTextContent("PL-7K3M-Q9TX-2ABC");
+    expect(screen.getByTestId("lp-mint-shown-receiver")).toHaveTextContent(
+      `Stellar · ${MATCHED!.receiver_address}`,
+    );
+    expect(screen.queryByTestId("lp-mint-shown-differs")).toBeNull();
+  });
+
+  it("notes when the current receiver differs from the shown one and mints to the current one", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    await openMintDialog();
+    expect(screen.getByTestId("lp-mint-shown-differs")).toHaveTextContent(
+      "PLUSD goes to the current address.",
+    );
+    await confirmMint();
+    expect(mintAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ receiver: LP_WALLET }),
+    );
+  });
+
+  it("blocks the mint when the reference was issued for another chain", () => {
+    list({ data: { deposits: [matchedDeposit({ chain_id: 560048 })] } });
+    renderSection();
+    const button = screen.getByRole("button", { name: "Mint PLUSD" });
+    expect(button).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "This wire was matched to a reference issued for Hoodi. Sign in on Hoodi to mint it.",
+    );
+    fireEvent.click(button);
+    expect(mockFetchLp).not.toHaveBeenCalled();
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("behaves as before when the matched reference has no chain", async () => {
+    list({ data: { deposits: [matchedDeposit({ chain_id: null })] } });
+    renderSection();
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeEnabled();
+  });
+});
+
 describe("LpBankDepositsSection — mint PLUSD", () => {
-  it("mints to the LP wallet when the address is linked", async () => {
+  it("shows the scope line with the LP receiver", () => {
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    const scope = screen.getByTestId("lp-deposits-mint-scope");
+    expect(scope).toHaveTextContent("Mints on Stellar to");
+    expect(screen.getByTestId("lp-deposits-receiver")).toHaveAttribute(
+      "title",
+      LP_WALLET,
+    );
+    expect(scope).not.toHaveTextContent("capital wallet");
+  });
+
+  it("shows the capital-wallet text when the LP has no Stellar address", () => {
+    lp({ stellar_address: null, address_linked_at: null });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    const scope = screen.getByTestId("lp-deposits-mint-scope");
+    expect(screen.getByTestId("lp-deposits-receiver")).toHaveAttribute(
+      "title",
+      CAPITAL_WALLET,
+    );
+    expect(scope).toHaveTextContent(
+      "capital wallet — this LP has no Stellar settlement address",
+    );
+  });
+
+  it("re-reads before and after the dialog, then mints to the shown receiver", async () => {
     mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+    const dialog = await openMintDialog();
+    expect(mockFetchLp).toHaveBeenCalledTimes(1);
+    expect(dialog).toHaveTextContent("Mint PLUSD — Acme Ltd");
+    expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(LP_WALLET);
+    expect(screen.queryByTestId("lp-mint-receiver-changed")).toBeNull();
 
-    await waitFor(() =>
-      expect(mintAsync).toHaveBeenCalledWith({
-        lpId: 7,
-        depositId: 3,
-        receiver: LP_WALLET,
-        amount: "1250000.5",
-        occurredAt: "2026-10-05T15:41:00Z",
-        refHash: "ab".repeat(32),
-      }),
+    await confirmMint();
+
+    expect(mockFetchLp).toHaveBeenCalledTimes(2);
+    expect(mockFetchLp.mock.invocationCallOrder[1]!).toBeLessThan(
+      mintAsync.mock.invocationCallOrder[0]!,
     );
+    expect(mintAsync).toHaveBeenCalledWith({
+      lpId: 7,
+      depositId: 3,
+      receiver: LP_WALLET,
+      amount: "1250000.5",
+      occurredAt: "2026-10-05T15:41:00Z",
+      refHash: "ab".repeat(32),
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId("lp-mint-confirm")).toBeNull(),
+    );
+  });
+
+  it("reads the receiver's PLUSD authorisation on open and again on confirm", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockAuth.mock.calls[0]![0]).toMatchObject({
+      plusdId: "CPLUSD",
+      address: LP_WALLET,
+    });
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeEnabled();
+
+    await confirmMint();
+    expect(mockAuth).toHaveBeenCalledTimes(2);
+    expect(mintAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["no-trustline", "lp-mint-no-trustline", "has no PLUSD trustline"],
+    ["not-authorized", "lp-mint-not-authorized", "not authorised yet"],
+  ] as const)(
+    "blocks the mint on open when the receiver is %s",
+    async (phase, testId, text) => {
+      mockAuth.mockResolvedValue(phase);
+      list({ data: { deposits: [DEPOSIT] } });
+      renderSection();
+
+      const table = screen.getAllByRole("row")[1]!;
+      fireEvent.click(
+        within(table).getByRole("button", { name: "Mint PLUSD" }),
+      );
+
+      const notice = await screen.findByTestId(testId);
+      expect(notice).toHaveTextContent(text);
+      expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+      expect(mintAsync).not.toHaveBeenCalled();
+    },
+  );
+
+  it("names the capital wallet when the fallback receiver has no trustline", async () => {
+    lp({ address_linked_at: null });
+    mockAuth.mockResolvedValue("no-trustline");
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const table = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(table).getByRole("button", { name: "Mint PLUSD" }));
+
+    expect(await screen.findByTestId("lp-mint-no-trustline")).toHaveTextContent(
+      "capital wallet must add PLUSD",
+    );
+    expect(mockAuth.mock.calls[0]![0]).toMatchObject({
+      address: CAPITAL_WALLET,
+    });
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("offers Retry and never mints when the authorisation read fails", async () => {
+    mockAuth.mockRejectedValueOnce(new Error("rpc down"));
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const table = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(table).getByRole("button", { name: "Mint PLUSD" }));
+
+    const dialog = await screen.findByTestId("lp-mint-confirm");
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent(
+        "Could not read this receiver's PLUSD authorisation. Try again.",
+      ),
+    );
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(
+        LP_WALLET,
+      ),
+    );
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("blocks the mint when authorisation flips between open and confirm", async () => {
+    mockAuth
+      .mockResolvedValueOnce("authorized")
+      .mockResolvedValueOnce("not-authorized");
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    await confirmMint();
+
+    expect(mintAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lp-mint-not-authorized")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
   });
 
   it("falls back to the capital wallet when no wallet is linked", async () => {
@@ -306,10 +704,190 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+    await openMintDialog();
+    expect(screen.getByTestId("lp-mint-confirm")).toHaveTextContent(
+      "Capital wallet",
+    );
+    await confirmMint();
+
+    expect(mintAsync.mock.calls[0]![0].receiver).toBe(CAPITAL_WALLET);
+  });
+
+  it("shows the changed notice and mints to the new address only after the ack", async () => {
+    lp({ stellar_address: WALLET_X });
+    mockFetchLp.mockResolvedValue(lpData({ stellar_address: WALLET_Y }));
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+
+    const notice = screen.getByTestId("lp-mint-receiver-changed");
+    expect(notice).toHaveTextContent(`Previously shown: ${WALLET_X}`);
+    expect(notice).toHaveTextContent(`Now minting to: ${WALLET_Y}`);
+    expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(WALLET_Y);
+    expect(lpRefetch).toHaveBeenCalled();
+    const submit = screen.getByTestId("lp-mint-confirm-submit");
+    expect(submit).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("lp-mint-ack"));
+    expect(submit).toBeEnabled();
+    await confirmMint();
+
+    expect(mintAsync).toHaveBeenCalledTimes(1);
+    expect(mintAsync.mock.calls[0]![0].receiver).toBe(WALLET_Y);
+  });
+
+  it("blocks the mint when the LP relinks while the dialog is open", async () => {
+    lp({ stellar_address: WALLET_X });
+    mockFetchLp
+      .mockResolvedValueOnce(lpData({ stellar_address: WALLET_X }))
+      .mockResolvedValueOnce(lpData({ stellar_address: WALLET_Y }))
+      .mockResolvedValueOnce(lpData({ stellar_address: WALLET_Y }));
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    expect(screen.queryByTestId("lp-mint-receiver-changed")).toBeNull();
+
+    await confirmMint();
+
+    expect(mintAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lp-mint-receiver-changed")).toHaveTextContent(
+      `Previously shown: ${WALLET_X}`,
+    );
+    expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(WALLET_Y);
+    expect(screen.getByTestId("lp-mint-ack")).not.toBeChecked();
+    expect(lpRefetch).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("lp-mint-ack"));
+    await confirmMint();
+
+    expect(mockFetchLp).toHaveBeenCalledTimes(3);
+    expect(mintAsync).toHaveBeenCalledTimes(1);
+    expect(mintAsync.mock.calls[0]![0].receiver).toBe(WALLET_Y);
+  });
+
+  it("requires the ack when the LP relinks to the capital wallet", async () => {
+    mockFetchLp.mockResolvedValue(lpData({ address_linked_at: null }));
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+
+    expect(screen.getByTestId("lp-mint-receiver-changed")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-mint-confirm")).toHaveTextContent(
+      "Capital wallet",
+    );
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+  });
+
+  it("blocks the mint and offers Retry when the fresh read fails", async () => {
+    mockFetchLp.mockRejectedValueOnce(new ApiError("boom", 500));
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const dialog = await openMintDialog();
 
     await waitFor(() =>
-      expect(mintAsync.mock.calls[0]![0].receiver).toBe(CAPITAL_WALLET),
+      expect(dialog).toHaveTextContent(
+        "Could not re-read this LP's settlement address. Try again.",
+      ),
+    );
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+    expect(mintAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(
+        LP_WALLET,
+      ),
+    );
+    expect(mockFetchLp).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks the mint when the confirm-time read fails", async () => {
+    mockFetchLp
+      .mockResolvedValueOnce(lpData())
+      .mockRejectedValueOnce(new ApiError("boom", 500));
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    await confirmMint();
+
+    expect(mintAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lp-mint-confirm")).toHaveTextContent(
+      "Could not re-read this LP's settlement address.",
+    );
+  });
+
+  it("drops a read that resolves after the dialog was closed", async () => {
+    let resolveRead: (value: LpDetail) => void = () => {};
+    mockFetchLp.mockReturnValueOnce(
+      new Promise<LpDetail>((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(
+      within(screen.getAllByRole("row")[1]!).getByRole("button", {
+        name: "Mint PLUSD",
+      }),
+    );
+    expect(screen.getByTestId("lp-mint-confirm")).toHaveTextContent(
+      "Reading the LP's current settlement address",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("lp-mint-confirm")).toBeNull();
+
+    await act(async () => {
+      resolveRead(lpData());
+    });
+
+    expect(screen.queryByTestId("lp-mint-confirm")).toBeNull();
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("disables the action and never reads or mints on an EVM session", () => {
+    session(560048);
+    lp({
+      evm_address: LP_EVM,
+      evm_address_linked_at: "2026-09-01T00:00:00Z",
+    });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(screen.getByTestId("lp-deposits-mint-scope")).toHaveTextContent(
+      "Mints on Hoodi to",
+    );
+    expect(screen.getByTestId("lp-deposits-receiver")).toHaveAttribute(
+      "title",
+      LP_EVM,
+    );
+    const button = screen.getByRole("button", { name: "Mint PLUSD" });
+    expect(button).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "PLUSD minting on Hoodi is not available in the Trustee app yet.",
+    );
+    fireEvent.click(button);
+    expect(mockFetchLp).not.toHaveBeenCalled();
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("resolves the EVM capital wallet for an EVM session with no EVM address", () => {
+    session(560048);
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    expect(screen.getByTestId("lp-deposits-receiver")).toHaveAttribute(
+      "title",
+      EVM_CAPITAL_WALLET,
+    );
+    expect(screen.getByTestId("lp-deposits-mint-scope")).toHaveTextContent(
+      "no EVM settlement address",
     );
   });
 
@@ -319,10 +897,11 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
-
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
     expect(envMock.STELLAR_USDC_CUSTODY_ID).toBe(CUSTODY);
-    expect(mintAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lp-deposits-mint-scope")).toHaveTextContent(
+      "no receiver",
+    );
   });
 
   it("shows a positive Minted chip and no action for a minted row", () => {
@@ -347,6 +926,31 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     expect(screen.getAllByRole("row")[1]).toHaveTextContent(
       "Connect your trustee wallet to mint PLUSD.",
     );
+  });
+
+  it.each([
+    "Only the Cash reporter can book incoming wires.",
+    "Checking this wallet's Cash reporter role…",
+    "Could not verify this wallet's Cash reporter role.",
+  ])("disables the action with the role reason: %s", (reason) => {
+    roleMock.reason = reason;
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(reason);
+    expect(roleMock.calls.at(-1)).toEqual({
+      fn: "record_wire_in",
+      enabled: true,
+    });
+  });
+
+  it("does not run the role read on an EVM session", () => {
+    session(560048);
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(roleMock.calls.every((c) => c.enabled === false)).toBe(true);
   });
 
   it("disables the action when the minter id is unset", () => {
@@ -377,7 +981,8 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     list({ data: { deposits: [DEPOSIT] } });
     const { rerender } = renderSection();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+    await openMintDialog();
+    await confirmMint();
 
     await waitFor(() =>
       expect(screen.getByText("Waiting for the indexer")).toBeInTheDocument(),
@@ -395,7 +1000,7 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("surfaces a RefHashSeen trap with its own message and raw details", () => {
+  it("surfaces a RefHashSeen trap with its own message and raw details", async () => {
     minter({
       error: new Error(
         "recordWireIn simulation error: HostError: Error(Contract, #9) RefHashSeen",
@@ -403,16 +1008,19 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     });
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
+    await openMintDialog();
 
     const alert = screen.getAllByRole("alert").at(-1)!;
     expect(alert).toHaveTextContent(
       "This deposit's reference has already been minted on-chain. Refresh the list.",
     );
     fireEvent.click(screen.getByRole("button", { name: /details/i }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("RefHashSeen");
+    expect(screen.getAllByRole("dialog").at(-1)).toHaveTextContent(
+      "RefHashSeen",
+    );
   });
 
-  it("maps a PLUSD trustline trap to its own message and keeps the raw details", () => {
+  it("maps a PLUSD trustline trap to its own message and keeps the raw details", async () => {
     minter({
       error: new Error(
         "recordWireIn simulation error: HostError: Error(Contract, #13)",
@@ -420,14 +1028,35 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     });
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
+    await openMintDialog();
 
     const alert = screen.getAllByRole("alert").at(-1)!;
     expect(alert).toHaveTextContent(
       "The receiver has no authorized PLUSD trustline.",
     );
     fireEvent.click(screen.getByRole("button", { name: /details/i }));
-    expect(screen.getByRole("dialog")).toHaveTextContent(
+    expect(screen.getAllByRole("dialog").at(-1)).toHaveTextContent(
       "Error(Contract, #13)",
+    );
+  });
+
+  it("maps the minter ReceiverNotAuthorized trap to its own message", async () => {
+    minter({
+      error: new Error(
+        "recordWireIn simulation error: HostError: Error(Contract, #15)",
+      ),
+    });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    await openMintDialog();
+
+    const alert = screen.getAllByRole("alert").at(-1)!;
+    expect(alert).toHaveTextContent(
+      "This receiver's PLUSD trustline is not authorised yet.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+    expect(screen.getAllByRole("dialog").at(-1)).toHaveTextContent(
+      "Error(Contract, #15)",
     );
   });
 
@@ -442,13 +1071,15 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+    await openMintDialog();
+    await confirmMint();
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Awaiting signature…" }),
-      ).toBeDisabled(),
+      expect(screen.getByTestId("lp-mint-confirm-submit")).toHaveTextContent(
+        "Awaiting signature…",
+      ),
     );
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
     resolveMint({ hash: "tx", wireId: 1 });
   });
 });
@@ -473,6 +1104,12 @@ describe("LpBankDepositsSection — mint pending window", () => {
     const buttons = screen.getAllByRole("button", { name: "Mint PLUSD" });
     await act(async () => {
       fireEvent.click(buttons[index]!);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("lp-mint-confirm-submit"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(0);
     });
   }
 

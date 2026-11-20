@@ -34,7 +34,7 @@ Product & design:
 
 Operational:
 
-- [`docs/PLANS.md`](./docs/PLANS.md) | [`docs/PRODUCT_SENSE.md`](./docs/PRODUCT_SENSE.md) | [`docs/QUALITY_SCORE.md`](./docs/QUALITY_SCORE.md) | [`docs/RELIABILITY.md`](./docs/RELIABILITY.md) | [`docs/SECURITY.md`](./docs/SECURITY.md) | [`docs/FRONTEND.md`](./docs/FRONTEND.md) | [`docs/frontend/index.md`](./docs/frontend/index.md) | [`docs/STORIES.md`](./docs/STORIES.md)
+- [`docs/PLANS.md`](./docs/PLANS.md) | [`docs/PRODUCT_SENSE.md`](./docs/PRODUCT_SENSE.md) | [`docs/QUALITY_SCORE.md`](./docs/QUALITY_SCORE.md) | [`docs/RELIABILITY.md`](./docs/RELIABILITY.md) | [`docs/SECURITY.md`](./docs/SECURITY.md) | [`docs/FRONTEND.md`](./docs/FRONTEND.md) | [`docs/frontend/index.md`](./docs/frontend/index.md) | [`docs/STORIES.md`](./docs/STORIES.md) | [`docs/e2e.md`](./docs/e2e.md)
 
 Reference:
 

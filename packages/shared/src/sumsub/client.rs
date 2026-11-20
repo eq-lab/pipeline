@@ -19,7 +19,7 @@ pub struct SumsubClient {
 impl SumsubClient {
     pub fn new(settings: SumsubSettings) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http_client::http_client(),
             settings,
         }
     }
@@ -130,8 +130,7 @@ impl SumsubClient {
             parsed_url.path(),
             parsed_url
                 .query()
-                .map(|q| format!("?{q}"))
-                .unwrap_or_default()
+                .map_or_else(Default::default, |q| format!("?{q}"))
         );
 
         let data = format!("{}{}{}{}", ts, method.as_str(), path, body.unwrap_or(""));

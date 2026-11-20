@@ -6,6 +6,7 @@ import type { WalletViewKind } from "./WalletViewContext";
 export interface UseWalletPresenceResult {
   isAnyConnected: boolean;
   isSettled: boolean;
+  isConnectionPending: boolean;
   onlyConnectedKind: WalletViewKind | undefined;
   disconnectAll: () => void;
 }
@@ -26,9 +27,13 @@ export function useWalletPresence(): UseWalletPresenceResult {
         ? "stellar"
         : undefined;
 
+  const isAnyConnected = evm.isConnected || stellar.isConnected;
+  const isSettled = evm.isSettled && stellar.isSettled;
+
   return {
-    isAnyConnected: evm.isConnected || stellar.isConnected,
-    isSettled: evm.isSettled && stellar.isSettled,
+    isAnyConnected,
+    isSettled,
+    isConnectionPending: !isAnyConnected && !isSettled,
     onlyConnectedKind,
     disconnectAll,
   };

@@ -131,7 +131,7 @@ page shows the zero state. The forced session-end path (expiry, `401`, suspensio
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
-`AccountProfileCard.tsx`, `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
+`AccountProfileCard.tsx` (Name, Country, then the [settlement address rows](#settlement-address) and the [settlement bank account](#settlement-bank-account-1885)), `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
@@ -157,7 +157,8 @@ was invisible to state-scoped snapshots).
 
 Design added a visitor state: a wallet is connected (EVM or Stellar) but there is no auth session.
 **The wallet is display-only, not a credential** — connecting it only lets the visitor see it on
-this page; nothing links the address to an account. Renders when `useAuthSession().isAuthenticated`
+this page; without a session nothing links the address to an account (with a session the LP can link it
+from the settlement row, see [Settlement address](#settlement-address)). Renders when `useAuthSession().isAuthenticated`
 is `false` and the route gate has already admitted the visitor (i.e. a wallet is connected — see
 [Route gate](#route-gate)); `AccountPage` branches on `isAuthenticated` alone (not on wallet state
 again), since the gate already guarantees one of the two. In that branch `AccountPageContent`
@@ -180,7 +181,9 @@ read-only `—` row. `walletOnly` wires `onAddEmail={openAddEmail}`, `openAddEma
 [`auth-components.md#authflowprovider`](./auth-components.md#authflowprovider)) — clicking it opens
 `AddEmailModal` (#1459), the normal create-account registration (email + password → OTP → session)
 with its own chrome; see
-[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). The authenticated path
+[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). That screen carries an
+`Already have an account? Sign in` link (#2054) that opens the flow's sign-in screen; closing or
+signing in returns to `/account`, and no wallet data is sent. The authenticated path
 never passes `onAddEmail`, so its read-only row is unchanged.
 
 `Upload` (`AccountUploadRow`, via `AccountDocumentsCard`'s `onUploadIntercept`): document writes
@@ -201,6 +204,275 @@ No new `?state=` fixture: the variant is fully reachable for real (connect a wal
 so it is exercised live rather than through a dev-only preview — per the project's no-mocks rule,
 nothing about this variant is faked.
 
+## Settlement address
+
+**Review fixes (2026-11-05, PR #1846):** a link in flight is abandoned as `idle` (no caption, no
+verify) if the session token or the connected wallet changes before it finishes; `signMessage`
+receives the challenged address so the wallet signs with that account (wagmi `account`, kit
+`address`); a generic verify failure re-reads `GET /v1/lps/me` best-effort before showing the
+error caption; the row carries `aria-busy` while requesting / signing / verifying; the hook also
+returns `connected` so the provider reads the wallet once.
+
+The LP links the **connected wallet** (as both address and signer) to its record by signing a challenge, so the Trustee's
+settlement rows and the bank-deposit mint receiver have a proven address. Behaviour sources, in precedence order:
+`docs/user-docs/lenders/onboarding.md` (§Entity verification), `docs/product-specs/kyb-lp-verification.md`
+§Settlement Address, and the API (`routes/lp_settlement_address.rs`; contract in
+`docs/product-specs/api-authorization.md` § Settlement-address proof). **No Figma frame exists**; the rows are built from
+the existing settlement row and the LP theme (user decision 2026-11-04).
+
+**Flow (click only).** `useSettlementAddressLink` (`packages/frontend/src/auth/useSettlementAddressLink.ts`), owned by
+`AuthFlowProvider`, runs `GET /v1/lps/me/link-address/challenge?chain_id&address`, then the wallet's `signMessage`
+(Stellar SEP-0053 through `useStellarWallet`, EVM EIP-191 through `useEvmSignMessage`; see
+[wallet README](../../packages/frontend/src/wallet/README.md#usestellarwallet) and
+[`useEvmSignMessage`](../../packages/frontend/src/wallet/README.md#useevmsignmessage)), then
+`POST /v1/lps/me/link-address/verify { chain_id, address, signature }`, and adopts the returned LP. A signature prompt
+opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effect fetches a challenge or signs, so sign-in,
+page load, LP creation and connecting a wallet never prompt, with one exception (#1901): a connect started from the
+Account wallet card's **Link Wallet** (**Connect Wallet** when linking cannot happen) continues into the link (next paragraph). Every `Try again` and every new `Link wallet` click starts
+with a new challenge; the client never reuses a message. One flow runs at a time, and a response that arrives after the
+session token changed is dropped. The default connected-wallet path never sends `signer_address` (the backend defaults it to
+the address). The opt-in **Different address** path (below) sends it only when the typed address differs
+from the connected wallet (#1849, resolves TD-166).
+
+**Connect then link (#1901).** The wallet card's button (labelled `Link Wallet` while an LP session exists and KYB is not `Failed`, else `Connect Wallet`; a deliberate deviation from frame `6701:98104` by user decision 2026-11-12) calls `settlement.onArmConnectLink()` (the hook's
+`armConnectLink`) and then opens the shared connect modal. The hook keeps a one-shot intent (a ref holding the session
+token) that exists only when armed while no wallet is connected. When a wallet connects with the intent armed and the LP
+loaded, the intent is consumed and the hook continues exactly like the click path for that wallet's chain: `link` when no
+address is served for the chain (or the served one is unproven for this wallet), `beginChange` (the Change confirmation, no
+challenge yet) when the served address differs, nothing when equal and proven or when KYB is `Failed`. A declined
+signature, 409, 422 or error then behaves as for a click (`Try again`, `taken`, `proofFailed`, toast) with the wallet still
+connected. The intent is dropped when the connect modal (or the terms gate before it) is dismissed without picking a
+wallet (`useConnectModal().onCancel` of the LP `ConnectModalProvider`), on a session-token change, and once consumed. A
+wallet connected anywhere else (header, home cards, sign-in, auto-reconnect) never arms it and never prompts. Residual
+case: if the LP picks a wallet and then rejects the connection inside the wallet, the intent stays armed until the next
+connect or token change.
+
+**Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none, decided by
+`walletPrecedence` (the single owner, see [`wallet-flows.md`](./wallet-flows.md#single-connected-wallet));
+`connectedWallet` adds the winning wallet's address and is `null` when that wallet has no address. `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
+compared case-insensitively; Stellar addresses are compared verbatim. The write is refused only for `Failed`
+(`settlementWritable`): a `Passed` LP can link, prove a legacy unproven address and change its address (#1831).
+
+**Rows.** `SettlementAddressRows` renders one `SettlementAddressRow` per chain kind (Stellar, then EVM) that has a served
+address or a connected wallet of that kind; with neither there is one generic `Settlement address` row. Each row is an
+`AccountListRow variant="plain"` (caption = the row label; the title is `truncateAddress(address)`, `GCGQVO…GQ5C`, with the full address as the title span's `title` attribute via the row's `titleAttr` prop so it shows on hover — live review 2026-11-05; the From / To lines of the change confirmation keep the full addresses), a
+body-s caption (`--color-pipeline-ink-subtle`, or `--color-pipeline-negative-strong` with `role="alert"`), and at most one
+`Button variant="secondary" size="compact"` in the trailing slot. Labels: `Stellar settlement address`,
+`Ethereum settlement address`, `Settlement address`. The rows sit below Country in `AccountProfileCard` and in
+`CompanyDocsModal`'s first surface card (not in the `/test?tab=auth` preview), both fed by `useAuthFlow().settlement`
+(`{ rows, onLink, onChange, onCancel, onOther, onLinkOther }`). A linked row whose served signer differs from its
+address shows a body-s `Signer` line (`Signer` in `--color-pipeline-ink-muted`, `truncateAddress(signer)` in
+`--color-pipeline-ink`, full value as `title`, testid `settlement-signer`) directly under the `AccountListRow`, before
+the caption; the Trustee profile (#1826) uses the same word.
+
+**Change wallet.** A row whose served address differs from a connected wallet of the same kind offers `Change wallet`.
+It does not prompt the wallet: it opens an inline confirmation inside the row, `From` (served address) and `To`
+(connected address) in full, the `confirm` caption, and `Confirm change` / `Cancel`. Only `Confirm change` starts the
+signed flow; `Cancel` makes no request. The confirmation applies at every status. `Try again` after a failed change skips
+it. Changing the connected wallet or the token resets the row. A served row with no connected wallet of its kind shows the
+address with no caption or button: a change needs the new wallet connected.
+
+**Different address (#1849).** No Figma frame exists (user decision 2026-11-05); the form is built from `TextField`
+(with the company-docs modal's `[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]` class), `Button`
+(`size="compact"`) and the LP tokens, on both surfaces.
+
+- **Entry.** A text-link button `Use a different address` (body-s, `--color-pipeline-ink`, `hover:underline`,
+  focus-visible outline, testid `settlement-other-entry`) under the row's caption. It is shown only when the LP is loaded
+  and not `Failed`, a wallet of this row's kind is connected, and the row is idle (not busy, not confirming, form not
+  open); never on the generic row. The connected-wallet button stays the single primary action.
+- **Signer.** Always the connected wallet, shown read-only; there is no signer input. Only the connected wallet can sign,
+  and the pinned-signer rule of #1825 requires the challenge's `signer_address` to equal the wallet passed to
+  `signMessage`. To use another signer, connect that wallet.
+- **Request shape.** `signer_address` is sent on both challenge and verify only when the typed address differs from the
+  connected wallet (`sameAddress`); typing the connected wallet's own address is the default link. The EVM signer is sent
+  lowercased. A Stellar `C…` needs a `G…` signer (the backend rejects it otherwise); a `G…` or `0x…` address may name a
+  different signer.
+- **Normalisation.** Stellar input is trimmed and uppercased. EVM input is trimmed and sent as typed, so the backend's
+  EIP-55 check rejects a mistyped mixed-case checksum (`400`); the backend lowercases before storing. The same strings go
+  to challenge and verify.
+- **Validation** (format only, backend authoritative for `400` / `409` / `422`). Stellar: Strkey `G…` or `C…`
+  (`isStellarSettlementAddress` from `@/wallet`, length + alphabet + checksum, no network call). EVM:
+  `/^0x[0-9a-fA-F]{40}$/`. The message shows through `TextField`'s `invalid` + `error` on blur and on submit and clears on
+  edit; `Link address` is disabled while the input is empty.
+- **Form** (inside the row below the caption, a `<form noValidate>`, testid `settlement-other-form`): `Current` line
+  with the full served address when one is served; `New settlement address` label + `TextField` (focused on open,
+  `autoComplete="off"`, `spellCheck` off, id from `useId()` because both surfaces can be mounted together); the read-only
+  `Signer` line (`truncateAddress`, full value in `title`); the caption; `Link address` (`primary-dark`) and `Cancel`
+  (`secondary`). Enter submits.
+- **Submitting is the confirmation.** There is no second From / To step: the `Current` line and the `confirm` caption sit
+  in the form the LP just filled (the confirmation is not a security control, TD-163). Re-linking the same address and
+  signer is allowed; the backend records a fresh proof.
+- **State.** `SettlementLinkState` has `mode: "wallet" | "other"` and the phase `editing`. The draft text and its
+  validation flag are local to the form, so they survive the busy and failure phases and are dropped on success,
+  `Cancel`, or a token / connected-wallet change (which resets to `idle`). The hook adds `beginOther(kind)` and
+  `linkOther(kind, raw)`; both modes share one `run()`, so the stale-wallet guard, single flight and pinned signer apply to
+  both.
+- **Phases in the form.** The caption renders inside the form, the input is disabled and the buttons hidden while busy.
+  After a failure the form keeps the draft and `Link address` starts a new challenge.
+- **EVM signer must be an EOA.** The backend verifies EIP-191 `ecrecover` only. A Safe is linked by typing the Safe
+  address with an owner EOA (MetaMask) connected; a smart-wallet signature gets `422` and the `proofFailed` caption.
+- **Connected wallet is the signer of a different linked address** (for example a linked `C…` signed by the connected
+  `G…`): `base` is none and the row shows `linkedSigner` with no button; the entry link remains. Switching back to the
+  wallet address is possible through the form (type the wallet address).
+
+**Legacy unproven.** A served address equal to the connected one whose signer is `null` offers `Link wallet` with the
+`unproven` caption at any status but `Failed`, with no confirmation (the address does not change).
+
+**Errors.**
+
+| Failure | Result |
+| --- | --- |
+| Wallet throws (rejection, no SEP-0053, mock wallet) | No verify request, no toast, `declined` caption, base action offered again |
+| `422` on verify | `proofFailed` caption (negative), `Try again` (new challenge), no toast |
+| `409` on challenge or verify | Danger toast with the served message, re-read `GET /v1/lps/me` and adopt it, then `taken` (negative, no button) unless the refreshed LP is `Failed` |
+| Anything else (400, 404, 5xx, network) | Toast with the served message or `Your wallet could not be linked.`, `error` caption (negative), `Try again` |
+
+In the different-address form the same matrix applies with the address captions below (`linkingAddress`, `addressTaken`,
+`addressError`; the toast fallback is `This address could not be linked.`). On `409` the form stays open for an edit; on a
+failure the buttons are `Link address` / `Cancel` instead of `Try again`.
+
+`401`/`403` stay on the app-wide session-end path (#1473, #1465). The hook reads the toast context optionally;
+`main.tsx` mounts `ToastProvider` above `AuthFlowProvider`.
+
+**Row rules** (per kind, first match wins; `s` served address, `c` connected address of this kind, `base` = `link` when
+nothing is served or the served address equals `c` with a `null` signer, `change` when `s` differs from `c` (none instead when
+the served signer equals `c`, #1849), else none; always none for `Failed` or without a connected wallet of the kind):
+
+| # | Condition | Caption | Button |
+| --- | --- | --- | --- |
+| 1 | Phase `requesting` / `verifying` for this kind | `linking` | none (busy) |
+| 2 | Phase `signing` | `signing` | none (busy) |
+| 3 | Phase `confirming` and `base` is `change` | `confirm` + `From` / `To` + `Confirm change` / `Cancel` | none |
+| 4 | Phase `declined` | `declined` | `base` |
+| 5 | Phase `proofFailed` | `proofFailed` (negative) | `Try again` when `base` |
+| 6 | Phase `taken` | `taken` (negative) | none |
+| 7 | Phase `error` | `error` (negative) | `Try again` when `base` |
+| 8 | `s` served, `c` equals `s`, `base` is `link` | `unproven` | `Link wallet` |
+| 9 | `s` served, `c` equals `s` | `linked` | none |
+| 9b | `s` served, `c` differs from `s`, the served signer equals `c` | `linkedSigner` | none |
+| 10 | `s` served, `base` is `change` | `different` | `Change wallet` |
+| 11 | `s` served | none | none |
+| 12 | Nothing served, no LP, LP read `absent` | `needsLp`, title `—` | none |
+| 13 | Nothing served, `base` is `link` | `notLinked`, title `—` | `Link wallet` |
+| 14 | Otherwise (`Failed`, LP still loading or read error) | none, title `—` | none |
+
+Rows 1-14 apply to `mode: "wallet"`. A row whose kind has `mode: "other"` and a connected wallet of its kind renders the
+form instead (the served row, `form` set, no button, `other` false): `editing` shows `otherHint`, or `confirm` when an
+address is served; `requesting` / `verifying` show `linkingAddress` (busy); `signing` shows `signing` (busy); `declined`
+shows `declined`; `proofFailed` shows `proofFailed` (negative); `taken` shows `addressTaken` (negative); `error` shows
+`addressError` (negative). The entry link (`other`) is true when the LP is loaded and not `Failed`, a wallet of the kind is
+connected, and the row is not busy, confirming or showing the form.
+
+Captions (`SETTLEMENT_CAPTIONS` in `components/account/settlementAddress.ts`):
+
+| Key | Text |
+| --- | --- |
+| `linking` | `Linking your connected wallet…` |
+| `signing` | `Approve the signature request in your wallet.` |
+| `confirm` | `Deposits processed after the change are minted to the new address.` |
+| `declined` | `Your wallet did not sign. Nothing was changed.` |
+| `proofFailed` | `The signature could not be verified. Try again to sign a new request.` |
+| `taken` | `This wallet is already linked to another account. Connect a different wallet.` |
+| `error` | `Your wallet could not be linked. Try again.` |
+| `linked` | `Linked to your connected wallet.` |
+| `unproven` | `Linked without a signature. Sign with this wallet to confirm you control it.` |
+| `different` | `Your connected wallet is not this address.` |
+| `notLinked` | `Link your connected wallet to receive bank deposits to it.` |
+| `needsLp` | `Save your company details first, then link this wallet.` |
+| `connect` | `Connect a wallet to name your settlement address.` (generic row only) |
+| `linkingAddress` | `Linking this address…` |
+| `addressTaken` | `This address is already linked to another account. Enter a different address.` |
+| `addressError` | `This address could not be linked. Try again.` |
+| `linkedSigner` | `Linked. Your connected wallet is the signer of this address.` |
+| `otherHint` | `Your connected wallet signs to link this address.` |
+
+Buttons (`SETTLEMENT_ACTION_LABELS`): `Link wallet`, `Change wallet`, `Try again`; confirmation: `Confirm change`, `Cancel`.
+
+Form copy (`SETTLEMENT_FORM_COPY`):
+
+| Key | Text |
+| --- | --- |
+| `entry` | `Use a different address` |
+| `label` | `New settlement address` |
+| `current` | `Current` |
+| `signer` | `Signer` |
+| `submit` / `cancel` | `Link address` / `Cancel` |
+| `placeholder` | `G… or C…` (Stellar), `0x…` (EVM) |
+| `invalid.stellar` | `Enter a Stellar address: G… or C…, 56 characters.` |
+| `invalid.evm` | `Enter an Ethereum address: 0x followed by 40 hexadecimal characters.` |
+
+**Out of scope.** A signer other than the connected wallet; EIP-1271 / smart-wallet signers (the backend verifies EOA
+signatures only); proving that the signer controls the address (backend TD-162); unlinking (no
+endpoint); wallet-only visitors (no session, no LP); wallets without SEP-0053 (Albedo, Rabet) are still listed in the
+connect modal and end on the `declined` caption. The staging dev mock wallets cannot sign (`signMessage` rejects);
+QA uses real Freighter and MetaMask wallets.
+
+## Settlement bank account (#1885)
+
+Capture and masked view of the LP's USD settlement bank account, on the Account profile card and on the
+"Finish account setup" modal ([CompanyDocsModal](./auth-components.md#companydocsmodal)). Behaviour sources, in
+precedence order: `docs/user-docs/lenders/onboarding.md` and `withdraw.md` (bank wire), then
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md#settlement-bank-account), then the API
+(`UpsertProfile.settlement_bank_account`, the served `SettlementBankAccountSummary`, the 400
+`settlement_bank_account.{field}: {reason}`).
+
+**Design source.** No Figma frame exists for this block. Decision on #1885 (2026-11-13): it ships without frames, built
+from the shipped Account rows (`AccountListRow variant="plain"`), `TextField` with the unfocused `--color-pipeline-line`
+border, `Button size="compact"` and the "Different address" inline form of [Settlement address](#settlement-address).
+
+**Row.** `SettlementBankAccountSection` (shared by both surfaces), below the settlement address rows. Caption
+`Settlement bank account`; title is the served holder name, or `Not added`. A body-s line `{bank_name} · ending {last4}`
+follows (`{bank_name}` alone when `account_last4` is `null`); served strings are shown verbatim.
+
+| Condition | Caption | Button |
+| --- | --- | --- |
+| open record, no account | `Optional. Needed only to withdraw to a bank account by wire.` | `Add` |
+| open record, account stored | none | `Replace` |
+| `UnderReview` | `Locked while your account is under review.` | none |
+| `Passed`, no account | `To add a bank account, contact support.` | none |
+| `Passed`, account stored | `To change it, contact support.` | none |
+| `Failed` | none | none |
+
+"Open record" is the served `writable`. There is no Remove: the API cannot clear the account (`null` means unchanged).
+
+**Form.** Add / Replace opens an inline `<div>` (no nested form) with seven `TextField`s, always empty, in this order and
+with these labels: `Account holder name`, `Bank name`, `Bank address (optional)`, `IBAN`, `Account number`,
+`SWIFT/BIC code`, `Routing number (ABA)`. Helpers: `Enter an IBAN, an account number, or both.` after the account number
+and `Enter a SWIFT/BIC code, a routing number, or both.` after the routing number. A replace adds
+`Replacing {bank} · ending {last4}. Enter the full account again.` above the inputs, and the masked row stays visible.
+`Cancel` clears the draft and closes. The form has no save button of its own.
+
+**Save path.** On the Account page the draft is sent by **Save profile** (one `POST /v1/lps/me`); a non-blank open draft
+counts as unsaved, so it enables Save profile and blocks upload and Submit for review like a Name or Country draft. The
+key is added only for a non-blank draft: blank optionals are sent as `null`, blank holder or bank name as `""` (the
+server answers `is required`). Notify me and the LP-creating upsert before an upload never send the key. The browser does
+no IBAN, BIC or ABA validation.
+
+**Errors.** A 400 `settlement_bank_account.{field}: {reason}` shows on that field and no generic alert; the draft is
+kept and the message never contains the value. An unknown reason on a known field reads `{Label} {reason}`. A 409 clears
+the draft and refreshes, so a frozen record turns read-only.
+
+| Server reason (field) | Inline copy |
+| --- | --- |
+| `is required` (holder, bank) | `{Label} is required.` |
+| `is too long` (holder, bank) | `{Label} is too long (140 characters max).` |
+| `is too long` (address) | `Bank address is too long (280 characters max).` |
+| `is not a valid IBAN` | `Enter a valid IBAN.` |
+| `is not a valid account number` | `Enter a valid account number (letters and digits only).` |
+| `is not a valid SWIFT/BIC code` | `Enter a valid SWIFT/BIC code (8 or 11 characters).` |
+| `is not a valid routing number` | `Enter a valid 9-digit ABA routing number.` |
+| `or iban is required` (account number) | `Enter an IBAN or an account number.` |
+| `or routing_number is required` (SWIFT/BIC) | `Enter a SWIFT/BIC code or a routing number.` |
+
+`{Label}` drops ` (optional)` and ` (ABA)`. Editing `IBAN` clears an account-number "or" error, and editing the routing
+number clears a SWIFT/BIC "or" error.
+
+**PII.** The draft lives only in React state (no storage, URL or `console`), is cleared on a successful save, Cancel, 409,
+session-token change and LP identity change, and the inputs use `autoComplete="off"` and `spellCheck={false}`.
+
+**Out of scope.** The Bank tab wire-out gating (#1917, blocked on #1757), trustee surfaces, and the `/test` and `?state=`
+previews (the section is hidden when there is no LP).
+
 ## Wallet card
 
 **Single connected wallet (#1512).** The LP holds at most one wallet connection at a time, and the
@@ -214,7 +486,7 @@ connected, else the deployment default (`evm`) — so there is no `setKind` and 
 | Card state | Renders |
 |---|---|
 | Wallet connected (`6701:98142`) | the chain block (below), then the connected block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect` |
-| No wallet connected (`6701:98104`) | the full-width `Connect Wallet` CTA |
+| No wallet connected (`6701:98104`) | the full-width `Link Wallet` CTA (`Connect Wallet` when no LP session or KYB `Failed`) |
 
 **Chain block (`6701:98144`, #1512 follow-up).** The track area where the `Ethereum`/`Stellar`
 tabs used to sit is kept, with the same size and style as the former `SegmentedTabs variant="track"`
@@ -227,6 +499,8 @@ app's name). The Ethereum logo is the two-tone diamond; the Stellar logo is the 
 (circle with two diagonal bars, no wordmark) redrawn as `currentColor` paths so it takes the ink token.
 It renders only while a wallet is connected; the disconnected state is unchanged (no block). No
 `tablist` role.
+
+Link Wallet is arm-then-connect (see **Connect then link**, #1901); Disconnect and the connected frame are unchanged.
 
 The card keeps its outer classes and both state blocks unchanged (sizes, paddings, node ids). `AccountWalletCard.tsx` does
 **not** own a second wallet system: `packages/frontend/src/wallet/useActiveWalletAccount.ts` is the
@@ -263,7 +537,7 @@ The frame's `Ethereum`/`Stellar` tabs row (`6701:98144`) is built as the static 
 rows (`Wallet` +
 truncated address + copy button; `USDC balance` + `CoinIcon token="usdc" size="lg"` + formatted
 balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a generic wallet
-glyph and a full-width 48px `Button variant="primary-dark"` labelled `Connect Wallet`. A missing
+glyph and a full-width 48px `Button variant="primary-dark"` labelled `Link Wallet` (`Connect Wallet` without an LP session or with KYB `Failed`; deviates from the frame by user decision 2026-11-12). A missing
 balance renders `—`, never a computed or placeholder number.
 
 **The wallet row's leading icon in the frame is a literal MetaMask fox logo** (`get_design_context`
@@ -399,13 +673,16 @@ home-route unobservability note in
 
 ## Verbatim copy
 
-Page chrome: `Account` · `Connect Wallet` · `Wallet` · `USDC balance` ·
+Page chrome: `Account` · `Link Wallet` (`Connect Wallet` when linking cannot happen) · `Wallet` · `USDC balance` ·
 `Disconnect` · `Corporate email` · `Email` · `Add email` · `Documents` · `Log Out`.
 
 Banners: `Verify your account` · `Verify your identity` (staged state only — a design-file
 inconsistency, see below) · `Verifying account` (stand-in) · `Upload your company documents to
 unlock bank transfers.` · `{Document name}` + ` required` (two-span composite) · `Please upload
 the document.` · `Re-upload your document` · `Some information may be missing or incorrect`.
+
+Settlement bank account: `Settlement bank account` · `Not added` · `Add` · `Replace` · `Cancel` · the captions and field
+labels in [Settlement bank account](#settlement-bank-account-1885).
 
 Upload area: `Upload documents` · `pdf, jpg, png files up to 10MB` · `Upload` · `Save`.
 
@@ -534,7 +811,7 @@ review the returned documents, and select any missing files again. Rejected rows
 then the visible upload controls accept the correction. Provided rows on writable LPs have a
 remove button; Verified and frozen rows do not.
 
-`AccountWalletCard`'s Connect Wallet / Disconnect and the route's Log Out remain wired to the
+`AccountWalletCard`'s Link Wallet / Disconnect and the route's Log Out remain wired to the
 shared wallet and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the
 synthetic `missing` preview. Review submission changes KYB only through the backend endpoint; its
 server response determines the displayed status and freezes controls.
@@ -583,7 +860,7 @@ was deleted as part of that redesign.
 The verified-row trailing chevron is `aria-hidden` (decorative, not a button) — no document-detail
 frame exists anywhere in V1.0, so it has no destination (tech debt, designer ask). The upload
 row's file input is visually hidden (`sr-only`) but reachable via its trailing `Upload` button. The
-status banner uses `role="status"`. `Log Out` and `Connect Wallet` are real `<button>` elements,
+status banner uses `role="status"`. `Log Out` and `Link Wallet` are real `<button>` elements,
 focusable and clickable with no throw even with no handler wired (the inert-seam contract).
 
 `Disconnect` (`AccountWalletCard.tsx`) and `Add email` (`AccountEmailCard.tsx`, issue #1458) are

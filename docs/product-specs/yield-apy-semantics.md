@@ -25,11 +25,22 @@ Linear (simple-interest) annualisation: `(p_latest / p_oldest − 1) × 365 / da
 `cumulative_yield_total` and `/v1/dashboard/yield-history` are **LP yield only**:
 
 - legacy `YieldMinted.s_plusd_amount`;
-- plus `CashRepaid.interest_minted` of repayments whose loan has no registry `LoanDefaulted` ordered before the repayment by `(block_number, log_index)` (a default in the same block but after the repayment does not carve it out; the contract never resets the carve-out flag, even after a cure). Carved-out interest is minted to the Pocket (claimable by snapshot holders) and is excluded from LP yield;
+- plus `CashRepaid.interest_minted` of repayments whose loan has no registry `LoanDefaulted` ordered before the repayment by `(block_number, log_index)` (a default in the same block but after the repayment does not carve it out; the contract never resets the carve-out flag, even after a cure). Carved-out interest is minted to the Pocket (claimable by snapshot holders) and is excluded from LP yield, except on a Stellar chain with `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` set (below);
 - net of `CashRepaymentReversed`, normalised per loan by chain kind as before;
 - fees (`PaymentRecorded` fee leg, legacy `treasury_amount`) excluded.
 
 It therefore intentionally no longer equals Σ LoanBook `minted_yield`: the 100 + 33 example is 100 here and 133 per loan, and a carved-out repayment's interest counts in `minted_yield` but not here.
+
+**Stellar with the pocket key (#1789).** When `kind == Stellar` and the chain has `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS`, recovered interest also counts: the `CashRepaid.interest_minted` of carved-out repayments (equal to `PocketReleased.interest`) is booked at release, that is at the `CashRepaid` timestamp, and netted at its `CashRepaymentReversed` (equal to `PocketUnreleased`). Recovered principal is not yield. EVM chains, and Stellar chains without the key, keep the definition above unchanged. `cumulative_yield_total` keeps its 6-decimal formatting, so the empty state is still `"0.000000"`.
+
+## /v1/pnl pocket_recovered
+
+`pocket_recovered` (#1789) is the sum of the wallet's `PocketClaimed.paid` (principal plus interest, raw PLUSD, the unit of `total_realized_pnl`) on the requested chain, matched on the wallet's exact `G…` string. `/v1/pnl` accepts only `G…` wallets (`normalise_wallet` rejects a `C…` address with 400), so a `C…` holder's claims are served only by `GET /v1/requests` `pocket_claims`, never in `pocket_recovered`. It is realised at claim time. It is `null` on EVM and on a Stellar chain without `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS`. When non-null:
+
+- `total_realized_pnl = Σ positions.realized_pnl + pocket_recovered`;
+- `total_pnl = total_unrealized_pnl + total_realized_pnl`.
+
+`positions[]` and `avg_apy` are unchanged. The unclaimed claimable amount is excluded: the loss is already in the sPLUSD share price at carve-out. Claims emitted before the pocket key was set are not included. `complete` in the loan-book `pocket` assumes the pocket key stayed configured since the `PocketOpened` ledger; if it was unset for a while, rewind the Stellar cursor within RPC retention (see backend.md "Stellar Pocket indexing").
 
 ## Conventions
 

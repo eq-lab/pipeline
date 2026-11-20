@@ -19,7 +19,7 @@ use std::sync::Arc;
 use axum::extract::{Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -30,6 +30,7 @@ use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 use crate::account_status::gate_request;
 use crate::auth::TOKEN_TTL_SECS;
 use crate::error::ApiError;
+use crate::formatting::iso_utc;
 use crate::routes::common::{require_chain_id, RequiredChain};
 use crate::AppState;
 
@@ -101,10 +102,6 @@ pub fn challenge_domain(app_base_url: &str) -> String {
         .unwrap_or_else(|| app_base_url.to_owned())
 }
 
-fn iso(t: DateTime<Utc>) -> String {
-    t.to_rfc3339_opts(SecondsFormat::Secs, true)
-}
-
 pub fn challenge_message(
     domain: &str,
     address: &str,
@@ -123,8 +120,8 @@ pub fn challenge_message(
          Nonce: {nonce}\n\
          Issued At: {issued}\n\
          Expiration Time: {expires}",
-        issued = iso(issued_at),
-        expires = iso(expires_at),
+        issued = iso_utc(&issued_at),
+        expires = iso_utc(&expires_at),
     )
 }
 

@@ -17,12 +17,19 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
-- **Date:** 2026-10-27
-- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.
-- **Symptom:** The phase simulates `mint_yield` on `CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID`, which is the same Minter (`CAPL5WN3…AIFK` on testnet) whose deployed spec has no `mint_yield`. It discovers work from `PaymentRecorded`, so once repayments land through `Minter.repay` (#1712) each one creates an outbox row whose simulation fails with "non-existent contract function" on every cycle.
-- **Root cause:** The phase predates the Minter folding `repay` into one signature that mints the interest and fees itself. It cannot double-mint, but it adds noise and a stuck row per repayment. EVM already removed its phase for the same reason (see the TD referenced at `tech-debt-tracker.md` near line 1970).
-- **Workaround:** None. The fix is backend: delete the Stellar phase or skip rows whose `PaymentRecorded` has a same-transaction `CashRepaid`.
+### BUG-41: An EVM withdrawal claim reverted for an unfunded queue reports "That request could not be found"
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/utils/userError.ts` (`matchHttp`). Found in the #1971 browser pass.
+- **Symptom:** `claimWithdrawal` reverted with `ERC20InsufficientAllowance(queue, 0, 400e6)` (the custodian had not approved the queue for USDC); the toast says "That request could not be found. It may have already been processed."
+- **Root cause:** The custom error `0xfb8f41b2` is not in the app's ABI, so viem's message reads `Unable to decode signature … was not found on the provided ABI`, which the HTTP rule `/not found/i` matches.
+- **Workaround:** None needed for funds; the claim succeeds once the custodian approves the queue.
+
+### BUG-37: `GET /v1/lps` OpenAPI documents `payment_details` as a required path parameter
+- **Date:** 2026-11-13
+- **Location:** `packages/api/src/routes/lps.rs` (`LpsQuery`). Found while planning #1887.
+- **Symptom:** `/api-docs/openapi.json` lists `payment_details` under `GET /v1/lps` as a required **path** parameter.
+- **Root cause:** `LpsQuery` lacks `#[into_params(parameter_in = Query)]`. The handler reads it correctly from the query string (`Query<LpsQuery>`), so the Trustee console is unaffected (its types are hand-mirrored, TD-42).
+- **Workaround:** None needed in the console. Fix in a backend issue; do not generate clients from the current spec for this endpoint.
 
 ### BUG-28: The trustee wire-in error mapping treats Minter code 13 as a missing trustline, but the source has 13 = `NonExistentRepayment` and 15 = `ReceiverNotAuthorized`
 - **Date:** 2026-10-27
@@ -76,22 +83,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** `GET /v1/loan-book`'s `documents` field was added by commit `f73d54d`. Loans whose `contract_logs.params.snapshot` row was indexed *before* that commit deserialize `documents` to `[]` (the field defaults on deserialize) rather than backfilling from the still-available on-chain metadata. This is correct never-fabricate behavior on the frontend — the API genuinely serves `[]` for these rows — but the underlying data gap is real.
 - **Workaround:** None applied. The loan-registry indexer resync (#442) re-indexes historical snapshots and will backfill `documents` for these loans once it runs; no frontend workaround should be attempted (do not re-fetch metadata client-side — see #1039's exec plan for why that was rejected).
 
-### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
-- **Tracked:** #1068
-- **Date:** 2026-07-29
-- **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
-- **Symptom:** The Stellar phase was fixed (`skip_nothing_to_mint_stellar`, discovered 2026-07-29) to skip pure-principal repayments before submit, because `yield_minter.mint_yield` reverts with `ZeroAmounts` when there is no yield to distribute, and that revert also rolls back the in-tx `consume_yield` mark, so the row retries every cycle forever. The EVM path has **no equivalent skip** — a `pending` row for a zero-yield repayment would submit repeatedly.
-- **Root cause:** The fix was scoped to Stellar (the confirmed live symptom). Whether EVM actually loops depends on the EVM `YieldMinter` contract's behaviour on zero amounts (separate contract, not confirmed here). The EVM `PaymentRecorded` params carry the same fields, so the same worker-side sweep is portable if needed.
-- **Workaround:** None. If EVM zero-yield repayments appear stuck in `pending`, port `skip_nothing_to_mint_stellar` to the EVM discover path (checksum-address variant).
-
-### BUG-12: Stellar yield-mint nothing-to-mint skip has no on-chain backstop
-- **Tracked:** #1069
-- **Date:** 2026-07-29
-- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs::skip_nothing_to_mint_stellar`.
-- **Symptom:** The nothing-to-mint detection is now **worker-side only** (SQL over the `PaymentRecorded` event in `contract_logs`); the earlier contract-error fallback (`Error(Contract, #1)` → skip at submit) was intentionally removed. If a zero-yield row is ever *not* caught by the sweep — a NULL/missing amount field in the event, a `loan_registry` address mismatch, or the event field names drifting from `senior_interest / mgmt_fee / perf_fee / oet_alloc` — the row stays `pending` and retries forever with no backstop. The sweep is conservative (`NULL = 0` is unknown → not skipped), so the failure mode is "loops" not "wrongly skipped".
-- **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
-- **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
-
 ### BUG-9: `KycRepo::GroupedRequest::from_row` formats `amount`/`assets`/`shares` as raw on-chain integers, not dollar strings
 - **Tracked:** #1071
 - **Date:** 2026-07-21
@@ -101,6 +92,92 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-42: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/` — `new Horizon.Server(horizonUrl)` in `useStellarToken.ts`, `useStellarXlmBalance.ts`, `useStellarSacToken.ts`, `useStellarDepositManager.ts`, `useStellarStakedPlusd.ts`, `useStellarWithdrawalQueue.ts`. Found in the #1971 browser pass.
+- **Symptom:** On the e2e stack (`VITE_STELLAR_HORIZON_URL=http://localhost:58000`) the connected test wallet's USDC balance shows `—` and the deposit input stays disabled, although Horizon serves 1000 USDC for the account. The Stellar deposit and withdrawal walk of the e2e skill cannot run.
+- **Root cause:** `Horizon.Server` throws `Cannot connect to insecure horizon server` for an `http` URL unless constructed with `{ allowHttp: true }`; the Soroban RPC client already passes `allowHttp: sorobanRpcUrl.startsWith("http://")`. Production (https) is unaffected.
+- **Workaround:** None in the browser; `run.ts` covers the Stellar LP flow without the app.
+- **Resolved:** #2014 constructs all six clients with `{ allowHttp: horizonUrl.startsWith("http://") }`, as the Soroban RPC clients do. The Stellar LP browser pass then ran end to end on a fresh stack (USDC balance, PLUSD trustline, deposit, claim, stake, withdrawal, desktop and 375 px): see the "#2014 rerun" section of [`docs/e2e/release-run.md`](../e2e/release-run.md).
+
+### BUG-40: The LP app hides the Claim step of a pending deposit when the remaining USDC is below the minimum deposit [FIXED 2026-11-18 / #2015]
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/routes/deposit.tsx` (`low-balance-banner` branch on `flow.hasBalance === false`) and `useDepositFlow.ts` (`evmHasBalance` compares the balance with `minDeposit`). Found in the #1971 browser pass on EVM.
+- **Symptom:** After `requestDeposit` of the whole balance (the anvil minimum is 1000 USDC and the test wallet holds 1000), the deposit page replaces the steps card with "Add funds to your USDC balance", so the Claim button of the `PendingClaim` request is unreachable; Activity lists it as Pending with no action.
+- **Root cause:** The banner is chosen on the wallet balance alone, not on whether a deposit request is waiting for its claim.
+- **Workaround:** Bring the balance back above the minimum (on the stack: `anvil_dealERC20`); the steps card and Claim return.
+- **Resolved:** #2015 shows the low-balance and USDC-trustline banners only on `flow.isBelowMinimum` (`useDepositFlow`: balance below the minimum and no confirmed deposit request), so a deposit request awaiting verification or its claim keeps the steps card on both EVM and Stellar.
+
+### BUG-39: The EVM worker drops the DEBT-only `DealRegistered(uint256,address)` [FIXED 2026-11-19 / #1892]
+- **Date:** 2026-11-19
+- **Tracked:** #1892; found while planning #1892.
+- **Location:** `packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`.
+- **Symptom:** An EVM `registerDeal` leaves no `DealRegistered` row and no audit-log entry, and the DEBT token's `Transfer`s are not indexed.
+- **Root cause:** The decoder declares only the legacy `DealRegistered(uint256,address,address)`, `decode_log` validates topic0, and Hoodi / `150631a` emit `DealRegistered(uint256,address)`.
+- **Workaround:** None needed for the UI (it reads `deal()` on chain).
+- **Resolved:** #1892 accepts both shapes per log (`cargo: null` for DEBT-only) and tracks the DEBT token alone. No Hoodi registration existed before the fix (scan from block 3 955 455 to head), so nothing needs a backfill.
+
+### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1) [FIXED 2026-11-16 / #1927]
+- **Date:** 2026-11-16
+- **Tracked:** #1927 (epic #1920); Found while planning #1922.
+- **Location:** `packages/shared/src/access_manager_repo.rs` (`INSERT_SCHEDULED_SQL`) and the unique key `(chain_id, contract_address, operation_id, nonce)` of `access_manager_operations`.
+- **Symptom:** After a schedule is executed, canceled or expires, a later schedule of the same arguments by the same caller (typical for `set_default(loan)` and `cure(loan)`) can leave no row, or only the old executed, canceled or expired one, so the console shows nothing or a stale row.
+- **Root cause:** The contract nonce restarts at 1 once the temporary schedule entry's TTL lapses (`storage.rs:327`, `lib.rs:339`), so the new schedule has the same key as the old row and `ON CONFLICT DO NOTHING` drops it.
+- **Workaround:** None; the Risk Council can still execute by retyping the arguments, as before #1920.
+- **Resolved:** #1927 keys the table on `(chain_id, contract_address, operation_id, schedule_ledger, nonce)` and closes the newest schedule of the id logged before the closing event. Schedules dropped before the fix stay missing until the Risk Council schedules again.
+
+### BUG-36: `-useRiskCouncil.test.tsx` — "relays schedule and execute with the right params" is timing-flaky [FIXED 2026-11-11 / #1888]
+- **Tracked:** #1888, seen on PR #1883 (CI run 42809806303).
+- **Date:** 2026-11-11
+- **Location:** `packages/trustee/src/api/-useRiskCouncil.test.tsx`, test "useRiskCouncilRelay > relays schedule and execute with the right params" (the final `result.current.hash` assertion).
+- **Symptom:** `expected null to be 'H'`.
+- **Root cause:** `useRiskCouncilRelay` returns `hash: mutation.data?.hash ?? null`. `@tanstack/query-core` delivers the mutation result to React through `notifyManager`, whose default scheduler is a real `setTimeout(cb, 0)`. `mutateAsync` can resolve before that timeout fires, and React's async `act` flushes with `setImmediate`, whose order against `setTimeout(0)` is not deterministic in Node, so the synchronous read can happen before the success render.
+- **Impact:** Spurious red CI.
+- **Workaround:** Re-run the job.
+- **Resolved:** 2026-11-11 by #1888 — the assertion now uses `waitFor`. The 5 s / 15 s delayed invalidations scheduled in `onSuccess` by the Trustee mutation hooks (`useRiskCouncilRelay`, `useReverseRepay`, `useRecordPayment`, `useRecordIncome`) run on fake `setTimeout` in the success-path hook tests and are cleared in `afterEach`, so they no longer leak past their test (hygiene, not the cause of the flake). Hooks unchanged.
+
+### BUG-34: `encodeUpdateMutableArgs` sends 5 args to a 3-arg `update_mutable`, and the contract overwrites `metadata_uri` [FIXED 2026-11-11 / #1893]
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`encodeUpdateMutableArgs`), `packages/trustee/src/api/useUpdateLifecycle.ts` and the Update-lifecycle dialog on `/loans/$id`. Found while planning #1805; follow-up #1893.
+- **Symptom:** The console sends `update_mutable(loan_id, metadata_uri, status, new_ccr, new_location)`; the deployed contract is `update_mutable(loan_id: u32, status: LoanStatus, metadata_uri: String)` (`pipeline-stellar-contracts` `contracts/loan-registry/src/lib.rs`), so the call fails with an argument-count / decode error.
+- **Root cause:** The encoder predates the contract's 3-arg signature. The contract also overwrites `metadata_uri`, so the dialog's "blank sends an empty string" behavior would wipe it, and it only allows `Performing` and `WatchList` toggles or a same-status metadata update on `Approved` / `Default`.
+- **Workaround:** None. Not fixed in #1805; tracked by #1893 (drops the CCR and location inputs from the dialog and prefills or requires `metadata_uri`).
+- **Resolved:** 2026-11-11 by #1893 (PR #1894) — `update_mutable` sends the 3-arg layout; the dialog drops the CCR and location inputs.
+
+### BUG-35: `toLoanId` drops loan id 0, but the registry's ids start at 0 [FIXED 2026-11-11 / #1896]
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`toLoanId`). Found while planning #1805.
+- **Symptom:** On a fresh registry the first drawn loan has id 0, `extractDrawnLoanId` returns `null`, and the Approve flow shows no "View loan" deep link. The mint itself is unaffected.
+- **Root cause:** `toLoanId` requires `n > 0`, but `next_loan_id` starts at 0 (`storage.rs`).
+- **Workaround:** Open the loan from `/loans`.
+- **Resolved:** 2026-11-11 by #1896 — `toLoanId` and `toWireId` accept any u32 including 0; tests cover id 0.
+
+### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
+- **Date:** 2026-10-27
+- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.
+- **Symptom:** The phase simulates `mint_yield` on `CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID`, which is the same Minter (`CAPL5WN3…AIFK` on testnet) whose deployed spec has no `mint_yield`. It discovers work from `PaymentRecorded`, so once repayments land through `Minter.repay` (#1712) each one creates an outbox row whose simulation fails with "non-existent contract function" on every cycle.
+- **Root cause:** The phase predates the Minter folding `repay` into one signature that mints the interest and fees itself. It cannot double-mint, but it adds noise and a stuck row per repayment. EVM already removed its phase for the same reason (see the TD referenced at `tech-debt-tracker.md` near line 1970).
+- **Workaround:** None. The fix is backend: delete the Stellar phase or skip rows whose `PaymentRecorded` has a same-transaction `CashRepaid`.
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted).
+
+### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
+- **Tracked:** #1068
+- **Date:** 2026-07-29
+- **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
+- **Symptom:** The Stellar phase was fixed (`skip_nothing_to_mint_stellar`, discovered 2026-07-29) to skip pure-principal repayments before submit, because `yield_minter.mint_yield` reverts with `ZeroAmounts` when there is no yield to distribute, and that revert also rolls back the in-tx `consume_yield` mark, so the row retries every cycle forever. The EVM path has **no equivalent skip** — a `pending` row for a zero-yield repayment would submit repeatedly.
+- **Root cause:** The fix was scoped to Stellar (the confirmed live symptom). Whether EVM actually loops depends on the EVM `YieldMinter` contract's behaviour on zero amounts (separate contract, not confirmed here). The EVM `PaymentRecorded` params carry the same fields, so the same worker-side sweep is portable if needed.
+- **Workaround:** None. If EVM zero-yield repayments appear stuck in `pending`, port `skip_nothing_to_mint_stellar` to the EVM discover path (checksum-address variant).
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted): obsolete. The EVM phase was deleted by `evm-relayer-v5` and `yield_mint_outbox_repo.rs::discover_pending` is deleted by #1793. #1068 can be closed.
+
+### BUG-12: Stellar yield-mint nothing-to-mint skip has no on-chain backstop
+- **Tracked:** #1069
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs::skip_nothing_to_mint_stellar`.
+- **Symptom:** The nothing-to-mint detection is now **worker-side only** (SQL over the `PaymentRecorded` event in `contract_logs`); the earlier contract-error fallback (`Error(Contract, #1)` → skip at submit) was intentionally removed. If a zero-yield row is ever *not* caught by the sweep — a NULL/missing amount field in the event, a `loan_registry` address mismatch, or the event field names drifting from `senior_interest / mgmt_fee / perf_fee / oet_alloc` — the row stays `pending` and retries forever with no backstop. The sweep is conservative (`NULL = 0` is unknown → not skipped), so the failure mode is "loops" not "wrongly skipped".
+- **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
+- **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted): the nothing-to-mint sweep is gone with it.
 
 ### BUG-30: Trustee white screen after sign-in and after logout on staging (`Uncaught undefined`)
 - **Date:** 2026-10-28
@@ -299,3 +376,32 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Impact:** Latent today (no EVM chain is in `CHAINS`), but #1436 configures five EVM address lists by hand against a fresh mainnet deployment — exactly the situation both modes are invisible in. The advancing cursor makes either unrecoverable without a manual cursor reset, and the total mode additionally requires deleting the foreign rows.
 - **Workaround:** Verify each configured address appears in the startup logs / produces rows before trusting a new EVM chain config.
 - **Suggested fix:** Parse addresses at config time with `?` instead of `.ok()`, and reject an empty resolved address set outright — an unfiltered `eth_getLogs` is never what the caller meant.
+
+### BUG-31: `AddEmailModal.test.tsx` — "an async onSubmit disables Save while pending" is timing-flaky [FIXED 2026-11-03 / #1837]
+- **Tracked:** #1837 (filed 2026-11-03) — seen during #1817 verification (2026-11-02); the file is untouched on that branch.
+- **Date:** 2026-11-02
+- **Location:** `packages/frontend/src/components/AddEmailModal.test.tsx`, test "AddEmailModal (#1459) > an async onSubmit disables Save while pending, then re-enables it".
+- **Symptom:** Fails roughly 1 run in 4 under the full `vitest run` (passes 3/3 in isolation and in the same CI run). The pending-state assertion races the mocked async `onSubmit` resolving.
+- **Root cause:** Suspected: the test awaits a real `setTimeout`-backed promise and asserts the disabled state in between; under load the submit settles before the assertion.
+- **Impact:** Spurious red CI on unrelated PRs.
+- **Workaround:** Re-run the job.
+- **Suggested fix:** Hold the `onSubmit` promise open with a deferred resolver, assert disabled, then resolve and assert re-enabled.
+- **Resolved:** 2026-11-03 by #1837 — the real race was the post-resolve check: `findByRole("Save")` matched the already-present button immediately, before the `.finally(() => setIsSubmitting(false))` state update flushed. The test now resolves the deferred promise inside `act` and asserts re-enable via `waitFor`; `AddEmailModal.tsx` is unchanged.
+
+### BUG-32: Testnet minter lacks the PLUSD `MINTER` role — every minter mint fails at simulation
+- **Date:** 2026-11-09
+- **Location:** Testnet deployment, AccessManager `CDP7TUNBGIKDBGEUZCA6WEDVJ7BTJFXNIPQF6HWEDV7SAAS7VN75WHTW` (`VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`), minter `CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK`.
+- **Symptom:** `record_wire_in`, `record_income` and the interest/fee leg of `repay` fail at simulation with the AccessManager's `Error(Contract, #1)` after the Cash reporter role check passes.
+- **Root cause:** `get_target_function_role(PLUSD, mint) = MINTER` and `can_call(minter, PLUSD, mint) = {immediate: false}`: the minter has not been granted `MINTER` on PLUSD.
+- **Impact:** The Trustee app's Mint PLUSD, Bank income and Record Coupon / Repayment bookings cannot complete on testnet (found while verifying #1762). The role gating and the `ref_hash_seen` pre-check are unaffected.
+- **Workaround:** None in the app; ops must grant `MINTER` on PLUSD to the minter.
+- **Suggested fix:** Grant the role on the AccessManager, then re-run the #1762 user stories end to end.
+
+### BUG-33: Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0 [FIXED 2026-11-09 / #1765]
+- **Tracked:** #1765 — originated in the unmerged #1763 and #1764 PRs; found while planning #1765.
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` and `wireOutSettlement.ts` (`requireWireId`, `id < 1`).
+- **Symptom:** `wire_in(0)` exists on `CAPL5WN3…`. An escrowed wire-in 0, or the first wire-out on a fresh minter, cannot be confirmed or acted on.
+- **Root cause:** `contracts/minter/src/storage.rs` `next_id` returns 0 first, so ids start at 0.
+- **Workaround:** None.
+- **Resolved:** 2026-11-09 by #1765 — both guards accept any non-negative integer; their tests cover id 0.

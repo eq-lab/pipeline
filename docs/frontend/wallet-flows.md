@@ -141,10 +141,10 @@ Always `false` on EVM.
   `requestId` (and `queued` for withdrawals) from the mined receipt's `DepositRequested` /
   `WithdrawalRequested` event, keeping only logs emitted by the configured contract for the
   connected wallet.
-- **Request list refresh (#1658).** Each request mutation's `isSuccess` rising edge (EVM and
-  Stellar, deposit and withdraw) invalidates every `["requests"]` query through
-  `useInvalidateRequests`. While a known request id (mutation result or in-flight record) is not
-  yet listed by `/v1/requests`, the list polls every 5 s instead of 60 s.
+- **Request list refresh (#1658, #1810).** Every confirmed write refreshes the served activity
+  through one callback. See [Activity refresh after a confirmed action](#activity-refresh-after-a-confirmed-action).
+  While a known request id (mutation result or in-flight record) is not yet listed by
+  `/v1/requests`, `/deposit` also polls every 5 s instead of 60 s.
 - **EVM in-flight record (reload guard, #1658).** After the receipt is decoded, the amount, tx hash
   and request id are persisted under `pipeline.evm.<deposit|withdraw>.inflight.<chainId>.<address>`
   (a recovery record, never a stand-in for API data). Until `/v1/requests` lists that id, the flow
@@ -195,6 +195,51 @@ recovered in-flight requests whose ref is empty. After a **flow-terminal** succe
 stake/unstake step 2, deposit/withdraw **claim** — the route navigates home (`/`); intermediate
 steps (approve, trustline, request) never navigate. `ToastProvider` mounts above the router, so
 the success toast survives the route change.
+
+### Activity refresh after a confirmed action
+
+Added by #1810. The indexer lags the chain, so the refetch that runs right after a write often
+still returns the old list, and a toast "View" action leaves `/deposit` (whose 5 s poll stops on
+unmount) for `/transactions` or Home. One hook, `useActionConfirmedRefresh()`
+(`packages/frontend/src/api/activityRefresh.ts`), is the only confirmation point.
+
+**Which writes.** `useDepositFlow` and `useStakeFlow` call it on the `isSuccess` rising edge (a
+`prev` flag, so a mutation that stays successful never re-registers) of: request deposit, request
+withdrawal, claim deposit, claim withdrawal, stake and unstake, on EVM and Stellar. A claim passes
+the request id captured in a ref when `step3.onAction` sent it, because the claim mutation result
+carries no id.
+
+**Activity expectation.** Each call registers one entry in a module-level store, scoped to the
+active wallet and chain id (resolved from the active view exactly as `useRequests` does) with a
+deadline of 60 s. It is only a stop condition checked against the served list. No row is ever
+synthesised or shown optimistically.
+
+| Write | Shape | Met when the served list has |
+|-------|-------|------------------------------|
+| Request deposit / withdrawal | `{ type, requestId }` | a row of that `type` and `request_id`, any status |
+| Claim | `{ type, requestId, status: "Completed" }` | that row with status `Completed` |
+| Stake / unstake, or a Stellar request whose result has no `requestId` | `{ type, baselineCount }` | more rows of that `type` than `baselineCount`, read from the cached `["requests", …]` data at registration time; with no cache, any row of that `type` |
+
+`/v1/requests` returns the wallet's full list (no pagination), which keeps the count match valid.
+If pagination is added, the count match must change. Wallets are compared case-insensitively and
+ids as strings.
+
+**Polling.** `useRequests` subscribes to the store. While any open expectation for its own wallet
+and chain id is unmet and unexpired, its `refetchInterval` is `3 s`, or the caller's interval if
+that is shorter. Otherwise it is the caller's interval or off. This holds for every consumer
+(`/transactions`, `RecentActivityCard`, `/deposit`), so the polling follows the user across the
+navigation. It stops when: (a) the served list meets the expectation, (b) 60 s have passed (about
+20 extra requests per action at most), (c) the consumer unmounts, or (d) the wallet or chain
+differs from the expectation's. After that the existing refetch on mount and on focus applies.
+
+**Invalidations.** On registration: `["requests"]`, `["pnl"]`, `["positionsHistory"]`, the
+Stellar balance reads `["stellarSacToken"]`, `["stellarUsdcBalance"]`,
+`["stellarStakedPlusdBalance"]`, and wagmi `readContract` queries whose `functionName` is
+`balanceOf`. When an expectation is met, `["pnl"]` and `["positionsHistory"]` are invalidated once
+more because the same indexer pass feeds them.
+
+The toasts and the `navigate("/")` calls are unchanged. The `/deposit` known-id 5 s poll stays
+(TD-172 tracks folding it into expectations).
 
 ### Step error state
 
@@ -250,6 +295,9 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
   Stellar (`SAC_DECIMALS`). The "1 PLUSD" / "1 sPLUSD" rate inputs are `parseUnits("1", <input
   token decimals>)`. Exchange-rate rows are truncated (not rounded) to 4 dp. (#1627 — the former
   hard-coded 18 showed every EVM preview as 0.00.)
+- **Confirmed writes refresh the served activity (#1810).** `useStakeFlow` calls
+  `useActionConfirmedRefresh` on each stake/unstake `isSuccess` edge, see
+  [Activity refresh after a confirmed action](#activity-refresh-after-a-confirmed-action).
 - **`stellarUsdcToken` is mounted but unused** in the stake flow — called only to satisfy the Rules
   of Hooks (`void stellarUsdcToken`).
 
@@ -279,11 +327,17 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
 
 - **One wallet at a time.** While an EVM or Stellar wallet is connected, no connect entry point for
   the other chain is offered: every connect CTA keys on the active `kind`'s wallet, and
-  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`. Nothing is
+  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`; a call made while `isConnectionPending` waits for the state to settle and opens only if nothing connected (#1809). The LP `useConnectModal()` also exposes `onCancel(listener)` (#1901), fired when the modal or the terms gate is dismissed without a wallet row picked (never for a selection), mirroring `@pipeline/wallet-connect`. Nothing is
   auto-disconnected on connect; the LP disconnects, then connects again (the connect modal keeps its
   Ethereum / Stellar tabs for that choice).
 - **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The
   `pipeline.wallet.view.kind` key and `setKind` no longer exist.
+- **One precedence owner (#1848).** `walletPrecedence(evm, stellar)`
+  (`packages/frontend/src/wallet/walletPrecedence.ts`) decides which wallet wins: EVM if connected,
+  else Stellar, else `null`. `WalletViewProvider` maps `null` to the default `evm`, and the settlement
+  link (`connectedWallet`) pairs the winner with that wallet's address. It is a pure function so
+  `useSettlementAddressLink` can use it inside `AuthFlowProvider`, which is mounted above
+  `WalletViewProvider`.
 - **Legacy both-connected state.** If both kits come back connected (a session restored from before
   this change, or both `pipeline.mock.wallet.*` and `pipeline.mock.wallet.stellar.*` set), the app
   disconnects **both** once `useWalletPresence().isSettled` is true and leaves the LP disconnected to
@@ -484,6 +538,28 @@ at the first failure, surfacing it on the hook's `error`.
    be rejected before broadcast). The clamped value is passed as `gas`.
 3. **Receipt.** `isPending` runs from broadcast until the receipt is mined; `isSuccess` is true only
    for receipt status `success`.
+
+### Trustee EVM contract client
+
+`@pipeline/wallet-connect` carries a plain-async EVM write client (`src/evm/contracts/write.ts`, #1942), the EVM counterpart of the Stellar `relay`. It has no React and runs on the memoised wagmi `Config` from `initEvmWalletConnect()`; the LP hooks above keep their own pipeline and are not migrated. Reusers: the Trustee Risk Council (#1942), the Risk Council hub and pages and the repayment-recovery step 1 (#1943: `riskCouncil.ts`, the recovery part of `minter.ts`, `logs.ts`), the EVM draw (#1573: `loanRegistry.ts`), the lifecycle writes, repay and Disburse (#1574: `loanRegistry.ts`, `minter.ts`, `dealTokenFactory.ts`), and Register debt token (#1892: `dealTokenFactory.ts`: `relayEvmRegisterDeal`, `encodeEvmRegisterDealCalldata`, `evmRegisterDealSelector`, `evmRegisterDealErrorAbi`).
+
+- `readEvmContract({ abi, address, functionName, args })` is `readContract` on that config.
+- `sendEvmContractCall({ abi, address, functionName, args, account, chainId, value?, onStageChange })` returns `{ hash, receipt }` after the receipt. Pipeline, stopping at the first failure:
+  1. A set `pipeline.mock.wallet.address` throws "[wallet mock] EVM writes are not mockable; connect a real wallet" before any RPC call, like `signMessage`.
+  2. The connected account (`getConnection`) must exist ("EVM wallet not connected.") and equal `account` case-insensitively ("The connected EVM wallet changed. Reconnect {short}.").
+  3. A wallet on another chain than `chainId` gets `switchChain({ chainId })`; a rejection surfaces through the caller's `toUserError`. `chainId` is also passed to every call as a backstop.
+  4. `simulateContract`: a revert surfaces with the decoded custom-error name when the ABI passed in holds the `error` entries.
+  5. `estimateContractGas` plus 20 % (`gas * 12 / 10`), clamped to `EVM_TX_GAS_CAP = 16_777_215`.
+  6. `writeContract` with the capped `gas`, then `waitForTransactionReceipt`; a receipt that is not `success` throws "transaction reverted: {hash}".
+- Stages (`RelayStage`, shared with Stellar): `awaiting-signature` before the wallet prompt, then `confirming` once the hash returns. There is no `submitting` stage: an EVM wallet signs and broadcasts in one `eth_sendTransaction`.
+- `sendEvmContractCallChecked(label, params)` (#1574) wraps `sendEvmContractCall`: a contract revert thrown before `awaiting-signature` (simulate or gas estimate) is rethrown as `"<label>: simulation error: <message>"`, so no signature was requested; wallet rejections, switch-chain rejections, RPC errors and a receipt revert after the prompt pass through unchanged. Labels: `drawEvmLoan`, `rolloverEvmLoan`, `updateEvmMutable`, `closeEvmLoan`, `repayEvmLoan`, `disburseEvmLoan`.
+- `drawEvmLoan({ accessManager, registry, caller, chainId, args, onStageChange })` (`src/evm/contracts/loanRegistry.ts`, #1573) validates the served `DrawLoanArgs`, encodes `drawLoan(metadataURI, economics)` (`encodeEvmDrawLoanCalldata`), sends it through `AccessManager.execute(registry, calldata)` with `value 0n` and returns `{ hash, loanId }`, the id read from the registry's `LoanDrawn` log in the receipt (`readEvmDrawnLoanId`: `null` when absent or above `Number.MAX_SAFE_INTEGER`). A contract revert before the wallet prompt is rethrown as `drawEvmLoan: simulation error: …` (through `sendEvmContractCallChecked`). The Trustee Approve flow is in [trustee-flows.md](trustee-flows.md#chain-first-approve-ordering-831).
+- Every EVM binding validates addresses through `requireAddress(who, name, value)` (`src/evm/contracts/args.ts`, #2060), except `requireAddresses` in `accessManager.ts`, which checks all empty fields before any invalid one.
+- Lifecycle writes (#1574, `loanRegistry.ts`): `rolloverEvmLoan`, `updateEvmMutable` and `closeEvmLoan` take `{ accessManager, registry, caller, chainId, onStageChange }` plus `loanId` and `newRateBps` / `newMaturity`, `status` / `metadataUri` or `reason`, validate with `encodeEvmRolloverCalldata` / `encodeEvmUpdateMutableCalldata` / `encodeEvmCloseLoanCalldata` before any RPC call, and send `AccessManager.execute(registry, calldata)` with `value 0n`; each returns `{ hash }`. The ABI is `evmLoanRegistryLifecycleAbi` plus `accessManagerAbi` and `evmLoanRegistryErrorAbi` for error names.
+- Repay (#1574, `minter.ts`): `repayEvmLoan({ minter, caller, chainId, loanId, repayment, valueDate, refHash, saleId = 0, onStageChange })` is a direct `PipelineMinter.repay` call (no AccessManager hop; `restricted` checks `canCall(msg.sender)`), returning `{ hash, repaymentId }` with the id from the Minter's `CashRepaid` log (`readEvmRepaymentId`). `evmRepaymentRefHash({ registry, loanId, nextRepaymentId })` is `0x` + `sha256("pipeline:repay:{EIP-55 registry}:{loanId}:{next}")`. The error ABI is `evmRepayErrorAbi`.
+- Disburse (#1574): `disburseEvmLoan({ accessManager, minter, caller, chainId, loanId, amountRaw, valueDate, refHash, onStageChange })` sends `AccessManager.execute(minter, disburse(...))` (`encodeEvmDisburseCalldata`, selector `evmDisburseSelector()`); `readEvmLoanDisbursementState` (registry), `readEvmDeal` (`dealTokenFactory.ts`, `null` on `DealTokenFactoryNotRegistered`), `readEvmMinterPaused`, `readEvmMinterBankCash` and `readEvmRefHashSeen`. **Minter read surface:** the Hoodi Minter (source `f92d719`) exposes the legacy views `bankCash()` and `refHashSeen(bytes32)` and has no `extsload`; a `150631a` Minter moved them to `PipelineMinterReader` over `extsload`. The two reads call the legacy view first and, on a revert with empty data, fall back to `extsload` at the Minter's ERC-7201 base plus field 8 (`bankCash`) or `keccak256(refHash . (base + 20))` (`refHashesSeen`); any other error propagates. `readEvmMinterRepayment` (#2074) follows the same rule with `repayment(uint256,uint256)`, falling back to words +2 and +3 of the field-19 mapping slot.
+- `scanEvmLogs({ address, topics, fromBlock, chainId, concurrency = 4, head?, retries = 3, retryDelayMs = 400 })` (`src/evm/contracts/logs.ts`, #1943) reads `eth_getLogs` through the wagmi public client in inclusive chunks of `EVM_LOG_CHUNK_BLOCKS = 50_000` blocks from `fromBlock` to the head (the default publicnode RPC rejects wider ranges), with raw `topics` so an OR of topic0 values and a padded loan id fit one call (`loanIdTopic`). Results come back in block order, a chunk that still fails after its retries rejects, and a start past the head yields `[]`. `head` pins the upper bound (else the block number is read once); each `eth_getLogs` call and the head read retry up to `retries` times with exponential backoff on a transient failure only (`isTransientRpcError`: HTTP 429 or 5xx, code -32005, timeouts, network errors; a block-range or parameter error fails at once), so one rate-limited chunk does not fail the list. `readEvmHeadBlock(chainId)` reads the head with the same retry, and `readEvmContract` takes an optional `blockNumber` so views can be read at that pinned head (`readEvmRecoveryRepayments` reads `nextRepaymentId`, the logs and the Minter `repayment` record at one head).
+- The Trustee AccessManager, SecurityRegistry, RecordNft, LoanRegistry Risk Council and Minter recovery bindings built on it are in [trustee-flows.md](trustee-flows.md#risk-council-security-actions) and [trustee-flows.md](trustee-flows.md#risk-council-actions).
 
 ### Network fee estimate
 

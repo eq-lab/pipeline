@@ -1,9 +1,17 @@
+import { truncateAddress } from "@/utils/truncateAddress";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CompanyDocsModal } from "./CompanyDocsModal";
 import { ApiError } from "@/api";
 import type { LpResponse } from "@/api";
+import type { SettlementRowView } from "@/components/account/settlementAddress";
 import { saveSession, clearSession } from "@/auth/session";
 import {
   CountriesWrapper,
@@ -303,9 +311,14 @@ function lp(
     contact_email: "existing@example.com",
     stellar_address: null,
     address_linked_at: null,
+    stellar_signer_address: null,
+    evm_address: null,
+    evm_signer_address: null,
+    evm_address_linked_at: null,
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
+    settlement_bank_account: null,
     owner_account_id: "owner",
     owner_chain_id: null,
     owner_address: null,
@@ -821,5 +834,252 @@ describe("CompanyDocsModal — uncertain upload with duplicate filenames (#1572,
     expect(screen.getAllByText("a.pdf")).toHaveLength(1);
     expect(screen.getAllByText("b.pdf")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  });
+});
+
+function settlementView(
+  overrides: Partial<SettlementRowView> = {},
+): SettlementRowView {
+  return {
+    kind: "stellar",
+    label: "Stellar settlement address",
+    address: "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK",
+    caption: null,
+    tone: "muted",
+    action: null,
+    confirm: null,
+    busy: false,
+    signer: null,
+    other: false,
+    form: null,
+    ...overrides,
+  };
+}
+
+function settlementControls(rows: SettlementRowView[]) {
+  return {
+    rows,
+    onLink: vi.fn(),
+    onChange: vi.fn(),
+    onCancel: vi.fn(),
+    onOther: vi.fn(),
+    onLinkOther: vi.fn(),
+  };
+}
+
+describe("CompanyDocsModal — settlement rows", () => {
+  const ADDRESS = "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK";
+
+  it("renders one row per view after Country for a production LP", () => {
+    renderModal({
+      lp: lp([makeDocument(1)]),
+      settlement: settlementControls([
+        settlementView({ caption: "Linked to your connected wallet." }),
+        settlementView({
+          kind: "evm",
+          label: "Ethereum settlement address",
+          address: null,
+        }),
+      ]),
+    });
+    const rows = screen.getAllByTestId("settlement-address-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Stellar settlement address");
+    expect(rows[0]).toHaveTextContent(truncateAddress(ADDRESS));
+    expect(rows[0]).not.toHaveTextContent(ADDRESS);
+    expect(rows[0]!.querySelector("[title]")).toHaveAttribute("title", ADDRESS);
+    expect(rows[0]).toHaveTextContent("Linked to your connected wallet.");
+    expect(within(rows[0]!).queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("uses role alert only for the negative tone", () => {
+    renderModal({
+      lp: null,
+      settlement: settlementControls([
+        settlementView({ address: null, caption: "Taken.", tone: "negative" }),
+      ]),
+    });
+    expect(
+      within(screen.getByTestId("settlement-address-row")).getByRole("alert"),
+    ).toHaveTextContent("Taken.");
+  });
+
+  it("wires the row buttons and the change confirmation", () => {
+    const settlement = settlementControls([
+      settlementView({ action: "link" }),
+      settlementView({
+        kind: "evm",
+        label: "Ethereum settlement address",
+        action: "change",
+      }),
+    ]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    fireEvent.click(screen.getByRole("button", { name: "Link wallet" }));
+    expect(settlement.onLink).toHaveBeenCalledWith("stellar");
+    fireEvent.click(screen.getByRole("button", { name: "Change wallet" }));
+    expect(settlement.onChange).toHaveBeenCalledWith("evm");
+  });
+
+  it("shows the confirmation with From and To and calls Confirm change and Cancel", () => {
+    const settlement = settlementControls([
+      settlementView({ confirm: { from: ADDRESS, to: "GNEWADDRESS" } }),
+    ]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    const confirm = screen.getByTestId("settlement-change-confirm");
+    expect(confirm).toHaveTextContent(`From ${ADDRESS}`);
+    expect(confirm).toHaveTextContent("To GNEWADDRESS");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
+    expect(settlement.onLink).toHaveBeenCalledWith("stellar");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(settlement.onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("renders no row in preview mode", () => {
+    renderModal({
+      settlement: settlementControls([settlementView({ action: "link" })]),
+    });
+    expect(screen.queryByTestId("settlement-address-row")).toBeNull();
+    expect(screen.queryByTestId("settlement-other-entry")).toBeNull();
+  });
+
+  it("offers Use a different address and opens the form through onOther", () => {
+    const settlement = settlementControls([settlementView({ other: true })]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use a different address" }),
+    );
+    expect(settlement.onOther).toHaveBeenCalledWith("stellar");
+  });
+});
+
+describe("CompanyDocsModal — settlement bank account", () => {
+  beforeEach(() => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+  });
+
+  function fillBank(values: Record<string, string>) {
+    fireEvent.click(screen.getByTestId("company-docs-settlement-bank-open"));
+    Object.entries(values).forEach(([name, value]) =>
+      fireEvent.change(screen.getByRole("textbox", { name }), {
+        target: { value },
+      }),
+    );
+  }
+
+  const bankValues = {
+    "Account holder name": "Holder",
+    "Bank name": "Bank",
+    IBAN: "GB82",
+  };
+  const bankPayload = {
+    account_holder_name: "Holder",
+    bank_name: "Bank",
+    bank_address: null,
+    account_number: null,
+    iban: "GB82",
+    swift_bic_code: null,
+    routing_number: null,
+  };
+
+  it("sends a draft in the upsert Submit already makes, then submits an eligible set", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce(existing);
+    renderModal({ lp: existing });
+    fillBank(bankValues);
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledOnce());
+    expect(mockUpsert).toHaveBeenCalledWith({
+      legal_name: "Existing Name",
+      country: "NL",
+      contact_email: "existing@example.com",
+      settlement_bank_account: bankPayload,
+    });
+    expect(
+      screen.queryByTestId("company-docs-settlement-bank-form"),
+    ).toBeNull();
+  });
+
+  it("puts the key in the creating upsert before the upload for a new LP", async () => {
+    const created = lp();
+    mockUpsert.mockResolvedValueOnce(created);
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(2)]),
+      files: [{ filename: "doc.pdf", status: 201, id: 2, error: null }],
+    });
+    renderModal({ lp: null, sessionEmail: "new@example.com" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "New Co" },
+    });
+    fillBank(bankValues);
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledOnce());
+    expect(mockUpsert.mock.calls[0]![0].settlement_bank_account).toEqual(
+      bankPayload,
+    );
+    expect(mockUpsert.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockUpload.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("stops before the upload on a field 400 and keeps the staged file", async () => {
+    mockUpsert.mockRejectedValueOnce(
+      new ApiError(400, "settlement_bank_account.iban: is not a valid IBAN"),
+    );
+    renderModal({ lp: lp() });
+    fillBank(bankValues);
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("Enter a valid IBAN.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "IBAN" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.queryByText(/Check your profile/)).toBeNull();
+    expect(screen.getByText("doc.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "IBAN" })).toHaveValue("GB82");
+  });
+
+  it("omits the key when there is no draft", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce({ ...existing, legal_name: "Changed" });
+    renderModal({ lp: existing });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Changed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalledOnce());
+    expect("settlement_bank_account" in mockUpsert.mock.calls[0]![0]).toBe(
+      false,
+    );
+  });
+
+  it("is read-only for a frozen LP", () => {
+    renderModal({
+      lp: lp([], {
+        kyb_status: "UnderReview",
+        writable: false,
+        settlement_bank_account: {
+          account_holder_name: "Holder",
+          bank_name: "Bank",
+          account_last4: "5432",
+        },
+      }),
+    });
+    expect(
+      screen.getByTestId("company-docs-settlement-bank-detail"),
+    ).toHaveTextContent("Bank · ending 5432");
+    expect(
+      screen.queryByTestId("company-docs-settlement-bank-open"),
+    ).toBeNull();
+  });
+
+  it("is hidden in the preview", () => {
+    renderModal();
+    expect(screen.queryByTestId("company-docs-settlement-bank-row")).toBeNull();
   });
 });

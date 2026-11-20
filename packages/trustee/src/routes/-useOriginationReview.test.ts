@@ -1,39 +1,4 @@
-/**
- * Tests for `useOriginationReview` (issue #829, chain-first mint ordering
- * added by #831, approve-confirmation-dialog gate added by #838) — the
- * Origination details page's Approve/Reject orchestration. Mocks
- * `useReviewSubmission`, `useDrawLoan`, and `useLoanSubmissions` so this
- * exercises only the orchestration/error-mapping logic, not the
- * network/Soroban RPC.
- *
- * Covers:
- *   - `approve()` calls `useDrawLoan().mutateAsync` BEFORE
- *     `useReviewSubmission().mutate` (chain-first ordering) — UNCHANGED by
- *     #838; it is now invoked as the approve dialog's confirm action rather
- *     than directly by a page button, but the orchestration itself is
- *     identical.
- *   - A rejected/failed mint does NOT call review; the mapped on-chain error
- *     surfaces; the submission stays actionable (retryable).
- *   - A successful mint THEN triggers the `{ decision: "Approved" }` review
- *     call.
- *   - An already-`Approved` submission's `approve()` is a no-op (no mint, no
- *     review call) — the no-double-mint guard.
- *   - Re-clicking Approve after a mint-succeeded/review-failed retry skips
- *     the mint (no second `mutateAsync` call) and re-fires ONLY the review
- *     call — the idempotency guard keyed to `useDrawLoan`'s in-session
- *     `isSuccess` marker.
- *   - `isPending` reflects either mutation; `mintingLabel` reflects the mint
- *     stage, then "Finalizing approval…" while the review call is in
- *     flight after a successful mint.
- *   - The known-limitation message when the mint succeeds but review fails.
- *   - `openReject()`/`cancelReject()`/`submitReject()` and the #829 review
- *     error-status mapping are unchanged.
- *   - Issue #838: `approveOpen` defaults false; `openApprove()` opens it (and
- *     resets a stale review error); `cancelApprove()` closes it, always
- *     resets the review mutation, and resets the draw-loan mutation ONLY
- *     when it hasn't already succeeded (preserving the idempotency marker);
- *     the dialog closes itself once the review call succeeds.
- */
+// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useOriginationReview } from "./-useOriginationReview";
@@ -93,7 +58,6 @@ vi.mock("@/api/useLoanSubmissions", () => ({
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
 const LOAN_DATA = {
-  to: "GHOLDER00000000000000000000000000000000000000000000000000",
   metadata_uri: "ipfs://loan-metadata",
   originator: "Auric Andes S.A.C.",
   borrower_id: "borrower-1",
@@ -109,14 +73,39 @@ const LOAN_DATA = {
     origination_date: 1_750_000_000,
     original_maturity_date: 1_780_000_000,
   },
-  initial_ccr: 1_500_000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO-1234567",
-    tracking_url: "https://track.example/1234567",
-    updated_at: 1_750_000_100,
-  },
 } as SubmissionView["loan_data"];
+
+const BORROWER_REF =
+  "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
+const DRAW_LOAN: NonNullable<SubmissionView["draw_loan"]> = {
+  metadata_uri: "ipfs://loan-metadata",
+  economics: {
+    borrower_ref: BORROWER_REF,
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
+    origination_date: 1_750_000_000,
+    original_maturity_date: 1_780_000_000,
+  },
+  missing_inputs: [],
+};
+
+const READY_ARGS = {
+  metadata_uri: DRAW_LOAN.metadata_uri,
+  economics: {
+    borrower_ref: BORROWER_REF,
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
+    origination_date: 1_750_000_000,
+    original_maturity_date: 1_780_000_000,
+  },
+};
 
 function makeSubmission(
   overrides: Partial<SubmissionView> = {},
@@ -130,6 +119,7 @@ function makeSubmission(
     updated_at: "2026-01-02T00:00:00Z",
     documents: [],
     loan_data: LOAN_DATA,
+    draw_loan: DRAW_LOAN,
     ...overrides,
   };
 }
@@ -171,7 +161,10 @@ describe("useOriginationReview", () => {
     });
 
     expect(callOrder).toEqual(["drawLoan", "review"]);
-    expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      args: READY_ARGS,
+      chainId: undefined,
+    });
     expect(mockMutate).toHaveBeenCalledWith(
       { id: 7, decision: "Approved" },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
@@ -225,6 +218,56 @@ describe("useOriginationReview", () => {
       { id: 7, decision: "Approved" },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
+  });
+
+  it("retry after mint success still sends the review once draw_loan is nulled by the refetch", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      stage: null,
+    };
+    mockReviewState = { isPending: false, error: new Error("boom") };
+    mockSubmissions = [makeSubmission({ draw_loan: null, loan_id: "9" })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("an InReview submission with loan_id set is review-only: no draw, no blocked reason", () => {
+    mockSubmissions = [makeSubmission({ draw_loan: null, loan_id: "9" })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    expect(result.current.approveReviewOnlyNotice).toMatch(/Already on-chain/);
+    act(() => result.current.openApprove());
+    expect(result.current.approveOpen).toBe(true);
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("approve() is a no-op while the gate is closed (draw_loan null, no loan_id), and the reason stays exposed", () => {
+    mockSubmissions = [makeSubmission({ draw_loan: null })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toMatch(/not available/);
+    expect(result.current.approveReviewOnlyNotice).toBeNull();
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
   });
 
   it("does nothing when the submission is not found", async () => {
@@ -310,6 +353,22 @@ describe("useOriginationReview", () => {
     );
   });
 
+  it("maps an invalid draw_loan input failure to the incomplete-inputs copy", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: false,
+      error: new Error(
+        "drawLoan: invalid draw_loan input economics.borrower_ref",
+      ),
+      stage: null,
+    };
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.errorMessage).toBe(
+      "This submission's on-chain inputs are incomplete. No signature was requested.",
+    );
+    expect(result.current.errorDetails).toContain("invalid draw_loan input");
+  });
+
   it("maps a wallet-rejection mint failure to 'Signature cancelled'", () => {
     mockDrawLoanState = {
       isPending: false,
@@ -364,7 +423,7 @@ describe("useOriginationReview", () => {
     );
   });
 
-  it("maps the mint-succeeded-but-review-failed known limitation distinctly, raw text only in errorDetails", () => {
+  it("maps the mint-succeeded-but-review-failed case distinctly, raw text only in errorDetails", () => {
     mockDrawLoanState = {
       isPending: false,
       isSuccess: true,
@@ -373,8 +432,8 @@ describe("useOriginationReview", () => {
     };
     mockReviewState = { isPending: false, error: new Error("boom") };
     const { result } = renderHook(() => useOriginationReview("7"));
-    expect(result.current.errorMessage).toMatch(/minted on-chain successfully/);
-    expect(result.current.errorMessage).toMatch(/known limitation/);
+    expect(result.current.errorMessage).toMatch(/drawn on-chain/);
+    expect(result.current.errorMessage).toMatch(/does not draw the loan again/);
     expect(result.current.errorMessage).not.toMatch(/boom/);
     expect(result.current.errorDetails).toBe("boom");
   });
@@ -608,7 +667,10 @@ describe("useOriginationReview", () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        args: READY_ARGS,
+        chainId: undefined,
+      });
       expect(mockMutate).toHaveBeenCalledWith(
         { id: 7, decision: "Approved" },
         expect.objectContaining({ onSuccess: expect.any(Function) }),
@@ -650,10 +712,10 @@ describe("useOriginationReview — target chain gate (#1536)", () => {
     ).toBeNull();
   });
 
-  it("an EVM target blocks Approve: reason set, approve()/openApprove() neither draw nor review nor open the dialog", async () => {
-    mockSubmissions = [makeSubmission({ target_chain_id: 560048 })];
+  it("an unknown chain id blocks Approve: reason set, approve()/openApprove() neither draw nor review nor open the dialog", async () => {
+    mockSubmissions = [makeSubmission({ target_chain_id: 1234 })];
     const { result } = renderHook(() => useOriginationReview("7"));
-    expect(result.current.approveBlockedReason).toContain("Hoodi");
+    expect(result.current.approveBlockedReason).toContain("Chain 1234");
     expect(result.current.approveBlockedReason).toContain("Stellar only");
 
     await act(async () => {
@@ -666,5 +728,243 @@ describe("useOriginationReview — target chain gate (#1536)", () => {
     expect(result.current.approveOpen).toBe(false);
     expect(mockMutateAsync).not.toHaveBeenCalled();
     expect(mockMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("useOriginationReview — EVM draw (#1573)", () => {
+  const EVM = 560048;
+
+  async function flush() {
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  it("an EVM target with a complete draw_loan is not blocked", () => {
+    mockSubmissions = [makeSubmission({ target_chain_id: EVM })];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+  });
+
+  it("approve() draws with the EVM chain id before reviewing", async () => {
+    const order: string[] = [];
+    mockMutateAsync.mockImplementation(async () => {
+      order.push("draw");
+      return { hash: "0xabc", loanId: 4 };
+    });
+    mockMutate.mockImplementation(() => order.push("review"));
+    mockSubmissions = [makeSubmission({ target_chain_id: EVM })];
+    const { result } = renderHook(() => useOriginationReview("7"));
+
+    await act(async () => {
+      result.current.approve();
+      await flush();
+    });
+
+    expect(order).toEqual(["draw", "review"]);
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      args: READY_ARGS,
+      chainId: EVM,
+    });
+  });
+
+  it("a draw success followed by a review failure re-fires only the review", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      stage: null,
+    };
+    mockReviewState = { isPending: false, error: new Error("boom") };
+    mockSubmissions = [makeSubmission({ target_chain_id: EVM })];
+    const { result } = renderHook(() => useOriginationReview("7"));
+
+    expect(result.current.errorMessage).toMatch(/drawn on-chain/);
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("InReview with a loan_id is review-only", () => {
+    mockSubmissions = [
+      makeSubmission({ target_chain_id: EVM, draw_loan: null, loan_id: "9" }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    act(() => result.current.approve());
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("draw_loan null shows the not-available copy", async () => {
+    mockSubmissions = [
+      makeSubmission({ target_chain_id: EVM, draw_loan: null }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "On-chain draw inputs are not available",
+    );
+    await act(async () => {
+      result.current.approve();
+      await flush();
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("a missing data_room_id shows the data-room copy", () => {
+    mockSubmissions = [
+      makeSubmission({
+        target_chain_id: EVM,
+        draw_loan: {
+          ...DRAW_LOAN,
+          economics: { ...DRAW_LOAN.economics, borrower_ref: null },
+          missing_inputs: ["data_room_id"],
+        },
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "Data room ID missing",
+    );
+  });
+
+  describe("mapMintError on EVM-shaped errors", () => {
+    function mapped(message: string) {
+      mockDrawLoanState = {
+        isPending: false,
+        isSuccess: false,
+        error: new Error(message),
+        stage: null,
+      };
+      mockSubmissions = [makeSubmission({ target_chain_id: EVM })];
+      return renderHook(() => useOriginationReview("7")).result.current;
+    }
+
+    it("simulation error: could-not-verify copy, details kept", () => {
+      const r = mapped(
+        "drawEvmLoan: simulation error: reverted with LoanRegistryInvalidTranches()",
+      );
+      expect(r.errorMessage).toMatch(/Could not verify the loan on-chain/);
+      expect(r.errorDetails).toContain("LoanRegistryInvalidTranches()");
+    });
+
+    it("wallet rejection: Signature cancelled", () => {
+      expect(mapped("User rejected the request.").errorMessage).toMatch(
+        /Signature cancelled/,
+      );
+    });
+
+    it("disconnected wallet: connect copy", () => {
+      expect(mapped("EVM wallet not connected.").errorMessage).toBe(
+        "Connect your trustee wallet to approve on-chain.",
+      );
+    });
+
+    it("invalid input: incomplete-inputs copy", () => {
+      expect(
+        mapped("drawEvmLoan: invalid draw_loan input economics.borrower_ref")
+          .errorMessage,
+      ).toMatch(/on-chain inputs are incomplete/);
+    });
+
+    it("reverted receipt: generic copy", () => {
+      expect(
+        mapped(`transaction reverted: 0x${"11".repeat(32)}`).errorMessage,
+      ).toBe("The on-chain transaction failed. Please try again.");
+    });
+  });
+});
+
+describe("useOriginationReview — draw inputs gate (#1805)", () => {
+  async function attempt(result: {
+    current: ReturnType<typeof useOriginationReview>;
+  }) {
+    await act(async () => {
+      result.current.openApprove();
+      result.current.approve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.approveOpen).toBe(false);
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
+  }
+
+  it("missing data_room_id: data-room copy, approve()/openApprove() no-op", async () => {
+    mockSubmissions = [
+      makeSubmission({
+        draw_loan: {
+          ...DRAW_LOAN,
+          economics: { ...DRAW_LOAN.economics, borrower_ref: null },
+          missing_inputs: ["data_room_id"],
+        },
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "Data room ID missing",
+    );
+    await attempt(result);
+  });
+
+  it("other missing inputs: lists them", async () => {
+    mockSubmissions = [
+      makeSubmission({
+        draw_loan: {
+          ...DRAW_LOAN,
+          economics: { ...DRAW_LOAN.economics, original_facility_size: null },
+          missing_inputs: ["economics.original_facility_size"],
+        },
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "On-chain draw inputs missing: economics.original_facility_size",
+    );
+    await attempt(result);
+  });
+
+  it("draw_loan null and absent: unavailable copy", async () => {
+    for (const draw_loan of [null, undefined]) {
+      mockSubmissions = [makeSubmission({ draw_loan })];
+      const { result } = renderHook(() => useOriginationReview("7"));
+      expect(result.current.approveBlockedReason).toContain(
+        "On-chain draw inputs are not available",
+      );
+      await attempt(result);
+    }
+  });
+
+  it("an unknown chain keeps the Stellar-only reason ahead of the draw gate", () => {
+    mockSubmissions = [
+      makeSubmission({ target_chain_id: 1234, draw_loan: null }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain("Stellar only");
+  });
+
+  it("a legacy loan_data with to / initial_* plus a full draw_loan approves from draw_loan only", async () => {
+    mockMutateAsync.mockResolvedValue({ hash: "tx-hash" });
+    mockSubmissions = [
+      makeSubmission({
+        loan_data: {
+          ...LOAN_DATA,
+          to: "GLEGACY",
+          initial_ccr: 1_500_000,
+          initial_location: { location_type: "Vessel" },
+        } as unknown as SubmissionView["loan_data"],
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    await act(async () => {
+      result.current.approve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      args: READY_ARGS,
+      chainId: undefined,
+    });
   });
 });

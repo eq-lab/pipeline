@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { LpDetail, LpDocument } from "@/api/useLp";
 
+const mockNavigate = vi.hoisted(() => vi.fn());
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
     "@tanstack/react-router",
   );
   return {
     ...actual,
+    useNavigate: () => mockNavigate,
     Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
       <a href={to}>{children}</a>
     ),
@@ -17,8 +19,20 @@ vi.mock("@tanstack/react-router", async () => {
 vi.mock("@/api/useLp", () => ({ useLp: vi.fn() }));
 vi.mock("@/api/useReviewLp", () => ({ useReviewLp: vi.fn() }));
 vi.mock("./-LpBankDepositsSection", () => ({
-  LpBankDepositsSection: ({ legalName }: { legalName: string }) => (
-    <div data-testid="lp-bank-deposits-stub">{legalName}</div>
+  LpBankDepositsSection: ({
+    legalName,
+    initialPaymentDetails,
+    onPrefillConsumed,
+  }: {
+    legalName: string;
+    initialPaymentDetails?: string;
+    onPrefillConsumed?: () => void;
+  }) => (
+    <div data-testid="lp-bank-deposits-stub">
+      {legalName}
+      <span data-testid="lp-prefill">{initialPaymentDetails ?? ""}</span>
+      <button onClick={onPrefillConsumed}>consume</button>
+    </div>
   ),
 }));
 
@@ -31,6 +45,11 @@ const mockUseReviewLp = vi.mocked(useReviewLp);
 const mutateAsync = vi.fn();
 const reset = vi.fn();
 const refetch = vi.fn();
+
+const routeSearch: { paymentDetails?: string } = {};
+(
+  Route as unknown as { useSearch: () => { paymentDetails?: string } }
+).useSearch = () => routeSearch;
 
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "7",
@@ -59,7 +78,12 @@ const LP: LpDetail = {
   kyb_status: "UnderReview",
   owner_account_id: "00000000-0000-0000-0000-0000000000aa",
   created_at: "2026-06-18T23:40:00Z",
-  address_linked_at: null,
+  address_linked_at: "2026-10-01T10:30:00Z",
+  stellar_signer_address:
+    "GSIGNER0000000000000000000000000000000000000000000000AB",
+  evm_address: null,
+  evm_signer_address: null,
+  evm_address_linked_at: null,
   writable: true,
   notify_on_review: false,
   kyb_submitted_at: "2026-06-20T10:00:00Z",
@@ -68,6 +92,7 @@ const LP: LpDetail = {
   owner_chain_id: null,
   owner_address: null,
   documents: [DOCUMENT],
+  settlement_bank_account: null,
 };
 
 function lp(overrides: Partial<LpDetail> = {}): LpDetail {
@@ -91,6 +116,8 @@ function renderRoute() {
 }
 
 beforeEach(() => {
+  delete routeSearch.paymentDetails;
+  mockNavigate.mockReset();
   mockUseLp.mockReset();
   mockUseReviewLp.mockReset();
   mutateAsync.mockReset();
@@ -214,10 +241,93 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
     expect(card).toHaveTextContent("CH");
     expect(card).toHaveTextContent("ops@acme.example");
     expect(card).toHaveTextContent("18 Jun 2026");
-    expect(within(card).getByTestId("lp-linked-wallet")).toHaveAttribute(
+    expect(within(card).getByTestId("lp-settlement-stellar")).toHaveAttribute(
       "title",
       LP.stellar_address,
     );
+    expect(within(card).queryByText("Linked wallet")).not.toBeInTheDocument();
+  });
+
+  it("shows a single Settlement address row with a dash when nothing is linked", () => {
+    served(lp({ stellar_address: null, address_linked_at: null }));
+    renderRoute();
+    const card = screen.getByRole("region", { name: "LP profile" });
+    expect(card).toHaveTextContent("Settlement address");
+    expect(within(card).queryByTestId("lp-settlement-stellar")).toBeNull();
+    expect(within(card).queryByTestId("lp-settlement-evm")).toBeNull();
+  });
+
+  it("shows the Stellar address with its signer and linked-at", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-stellar-signer")).toHaveAttribute(
+      "title",
+      LP.stellar_signer_address,
+    );
+    expect(
+      screen.getByTestId("lp-settlement-stellar-linked-at"),
+    ).toHaveTextContent("Linked 1 Oct 2026, 10:30 UTC");
+    expect(screen.queryByTestId("lp-settlement-stellar-unproven")).toBeNull();
+  });
+
+  it("shows a signer that differs from a contract address", () => {
+    served(
+      lp({
+        stellar_address:
+          "CCONTRACT00000000000000000000000000000000000000000000AB",
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-stellar")).toHaveAttribute(
+      "title",
+      "CCONTRACT00000000000000000000000000000000000000000000AB",
+    );
+    expect(screen.getByTestId("lp-settlement-stellar-signer")).toHaveAttribute(
+      "title",
+      LP.stellar_signer_address,
+    );
+  });
+
+  it("flags a legacy Stellar address with no signer as Unproven", () => {
+    served(lp({ stellar_signer_address: null }));
+    renderRoute();
+    expect(
+      screen.getByTestId("lp-settlement-stellar-unproven"),
+    ).toHaveTextContent("Unproven");
+    expect(screen.queryByTestId("lp-settlement-stellar-signer")).toBeNull();
+  });
+
+  it("shows an EVM row and dashes a missing linked-at", () => {
+    served(
+      lp({
+        stellar_address: null,
+        evm_address: "0xabc0000000000000000000000000000000000001",
+        evm_signer_address: "0xabc0000000000000000000000000000000000001",
+        evm_address_linked_at: null,
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-evm")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-settlement-evm-signer")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-settlement-evm-linked-at")).toHaveTextContent(
+      "Linked —",
+    );
+    expect(screen.queryByTestId("lp-settlement-stellar")).toBeNull();
+  });
+
+  it("renders both rows, Stellar first", () => {
+    served(
+      lp({
+        evm_address: "0xabc0000000000000000000000000000000000001",
+        evm_signer_address: "0xabc0000000000000000000000000000000000001",
+        evm_address_linked_at: "2026-09-02T00:00:00Z",
+      }),
+    );
+    renderRoute();
+    const stellar = screen.getByTestId("lp-settlement-stellar");
+    const evm = screen.getByTestId("lp-settlement-evm");
+    expect(
+      stellar.compareDocumentPosition(evm) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("renders every served KYB review value", () => {
@@ -285,7 +395,7 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
     expect(reason.textContent).toContain("\n");
   });
 
-  it("reveals and copies the linked wallet on click", async () => {
+  it("reveals and copies the settlement address on click", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
@@ -293,7 +403,7 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
       writable: true,
     });
     renderRoute();
-    const chip = screen.getByTestId("lp-linked-wallet");
+    const chip = screen.getByTestId("lp-settlement-stellar");
     expect(chip).toHaveTextContent("…00000");
     fireEvent.click(chip);
     expect(chip).toHaveTextContent(LP.stellar_address!);
@@ -482,6 +592,111 @@ describe("LP counterparty detail — review actions on the title row", () => {
   });
 });
 
+const BANK = {
+  account_holder_name: "Acme Capital LP",
+  bank_name: "Example Bank AG",
+  bank_address: null,
+  iban: "CH9300762011623852957",
+  account_number: "0012345678",
+  swift_bic_code: "EXAMCHZZ",
+  routing_number: null,
+};
+const withBank = () =>
+  lp({
+    settlement_bank_account: {
+      account_holder_name: BANK.account_holder_name,
+      bank_name: BANK.bank_name,
+      account_last4: "5678",
+    },
+    settlement_bank_account_details: BANK,
+  });
+
+describe("LP counterparty detail — settlement bank account", () => {
+  it("renders the card with verbatim values, dashes and copy buttons", () => {
+    served(withBank());
+    renderRoute();
+    const card = screen.getByRole("region", {
+      name: "Settlement bank account",
+    });
+    expect(within(card).getByTestId("lp-bank-account-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(
+      within(card).getByTestId("lp-bank-account-bank_address"),
+    ).toHaveTextContent("—");
+    expect(
+      within(card).getByTestId("lp-bank-account-iban-copy"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).queryByTestId("lp-bank-account-routing_number-copy"),
+    ).toBeNull();
+    expect(screen.queryByTestId("lp-bank-account-empty")).toBeNull();
+  });
+
+  it("shows the empty state when no account is on file", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-bank-account-empty")).toHaveTextContent(
+      "No settlement bank account on file.",
+    );
+  });
+
+  it("shows the account and the verification line in the Passed dialog", () => {
+    served(
+      lp({
+        ...withBank(),
+        documents: [{ ...DOCUMENT, status: "Verified" }],
+      }),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm KYB passed" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByTestId("lp-review-bank-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(
+      within(dialog).getByTestId("lp-review-bank-verifies"),
+    ).toHaveTextContent(
+      "Passing KYB also verifies this settlement bank account.",
+    );
+  });
+
+  it.each(["Request changes", "Reject account"])(
+    "shows the account without the verification line in the %s dialog",
+    (name) => {
+      served(withBank());
+      renderRoute();
+      fireEvent.click(screen.getByRole("button", { name }));
+      const dialog = screen.getByRole("dialog");
+      expect(
+        within(dialog).getByTestId("lp-review-bank-iban"),
+      ).toHaveTextContent(BANK.iban);
+      expect(
+        within(dialog).queryByTestId("lp-review-bank-verifies"),
+      ).toBeNull();
+    },
+  );
+
+  it("shows no bank block in a document dialog", () => {
+    served(withBank());
+    renderRoute();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Verify certificate-of-incorporation.pdf",
+      }),
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByTestId("lp-review-bank")).toBeNull();
+  });
+
+  it("shows the empty line in the dialog when there is no account", () => {
+    renderRoute();
+    fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(
+      within(screen.getByRole("dialog")).getByTestId("lp-review-bank-empty"),
+    ).toHaveTextContent("No settlement bank account on file.");
+  });
+});
+
 describe("LP counterparty detail — review dialog wiring", () => {
   it("opens the account-level dialog and submits through useReviewLp", async () => {
     served(lp({ documents: [{ ...DOCUMENT, status: "Verified" }] }));
@@ -567,5 +782,43 @@ describe("LP counterparty detail — non-ready states", () => {
     expect(screen.getByTestId("lp-detail-error")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+describe("LP counterparty detail — payment reference prefill", () => {
+  it("passes ?paymentDetails to the deposits section and clears it when consumed", () => {
+    routeSearch.paymentDetails = "PL-7K3M-Q9TX-2ABC";
+    renderRoute();
+    expect(screen.getByTestId("lp-prefill")).toHaveTextContent(
+      "PL-7K3M-Q9TX-2ABC",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "consume" }));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: ".",
+      search: {},
+      replace: true,
+    });
+  });
+
+  it("passes nothing when the param is absent", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-prefill")).toHaveTextContent("");
+  });
+
+  it("drops blank and non-string values in validateSearch", () => {
+    const validate = (
+      Route.options as unknown as {
+        validateSearch: (s: Record<string, unknown>) => unknown;
+      }
+    ).validateSearch;
+    expect(validate({ paymentDetails: "  " })).toEqual({
+      paymentDetails: undefined,
+    });
+    expect(validate({ paymentDetails: 5 })).toEqual({
+      paymentDetails: undefined,
+    });
+    expect(validate({ paymentDetails: "PL-1" })).toEqual({
+      paymentDetails: "PL-1",
+    });
   });
 });

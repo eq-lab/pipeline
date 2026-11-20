@@ -27,7 +27,7 @@ import {
  * - Non-pending toasts auto-dismiss after `durationMs` (default 5 000 ms).
  * - `show({ id })` upserts: replaces in place when `id` already exists.
  *
- * Figma placement: fixed bottom-right, 24 px inset, z-50.
+ * Figma placement: fixed bottom-right, 24 px inset, z-[10000] (above the z-[9999] modal scrims).
  */
 
 const DEFAULT_DURATION_MS = 5000;
@@ -162,7 +162,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
       {/* Bottom-right toast stack */}
       <div
-        className="pointer-events-none fixed right-6 bottom-6 z-50 flex flex-col items-end gap-3"
+        className="pointer-events-none fixed right-6 bottom-6 z-[10000] flex flex-col items-end gap-3"
         aria-label="Notifications"
       >
         {toasts.map((entry) => (

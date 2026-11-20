@@ -13,7 +13,13 @@ import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
 import { useAuthSession } from "@/auth/useAuthSession";
 import { AddUsdCard } from "@/components/AddUsdCard";
-import { FUNDING_DETAILS_PLACEHOLDER } from "@/components/fundingDetails";
+import type { FundingDetailsView } from "@/components/fundingDetails";
+import {
+  FUNDING_DETAILS_FIXTURE_ERROR,
+  FUNDING_DETAILS_FIXTURE_LOADING,
+  FUNDING_DETAILS_FIXTURE_NOT_LINKED,
+  FUNDING_DETAILS_FIXTURE_READY,
+} from "./test/-fundingDetailsFixture";
 import { ADD_USD_CARD_VARIANTS } from "@/components/addUsdCardState";
 import {
   useEvmWallet,
@@ -713,7 +719,8 @@ function AuthTab(): React.JSX.Element {
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
   const [wentToApp, setWentToApp] = React.useState(false);
-  const [fundingDetailsOpen, setFundingDetailsOpen] = React.useState(false);
+  const [fundingView, setFundingView] =
+    React.useState<FundingDetailsView | null>(null);
   const [wireStandIn, setWireStandIn] = React.useState<
     "withdraw" | "start-verification" | "view-status" | null
   >(null);
@@ -780,13 +787,25 @@ function AuthTab(): React.JSX.Element {
           home-state derivation is #1282's, the real trust-account balance and
           Withdraw are #1285's.
         </p>
-        <Button
-          variant="secondary"
-          className="w-fit"
-          onClick={() => setFundingDetailsOpen(true)}
-        >
-          Open Funding details modal
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["ready", FUNDING_DETAILS_FIXTURE_READY],
+              ["loading", FUNDING_DETAILS_FIXTURE_LOADING],
+              ["not linked", FUNDING_DETAILS_FIXTURE_NOT_LINKED],
+              ["error", FUNDING_DETAILS_FIXTURE_ERROR],
+            ] as const
+          ).map(([name, view]) => (
+            <Button
+              key={name}
+              variant="secondary"
+              className="w-fit"
+              onClick={() => setFundingView(view)}
+            >
+              {`Open Funding details: ${name}`}
+            </Button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-4">
           {ADD_USD_CARD_VARIANTS.map((variant) => (
             <div key={variant} className="flex w-[313px] flex-col gap-2">
@@ -796,7 +815,7 @@ function AuthTab(): React.JSX.Element {
               <AddUsdCard
                 variant={variant}
                 usdBalanceLabel={variant === "funded" ? "$1,000.00" : undefined}
-                onAddFunds={() => setFundingDetailsOpen(true)}
+                onAddFunds={() => setFundingView(FUNDING_DETAILS_FIXTURE_READY)}
                 onWithdraw={() => setWireStandIn("withdraw")}
                 onStartVerification={() => setWireStandIn("start-verification")}
                 onViewStatus={() => setWireStandIn("view-status")}
@@ -934,9 +953,9 @@ function AuthTab(): React.JSX.Element {
         }}
       />
       <FundingDetailsModal
-        open={fundingDetailsOpen}
-        onDismiss={() => setFundingDetailsOpen(false)}
-        details={FUNDING_DETAILS_PLACEHOLDER}
+        open={fundingView !== null}
+        view={fundingView ?? undefined}
+        onDismiss={() => setFundingView(null)}
       />
     </div>
   );

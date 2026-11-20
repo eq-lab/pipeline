@@ -36,6 +36,61 @@ pub struct RawEvent {
     pub event_index_in_op: u32,
 }
 
+#[derive(Debug)]
+pub struct EventsPage {
+    pub events: Vec<RawEvent>,
+    pub latest_ledger: u64,
+    pub oldest_ledger: Option<u64>,
+    pub cursor: Option<String>,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcHealth {
+    pub latest_ledger: u64,
+    pub oldest_ledger: u64,
+    pub retention_window: Option<u64>,
+}
+
+pub fn parse_get_events_page(resp: &Value, start: u64, end: u64) -> Result<EventsPage> {
+    let latest_ledger = resp
+        .get("latestLedger")
+        .and_then(Value::as_u64)
+        .context("getEvents response missing 'latestLedger'")?;
+    let events_arr = resp
+        .get("events")
+        .and_then(Value::as_array)
+        .context("getEvents response missing 'events' array")?;
+    let events = events_arr
+        .iter()
+        .filter_map(|ev| parse_event_json(ev, start, end))
+        .collect();
+    Ok(EventsPage {
+        events,
+        latest_ledger,
+        oldest_ledger: resp.get("oldestLedger").and_then(Value::as_u64),
+        cursor: resp
+            .get("cursor")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        page_size: events_arr.len(),
+    })
+}
+
+pub fn parse_health(v: &Value) -> Result<RpcHealth> {
+    Ok(RpcHealth {
+        latest_ledger: v
+            .get("latestLedger")
+            .and_then(Value::as_u64)
+            .context("getHealth response missing 'latestLedger'")?,
+        oldest_ledger: v
+            .get("oldestLedger")
+            .and_then(Value::as_u64)
+            .context("getHealth response missing 'oldestLedger'")?,
+        retention_window: v.get("ledgerRetentionWindow").and_then(Value::as_u64),
+    })
+}
+
 /// Filter specification for `getEvents`.
 pub struct EventFilter {
     /// Contract Strkey IDs (C…) to include in the filter.
@@ -45,7 +100,7 @@ pub struct EventFilter {
 impl StellarRpc {
     pub fn new(url: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: shared::http_client::http_client(),
             url: url.to_owned(),
         }
     }
@@ -60,13 +115,6 @@ impl StellarRpc {
         Ok(seq)
     }
 
-    /// Fetch contract events in `[start_ledger, end_ledger]` (inclusive).
-    ///
-    /// Loops on the response cursor until the server returns fewer rows than the
-    /// per-page limit (or no cursor) — paginates beyond the 10k server-side cap
-    /// so high-volume ranges don't silently drop events.
-    ///
-    /// Returns `(events, latest_ledger_from_response)`.
     pub async fn get_events(
         &self,
         start_ledger: u64,
@@ -74,22 +122,15 @@ impl StellarRpc {
         filter: &EventFilter,
     ) -> Result<(Vec<RawEvent>, u64)> {
         let mut out = Vec::new();
-        let mut latest_ledger = end_ledger;
-        for (i, chunk) in chunk_contract_ids_per_request(&filter.contract_ids)
-            .iter()
-            .enumerate()
-        {
+        let mut latest_ledger: Option<u64> = None;
+        for chunk in &chunk_contract_ids_per_request(&filter.contract_ids) {
             let (events, latest) = self
                 .get_events_single(start_ledger, end_ledger, chunk)
                 .await?;
             out.extend(events);
-            latest_ledger = if i == 0 {
-                latest
-            } else {
-                latest_ledger.max(latest)
-            };
+            latest_ledger = Some(latest_ledger.map_or(latest, |l| l.min(latest)));
         }
-        Ok((out, latest_ledger))
+        Ok((out, latest_ledger.unwrap_or(end_ledger)))
     }
 
     async fn get_events_single(
@@ -100,17 +141,13 @@ impl StellarRpc {
     ) -> Result<(Vec<RawEvent>, u64)> {
         const PAGE_LIMIT: u64 = 10_000;
 
-        // Soroban `getEvents` caps each filter at 5 contract IDs, so split our
-        // contract set across multiple `contract` filters (the RPC unions them).
         let filters = build_contract_filters(contract_ids);
 
         let mut out = Vec::new();
-        let mut latest_ledger = end_ledger;
+        let mut latest_ledger: Option<u64> = None;
         let mut cursor: Option<String> = None;
 
         loop {
-            // First page uses `startLedger`; subsequent pages use `cursor` instead
-            // (Soroban RPC requires exactly one of the two).
             let pagination = match &cursor {
                 Some(c) => json!({ "limit": PAGE_LIMIT, "cursor": c }),
                 None => json!({ "limit": PAGE_LIMIT }),
@@ -124,40 +161,26 @@ impl StellarRpc {
             }
 
             let resp: Value = self.call("getEvents", params).await?;
+            let page = parse_get_events_page(&resp, start_ledger, end_ledger)?;
+            latest_ledger =
+                Some(latest_ledger.map_or(page.latest_ledger, |l| l.min(page.latest_ledger)));
+            out.extend(page.events);
 
-            // Extract latestLedger from top-level response (avoids a second RPC call).
-            latest_ledger = resp
-                .get("latestLedger")
-                .and_then(Value::as_u64)
-                .unwrap_or(latest_ledger);
-
-            let events_arr = resp
-                .get("events")
-                .and_then(Value::as_array)
-                .context("getEvents response missing 'events' array")?;
-            let page_size = events_arr.len();
-
-            for ev in events_arr {
-                if let Some(raw) = parse_event_json(ev, start_ledger, end_ledger) {
-                    out.push(raw);
-                }
-            }
-
-            // Done when the page didn't fill OR the server gave no cursor for next page.
-            if (page_size as u64) < PAGE_LIMIT {
+            if (page.page_size as u64) < PAGE_LIMIT {
                 break;
             }
-            let next_cursor = resp
-                .get("cursor")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            match next_cursor {
+            match page.cursor {
                 Some(c) => cursor = Some(c),
                 None => break,
             }
         }
 
-        Ok((out, latest_ledger))
+        Ok((out, latest_ledger.unwrap_or(end_ledger)))
+    }
+
+    pub async fn get_health(&self) -> Result<RpcHealth> {
+        let resp: Value = self.call("getHealth", json!({})).await?;
+        parse_health(&resp)
     }
 
     /// Fetch the current sequence number of a Stellar account.
@@ -245,27 +268,25 @@ impl StellarRpc {
         let results: Vec<SimulateResult> = resp
             .get("results")
             .and_then(Value::as_array)
-            .map(|arr| {
+            .map_or_else(Default::default, |arr| {
                 arr.iter()
                     .filter_map(|r| {
                         let xdr = r.get("xdr").and_then(Value::as_str).map(str::to_owned)?;
                         let auth: Vec<String> = r
                             .get("auth")
                             .and_then(Value::as_array)
-                            .map(|a| {
+                            .map_or_else(Default::default, |a| {
                                 a.iter()
                                     .filter_map(|v| v.as_str().map(str::to_owned))
                                     .collect()
-                            })
-                            .unwrap_or_default();
+                            });
                         Some(SimulateResult {
                             return_value_xdr_base64: xdr,
                             auth_xdr_base64: auth,
                         })
                     })
                     .collect()
-            })
-            .unwrap_or_default();
+            });
 
         Ok(SimulateResponse {
             latest_ledger,
@@ -301,12 +322,11 @@ impl StellarRpc {
         let diagnostic_events_xdr: Vec<String> = resp
             .get("diagnosticEventsXdr")
             .and_then(Value::as_array)
-            .map(|a| {
+            .map_or_else(Default::default, |a| {
                 a.iter()
                     .filter_map(|v| v.as_str().map(str::to_owned))
                     .collect()
-            })
-            .unwrap_or_default();
+            });
 
         Ok(SendResponse {
             status,
@@ -319,24 +339,7 @@ impl StellarRpc {
     /// Poll a Stellar transaction by hash (`getTransaction` JSON-RPC method).
     pub async fn get_transaction(&self, hash: &str) -> Result<GetTransactionResponse> {
         let resp: Value = self.call("getTransaction", json!({ "hash": hash })).await?;
-        let status = resp
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("UNKNOWN")
-            .to_owned();
-        let return_value_xdr_base64 = resp
-            .get("returnValue")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let result_xdr_base64 = resp
-            .get("resultXdr")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        Ok(GetTransactionResponse {
-            status,
-            return_value_xdr_base64,
-            result_xdr_base64,
-        })
+        Ok(parse_get_transaction(&resp))
     }
 
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
@@ -418,6 +421,25 @@ pub struct GetTransactionResponse {
     pub return_value_xdr_base64: Option<String>,
     /// Base64-encoded `TransactionResult` — useful diagnostic on `FAILED`.
     pub result_xdr_base64: Option<String>,
+    pub envelope_xdr_base64: Option<String>,
+    pub ledger: Option<u64>,
+    pub oldest_ledger: Option<u64>,
+}
+
+pub fn parse_get_transaction(result: &Value) -> GetTransactionResponse {
+    let text = |key: &str| result.get(key).and_then(Value::as_str).map(str::to_owned);
+    let number = |key: &str| {
+        let v = result.get(key)?;
+        v.as_u64().or_else(|| v.as_str()?.parse().ok())
+    };
+    GetTransactionResponse {
+        status: text("status").unwrap_or_else(|| "UNKNOWN".to_owned()),
+        return_value_xdr_base64: text("returnValue"),
+        result_xdr_base64: text("resultXdr"),
+        envelope_xdr_base64: text("envelopeXdr"),
+        ledger: number("ledger"),
+        oldest_ledger: number("oldestLedger"),
+    }
 }
 
 #[derive(Deserialize)]

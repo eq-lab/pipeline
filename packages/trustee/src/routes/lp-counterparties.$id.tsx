@@ -1,8 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { AddressChip } from "@/components/detail/AddressChip";
+import { BankAccountRows } from "@/components/detail/BankAccountRows";
 import { BandButton } from "@/components/detail/BandButton";
 import {
   CheckIcon,
@@ -29,6 +30,7 @@ import { mapKybStatus } from "./-useLpCounterpartiesTable";
 import { LpReviewDialog } from "./-LpReviewDialog";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { formatIsoDateUtc } from "@/utils/formatDate";
+import { settlementAddressRows } from "./-settlementAddresses";
 
 const NOTE_CLASS =
   "font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]";
@@ -45,10 +47,18 @@ function orDash(value: string | null | undefined) {
   return value || "—";
 }
 
-function LpCounterpartyDetailContent({ id }: { id: string }) {
+function LpCounterpartyDetailContent({
+  id,
+  paymentDetails,
+}: {
+  id: string;
+  paymentDetails?: string;
+}) {
+  const navigate = useNavigate();
   const detail = useLpCounterpartyDetail(id);
   const { lp } = detail;
   const status = lp ? mapKybStatus(lp.kyb_status) : null;
+  const settlementRows = lp ? settlementAddressRows(lp) : [];
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
       <DetailHero
@@ -108,16 +118,53 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                 <KeyValueRow label="Registered">
                   {formatIsoDateUtc(lp.created_at)}
                 </KeyValueRow>
-                <KeyValueRow label="Linked wallet" isLast>
-                  {lp.stellar_address ? (
-                    <AddressChip
-                      value={lp.stellar_address}
-                      testId="lp-linked-wallet"
-                    />
-                  ) : (
-                    "—"
-                  )}
-                </KeyValueRow>
+                {settlementRows.length === 0 ? (
+                  <KeyValueRow label="Settlement address" isLast>
+                    —
+                  </KeyValueRow>
+                ) : (
+                  settlementRows.map((row, index) => (
+                    <KeyValueRow
+                      key={row.kind}
+                      label={`${row.chainLabel} settlement address`}
+                      isLast={index === settlementRows.length - 1}
+                    >
+                      <div className="flex flex-col items-end gap-[4px]">
+                        <AddressChip
+                          value={row.address}
+                          testId={`lp-settlement-${row.kind}`}
+                        />
+                        <span
+                          className={`${SUB_CLASS} inline-flex flex-wrap items-center justify-end gap-[6px]`}
+                          style={{ color: INK_MUTED }}
+                        >
+                          {row.signer ? (
+                            <>
+                              Signer
+                              <AddressChip
+                                value={row.signer}
+                                testId={`lp-settlement-${row.kind}-signer`}
+                              />
+                            </>
+                          ) : (
+                            <StatusChip
+                              band="attention"
+                              label="Unproven"
+                              testId={`lp-settlement-${row.kind}-unproven`}
+                            />
+                          )}
+                        </span>
+                        <span
+                          className={SUB_CLASS}
+                          style={{ color: INK_MUTED }}
+                          data-testid={`lp-settlement-${row.kind}-linked-at`}
+                        >
+                          Linked {row.linkedAt}
+                        </span>
+                      </div>
+                    </KeyValueRow>
+                  ))
+                )}
               </div>
             </DetailCard>
 
@@ -148,6 +195,28 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
               </div>
             </DetailCard>
           </div>
+
+          <DetailCard
+            className="gap-[8px] p-[26px]"
+            ariaLabel="Settlement bank account"
+            testId="lp-bank-account"
+          >
+            <CardTitle>Settlement bank account</CardTitle>
+            {lp.settlement_bank_account_details ? (
+              <BankAccountRows
+                details={lp.settlement_bank_account_details}
+                testIdPrefix="lp-bank-account"
+              />
+            ) : (
+              <p
+                data-testid="lp-bank-account-empty"
+                className={`py-[8px] ${BODY_CLASS}`}
+                style={{ color: INK_MUTED }}
+              >
+                No settlement bank account on file.
+              </p>
+            )}
+          </DetailCard>
 
           <DetailCard
             className="gap-[8px] p-[26px]"
@@ -321,11 +390,19 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
             )}
           </DetailCard>
 
-          <LpBankDepositsSection lpId={lp.id} legalName={lp.legal_name} />
+          <LpBankDepositsSection
+            lpId={lp.id}
+            legalName={lp.legal_name}
+            initialPaymentDetails={paymentDetails}
+            onPrefillConsumed={() =>
+              void navigate({ to: ".", search: {}, replace: true })
+            }
+          />
           {detail.action && (
             <LpReviewDialog
               action={detail.action}
               legalName={lp.legal_name}
+              bankAccount={lp.settlement_bank_account_details ?? null}
               reason={detail.reason}
               onReasonChange={detail.setReason}
               onCancel={detail.close}
@@ -344,9 +421,24 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
 
 function LpCounterpartyDetail() {
   const { id } = Route.useParams();
-  return <LpCounterpartyDetailContent key={id} id={id} />;
+  const { paymentDetails } = Route.useSearch();
+  return (
+    <LpCounterpartyDetailContent
+      key={id}
+      id={id}
+      paymentDetails={paymentDetails}
+    />
+  );
 }
 
 export const Route = createFileRoute("/lp-counterparties/$id")({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { paymentDetails?: string } => ({
+    paymentDetails:
+      typeof search.paymentDetails === "string" && search.paymentDetails.trim()
+        ? search.paymentDetails
+        : undefined,
+  }),
   component: LpCounterpartyDetail,
 });

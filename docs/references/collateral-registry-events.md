@@ -4,6 +4,11 @@ Cross-arm reference for how the indexer stores CollateralRegistry events (epic #
 Stellar arm (#1481) writes these rows; the EVM arm (#1484) must produce the same shape. Both
 arms test against this document.
 
+**The Stellar arm is legacy.** Deployments #39+ replace the CollateralRegistry with the
+SecurityRegistry, indexed under its own key and event names
+([security-registry-events.md](./security-registry-events.md), #1779). Rows written under the legacy
+Stellar id stay as history and the legacy parser stays; the EVM arm below is unchanged. In `/v1/audit-log` the Stellar rows render with the suffix ` (legacy collateral registry)` in `action` (#1781); `details` are unchanged.
+
 Source of truth for Stellar: `pipeline-stellar-contracts/contracts/collateral-registry/src/event.rs`
 at mainnet deployment commit `b4d4a57`. Deployed ids: testnet
 `CBSMJS5QIFSSH5LPPYPZ23SMGJP5LK5GTKTFCTUVQNQECNMCNGG77PGS`, mainnet

@@ -41,11 +41,14 @@ export function formatCompactUsd(
   const abs = Math.abs(num);
   const sign = num < 0 ? "-" : "";
 
-  if (abs >= 1_000_000) {
+  const roundsToMillion = Number((abs / 1_000).toFixed(1)) >= 1_000;
+  const roundsToThousand = Number(abs.toFixed(2)) >= 1_000;
+
+  if (abs >= 1_000_000 || roundsToMillion) {
     const val = abs / 1_000_000;
     return `${sign}$${val.toFixed(1)}M`;
   }
-  if (abs >= 1_000) {
+  if (abs >= 1_000 || roundsToThousand) {
     const val = abs / 1_000;
     return `${sign}$${val.toFixed(1)}K`;
   }
@@ -160,6 +163,28 @@ export function formatLtv(ltv: string | null | undefined): string {
   // toLocaleString adds thousands separator for large LTV values, e.g.
   // "1333.3333" → "133,333%". Normal values unaffected: "0.8511" → "85%".
   return `${Math.round(num * 100).toLocaleString("en-US")}%`;
+}
+
+// ── formatLtvBps ─────────────────────────────────────────────────────────────
+
+/** SecurityRegistry `u32::MAX` sentinel: the loan has debt but no security value. */
+export const LTV_NO_VALUE_SENTINEL = 4_294_967_295;
+
+/**
+ * Formats a SecurityRegistry `ltv_bps` exactly as the Operations Console does
+ * (`packages/trustee/src/routes/-loanSecurity.ts`, #2077): one decimal rounded
+ * up, a trailing `.0` trimmed.
+ *
+ * - `8123`       → `"81.3%"`
+ * - `8000`       → `"80%"`
+ * - sentinel     → `"No security value"`
+ * - `null`/other → `"—"`
+ */
+export function formatLtvBps(bps: unknown): string {
+  if (typeof bps !== "number" || !Number.isFinite(bps)) return "—";
+  if (bps === LTV_NO_VALUE_SENTINEL) return "No security value";
+  const pct = (Math.ceil(bps / 10) / 10).toFixed(1);
+  return `${pct.endsWith(".0") ? pct.slice(0, -2) : pct}%`;
 }
 
 // ── formatCoverage ────────────────────────────────────────────────────────────

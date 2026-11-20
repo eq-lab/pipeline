@@ -13,13 +13,14 @@ import {
   TokenInput,
   InlineError,
 } from "@pipeline/ui";
-import { useWalletView, useConnectModal } from "@/wallet";
+import { useWalletView, useConnectModal, useWalletPresence } from "@/wallet";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import { useChainNotice } from "@/components/useChainNotice";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
 import { toUserError } from "@/utils/userError";
-import { useChainServed } from "@/api";
+import { useChainServed, useStats, formatApy } from "@/api";
+import { useActiveChain } from "@/wallet/useActiveChain";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 
 /** Active tab of the stake page; also the `?tab=` search-param value. */
@@ -32,6 +33,8 @@ function Stake() {
   // ── Chain view ────────────────────────────────────────────────────────
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
+  const { chainId } = useActiveChain();
+  const { data: statsData } = useStats({ chainId });
   const isStellar = kind === "stellar";
 
   // ── Toast ─────────────────────────────────────────────────────────────
@@ -63,6 +66,7 @@ function Stake() {
   const amountBig = parseUsdc(amountInput, lastDecimals);
 
   // ── Flow adapter ──────────────────────────────────────────────────────
+  const { isConnectionPending } = useWalletPresence();
   const flow = useStakeFlow(activeTab, amountBig, setAmountInput);
   const chainNotice = useChainNotice(flow.wrongNetwork);
 
@@ -260,8 +264,10 @@ function Stake() {
         ) : (
           <>
             {/* Section header */}
-            {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
-            <StakeHeader data-testid="stake-header" title="Earn 8.42% p.a." />
+            <StakeHeader
+              data-testid="stake-header"
+              title={`Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`}
+            />
 
             {/* Combined conversion card: tab switcher + input + output/rates */}
             <Card
@@ -341,7 +347,7 @@ function Stake() {
             </Card>
 
             {/* Steps card — conditional on wallet connection. Figma node 1994-7226 (banner). */}
-            {!flow.isConnected ? (
+            {isConnectionPending ? null : !flow.isConnected ? (
               <Card
                 variant="yellow"
                 data-testid="connect-wallet-banner"

@@ -3,9 +3,10 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
 import { percentToBps } from "@/utils/rateUnits";
+import { dateInputToUnixUtc } from "@/utils/formatDate";
 import {
+  useLoanMutableState,
   useUpdateLifecycle,
-  type LocationInput,
 } from "@/api/useUpdateLifecycle";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { DetailHero } from "@/components/detail/DetailHero";
@@ -24,26 +25,28 @@ import {
   chipStyle,
 } from "@/components/detail/detailTokens";
 import {
+  allowedLifecycleTargets,
   useLoanDetail,
   type HeroView,
-  type LabelValueRow,
   type LifecycleStep,
-  type PriceCollateralView,
   type RegistryView,
-  type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
-import type { LifecycleStatus } from "./-useLoanDetail";
 import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
 } from "./-loanDetailStatic";
-import { CcrTrendChart } from "./-CcrTrendChart";
+import type { SecurityCardView } from "./-loanSecurity";
+import { lastLoanBookSearch } from "./-loanBookSearch";
+import { SecurityRecordsCard } from "./-SecurityRecordsCard";
+import { SecurityActionsCard } from "./-SecurityActionsCard";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import { RepaymentRecoveryDialog } from "./-RepaymentRecoveryDialog";
+import { RegisterDebtTokenAction } from "./-RegisterDebtTokenAction";
+import { DisburseAction } from "./-DisburseAction";
 import {
   useRecoveryCard,
   type RecoveryCardView,
@@ -117,6 +120,7 @@ function Hero({ hero }: { hero: HeroView }) {
   return (
     <DetailHero
       backTo="/loans"
+      backSearch={lastLoanBookSearch()}
       backLabel={hero.backLabel}
       title={hero.title}
       status={hero.status}
@@ -260,30 +264,35 @@ function SummaryTiles({ tiles }: { tiles: SummaryTile[] }) {
   );
 }
 
-// ── Price & collateral (live) ─────────────────────────────────────────────────
+// ── Security (live) ───────────────────────────────────────────────────────────
 
-function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
+const LTV_TONE_COLOR = {
+  negative: NEGATIVE_RED,
+  attention: ATTENTION_AMBER,
+  neutral: INK,
+} as const;
+
+function SecurityCard({
+  card,
+  loanId,
+  chain,
+}: {
+  card: SecurityCardView;
+  loanId: string;
+  chain: number;
+}) {
+  if (card.state === "hidden") return null;
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[8px] p-[26px]`}
       style={cardStyle()}
-      data-testid="loan-detail-price-collateral"
+      data-testid="loan-detail-security"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
-        <CardTitle>Price &amp; collateral</CardTitle>
-        {pc.providerNote && (
-          <span
-            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-            style={{ color: INK_MUTED }}
-          >
-            {pc.providerNote}
-          </span>
-        )}
-      </div>
+      <CardTitle>Security</CardTitle>
 
-      {pc.state === "loading" ? (
+      {card.state === "loading" ? (
         <div
-          data-testid="loan-detail-price-collateral-loading"
+          data-testid="loan-detail-security-loading"
           className="flex flex-col gap-[10px] pt-[6px]"
           aria-busy="true"
         >
@@ -294,63 +303,84 @@ function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
             />
           ))}
         </div>
-      ) : pc.state === "error" ? (
-        <div
-          data-testid="loan-detail-price-collateral-error"
-          className="pt-[6px]"
-        >
+      ) : card.state === "error" ? (
+        <div data-testid="loan-detail-security-error" className="pt-[6px]">
           <InlineError
-            message={pc.errorMessage ?? "Failed to load the valuation."}
-            details={pc.errorDetails ?? undefined}
+            message={card.errorMessage ?? "Failed to load the loan security."}
+            details={card.errorDetails ?? undefined}
             className="block text-[14px]"
           />
         </div>
-      ) : pc.state === "empty" ? (
+      ) : card.state === "no-terms" ? (
         <p
-          data-testid="loan-detail-price-collateral-empty"
+          data-testid="loan-detail-security-no-terms"
           className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
           style={{ color: INK_MUTED }}
         >
-          {pc.missingNote ?? "No valuation on record for this loan."}
+          {card.notes[0]}
         </p>
       ) : (
         <>
           <div>
-            <KeyValueRow label="Spot">
-              <span style={{ color: INK }}>{pc.spot.main}</span>
-              {pc.spot.change && (
-                <>
-                  <span style={{ color: INK }}> · </span>
-                  <span
-                    style={{
-                      color: pc.spot.changeNegative ? NEGATIVE_RED : INK,
-                    }}
-                  >
-                    {pc.spot.change}
-                  </span>
-                </>
+            <KeyValueRow label="LTV">
+              <span
+                data-testid="loan-detail-security-ltv"
+                data-tone={card.ltvTone}
+                style={{ color: LTV_TONE_COLOR[card.ltvTone] }}
+              >
+                {card.ltv}
+              </span>
+              {card.priceStale && (
+                <span
+                  data-testid="loan-detail-security-price-stale"
+                  className="ml-[10px] rounded-[4px] border border-solid px-[8px] py-[2px] text-[12px]"
+                  style={chipStyle("attention")}
+                >
+                  Price stale
+                </span>
               )}
             </KeyValueRow>
-            {pc.rows.map((row: LabelValueRow, i: number) => (
+            {card.rows.map((row, i) => (
               <KeyValueRow
                 key={row.label}
                 label={row.label}
-                isLast={i === pc.rows.length - 1}
+                isLast={i === card.rows.length - 1}
               >
                 {row.value}
               </KeyValueRow>
             ))}
           </div>
-          {pc.missingNote && (
+          {card.notes.map((note) => (
             <p
-              data-testid="loan-detail-price-collateral-missing"
+              key={note}
+              data-testid="loan-detail-security-note"
               className="pt-[10px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
               style={{ color: INK_MUTED }}
             >
-              {pc.missingNote}
+              {note}
+            </p>
+          ))}
+          {card.refreshPending && (
+            <p
+              data-testid="loan-detail-security-refresh"
+              className="pt-[10px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+              style={{ color: INK_MUTED }}
+            >
+              Updating from chain…
             </p>
           )}
         </>
+      )}
+      {card.actionLabel && (
+        <Link
+          to="/risk-council/security/$id"
+          params={{ id: loanId }}
+          search={{ chain }}
+          data-testid="loan-detail-security-actions"
+          className="self-start pt-[10px] font-[family-name:var(--font-body)] text-[14px] text-[#000080] underline"
+        >
+          {card.actionLabel}
+        </Link>
       )}
     </div>
   );
@@ -843,10 +873,8 @@ function RolloverDialog({
 
   const bps = percentToBps(ratePercent);
   const rateInvalid = ratePercent.trim() !== "" && bps === null;
-  const maturityUnix = maturity
-    ? Math.floor(new Date(`${maturity}T00:00:00Z`).getTime() / 1000)
-    : NaN;
-  const valid = bps !== null && Number.isFinite(maturityUnix);
+  const maturityUnix = dateInputToUnixUtc(maturity);
+  const valid = bps !== null && maturityUnix !== null;
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -966,7 +994,11 @@ function RolloverDialog({
           <button
             type="button"
             data-testid="rollover-submit"
-            onClick={() => bps !== null && onConfirm(bps, maturityUnix)}
+            onClick={() =>
+              bps !== null &&
+              maturityUnix !== null &&
+              onConfirm(bps, maturityUnix)
+            }
             disabled={!valid || pending}
             className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: BRAND }}
@@ -979,11 +1011,18 @@ function RolloverDialog({
   );
 }
 
+const LIFECYCLE_LABELS: Record<string, string> = {
+  Performing: "Active",
+  WatchList: "Watchlist",
+};
+
 // spec: docs/frontend/trustee-flows.md#wired-actions.
 function UpdateLifecycleDialog({
   open,
   loanName,
-  currentStatus,
+  chainState,
+  chainLoading,
+  chainError,
   onClose,
   onConfirm,
   pending,
@@ -991,34 +1030,23 @@ function UpdateLifecycleDialog({
 }: {
   open: boolean;
   loanName: string;
-  currentStatus: LifecycleStatus | null;
+  chainState: { status: string; metadataUri: string } | undefined;
+  chainLoading: boolean;
+  chainError: Error | null;
   onClose: () => void;
-  onConfirm: (input: {
-    status: string;
-    ccrPercent: number;
-    location: LocationInput;
-    metadataUri: string;
-  }) => void;
+  onConfirm: (input: { status: string; metadataUri: string }) => void;
   pending: boolean;
   error: DialogError | null;
 }) {
-  const [status, setStatus] = useState<string>(currentStatus ?? "");
-  const [ccr, setCcr] = useState("");
-  const [locationType, setLocationType] = useState("Vessel");
-  const [locationId, setLocationId] = useState("");
-  const [trackingUrl, setTrackingUrl] = useState("");
+  const [status, setStatus] = useState("");
   const [metadataUri, setMetadataUri] = useState("");
 
   useEffect(() => {
     if (open) {
-      setStatus(currentStatus ?? "");
-      setCcr("");
-      setLocationType("Vessel");
-      setLocationId("");
-      setTrackingUrl("");
-      setMetadataUri("");
+      setStatus(chainState?.status ?? "");
+      setMetadataUri(chainState?.metadataUri ?? "");
     }
-  }, [open, currentStatus]);
+  }, [open, chainState]);
 
   useEffect(() => {
     if (!open) return;
@@ -1031,12 +1059,14 @@ function UpdateLifecycleDialog({
 
   if (!open) return null;
 
-  const ccrPercent = Number.parseFloat(ccr);
+  const targets = chainState ? allowedLifecycleTargets(chainState.status) : [];
   const valid =
-    status !== "" &&
-    Number.isFinite(ccrPercent) &&
-    ccrPercent > 0 &&
-    locationId.trim().length > 0;
+    !chainLoading &&
+    !chainError &&
+    !!chainState &&
+    targets.includes(status) &&
+    !(metadataUri.trim() === "" && chainState.metadataUri.trim() !== "") &&
+    (status !== chainState.status || metadataUri !== chainState.metadataUri);
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -1065,100 +1095,68 @@ function UpdateLifecycleDialog({
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
           LoanRegistry.updateMutable · your key · non-economic fields only · no
-          NAV impact. CCR is written only at 130 / 120 / 110% threshold
-          crossings, with its timestamp.
+          NAV impact.
         </p>
 
+        {chainLoading && (
+          <p
+            data-testid="update-lifecycle-loading"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]"
+          >
+            Reading the loan's on-chain state…
+          </p>
+        )}
+        {chainError && (
+          <div data-testid="update-lifecycle-read-error">
+            <InlineError
+              message={
+                toUserError(
+                  chainError,
+                  "Could not read the loan's on-chain state.",
+                ).message
+              }
+              className="block text-[13px]"
+            />
+          </div>
+        )}
+        {chainState && targets.length === 0 && (
+          <p
+            data-testid="update-lifecycle-no-targets"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]"
+          >
+            This loan's on-chain status does not allow a lifecycle update.
+          </p>
+        )}
+
         <label className="flex flex-col gap-[6px] pt-[4px]">
-          <span className={labelClass}>
-            Status (Default and Closed route elsewhere)
-          </span>
+          <span className={labelClass}>Status</span>
           <select
             data-testid="update-lifecycle-status"
             value={status}
-            disabled={pending}
+            disabled={pending || targets.length === 0}
             onChange={(e) => setStatus(e.target.value)}
             className={fieldClass}
           >
-            {status === "" && (
-              <option value="" disabled>
-                Select status
+            {targets.length === 0 && <option value="">—</option>}
+            {targets.map((t) => (
+              <option key={t} value={t}>
+                {LIFECYCLE_LABELS[t] ?? t}
               </option>
-            )}
-            <option value="Performing">Active</option>
-            <option value="WatchList">Watchlist</option>
+            ))}
           </select>
         </label>
 
-        <div className="flex flex-wrap gap-[16px]">
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>CCR %</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              data-testid="update-lifecycle-ccr"
-              value={ccr}
-              disabled={pending}
-              onChange={(e) => setCcr(e.target.value)}
-              placeholder="e.g. 135"
-              className={fieldClass}
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Location type</span>
-            <select
-              data-testid="update-lifecycle-location-type"
-              value={locationType}
-              disabled={pending}
-              onChange={(e) => setLocationType(e.target.value)}
-              className={fieldClass}
-            >
-              <option value="Vessel">Vessel</option>
-              <option value="Warehouse">Warehouse</option>
-              <option value="TankFarm">Tank farm</option>
-              <option value="Other">Other</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="flex flex-wrap gap-[16px]">
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Location identifier</span>
-            <input
-              type="text"
-              data-testid="update-lifecycle-location"
-              value={locationId}
-              disabled={pending}
-              onChange={(e) => setLocationId(e.target.value)}
-              placeholder="e.g. MV Andes · IMO 9741205"
-              className={fieldClass}
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Tracking URL (optional)</span>
-            <input
-              type="text"
-              data-testid="update-lifecycle-tracking"
-              value={trackingUrl}
-              disabled={pending}
-              onChange={(e) => setTrackingUrl(e.target.value)}
-              placeholder="https://…"
-              className={fieldClass}
-            />
-          </label>
-        </div>
-
         <label className="flex flex-col gap-[6px]">
           <span className={labelClass}>
-            Append metadataURI (assay / offtake hash)
+            Metadata URI (replaces the stored value)
           </span>
           <input
             type="text"
             data-testid="update-lifecycle-metadata"
             value={metadataUri}
-            disabled={pending}
+            disabled={pending || targets.length === 0}
             onChange={(e) => setMetadataUri(e.target.value)}
-            placeholder="ipfs://… (optional)"
+            placeholder="ipfs://…"
             className={fieldClass}
           />
         </label>
@@ -1186,19 +1184,7 @@ function UpdateLifecycleDialog({
           <button
             type="button"
             data-testid="update-lifecycle-submit"
-            onClick={() =>
-              onConfirm({
-                status,
-                ccrPercent,
-                location: {
-                  location_type: locationType,
-                  location_identifier: locationId.trim(),
-                  tracking_url: trackingUrl.trim(),
-                  updated_at: Math.floor(Date.now() / 1000),
-                },
-                metadataUri: metadataUri.trim(),
-              })
-            }
+            onClick={() => onConfirm({ status, metadataUri })}
             disabled={!valid || pending}
             className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: BRAND }}
@@ -1207,22 +1193,6 @@ function UpdateLifecycleDialog({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── CCR trend (Watchlist variant) ────────────────────────────────────────────
-
-// spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
-function CcrTrendCard({ trend }: { trend: CcrTrend }) {
-  return (
-    <div
-      className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
-      style={cardStyle()}
-      data-testid="loan-detail-ccr-trend"
-    >
-      <CardTitle>CCR trend</CardTitle>
-      <CcrTrendChart trend={trend} />
     </div>
   );
 }
@@ -1256,7 +1226,7 @@ function PastDueNotice({
           style={{ color: INK_MUTED }}
         >
           Maturity has passed. If the payment arrived, record it. If it didn’t,
-          escalate the loan to default.
+          escalate the loan to the Risk Council. Default is never automatic.
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-[10px]">
@@ -1276,7 +1246,7 @@ function PastDueNotice({
           className="h-[40px] rounded-[4px] border border-solid px-[16px] font-[family-name:var(--font-body)] text-[15px]"
           style={{ borderColor: LINE_COLOR, color: INK }}
         >
-          Escalate to default
+          Escalate to Risk Council
         </button>
       </div>
     </div>
@@ -1290,12 +1260,14 @@ function LoanDetail() {
   const { chain } = Route.useSearch();
   const navigate = useNavigate();
   const detail = useLoanDetail(chain, id);
+  const debtLoanId = /^\d+$/.test(id) ? Number(id) : null;
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rolloverMutation = useRollover();
   const [rolloverOpen, setRolloverOpen] = useState(false);
   const updateLifecycle = useUpdateLifecycle();
   const [updateOpen, setUpdateOpen] = useState(false);
+  const mutableState = useLoanMutableState(chain, Number(id), updateOpen);
   const recoveryCard = useRecoveryCard(chain, id);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
 
@@ -1336,6 +1308,7 @@ function LoanDetail() {
         <>
           <Link
             to="/loans"
+            search={lastLoanBookSearch()}
             className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
           >
             ‹ Loans
@@ -1365,19 +1338,31 @@ function LoanDetail() {
           ))}
         </div>
       ) : detail.variant === "watchlist" ? (
-        // Watchlist layout (#859): no lifecycle stepper, no Registry card — a
-        // CCR-trend chart sits beside Price & collateral, and the current-stage
-        // card is escalation-focused.
         <>
           <Hero hero={detail.hero} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
-            {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1390,10 +1375,6 @@ function LoanDetail() {
           />
         </>
       ) : detail.variant === "matured" ? (
-        // Matured layout (#866): no stepper, no Registry — a rollover card sits
-        // beside Price & collateral (rollover is the matured-only fast-path).
-        // The past-maturity/Past-Due state is an attention prompt (#940): record
-        // the payment, or escalate to default.
         <>
           <Hero hero={detail.hero} />
           <PastDueNotice
@@ -1402,7 +1383,7 @@ function LoanDetail() {
           />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
             {detail.rollover && (
               <MaturedRolloverCard
                 rollover={detail.rollover}
@@ -1415,6 +1396,22 @@ function LoanDetail() {
               />
             )}
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1436,25 +1433,33 @@ function LoanDetail() {
             }
             onClose={() => setRolloverOpen(false)}
             onConfirm={(newRateBps, newMaturity) => {
-              // Close on success; the error surfaces inline via the hook state.
               void rolloverMutation
-                .mutateAsync({ loanId: Number(id), newRateBps, newMaturity })
+                .mutateAsync({
+                  loanId: Number(id),
+                  newRateBps,
+                  newMaturity,
+                  chainId: chain,
+                })
                 .then(() => setRolloverOpen(false))
                 .catch(() => {});
             }}
           />
         </>
       ) : (
-        // Performing layout (default) + Disbursing (same layout, but the
-        // current-stage card is the wired disbursement-complete action, #862).
         <>
           <Hero hero={detail.hero} />
           <Lifecycle steps={detail.lifecycle} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
             <RegistryCard registry={detail.registry} />
           </div>
+          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityActionsCard
+            view={detail.securityActions}
+            chainId={chain}
+            loanId={debtLoanId}
+          />
           {detail.variant === "disbursing" && (
             <DisbursementActionCard
               loanName={detail.hero.title}
@@ -1464,6 +1469,16 @@ function LoanDetail() {
               }}
             />
           )}
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1511,7 +1526,9 @@ function LoanDetail() {
       <UpdateLifecycleDialog
         open={updateOpen}
         loanName={detail.hero.title}
-        currentStatus={detail.lifecycleStatus}
+        chainState={mutableState.data}
+        chainLoading={mutableState.isLoading}
+        chainError={mutableState.error}
         pending={updateLifecycle.isPending}
         error={
           updateLifecycle.error
@@ -1524,7 +1541,7 @@ function LoanDetail() {
         onClose={() => setUpdateOpen(false)}
         onConfirm={(input) => {
           void updateLifecycle
-            .mutateAsync({ loanId: Number(id), ...input })
+            .mutateAsync({ loanId: Number(id), ...input, chainId: chain })
             .then(() => setUpdateOpen(false))
             .catch(() => {});
         }}

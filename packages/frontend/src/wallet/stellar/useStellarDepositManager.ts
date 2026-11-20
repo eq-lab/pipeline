@@ -622,7 +622,9 @@ export function useChangeTrust(): UseChangeTrustResult {
 
     void (async () => {
       try {
-        const horizon = new Horizon.Server(horizonUrl);
+        const horizon = new Horizon.Server(horizonUrl, {
+          allowHttp: horizonUrl.startsWith("http://"),
+        });
 
         // 1. Load account from Horizon for the transaction fee + sequence.
         const account = await horizon.loadAccount(address);

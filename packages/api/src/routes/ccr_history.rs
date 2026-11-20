@@ -315,16 +315,14 @@ pub fn required_assets(
 ) -> Vec<String> {
     match anchor.valuation_mode {
         ValuationMode::MetalConcentrate => {
-            let mut assets: Vec<String> = offtake
-                .map(|o| {
-                    o.payable_terms
-                        .0
-                        .iter()
-                        .filter_map(|t| asset_for_metal(&t.metal))
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default();
+            let mut assets: Vec<String> = offtake.map_or_else(Default::default, |o| {
+                o.payable_terms
+                    .0
+                    .iter()
+                    .filter_map(|t| asset_for_metal(&t.metal))
+                    .map(str::to_owned)
+                    .collect()
+            });
             assets.sort();
             assets.dedup();
             assets

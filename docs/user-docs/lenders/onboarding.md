@@ -27,7 +27,7 @@ You sign in with a wallet or with an email and password. Both lead to one accoun
 
 ### Entity verification
 
-Every lender passes KYB. You register the legal entity you act for and upload its documents. The Trustee reviews them and passes the entity, asks for changes, or refuses it. A refusal is final and suspends the account. To deposit by bank wire, you also name a settlement address. It is fixed once the entity passes.
+Every lender passes KYB. You register the legal entity you act for and upload its documents. The Trustee reviews them and passes the entity, asks for changes, or refuses it. A refusal is final and suspends the account. To deposit by bank wire, you also name a settlement address. You can change it at any time by signing with the new wallet, unless the entity is refused. Deposits are minted to the address linked when they are processed.
 
 ## Re-screening
 

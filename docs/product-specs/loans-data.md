@@ -18,15 +18,13 @@ interface ILoanRegistry {
         string calldata initialLocation
     ) external returns (uint256 loanId);
 
-    // TRUSTEE, no timelock. Non-economic fields only. status in {Performing, Watchlist,
-    // Matured}; reverts on Default (use setDefault) and Closed (use closeLoan).
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE through AccessManager.execute; status is a uint8 ordinal Approved 0 .. Closed 4). Non-economic fields only. Performing <-> WatchList; same-status
+    // metadata-only on Approved/Default; Closed reverts. metadata_uri is replaced on every call.
     function updateMutable(
         uint256 loanId,
         LoanStatus status,
-        uint256 newCCR,
-        LocationUpdate calldata newLocation,
         string calldata metadataURI
-    ) external;
+    ) external; // Stellar: update_mutable(loan_id: u32, status: LoanStatus, metadata_uri: String)
 
     // Callable only by the Minter (Stellar `minter.require_auth()`, EVM `PIPELINE_MINTER_ROLE`);
     // reached through `Minter.repay`, see [loan-repay-minter.md](./loan-repay-minter.md). No direct trustee call.
@@ -45,19 +43,19 @@ interface ILoanRegistry {
         uint256 equityAmount
     ) external;
 
-    // TRUSTEE, no timelock. Reverts unless now >= currentMaturityDate and status not in
+    // TRUSTEE, no timelock (EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE; `newRate` is bps x 100, `newMaturityTimestamp`). Reverts unless now >= currentMaturityDate and status not in
     // {Default, Closed}. Appends an epoch from the prior maturity (continuous accrual),
     // sets currentMaturityDate, returns status to Performing. Emits LoanRolledOver.
-    function rollover(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate) external;
+    function rollover(uint256 loanId, uint32 newRate, uint64 newMaturityTimestamp) external;
 
     // RISK_COUNCIL, 24h timelock. Re-terms outside the rollover fast-path (default penalty
     // rate, off-cycle maturity). Appends an epoch from now. Emits EconomicsAmended.
     function amendEconomics(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate) external;
 
-    // RISK_COUNCIL, 24h timelock. May fire before or after maturity. Blocks loan-tied mints.
+    // RISK_COUNCIL, immediate per the user docs. May fire before or after maturity. Blocks loan-tied mints.
     function setDefault(uint256 loanId) external;
 
-    // TRUSTEE (no timelock) for {ScheduledMaturity, EarlyRepayment};
+    // TRUSTEE (no timelock; EVM: LOAN_REGISTRY_MANAGER_ADMIN_ROLE, ClosureReason ordinals ScheduledMaturity 1, EarlyRepayment 2) for {ScheduledMaturity, EarlyRepayment};
     // RISK_COUNCIL (24h) for {Default, OtherWriteDown}.
     function closeLoan(uint256 loanId, ClosureReason reason) external;
 
@@ -116,7 +114,7 @@ struct LocationUpdate {
     uint64       updatedAt;          // Timestamp of last location update
 }
 
-enum LoanStatus    { Performing, Watchlist, Matured, Default, Closed }
+enum LoanStatus    { Approved, Performing, Watchlist, Default, Closed }  // no `Matured`/`Past Due` — display-only, #955
 enum ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWriteDown }
 enum LocationType  { Vessel, Warehouse, TankFarm, Other }
 ```
@@ -179,9 +177,7 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
   on LoanRegistry and cannot mint, update, roll over, or close a loan NFT. Payments are
   recorded only through `Minter.repay`. The Trustee broadcasts `mintLoan()` only after reviewing and approving the
   Originator's EIP-712 signed request. The mint is never automatic.
-- The `RISK_COUNCIL` role is a 3-of-5 multisig under a 24h AccessManager timelock. No
-  single party can transition a loan to Default, amend economics outside the rollover
-  fast-path, or force-close with a write-down reason.
+- Stellar Risk Council functions, all `RISK_COUNCIL` through the AccessManager: `set_default(loan_id: u32)`, `cure(loan_id)`, `amend_economics(loan_id, new_rate: u32 /* bps×100 */, new_maturity_timestamp: u64)`, `adjust_interest(loan_id, delta: i128, reason_hash: BytesN<32>)`, `write_down(loan_id, amount: u128)`, `close_defaulted(loan_id, reason: ClosureReason)`; default and reversal immediate per the user docs, the rest 24 h (#1756 for the current deployment). No single party can transition a loan to Default, amend economics outside the rollover fast-path, or force-close with a write-down reason.
 - Genesis economics in `ImmutableLoanData` are written once and never rewritten. Re-terms
   append an `EconomicsEpoch`, preserving the original terms on-chain for audit. The full
   rate and maturity history is reconstructable from `getEpochs` and the
@@ -190,8 +186,11 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
   mint. Minting happens only inside `Minter.repay`, bounded by the Minter's per-transaction and window limits. A lone compromised Trustee key gains nothing from appending an epoch.
 - `recordPayment()` is registry accounting only and is callable only by the Minter. The trustee records a repayment through `Minter.repay` ([loan-repay-minter.md](./loan-repay-minter.md)), which also books bank cash and mints PLUSD (interest to sPLUSD, fees staked for the treasury). The caller needs `CASH_REPORTER` (Stellar) or `MINT_CALLER_ROLE` (EVM), `ref_hash` is single-use, and `interest + fees` are capped by the Minter's mint budget, so a compromised trustee key is limited to one budgeted mint per distinct `ref_hash`.
 - Minter `reverse_repay(loan_id: u32, repayment_id: u32, ref_hash: BytesN<32>)` (Stellar) is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(minter, "reverse_repay", args, caller)` by a `RISK_COUNCIL` wallet; `AM.schedule` first when the role is time-locked (86400 s on the current deployment, #1756). EVM: `reverseRepay(uint256,uint256,bytes32)`, `MINTER_OPS_ROLE`. Procedure and the corrected `repay`: [loan-repayment-recovery.md](./loan-repayment-recovery.md).
+- Minter `disburse(loan_id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)` (Stellar) is `#[only_owner]`, so it is reached through `AM.execute(minter, "disburse", args, caller)` by a `TRUSTEE` wallet; it takes `bank_cash`, calls `registry.disburse` (first call → Performing) and `factory.sync_debt`. UI: [trustee-flows.md](../frontend/trustee-flows.md#disburse-1898).
 - Repayment accounting splits Senior principal, net Senior coupon, the three fee
   carve-outs, and Equity flows explicitly on chain. Outstanding obligations are derivable
   from genesis economics minus the mutable counters, auditable by any third party. A mis-split repayment is corrected by Minter `reverseRepay` then `repay` ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
 - The registry is informational. sPLUSD share price moves on the yield minted by `Minter.repay`, within the Minter budget; a mis-split repayment is reversible ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
+- Stellar `DealTokenFactory` (per-loan DEBT token): `register_deal(loan_id: u32) -> Deal` is `#[only_owner]` (owner = the AccessManager, `TRUSTEE` role), `deal(loan_id: u32) -> Deal` fails with `Error(Contract, #4)` for an unregistered loan, `debt_address(loan_id: u32)` is deterministic for any id (not a registration signal), `Deal` is `{ debt }` (legacy deployments also carry `cargo`). Trustee UI: [trustee-flows.md](../frontend/trustee-flows.md#register-debt-token-1766).
+- EVM `PipelineDealTokenFactory` (per-loan DEBT token, #1892): `registerDeal(uint256) restricted` on `LOAN_REGISTRY_MANAGER_ADMIN_ROLE`, not called by `drawLoan`; `deal(uint256)` reverts `DealTokenFactoryNotRegistered(loanId)` when unregistered; `debtAddress` is deterministic (CREATE2, salt = loan id) and is not a registration signal; `Deal` is `{ debt }`; the event is `DealRegistered(uint256 indexed loanId, address debt)`; `registerDeal` reverts `LoanRegistryNonExistentLoanId()` for an unknown id and `DealTokenFactoryAlreadyRegistered(loanId)` on a repeat.
 - The Stellar minter's `record_wire_in(caller, receiver, amount: i128, value_date: u64, ref_hash: BytesN<32>) -> u32` is a direct, self-authorising invocation gated by `CASH_REPORTER` at execution delay 0, with a single-use `ref_hash` and 7-decimal amounts — it is not a LoanRegistry write and mints only against a recorded bank deposit; see [deposits.md](./deposits.md).

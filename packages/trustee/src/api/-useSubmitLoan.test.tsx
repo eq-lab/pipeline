@@ -24,7 +24,10 @@ function makeWrapper() {
   );
 }
 
-const INPUT = { to: "0xabc", metadata_uri: "ipfs://x" } as SubmitLoanInput;
+const INPUT = {
+  data_room_id: "DR-1",
+  metadata_uri: "ipfs://x",
+} as unknown as SubmitLoanInput;
 
 beforeEach(() => {
   fetchMock.mockReset();

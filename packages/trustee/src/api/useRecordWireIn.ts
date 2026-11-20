@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   recordWireIn,
+  readRefHashSeen,
   useStellarWallet,
   type RecordWireInStage,
   type RecordWireInResult,
@@ -64,6 +65,20 @@ export function useRecordWireIn(): UseRecordWireInResult {
           );
         }
 
+        const rpcUrl = ENV.STELLAR_RPC_URL;
+        const networkPassphrase = ENV.STELLAR_NETWORK_PASSPHRASE;
+        const seen = await readRefHashSeen({
+          minterId: ENV.STELLAR_YIELD_MINTER_ID,
+          refHash,
+          rpcUrl,
+          networkPassphrase,
+        });
+        if (seen) {
+          throw new Error(
+            "RefHashSeen: this deposit's ref_hash is already consumed on the minter.",
+          );
+        }
+
         return recordWireIn({
           minterId: ENV.STELLAR_YIELD_MINTER_ID,
           caller: address,
@@ -71,8 +86,8 @@ export function useRecordWireIn(): UseRecordWireInResult {
           amount,
           valueDate: toValueDateSeconds(occurredAt),
           refHash,
-          rpcUrl: ENV.STELLAR_RPC_URL,
-          networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
+          rpcUrl,
+          networkPassphrase,
           signTransaction,
           onStageChange: setStage,
         });

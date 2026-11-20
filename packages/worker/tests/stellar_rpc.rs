@@ -113,3 +113,33 @@ fn every_request_chunk_fits_five_filters_of_five_ids() {
         assert!(filter_sizes(&filters).iter().all(|n| *n <= 5));
     }
 }
+
+#[test]
+fn get_transaction_reads_envelope_and_ledger_fields() {
+    use pipeline_worker::indexer::stellar::rpc::parse_get_transaction;
+    let r = parse_get_transaction(&serde_json::json!({
+        "status": "SUCCESS",
+        "envelopeXdr": "ENV",
+        "resultXdr": "RES",
+        "ledger": 5_710_989,
+        "oldestLedger": 5_637_300,
+        "latestLedger": 5_758_140,
+    }));
+    assert_eq!(r.status, "SUCCESS");
+    assert_eq!(r.envelope_xdr_base64.as_deref(), Some("ENV"));
+    assert_eq!(r.result_xdr_base64.as_deref(), Some("RES"));
+    assert_eq!(r.ledger, Some(5_710_989));
+    assert_eq!(r.oldest_ledger, Some(5_637_300));
+}
+
+#[test]
+fn get_transaction_tolerates_absent_fields_on_not_found() {
+    use pipeline_worker::indexer::stellar::rpc::parse_get_transaction;
+    let r = parse_get_transaction(&serde_json::json!({ "status": "NOT_FOUND" }));
+    assert_eq!(r.status, "NOT_FOUND");
+    assert_eq!(r.envelope_xdr_base64, None);
+    assert_eq!(r.ledger, None);
+    assert_eq!(r.oldest_ledger, None);
+    let empty = parse_get_transaction(&serde_json::json!({}));
+    assert_eq!(empty.status, "UNKNOWN");
+}

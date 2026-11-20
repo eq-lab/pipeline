@@ -29,7 +29,6 @@ const FULL_SUBMISSION: SubmissionView = {
   updated_at: "2026-06-18T10:00:00Z",
   documents: [],
   loan_data: {
-    to: "G...",
     metadata_uri: "ipfs://...",
     originator: "Auric Andes",
     borrower_id: "borrower-1",
@@ -47,13 +46,6 @@ const FULL_SUBMISSION: SubmissionView = {
       origination_date: 1_750_000_000,
       original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
     },
-    initial_ccr: 1_500_000,
-    initial_location: {
-      location_type: "Vessel",
-      location_identifier: "MV Example",
-      tracking_url: "https://example.com",
-      updated_at: 1_750_000_000,
-    },
   },
 };
 
@@ -67,6 +59,19 @@ describe("mapSubmissionToRow", () => {
     expect(row.rate).toBe("14.0%");
     expect(row.maturity).toBe("15 Dec 2026");
     expect(row.submitted).toBe("18 Jun");
+  });
+
+  it("tolerates a legacy loan_data that still carries to / initial_* keys", () => {
+    const legacy = {
+      ...FULL_SUBMISSION,
+      loan_data: {
+        ...FULL_SUBMISSION.loan_data,
+        to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+        initial_ccr: 1_500_000,
+        initial_location: { location_type: "Vessel" },
+      },
+    } as SubmissionView;
+    expect(mapSubmissionToRow(legacy).facility).toBe("$3.5M");
   });
 
   it("renders the facility as served human-unit USDC — no base-unit division (#1620 supersedes #912)", () => {

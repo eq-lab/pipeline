@@ -1,21 +1,4 @@
-/**
- * Tests for `src/components/dashboard/useWithdrawalQueuePanel.ts`.
- *
- * Covers the state machine:
- *   - loading: while the query is in-flight.
- *   - error: when the query fails.
- *   - empty: when items array is empty.
- *   - ready: formatted summary + rows + row-expand affordance.
- *
- * Uses the `pipeline.mock.api.*` localStorage mock layer (same approach as
- * `useLoanBook.test.tsx`).
- *
- * Liquid Cover is now a frontend calc: (cash + tbills) / queue, where cash and
- * tbills come from `useFinancialPosition`. In all fixtures cash_stablecoins and
- * tokenized_tbills are null → 0, so:
- *   - queue > 0 → "0.0x"
- *   - queue = 0 or empty state → "—"
- */
+// spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -86,7 +69,6 @@ vi.mock("@/lib/env", () => ({
 
 const FP_KEY = "pipeline.mock.api.GET./v1/financial-position";
 
-/** Null liquid rows: cash = 0, tbills = 0 → liquidCover = "0.0x" when queue > 0. */
 const FIXTURE_FP_NULL_LIQUID: FinancialPositionResponse = {
   assets: {
     total: null,
@@ -314,8 +296,6 @@ describe("useWithdrawalQueuePanel — ready state", () => {
       "pipeline.mock.api.GET./v1/withdrawal-queue",
       JSON.stringify(FIXTURE_WITH_ITEMS),
     );
-    // Liquid Cover denominator comes from financial-position. Set null liquid
-    // values so cash + tbills = 0 → liquidCover = "0.0x" (queue > 0).
     localStorage.setItem(FP_KEY, JSON.stringify(FIXTURE_FP_NULL_LIQUID));
   });
 
@@ -398,40 +378,94 @@ describe("useWithdrawalQueuePanel — ready state", () => {
     expect(result.current.summary.estimatedWait).toBe("~3.2 days");
   });
 
-  it("formats liquidCover as '0.0x' when cash+tbills are null (null → 0) and queue > 0", async () => {
-    const { result } = renderHook(() => useWithdrawalQueuePanel(), {
-      wrapper: makeWrapper(),
-    });
-
-    await waitFor(() => expect(result.current.state).toBe("ready"));
-
-    // cash = 0 (null → 0), tbills = 0 (null → 0), queue = 1850000 > 0
-    // → (0 + 0) / 1850000 = 0 → formatCoverage("0.00") = "0.0x"
-    expect(result.current.summary.liquidCover).toBe("0.0x");
+  const withLiquid = (
+    cash: string | null,
+    tbills: string | null,
+  ): FinancialPositionResponse => ({
+    ...FIXTURE_FP_NULL_LIQUID,
+    assets: {
+      ...FIXTURE_FP_NULL_LIQUID.assets,
+      liquid: {
+        ...FIXTURE_FP_NULL_LIQUID.assets.liquid,
+        cash_stablecoins: cash,
+        tokenized_tbills: tbills,
+      },
+    },
   });
 
-  it("formats liquidCover with real cash value when financial-position provides it", async () => {
-    // Override FP mock: cash = $1.85M (matching the queue exactly → ratio = 1.0x)
-    const fpWithCash: FinancialPositionResponse = {
-      ...FIXTURE_FP_NULL_LIQUID,
-      assets: {
-        ...FIXTURE_FP_NULL_LIQUID.assets,
-        liquid: {
-          ...FIXTURE_FP_NULL_LIQUID.assets.liquid,
-          cash_stablecoins: "1850000.000000",
-        },
-      },
-    };
-    localStorage.setItem(FP_KEY, JSON.stringify(fpWithCash));
-
+  const readLiquidCover = async (queue: WithdrawalQueueResponse) => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/withdrawal-queue",
+      JSON.stringify(queue),
+    );
     const { result } = renderHook(() => useWithdrawalQueuePanel(), {
       wrapper: makeWrapper(),
     });
-
     await waitFor(() => expect(result.current.state).toBe("ready"));
+    return result.current.summary.liquidCover;
+  };
 
-    // cash = 1850000, tbills = 0, queue = 1850000 → ratio = 1.0 → "1.0x"
-    expect(result.current.summary.liquidCover).toBe("1.0x");
+  it("shows '—' when both liquid figures are null (#2128)", async () => {
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("—");
+  });
+
+  it("shows '—' when only cash is real and tbills is null (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid("1850000.000000", null)),
+    );
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("—");
+  });
+
+  it("shows '—' when only tbills is real and cash is null (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid(null, "1850000.000000")),
+    );
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("—");
+  });
+
+  it("computes (cash + tbills) / queue when both are real (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid("1000000.000000", "850000.000000")),
+    );
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("1.0x");
+  });
+
+  it("computes a second ratio of 2.0x (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid("2000000.000000", "1700000.000000")),
+    );
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("2.0x");
+  });
+
+  it("shows '—' when a liquid figure is not a finite number (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid("abc", "850000.000000")),
+    );
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("—");
+  });
+
+  it("shows '—' when the financial-position payload is missing (#2128)", async () => {
+    localStorage.removeItem(FP_KEY);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 500 }));
+    expect(await readLiquidCover(FIXTURE_WITH_ITEMS)).toBe("—");
+  });
+
+  it("shows '—' when the queue total is zero even with real liquid figures (#2128)", async () => {
+    localStorage.setItem(
+      FP_KEY,
+      JSON.stringify(withLiquid("1000000.000000", "850000.000000")),
+    );
+    expect(
+      await readLiquidCover({
+        ...FIXTURE_WITH_ITEMS,
+        summary: { ...FIXTURE_WITH_ITEMS.summary, in_queue_usd: "0.000000" },
+      }),
+    ).toBe("—");
   });
 
   it("truncates holder address to 6+4 form", async () => {

@@ -11,26 +11,38 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use shared::{
-    contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher,
+    access_manager_repo::AccessManagerRepo, contract_logs_repo::ContractLogsRepo, db::EventRepo,
+    log_mapper::LogMapper, metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo,
+    pocket_repo::PocketRepo, security_registry_repo::SecurityRegistryRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
 use crate::indexer::{
     chain_poller::ChainEventPoller,
+    cursor::{self, PolledRange},
     index_loop,
     loan_mapper::LoanEventMapper,
     loan_metadata::{
         HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
     },
     stellar::{
+        access_manager_parsers::{dispatch_access_manager, TargetIds},
+        access_manager_sync::run_access_manager_sync_loop,
         collateral_registry_parsers::dispatch_collateral_registry,
         deal_token_factory_parsers::{route_deal_token_events, DealTokenSet},
         loan_registry_parsers::stellar_log_to_loan_event,
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
         parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
+        plusd_parsers::dispatch_plusd,
+        plusd_seed::{run_plusd_seed_loop, PlusdSeedCtx},
+        pocket_parsers::dispatch_pocket,
+        pocket_seed::run_pocket_seed_loop,
+        retention::retention_gap,
         rpc::{EventFilter, StellarRpc},
+        security_registry_parsers::dispatch_security_registry,
+        security_registry_sync::run_security_registry_sync_loop,
+        supervise::spawn_supervised,
     },
 };
 
@@ -81,9 +93,13 @@ pub struct StellarEventPoller {
     withdrawal_queue_wallet_id: Option<String>,
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
-    yield_minter_id: Option<String>,
+    minter_id: Option<String>,
     collateral_registry_id: Option<String>,
     deal_token_factory_id: Option<String>,
+    pocket_id: Option<String>,
+    security_registry_id: Option<String>,
+    access_manager_id: Option<String>,
+    plusd_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
@@ -105,9 +121,13 @@ impl StellarEventPoller {
         withdrawal_queue_wallet_id: Option<String>,
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
-        yield_minter_id: Option<String>,
+        minter_id: Option<String>,
         collateral_registry_id: Option<String>,
         deal_token_factory_id: Option<String>,
+        pocket_id: Option<String>,
+        security_registry_id: Option<String>,
+        access_manager_id: Option<String>,
+        plusd_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
@@ -122,14 +142,37 @@ impl StellarEventPoller {
             withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
-            yield_minter_id,
+            minter_id,
             collateral_registry_id,
             deal_token_factory_id,
+            pocket_id,
+            security_registry_id,
+            access_manager_id,
+            plusd_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
             loan_mapper_deps,
         }
+    }
+}
+
+impl StellarEventPoller {
+    async fn explain_get_events_error(&self, cursor: u64, err: anyhow::Error) -> anyhow::Error {
+        let Ok(health) = self.rpc.get_health().await else {
+            return err;
+        };
+        let Some(gap) = retention_gap(self.chain_id, cursor, health.oldest_ledger) else {
+            return err;
+        };
+        tracing::error!(
+            chain_id = gap.chain_id,
+            cursor = gap.cursor,
+            oldest_ledger = gap.oldest_ledger,
+            missing_ledgers = gap.missing_ledgers,
+            "stellar indexer cursor is below RPC retention; indexing halted until an operator resets the cursor"
+        );
+        err.context(gap)
     }
 }
 
@@ -139,7 +182,7 @@ impl ChainEventPoller for StellarEventPoller {
         self.rpc.get_latest_ledger().await
     }
 
-    async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
+    async fn poll(&self, from: u64, to: u64) -> Result<PolledRange> {
         let mut contract_ids = vec![
             self.deposit_manager_id.clone(),
             self.withdrawal_queue_id.clone(),
@@ -148,8 +191,8 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(lr_id) = &self.loan_registry_id {
             contract_ids.push(lr_id.clone());
         }
-        if let Some(ym_id) = &self.yield_minter_id {
-            contract_ids.push(ym_id.clone());
+        if let Some(minter_id) = &self.minter_id {
+            contract_ids.push(minter_id.clone());
         }
         if let Some(cr_id) = &self.collateral_registry_id {
             contract_ids.push(cr_id.clone());
@@ -160,16 +203,40 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(factory_id) = &self.deal_token_factory_id {
             contract_ids.push(factory_id.clone());
         }
+        if let Some(pocket_id) = &self.pocket_id {
+            contract_ids.push(pocket_id.clone());
+        }
+        if let Some(security_id) = &self.security_registry_id {
+            contract_ids.push(security_id.clone());
+        }
+        if let Some(plusd_id) = &self.plusd_id {
+            contract_ids.push(plusd_id.clone());
+        }
+        if let Some(am_id) = &self.access_manager_id {
+            contract_ids.push(am_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
-        let (raw_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+        let (raw_events, latest_core) = match self.rpc.get_events(from, to, &filter).await {
+            Ok(r) => r,
+            Err(e) => return Err(self.explain_get_events_error(from, e).await),
+        };
+        let mut latest_seen = vec![latest_core];
 
         let mut mappers: Vec<Box<dyn LogMapper>> = Vec::new();
         for raw in raw_events {
             let parsed = if self.collateral_registry_id.as_deref() == Some(raw.contract_id.as_str())
             {
                 dispatch_collateral_registry(&raw)
+            } else if self.security_registry_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_security_registry(&raw)
+            } else if self.access_manager_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_access_manager(&raw)
+            } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_pocket(&raw)
+            } else if self.plusd_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_plusd(&raw)
             } else {
                 dispatch_parser(
                     &raw,
@@ -177,7 +244,7 @@ impl ChainEventPoller for StellarEventPoller {
                     &self.withdrawal_queue_id,
                     &self.staked_plusd_id,
                     self.loan_registry_id.as_deref(),
-                    self.yield_minter_id.as_deref(),
+                    self.minter_id.as_deref(),
                     self.asset_id.as_deref(),
                     self.deal_token_factory_id.as_deref(),
                 )
@@ -242,16 +309,18 @@ impl ChainEventPoller for StellarEventPoller {
         }
 
         if self.deal_token_factory_id.is_some() {
-            let token_ids = self
+            let mut token_ids = self
                 .deal_tokens
                 .lock()
                 .expect("deal_tokens lock poisoned")
                 .contract_ids();
+            token_ids.retain(|id| self.plusd_id.as_deref() != Some(id.as_str()));
             if !token_ids.is_empty() {
                 let filter = EventFilter {
                     contract_ids: token_ids,
                 };
-                let (token_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+                let (token_events, latest_tokens) = self.rpc.get_events(from, to, &filter).await?;
+                latest_seen.push(latest_tokens);
                 let logs = {
                     let set = self.deal_tokens.lock().expect("deal_tokens lock poisoned");
                     route_deal_token_events(&token_events, &set)
@@ -266,7 +335,12 @@ impl ChainEventPoller for StellarEventPoller {
             }
         }
 
-        Ok(mappers)
+        let covered = cursor::covered_to(to, latest_seen);
+        mappers.retain(|m| m.block_number() <= covered);
+        Ok(PolledRange {
+            mappers,
+            covered_to: covered,
+        })
     }
 
     async fn get_block_timestamp(
@@ -319,9 +393,11 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         let reader = Arc::new(StellarLoanRegistryReader::new(rpc.clone()));
         let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
 
-        let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
-            MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
-        ));
+        let fetcher: Arc<dyn LoanMetadataFetcher> =
+            Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(
+                shared::http_client::http_client(),
+                settings.ipfs_gateway_url.clone(),
+            )));
         let immutable_resolver: Arc<dyn ImmutableDataResolver<StellarAddress, u32>> =
             reader.clone();
         let mutable_resolver: Arc<dyn MutableDataResolver<StellarAddress, u32>> = reader.clone();
@@ -341,6 +417,38 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
             collateral_registry_id = %cr_id,
             chain_id,
             "Stellar CollateralRegistry indexer enabled"
+        );
+    }
+
+    if let Some(pocket_id) = &settings.pocket_id {
+        tracing::info!(
+            pocket_id = %pocket_id,
+            chain_id,
+            "Stellar Pocket indexer enabled"
+        );
+    }
+
+    if let Some(plusd_id) = &settings.plusd_id {
+        tracing::info!(
+            plusd_id = %plusd_id,
+            chain_id,
+            "Stellar PLUSD transfer indexing enabled (balance seed + drift check on)"
+        );
+    }
+
+    if let Some(security_id) = &settings.security_registry_id {
+        tracing::info!(
+            security_registry_id = %security_id,
+            chain_id,
+            "Stellar SecurityRegistry indexer enabled"
+        );
+    }
+
+    if let Some(am_id) = &settings.access_manager_id {
+        tracing::info!(
+            access_manager_id = %am_id,
+            chain_id,
+            "Stellar AccessManager indexer enabled"
         );
     }
 
@@ -378,6 +486,88 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    let _seed_guard = match (&settings.pocket_id, &settings.loan_registry_id) {
+        (Some(pocket_id), Some(registry_id)) => {
+            let rpc = rpc.clone();
+            let repo = PocketRepo::new(pool.clone());
+            let pocket_id = pocket_id.clone();
+            let registry_id = registry_id.clone();
+            Some(spawn_supervised("pocket-seed", chain_id, move || {
+                let (rpc, repo) = (rpc.clone(), repo.clone());
+                let (pocket_id, registry_id) = (pocket_id.clone(), registry_id.clone());
+                async move {
+                    run_pocket_seed_loop(rpc, repo, chain_id, pocket_id, registry_id).await;
+                    Ok(())
+                }
+            }))
+        }
+        (Some(_), None) => {
+            tracing::warn!(
+                chain_id,
+                "pocket view seed disabled: LOAN_REGISTRY_ADDRESS is not set"
+            );
+            None
+        }
+        _ => None,
+    };
+
+    let _plusd_seed_guard = settings.plusd_id.as_ref().map(|plusd_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let plusd_id = plusd_id.clone();
+        spawn_supervised("plusd-seed", chain_id, move || {
+            let ctx = PlusdSeedCtx {
+                rpc: rpc.clone(),
+                seeds: PlusdSeedRepo::new(pool.clone()),
+                logs: ContractLogsRepo::new(pool.clone()),
+                events: EventRepo::new(pool.clone()),
+                chain_id,
+                plusd_id: plusd_id.clone(),
+            };
+            async move {
+                run_plusd_seed_loop(ctx).await;
+                Ok(())
+            }
+        })
+    });
+
+    let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let security_id = security_id.clone();
+        let loan_registry_id = settings.loan_registry_id.clone();
+        spawn_supervised("security-registry-sync", chain_id, move || {
+            run_security_registry_sync_loop(
+                rpc.clone(),
+                SecurityRegistryRepo::new(pool.clone()),
+                EventRepo::new(pool.clone()),
+                chain_id,
+                security_id.clone(),
+                loan_registry_id.clone(),
+            )
+        })
+    });
+
+    let _access_manager_guard = settings.access_manager_id.as_ref().map(|am_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let am_id = am_id.clone();
+        let ids = TargetIds {
+            loan_registry: settings.loan_registry_id.clone(),
+            minter: settings.minter_id.clone(),
+            security_registry: settings.security_registry_id.clone(),
+        };
+        spawn_supervised("access-manager-sync", chain_id, move || {
+            run_access_manager_sync_loop(
+                rpc.clone(),
+                AccessManagerRepo::new(pool.clone()),
+                chain_id,
+                am_id.clone(),
+                ids.clone(),
+            )
+        })
+    });
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -387,9 +577,13 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.withdrawal_queue_wallet_id.clone(),
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
-        settings.yield_minter_id.clone(),
+        settings.minter_id.clone(),
         settings.collateral_registry_id.clone(),
         settings.deal_token_factory_id.clone(),
+        settings.pocket_id.clone(),
+        settings.security_registry_id.clone(),
+        settings.access_manager_id.clone(),
+        settings.plusd_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,

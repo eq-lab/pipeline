@@ -46,7 +46,7 @@ Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT f
 
 ### 3. Yield Minting — Repayment
 
-On EVM the relayer mints no yield: `PipelineMinter.repay` records the payment and mints interest and fees in one call, under `MINT_CALLER_ROLE`, which the relayer does not hold. Sections 3 and 4 apply only where a separate yield-minter exists. There, when a loan repayment USDC inflow is detected at the Capital Wallet:
+On EVM the relayer mints no yield: `PipelineMinter.repay` records the payment and mints interest and fees in one call, under `MINT_CALLER_ROLE`, which the relayer does not hold. On Stellar it likewise mints none: Soroban `minter.repay` mints interest and fees in one call. Sections 3 and 4 describe a separate yield-minter that no deployment the platform runs (testnet, mainnet) has. Where one exists, when a loan repayment USDC inflow is detected at the Capital Wallet:
 
 1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
 2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and broadcasts
@@ -94,7 +94,7 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 5. WhitelistRegistry Maintenance
 
-- **On clean KYT (deposit-triggered):** Relayer signs a `ClaimAttestation`. The lender calls `DepositManager.claim`, which internally calls `WhitelistRegistry.setAccess` to enrol the lender as a side effect. _Current implementation: the relayer adds the address on-chain itself, with `WhitelistRegistry.allow` on EVM and `access_manager.execute(set_authorized)` on Soroban. It marks the address allowed only once that transaction succeeds._
+- **On clean KYT (deposit-triggered):** Relayer signs a `ClaimAttestation`. The lender calls `DepositManager.claim`, which internally calls `WhitelistRegistry.setAccess` to enrol the lender as a side effect. _Current implementation: the relayer adds the address on-chain itself, with `WhitelistRegistry.allow` on EVM and `access_manager.execute(set_authorized)` on Soroban. It marks the address allowed only once that transaction succeeds. On Stellar it also authorises the linked settlement address (`G…` or `C…`, `address_linked_at` set) of every KYB `Passed` lender, with no deposit needed, once the address is KYT-clear when Elliptic is enabled (#1889)._
 - **On clean KYT (standalone enrolment):** Relayer signs an `EnrolAttestation`. The address holder calls `WhitelistRegistry.enrol(addr, att, sig)` themselves.
 - **On failed passive re-screen:** Relayer calls `revokeAccess(addr)` directly under the `WHITELIST_REVOKER` role. Any in-flight deposit ticket or queue entry routes to compliance review queue. _Current implementation: on both chains a KYT failure is recorded in the database only; there is no on-chain revocation yet (TD-31)._
 - **On manual compliance approval:** Relayer signs the appropriate attestation (claim or enrol) and serves it via API. The address holder submits on-chain.
@@ -107,7 +107,7 @@ price source on a configurable cadence (working assumption: every 15 minutes dur
 It derives collateral value per the valuation modes in collateral-valuation.md (price times quantity
 for standard goods, Net Smelter Return for metal concentrate), computes
 CCR = collateral_value / outstanding_senior_principal in basis points, and on threshold crossings
-notifies recipients and asks the Trustee to call `update_mutable` to update `ccr` (Relayer has no
+notifies recipients and asks the Trustee to review the loan (move it to WatchList via `update_mutable`; the Relayer has no
 write role on LoanRegistry). See collateral-valuation.md for sources, budget ceiling, valuation
 modes, and the off-chain valuation record; see price-feed.md for thresholds and the on-chain CCR write.
 

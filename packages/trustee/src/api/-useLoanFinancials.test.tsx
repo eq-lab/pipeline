@@ -1,6 +1,5 @@
 /**
- * Tests for `src/api/useLoanFinancials.ts` (issue #852). Mirrors
- * `-useLoanValuation.test.tsx`:
+ * Tests for `src/api/useLoanFinancials.ts` (issue #852):
  *   - The request URL is `/v1/loan-book/{loan_id}/financials?chain_id=560048`.
  *   - The bearer header is attached (via apiFetch/sessionStore).
  *   - Success returns the parsed LoanFinancialsResponse.

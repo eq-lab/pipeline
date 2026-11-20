@@ -40,6 +40,7 @@ import {
   // EVM namespace
   EvmWalletProvider,
   useEvmWallet,
+  useEvmSignMessage,
   useEvmNetworkGuard,
   useEvmToken,
   useContractRead,
@@ -58,7 +59,12 @@ import {
   // Stellar namespace
   StellarWalletProvider,
   useStellarWallet,
+  isStellarSettlementAddress,
   useStellarToken,
+  // View selection
+  WalletViewProvider,
+  useWalletView,
+  walletPrecedence,
   // Utilities
   isMockKeyPresent,
 } from "@/wallet";
@@ -98,6 +104,9 @@ The mock wallet paths (EVM and Stellar) bypass the gate as a dev affordance.
 Mount inside `<WalletGateProvider>` in `main.tsx`. Wires
 `WagmiProvider` + `QueryClientProvider` and installs the same-tab localStorage
 mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
+Its wagmi config comes from `evm/config.ts`, which calls `createAppKit` once at
+module load (so StrictMode's double mount does not init the modal twice), with
+analytics, email, socials, swaps and onramp disabled.
 
 ### `useEvmWallet()`
 
@@ -112,6 +121,20 @@ const { address, isConnected, chainId, connect, disconnect } = useEvmWallet();
 | `chainId`      | `number \| undefined`      | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected |
 | `connect()`    | `() => void`               | Opens the AppKit wallet modal                                                       |
 | `disconnect()` | `() => void`               | Disconnects the wallet                                                              |
+
+### `useEvmSignMessage()`
+
+```ts
+const { signMessage } = useEvmSignMessage();
+```
+
+| Field                            | Type                                                                    | Description                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `signMessage(message, address?)` | `(message: string, address?: string) => Promise<{ signature: string }>` | EIP-191 `personal_sign` through wagmi `useSignMessage`; `address` pins the signing account (`account`); rejects on the mock path (`[wallet mock] signMessage is not mockable`) |
+
+It is separate from `useEvmWallet` so the ~27 `useEvmWallet` consumers do not mount a wagmi mutation observer they
+never use (#1847); the only consumer is `useSettlementAddressLink`. The Stellar `signMessage` stays on
+`useStellarWallet` because the kit call carries no observer.
 
 ### `useEvmNetworkGuard()`
 
@@ -804,17 +827,24 @@ covers all `pipeline.mock.*` keys.
 ### `useStellarWallet()`
 
 ```ts
-const { address, isConnected, connect, disconnect, signTransaction } =
-  useStellarWallet();
+const {
+  address,
+  isConnected,
+  connect,
+  disconnect,
+  signTransaction,
+  signMessage,
+} = useStellarWallet();
 ```
 
-| Field                         | Type                  | Description                                                   |
-| ----------------------------- | --------------------- | ------------------------------------------------------------- |
-| `address`                     | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                |
-| `isConnected`                 | `boolean`             | True when a Stellar wallet is connected (or mocked)           |
-| `connect()`                   | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)          |
-| `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state               |
-| `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below) |
+| Field                            | Type                  | Description                                                      |
+| -------------------------------- | --------------------- | ---------------------------------------------------------------- |
+| `address`                        | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                   |
+| `isConnected`                    | `boolean`             | True when a Stellar wallet is connected (or mocked)              |
+| `connect()`                      | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)             |
+| `disconnect()`                   | `() => void`          | Disconnects the Stellar wallet and clears state                  |
+| `signTransaction(xdr, opts?)`    | async function        | Signs a transaction XDR with the connected wallet (see below)    |
+| `signMessage(message, address?)` | async function        | Signs a message (SEP-0053) with the connected wallet (see below) |
 
 **Shared connection state.** The real Stellar address is held in a single
 module-level external store (`stellar/connectionStore.ts`) backed by
@@ -840,6 +870,71 @@ write hooks mock at their own result-level keys instead.
 using the connected address and the configured network passphrase as defaults.
 Returns `{ signedTxXdr: string, signerAddress?: string }`. Used internally by
 the Stellar write hooks (DepositManager / WithdrawalQueue / sPLUSD).
+
+**`signMessage(message)`** delegates to `StellarWalletsKit.signMessage` (SEP-0053)
+with the connected address and the configured network passphrase, and returns
+`{ signature }` (the kit's `signedMessage`). Used by the LP settlement-address
+link flow. Rejects on the mock path (`[stellar mock] signMessage is not mockable`)
+and when the wallet does not support SEP-0053 (e.g. Albedo, Rabet).
+
+### E2E test wallet
+
+A Stellar Wallets Kit module (`@pipeline/wallet-connect/e2e-wallet`,
+`packages/wallet-connect/src/stellar/e2eWallet.ts`) that signs transactions and
+SEP-0053 messages with the e2e run's generated key, so an agent-driven browser
+sends real Soroban transactions on the local stack (`docs/e2e.md`). Unlike the
+localStorage mock wallet, nothing is mocked: every write goes through
+`signTransaction` and the chain.
+
+Guards — the module is registered only when **all** hold:
+
+- `import.meta.env.DEV` (a `vite dev` server). `stellar/config.ts` loads the
+  module with a dynamic `import()` inside a branch on the literal
+  `import.meta.env.DEV`, so a production build drops it.
+- `VITE_E2E_WALLET` is set (the flag).
+- The configured passphrase is the local standalone one
+  (`Standalone Network ; February 2017`); the module also refuses to sign for
+  any other passphrase.
+
+The key is in `E2E_WALLET_SECRET`, not a `VITE_*` variable: a production build
+inlines every `VITE_*` value (`lib/env.ts` reads `import.meta.env[key]`), while
+`E2E_WALLET_SECRET` is exposed only by `scripts/e2e/vite.e2e.config.mts`, which
+`scripts/e2e/up.sh` runs with `envDir` at `$E2E_HOME/stacks/<tag>/`. The
+developer `.env` never carries it.
+
+When registered, the Connect modal's Soroban tab lists an **E2E test wallet**
+row first (`useStellarConnectors().e2eWalletId`); it connects like any other
+Soroban wallet.
+
+**EVM.** A wagmi connector (`@pipeline/wallet-connect/e2e-evm-wallet`,
+`packages/wallet-connect/src/evm/e2eConnector.ts`) does the same on anvil: it
+signs `personal_sign` and transactions locally with the run's key and sends the
+raw transactions to the chain's RPC, so `approve` / `requestDeposit` / `claim`
+are real. `evm/config.ts` adds it to the LP app's `WagmiAdapter` config only
+when **all** hold: `import.meta.env.DEV` (a dynamic `import()` inside a branch
+on the literal, as above), `VITE_E2E_WALLET` is set, and the configured chain id
+is `31337`. Its key is `E2E_EVM_WALLET_KEY` (fresh per stack, funded with ETH
+and USDC by `up.sh`), exposed the same way as `E2E_WALLET_SECRET`. It is reached
+through the existing connect flow, not auto-connected, so the terms gate stays
+in the walk: the Connect modal's EVM tab lists an **E2E test wallet** row first
+(`useEvmConnectors().e2eWalletId`). It does not reconnect after a full page
+load. The trustee app's adapter (`initEvmWalletConnect`) does not get it.
+
+**Operations Console (Stellar only).** `packages/trustee/src/lib/e2eWallet.ts`
+loads the same Stellar module under the same guards (a dynamic `import()`
+inside a branch on the literal `import.meta.env.DEV`, `VITE_E2E_WALLET`, the
+standalone passphrase) and hands it to `registerStellarE2EWallet` of
+`@pipeline/wallet-connect`, which adds it to the kit; the shared Connect
+modal's Soroban tab then lists an **E2E test wallet** row first. Its
+`E2E_WALLET_SECRET` (in `.env.e2e-trustee`) is the stack's `trustee` key, the
+operator `run.ts` puts in `auth_users`, so the console signs in by wallet
+signature as in production. Operator authentication itself is unchanged.
+
+`scripts/e2e/assert-prod-wallet.ts` (CI, JS job) builds the LP app and the
+Operations Console in production mode with `VITE_E2E_WALLET`,
+`VITE_EVM_CHAIN_ID=31337` and dummy `E2E_WALLET_SECRET` / `E2E_EVM_WALLET_KEY`
+set and fails if a bundle contains either marker (`pipeline-e2e-wallet`,
+`pipeline-e2e-evm-wallet`) or either dummy key.
 
 ### `useStellarToken()`
 
@@ -979,7 +1074,8 @@ const { data, isLoading, error } = useStellarPlusdTotalSupply();
 
 Protocol-level read (no wallet gate). Reads PLUSD total supply in circulation
 from Horizon: `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` →
-`balances.authorized`. Returns a Horizon human-decimal string (e.g.
+all `balances` + `contracts_amount` + `claimable_balances_amount` +
+`liquidity_pools_amount` (vault-held PLUSD counts). Returns a 7-decimal string (e.g.
 `"10000711.9961018"`) — pass directly to `parseFloat()`. No SAC bigint scaling.
 Short-circuits to `undefined` when `VITE_STELLAR_PLUSD_ISSUER_ID` is not
 configured. Polls every 30 s.
@@ -1055,6 +1151,10 @@ To reset Stellar mocks:
   "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
 ].forEach((k) => localStorage.removeItem(k));
 ```
+
+### Settlement address format
+
+`isStellarSettlementAddress(value: string): boolean` (`stellar/settlementAddressFormat.ts`, exported from `@/wallet`) is a format-only check: a Strkey `G…` account or `C…` contract (length, alphabet and checksum, no network call). It does not normalise: callers trim and uppercase first. It lives here because `@stellar/stellar-sdk` is importable only from `src/wallet/stellar/**`. Used by `parseSettlementInput` for the `Use a different address` form ([`account-page.md#settlement-address`](../../../../docs/frontend/account-page.md#settlement-address)).
 
 ### Stellar ESLint boundary
 

@@ -255,3 +255,10 @@ fn empty_ledger_is_zero() {
     assert_eq!(summary_tvl(&[], 1), "0.000000");
     assert!(compute_tvl_series(&[], 0, DAY, DAY).is_empty());
 }
+
+#[test]
+fn ledger_sql_casts_int4_log_index_to_bigint_for_i64_decode() {
+    // `contract_logs.log_index` is INT4; `list_plusd_ledger` decodes it as `i64`.
+    assert!(PLUSD_LEDGER_SQL
+        .contains("SELECT block_timestamp, block_number, log_index::bigint AS log_index, delta"));
+}

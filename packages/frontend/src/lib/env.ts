@@ -1,10 +1,5 @@
-/**
- * Typed env accessor — the ONLY place in the codebase that reads
- * `import.meta.env` directly.  All other modules must import from here.
- *
- * ESLint's `no-restricted-syntax` rule already enforces this: direct
- * `import.meta.env` access is forbidden outside this file.
- */
+// Typed env accessor, the only module that reads `import.meta.env` (ESLint's
+// `no-restricted-syntax` forbids it elsewhere); other modules import `ENV`.
 
 function readString(key: string, defaultValue?: string): string {
   // vite-plugin-runtime-env exposes values via window.__ENV__ at runtime,
@@ -178,7 +173,7 @@ export const ENV = Object.freeze({
    * Stellar G-address of the account that issued the PLUSD classic asset.
    * Used by `useStellarPlusdTotalSupply` to read total PLUSD supply via Horizon:
    *   `GET /assets?asset_code=PLUSD&asset_issuer={STELLAR_PLUSD_ISSUER_ID}`
-   * → `balances.authorized` gives the total PLUSD in circulation.
+   * → `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`.
    *
    * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
    *
@@ -233,6 +228,13 @@ export const ENV = Object.freeze({
    * in which case `Turnstile` renders nothing and those actions stay blocked.
    */
   TURNSTILE_SITE_KEY: readString("VITE_TURNSTILE_SITE_KEY", ""),
+
+  E2E_CAPTCHA_TOKEN:
+    import.meta.env.DEV &&
+    import.meta.env.VITE_E2E_CAPTCHA &&
+    !readString("VITE_TURNSTILE_SITE_KEY", "")
+      ? "pipeline-e2e-captcha"
+      : "",
 });
 
 /**

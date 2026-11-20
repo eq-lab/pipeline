@@ -45,6 +45,13 @@ describe("useWalletView — derived from the connected wallet", () => {
     expect(result.current.kind).toBe("evm");
   });
 
+  it("is evm when both wallets are connected", () => {
+    evm.isConnected = true;
+    stellar.isConnected = true;
+    const { result } = renderHook(() => useWalletView(), { wrapper });
+    expect(result.current.kind).toBe("evm");
+  });
+
   it("is stellar when only the Stellar wallet is connected", () => {
     stellar.isConnected = true;
     const { result } = renderHook(() => useWalletView(), { wrapper });

@@ -4,10 +4,11 @@ import React from "react";
 import { useEvmWallet } from "./evm/useEvmWallet";
 import { useStellarWallet } from "./stellar/useStellarWallet";
 import { useSingleWalletInvariant } from "./useSingleWalletInvariant";
+import { walletPrecedence, type WalletViewKind } from "./walletPrecedence";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type WalletViewKind = "evm" | "stellar";
+export type { WalletViewKind };
 
 export interface WalletViewContextValue {
   kind: WalletViewKind;
@@ -31,11 +32,7 @@ export function WalletViewProvider({
   const stellar = useStellarWallet();
   useSingleWalletInvariant();
 
-  const kind: WalletViewKind = evm.isConnected
-    ? "evm"
-    : stellar.isConnected
-      ? "stellar"
-      : DEFAULT_KIND;
+  const kind: WalletViewKind = walletPrecedence(evm, stellar) ?? DEFAULT_KIND;
 
   return (
     <WalletViewContext.Provider value={{ kind }}>

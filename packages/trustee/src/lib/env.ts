@@ -43,6 +43,16 @@ function readNumber(key: string, defaultValue?: number): number {
   throw new Error(`Missing required env variable "${key}".`);
 }
 
+function readBlockNumber(key: string, defaultValue: number): number {
+  const n = readNumber(key, defaultValue);
+  if (!Number.isSafeInteger(n) || n < 0) {
+    throw new Error(
+      `Env variable "${key}" must be a non-negative integer block number: "${n}"`,
+    );
+  }
+  return n;
+}
+
 export const ENV = Object.freeze({
   /** Base URL for the Pipeline Relayer REST API. Defaults to the API crate's default port. */
   API_BASE_URL: readString("VITE_API_BASE_URL", "http://localhost:8080"),
@@ -139,9 +149,40 @@ export const ENV = Object.freeze({
     "",
   ),
 
+  STELLAR_SECURITY_REGISTRY_ID: readString(
+    "VITE_STELLAR_SECURITY_REGISTRY_ID",
+    "",
+  ),
+
   STELLAR_YIELD_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", ""),
 
+  STELLAR_DEAL_TOKEN_FACTORY_ID: readString(
+    "VITE_STELLAR_DEAL_TOKEN_FACTORY_ID",
+    "",
+  ),
+
   STELLAR_CAPITAL_WALLET_ID: readString("VITE_STELLAR_CAPITAL_WALLET_ID", ""),
+
+  EVM_CAPITAL_WALLET_ADDRESS: readString("VITE_EVM_CAPITAL_WALLET_ADDRESS", ""),
+
+  EVM_ACCESS_MANAGER_ADDRESS: readString("VITE_EVM_ACCESS_MANAGER_ADDRESS", ""),
+
+  EVM_DEAL_TOKEN_FACTORY_ADDRESS: readString(
+    "VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS",
+    "",
+  ),
+
+  EVM_START_BLOCK: readBlockNumber("VITE_EVM_START_BLOCK", 0),
+
+  EVM_SECURITY_REGISTRY_ADDRESS: readString(
+    "VITE_EVM_SECURITY_REGISTRY_ADDRESS",
+    "",
+  ),
+
+  EVM_SECURITY_RECORD_NFT_ADDRESS: readString(
+    "VITE_EVM_SECURITY_RECORD_NFT_ADDRESS",
+    "",
+  ),
 
   /**
    * Sibling-deployment URLs for the cross-deployment network switcher

@@ -4,6 +4,7 @@ import { formatIsoDateUtc } from "@/utils/formatDate";
 import { ApiError } from "@/api/client";
 import { toUserError } from "@/utils/userError";
 import type { StatusBand } from "@/components/detail/detailTokens";
+import { linkedAddressesLabel } from "./-settlementAddresses";
 
 export type AccountStatusBand = StatusBand;
 
@@ -19,7 +20,7 @@ export interface LpCounterpartyRow {
   jurisdiction: string;
   registeredOn: string;
   status: AccountStatusChip;
-  blockchainAddress: "Yes" | "No";
+  blockchainAddress: string;
   bankInfo: string;
 }
 
@@ -63,10 +64,7 @@ export function mapLpToRow(lp: LpSummary): LpCounterpartyRow {
     jurisdiction: safeString(lp.country),
     registeredOn: formatIsoDateUtc(lp.created_at),
     status: mapKybStatus(lp.kyb_status),
-    blockchainAddress:
-      typeof lp.stellar_address === "string" && lp.stellar_address.length > 0
-        ? "Yes"
-        : "No",
+    blockchainAddress: linkedAddressesLabel(lp),
     bankInfo: "—",
   };
 }

@@ -367,16 +367,15 @@ slot: an underlined brand-coloured router `Link` reading "Get PLUSD to start"
 `/deposit?direction=deposit`, the same target the `"balance"` variant's caption link uses. Both
 compact variants render **no** unrealized-PnL caption, carry `data-variant`, and drop the PnL
 clause from the chart's `role="img"` aria-label; `"get-plusd"` ignores `mobileHomeState`. The
-balance heading is the route's served `balanceLabel`, so `$0.00` here is a formatted zero sPLUSD
-balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"balance"`),
+balance heading is the route's served `balanceLabel` (the latest served `total_balance`, #2057), so
+`$0.00` here is the documented zero of a wallet holding no PLUSD or sPLUSD, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"balance"`),
 `6701:97649` (`"connect-wallet"`), `6701:98528` (`"get-plusd"`).
 
 **`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
 same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
-eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
-(`formatBigintCurrency(splusdInPlusdActive, plusdDecimals)`, `$0.00` here since sPLUSD is zero — the Figma frame's
-`$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
-PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
+eyebrow) and binds the Total Balance heading to the served `balanceLabel` (#2057: the latest served
+composite `total_balance`, which includes the held PLUSD when `plusd_balance` is served, matching the
+Figma frame's `$1,000.00`; nothing is summed client-side). The subtitle slot swaps to the sentence
 "Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
 (`I6701:97451;1100:70504;6539:2331`) shows the **whole string** as one underlined brand-navy run,
 so rather than styling two link-like words inside plain text, all four pieces — a `Link` to
@@ -391,10 +390,16 @@ Like `"get-plusd"`, this variant renders no unrealized-PnL caption and ignores `
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
 period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
 7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily), maps the
-response with `buildSeries` (raw share strings scaled by the active chain's decimals), and
+response with `buildSeries` (#2057: the served per-bucket composite `total_balance` — whole USD, a
+6-dp string — parsed verbatim, no decimals scaling, never `shares_balance`, no `splusd_value` fallback), and
 passes `series` into the card — the card stays presentational. Non-empty series → one bar per
-served bucket (height ∝ `shares_balance`), tooltip shows the bucket's served balance +
-timestamp. Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
+served bucket (height ∝ `total_balance`), tooltip shows the bucket's served value + timestamp.
+A bucket without `total_balance` draws no bar (`data-missing`) and its tooltip reads `—`. The
+headline is the last served bucket's `total_balance` through the same `formatMoney` as the tooltip,
+so it equals the last bar's tooltip. `usePositionsHistory` keeps the previous response as
+placeholder data while only the window changes (same kind, address and chain), so a period-tab
+switch does not blank the headline or chart; a wallet or chain switch never carries data over.
+Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
 1m/3m = `Month D, YYYY` (never a time); 1y/all = `Month D, YYYY` plus `, HH:MM` only when the
 served timestamp carries a non-midnight time (e.g. the All tab's hourly rung) — never just the
 month. Empty/absent series → the zero placeholder below, unchanged.
@@ -413,20 +418,21 @@ full-value-height spike (~1px) plus a wider band at 40% of the value height (~3p
 scaled down when slots are narrow. The grey `#D5D8C8` triple-rect construction remains
 placeholder-only.
 
+**Time axis (#1629).** Series buckets sit on a timestamp scale: each bucket spans from its own
+timestamp to the next, the last spans one median step, and the bar is centred in its span. Hover
+selects the latest bucket at or before the cursor time (`stepIndexAt`, step interpolation). A
+dense uniform series renders exactly like index slots; placeholder mode keeps index slots.
+
 **Dates row (#1133/#1138, widened to 5 labels by #1234).** A `ChartDatesRow` under the chart: in
-served-series mode the 5 labels are `sampleAxisDates(timestamps)` sampled from the served bucket
+served-series mode the 5 labels are `sampleAxisDatesByTime(timestamps)` (#1629, by time) sampled from the served bucket
 timestamps; in placeholder mode they fall back to the active period window's timestamps
 (`slotTimestamps` — the same timestamps the hover tooltip already exposes, so no fabrication),
 updating with the period tab.
 
-**Y axis (#1234).** A `ChartValueAxis` — 1:1 USD over the `shares_balance` series, consistent
-with the shipped headline (`formatBigintCurrency(splusdSharesActive, activeDecimals)` already
-displays shares as dollars 1:1). The home route scales `positions/history`'s additive
-`shares_balance.max` `SeriesStat` field by the active chain's decimals (the same
-`/ 10 ** decimals` treatment `buildSeries` applies to `history[]`) and passes the resulting
-`AxisTicks` in as `yAxis`, plus the raw scaled max as `yAxisDomainMax` for bar-height
-normalisation (`Math.max(...series.values)` is hoisted out of the per-bar loop and only used as
-a fallback when `yAxisDomainMax` is omitted/invalid). No axis renders in placeholder mode
+**Y axis (#1234, #1629).** A `ChartValueAxis` from the served `total_balance.max` `SeriesStat`
+(parsed verbatim, no decimals scaling), passed in as `yAxis` plus the raw max as `yAxisDomainMax`
+for bar-height normalisation (the max over non-null bucket values is only a fallback when it is
+omitted/invalid). No axis when the stat is absent (any bucket lacks `total_balance`, see #1960). No axis renders in placeholder mode
 (`series === null`) even if `yAxis` is passed — the zero-value placeholder fabricates nothing.
 
 **Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
@@ -461,16 +467,18 @@ variant.
 **Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
 **Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
-`$0.00 unrealized`) are always real data. The chart itself is either the served `shares_balance`
-series (#1138) or, absent that, a constant-zero placeholder — in both cases every rendered value
+`$0.00 unrealized`) are always real data. The chart itself is either the served `total_balance`
+series (#1138, #1629, #2057) or, absent that, a constant-zero placeholder — in both cases every rendered value
 (bars, dates, Y axis) comes from served data or a documented zero default; nothing is
-client-side-derived beyond unit scaling (÷ decimals) and presentation formatting.
+client-side-derived beyond presentation formatting.
 
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
 ### RecentActivityCard
 
 Right-column card on the home dashboard. Since #2058 the rows come from `useActivityFeed({ limit: 5 })`, which merges the `requests[]`, `wire_ins[]` and `wire_outs[]` served by `GET /v1/requests` newest first before slicing to the top 5 (see [Activity feed](#activity-feed)). An omitted wire list means on-chain rows only. Renders in two states:
+
+Rows refresh after a confirmed action through the same expectation poll (#1810), see [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
 
 - **Connected + data** (Figma frame `1497:95119`): shows the top 5 most recent activity rows as
   `ActivityRow` entries (identical visuals to `/transactions`) followed by a right-aligned "View
@@ -1038,7 +1046,8 @@ Blends REST `GET /v1/financial-position?chain_id` + on-chain reads of the dashbo
 (`useDashboardChain().kind`). All four on-chain hooks are called every render; the pair matching
 `kind` is used and the EVM pair is disabled (no RPC) on Stellar:
 
-- PLUSD outstanding → Stellar `useStellarPlusdTotalSupply()` (Horizon decimal string) or EVM
+- PLUSD outstanding → Stellar `useStellarPlusdTotalSupply()` (Horizon decimal string: `balances` + `contracts_amount` +
+  `claimable_balances_amount` + `liquidity_pools_amount`, so vault-held PLUSD counts) or EVM
   `useEvmPlusdTotalSupply()` (`PLUSD.totalSupply()`, human-decimal string)
 - Cash — stablecoins → Stellar `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint) or EVM
   `useEvmUsdcCustodyBalance()` (`USDC.balanceOf(DepositManager.custodian())`, human-decimal string)
@@ -1081,7 +1090,9 @@ tooling.
 **Tabs (issue #755):** Active Loans / In Origination tab bar (Figma node `3283:14480`). Both tabs are
 selectable and carry a live count badge:
 
-- Active Loans → `loans.length` from `GET /v1/loan-book`.
+- Active Loans → count of loans from `GET /v1/loan-book` whose `status` is not terminal (`Default` /
+  `Closed`). Terminal rows stay listed after the active ones (served order) but are not counted
+  (#2128).
 - In Origination → **in-flight** submission count from `GET /v1/loan-book/submissions` (issue #1053 —
   see `useDeploymentMonitorPanel` below for the filter). The request carries no `chain_id`, so the
   tab shows submissions for all target chains regardless of the dashboard chain.
@@ -1153,14 +1164,22 @@ origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#
 
 - `principal` — always defined when ready (`total_deployed` is non-null); displayed as served by the
   backend (issue #906 — no frontend rescaling).
-- `collateral` — defined only when `total_collateral` is non-null; `undefined` while TODO #706
-  (commodity price feed) is not yet merged. Also displayed as served (#906).
-- `ltv` — user-approved average LTV (null → 0), defined only when `loans.length > 0` (seam refs
-  #729/#765). Formula: `Σ(perRowLtv, null→0) / loans.length`, formatted as an integer percent
-  (e.g. `"85%"`). This is an approved exception to the "no frontend-computed metrics" rule.
+- `ltv` — average LTV over the active loans with a valid registry `ltv_bps` (a finite number that
+  is not the u32::MAX "no value" sentinel); `undefined` (label only) when no active loan has one
+  (seam refs #729/#765, #2077). Formula: `ceil(Σ valid ltv_bps / count)`, formatted with
+  `formatLtvBps`. Loans without a value (chain without a SecurityRegistry key, no snapshot,
+  sentinel) are left out rather than counted as 0%. Terminal rows (`status` `Default` / `Closed`)
+  still show their own LTV but are left out of the average, like the API's active-set summary
+  aggregates (a closed loan has debt 0, so its `ltv_bps` is 0). This is an approved exception to
+  the "no frontend-computed metrics" rule.
 
-Same-scale rule applies to `formatRow`'s `principal`/`collateral` fields (issue #906, displayed as
-served).
+Per-row LTV (#2077) is the SecurityRegistry `ltv_bps` that the Operations Console shows, formatted
+by `formatLtvBps` with the Console's rule (one decimal rounded up, trailing `.0` trimmed: `8123` →
+`"81.3%"`; sentinel → `"No security value"`; `null` → `"—"`). The legacy spot `ltv` and the
+spot-priced per-loan `collateral` are not shown: the Collateral column was removed (decision
+2026-11-12, #1907), so the LP table no longer pairs a marked LTV with a spot collateral value.
+
+Same-scale rule applies to `formatRow`'s `principal` field (issue #906, displayed as served).
 
 ### LoanBookSummary
 
@@ -1196,21 +1215,22 @@ horizontally with Commodity readable at the left end (no sticky pinning; per the
 plain scroll is the intended behavior). `OriginationTable` carries the same minimum.
 `LoanBookSummary` is a card strip, not a table — unaffected.
 
-Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
-Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the
+Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 6 columns:
+Commodity, Principal, LTV, Duration, Rate, Protection (the Figma Collateral column was removed,
+#1907 decision 2026-11-12 / #2077). The first column shows the
 commodity only — borrower identity is not displayed on the LP-facing protocol dashboard (issue
 #1058; the Figma header row's "Borrower / Commodity" label predates that decision). Wrapped in `overflow-x: auto` so it horizontally scrolls at mobile widths where the full
 1024px table exceeds the 370px content area (FRONTEND.md wide-content rule).
 
-The Figma XS mobile frame `3283-71053` renders the full 7-column table scrolling horizontally inside
+The Figma XS mobile frame `3283-71053` renders the full table scrolling horizontally inside
 the section — NOT stacked label/value cards. The previous `MobileCards` path (`block md:hidden`) was
 removed to match Figma exactly (resolved decision for issue #749) — this table now renders at every
 width, and `headerAggregates` populates the header row at all widths too.
 
 **Column widths** (Figma node `3283-14552`, Table container): Commodity is flexible (fills
-remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); Collateral 112px (`3704:1079`);
-LTV 112px (`3704:1082`); Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px
-(`3704:1091`) — fixed columns total 656px, remainder goes to Commodity. `table-layout: fixed`
+remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); LTV 112px (`3704:1082`);
+Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px (`3704:1091`) — fixed
+columns total 544px, remainder goes to Commodity (Figma's Collateral 112px `3704:1079` is removed). `table-layout: fixed`
 
 - `<colgroup>` enforces these widths so long strings in the commodity column don't push the
   numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
@@ -1236,8 +1256,8 @@ Figma also specifies `border-radius: 4px` on rows; unsupported on `<tr>` — log
 the In-Origination tab's new column set, rather than adopting the trustee's grid layout).
 
 `headerAggregates` — `undefined` means "render the plain label with no aggregate" (not `"—"`); this
-avoids rendering `Collateral · —` when `total_collateral` is null. When present, the Principal and
-Collateral headers render as `"Principal · $31.6M"` (label + middot + aggregate in one caption run).
+avoids rendering `LTV · —` when no loan has a registry LTV. When present, the Principal and LTV
+headers render as `"Principal · $31.6M"` (label + middot + aggregate in one caption run).
 
 Figma refs: desktop `node-id=3283-14431`, table container `node-id=3283-14552`, mobile XS
 `node-id=3283-71053`.
@@ -1432,16 +1452,19 @@ items, `PanelEmpty`; `ready` → formatted summary + rows available.
 
 **Row expand** (resolved Open Question 2): the first `WITHDRAWAL_QUEUE_DEFAULT_VISIBLE` (5) rows are
 visible by default; `expanded` toggles the "Show more" affordance. The hook owns this state so the
-view stays JSX-only.
+view stays JSX-only. The Active Loans count and the LTV mean use the same active (non-terminal) set;
+`rows` still include the terminal loans (#2128).
 
 **Liquid Cover calc** (`"5.6x"` or `"—"`) — frontend calc, user-approved: `(cash + tokenized-T-bills) /
 queue`.
 
-- `cash` = REST `assets.liquid.cash_stablecoins` (null/non-finite → 0).
-- `tbills` = REST `assets.liquid.tokenized_tbills` (null/non-finite → 0).
-- `queue` = `in_queue_usd` (null/non-finite → 0). Divide-by-zero → `"—"`.
-- Both `cash` and `tbills` are null in v1 (no commodity price feed, no USYC holding), so this reads
-  `"0.0x"` today. Seam: wire on-chain sources (USDC custody balance, USYC NAV) when available.
+- `cash` = REST `assets.liquid.cash_stablecoins`, `tbills` = REST `assets.liquid.tokenized_tbills`,
+  `queue` = `in_queue_usd`.
+- `cash` and `tbills` must both parse to finite numbers and `queue` to a finite number `> 0`;
+  otherwise the card reads `"—"` (#2128). A missing financial-position payload (loading or error)
+  counts as null.
+- Both liquid figures are `null` today (#770: no USDC custody source in the REST payload, no USYC
+  deployment), so the card reads `"—"` until both are served.
 
 ### WithdrawalQueueTable
 
@@ -1627,13 +1650,14 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
-**Headline value is assets, not shares (#1658).** The route's `balanceLabel` (every variant, mobile
-and desktop) and `StakeCard.splusdUsdValue` both come from `splusdBalanceFormatted`, which formats
-`splusdInPlusdActive` — the on-chain `convertToAssets(shares)` read, served as-is at the PLUSD
-decimals — never the raw sPLUSD share count. While that read is unavailable for a non-zero share
-balance the value renders `—` (never a false `$0.00`); zero shares render `$0.00`. State
-derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares. The chart
-sections are unchanged (tracked in #1629).
+**Headline value (#1658, #2057).** `StakeCard.splusdUsdValue` comes from `splusdBalanceFormatted`, the
+on-chain `convertToAssets(shares)` read at the PLUSD decimals (`—` while unavailable for a non-zero
+share balance, never the raw share count). The card's `balanceLabel` (every variant, mobile and
+desktop) is the latest served `total_balance` formatted with `formatMoney`; `—` when that bucket
+lacks it; with no served bucket, `$0.00` only when the on-chain PLUSD and sPLUSD reads are both
+zero, else `—`. The card's eyebrow gains ` · incl. PLUSD` (`includesPlusd`) when that bucket carries
+`plusd_balance`. The headline can lag the on-chain reads by the indexer plus the 30 s poll. State
+derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares.
 
 **Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
 one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
@@ -1642,8 +1666,8 @@ one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
 wrapper (col 1–2, row 2, `data-node-id` per state via `balancesNodeId`) and the `QnaSection`
 footer (col 1–7, row 3). The route supplies the varying parts as slots: `hero` (col 1–4, row 1),
 `balances` (the stack's children) and `third` (col 3–4, row 2 — a `CompactAddUsdStack`, which
-appends the compact `EarnedCard`, for the six compact states; the bare `StakeCard` for
-`"legacy"`). `CompactBalances` renders the compact `StartHereCard` + `StakeCard` pair from the
+appends the compact `EarnedCard` (fed the stack's optional `earnedPnlLabel`, passed only by
+`"passed-staked"`, #1819), for the compact states; the bare `StakeCard` for `"legacy"`). `CompactBalances` renders the compact `StartHereCard` + `StakeCard` pair from the
 per-state handlers. The per-state tables below are unchanged: the refactor was verified
 byte-identical for all seven states (grid `outerHTML` diffed before/after), and every
 `data-node-id` / `data-testid` sits on the same element as before.
@@ -1666,13 +1690,13 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    issue #1421). When `deriveHomeState` returns `"zero"` (no auth session — see "Home state
    derivation" below) the grid instead renders:
 
-   | Slot            | Grid position                        | Content                                                                                                                                                                                       |
-   | --------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                                                                                         |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                                                                                           |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — both CTAs open the auth flow, Sell forced disabled. |
-   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled.                                         |
-   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                                                                                    |
+   | Slot            | Grid position                        | Content                                                                                                            |
+   | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — Buy and Stake navigate to `/deposit` and `/stake?tab=stake` like every other state (#1809), Sell forced disabled; sign-up stays on the promo card only. |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled. |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
 
    When `deriveHomeState` returns `"unverified"` (signed in, KYB bypassed or not completed, wallet
    disconnected — state 2 of `home-screen-states.md`, #1422, Figma node `6701:97538`) the grid
@@ -1704,13 +1728,37 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    Figma frame `6701:97340`) the grid renders a fifth branch, built from the `"kyb-pending"` branch
    with three card swaps:
 
-   | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                                                                                                                                                                                |
-   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served `$0.00` (sPLUSD binding unchanged) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48).                                                                                                                                                                                                             |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`).                                                                                                                                                            |
-   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`.                                                                                                                 |
-   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                                                                                                                                                                                                                                                                                                              |
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served composite `total_balance` (`$0.00` for a zero wallet without history) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48). |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`). |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                      |
+
+   When `deriveHomeState` returns `"passed-empty"` (signed in, wallet connected, `kyb_status`
+   `"Passed"`, PLUSD and sPLUSD both display-zero — state 4a of `home-screen-states.md`, #1819, no
+   frame of its own) the grid renders the `"kyb-pending"` branch with one card swap:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="get-plusd"` — served `$0.00`, unchanged from state 3.                                      |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` — unchanged.                                                                                |
+   | Balances        | col 1–2, row 2 (`6701:98773`)        | `CompactBalances {...compactWalletActions}` — Buy enabled, Sell and Stake disabled by the served zero balances (state 3's stack geometry). |
+   | AddUsdCard      | col 3–4, row 2 (`6701:97493`)        | `AddUsdCard variant="unlocked" className="flex-1"` (node `6701:97494`) + `EarnedCard layout="compact"` — `onAddFunds` opens `FundingDetailsModal` (rows `—` until #1817); state 4's stack geometry. |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                      |
+
+   When `deriveHomeState` returns `"passed-staked"` (signed in, wallet connected, `kyb_status`
+   `"Passed"`, sPLUSD display non-zero, any PLUSD — state 4b, #1819, interim until state 5 / #1425
+   whose frame `6701:97136` is the geometry reference) the grid renders:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`6701:97247`)        | `PortfolioPlaceholderCard` default variant with `mobileHomeState`, `balanceLabel={totalBalanceFormatted}` (served composite, #2057), `unrealizedPnlLabel` and the chart props — the same hero the `"legacy"` connected grid shows. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6701:97315`) | `RecentActivityCard padding="md"`.                                                                                    |
+   | Balances        | col 1–2, row 2 (`6701:97257`)        | `CompactBalances` — `compactVariant="balance"` + `compactBalanceLabel={plusdFormattedActive}` when PLUSD is display non-zero (Buy and Sell enabled), the default compact pair otherwise; the compact `StakeCard` keeps its marketing copy — the frame's compact "Staked PLUSD / Stake More / Unstake" card (`6701:97273`) is #1425's (TD-161). |
+   | AddUsdCard      | col 3–4, row 2 (`6701:97288`)        | `AddUsdCard variant="unlocked" className="flex-1"` + `EarnedCard layout="compact" earnedPnlLabel={earnedPnlLabel}` (the stack's `earnedPnlLabel` prop) — `funded` (`6701:97289`) replaces `unlocked` here under #1820. |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                      |
 
    When `deriveHomeState` returns `"kyb-problem"` (signed in, `lpRead === "loaded"`,
    `kyb_status` `ChangesRequested` or `Failed` — state 6 of `home-screen-states.md`, #1426, Figma
@@ -1763,13 +1811,17 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Disconnected CTA rule (#1152, #1151):** with no wallet connected, Buy and the Stake circle open
-the shared connect modal (`useConnectModal().open()`) instead of navigating (supersedes the
-#408-era "Stake navigates when disconnected" behavior); Sell is disabled (`sellDisabled`,
+**Disconnected CTA rule (#1152, #1151, #1809):** once the wallet layer has settled with no wallet
+connected, Buy and the Stake circle open the shared connect modal (`useConnectModal().open()`)
+instead of navigating (supersedes the #408-era "Stake navigates when disconnected" behavior); while
+`useWalletPresence().isConnectionPending` they treat the reconnecting wallet as connected and
+navigate immediately. In the zero state (no session, no wallet) Buy and Stake navigate to
+`/deposit` and `/stake?tab=stake`; the connect row on those pages renders nothing while pending.
+Sell is disabled (`sellDisabled`,
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
-**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `shares_balance` history (#1138) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it scales `positionsHistory.data.shares_balance.max` (a raw share string, same scale as `history[]`) by `activeDecimals` and passes `computeAxisTicks`'s result as `yAxis` plus the raw scaled max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
+**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `total_balance` history (#1138, #1629, #2057) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it parses `positionsHistory.data.total_balance.max` verbatim (no decimals scaling) and passes `computeAxisTicks`'s result as `yAxis` plus the parsed max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 
@@ -1787,21 +1839,21 @@ state is layout-stable: hero 274px (col 1–4, row 1), Balances 164 + 164px, thi
 Recent activity and the FAQ strip render normally (neither depends on the LP read); no CTA renders
 during the window; the Balances wrapper carries no `data-node-id`. No Figma loading frame exists —
 the skeleton is derived from the cards' own heights. The mobile stack is unaffected (it never reads
-`homeState`), and `lpRead === "error"` still falls back to `"legacy"`.
+`homeState`), and `lpRead === "error"` still falls back to `"legacy"`. It also covers a pending wallet reconnect (`walletPending`, #1809).
 
 **Chain-served gate (#1605).** When `useChainServed().served === false` (the active EVM chain is not
 served by the API), the route keeps `WelcomeHeader` and replaces both the mobile stack and the
 desktop dashboard card with `ChainNotServedNotice` — no home state is derived or rendered.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576):**
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576/#1819):**
 `packages/frontend/src/components/homeState.ts` exports
-`HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
+`HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "passed-empty" | "passed-staked" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
-`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
+`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero?, walletPending? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
 `"kyb-pending"` / `"plusd-held"` / `"wallet-only"`. The precedence rule (not re-derived here — see
 `docs/product-specs/home-screen-states.md` for the authoritative seven-state table and its
-precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
+precedence clause) is evaluated in order: `"loading"` first when `walletPending` (a wallet reconnect is in flight, #1809); else when `hasSession` is `false`, `"wallet-only"` if
 `isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
 changed — every sessionless caller still resolves to exactly one of these two, and can never reach
 the KYB branches below); else `"loading"` when `lpRead === "unknown"` — the `GET /v1/lps/me` read
@@ -1810,11 +1862,16 @@ has not resolved (#1576, closes the LP-read half of TD-121; see "Loading composi
 (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
 `"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
 `plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
-`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
+`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"passed-empty"` when
+`isConnected`, `lpRead === "loaded"`, `kybStatus === "Passed"`, `plusdIsZero` and `splusdIsZero`;
+else `"passed-staked"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "Passed"` and
+`!splusdIsZero` (#1819 — together the three `Passed` branches cover every connected `Passed`
+balance combination); else `"kyb-problem"` when
 `lpRead === "loaded"` and `kybStatus` is `"ChangesRequested"` or `"Failed"` — **no `isConnected` or
-balance check**, unlike the two branches above it; else `"legacy"` (covers a disconnected wallet, a
-non-zero sPLUSD balance, `lpRead` `"error"`, and every other `kyb_status`, including the
-unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
+balance check**, unlike the branches above it; else `"legacy"` (covers a disconnected wallet,
+`lpRead` `"error"`, and every other `kyb_status`, including the unreachable `"InProgress"`). The
+route hoists `plusdIsZero` / `splusdIsZero` into two consts shared by `deriveHomeState`,
+`stakeDisabled`, `sellDisabled` and the `"passed-staked"` balance-mode switch. The route reads `useAuthSession().isAuthenticated` for `hasSession`,
 `lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
 `isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,
 activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`. For the
@@ -1879,8 +1936,10 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 2. **Initial data load** — first load only: chain data / requests API still loading; renders nothing until first resolved (avoids re-hide flicker on background refetches). Not shown again on later background refetches.
 3. **No-XLM banner** (`XlmFundingBanner`, Figma frame `6090-8741`, card node `6093-75787`) — Stellar only, **both directions**, `flow.needsXlmFunding` (see [`wallet-flows.md` § XLM funding rule](./wallet-flows.md#xlm-funding-rule)). "Add funds to your XLM balance / You need XLM to pay the network fee" with a Copy Address action (copies the connected address; label flips to "Copied"). Outranks the USDC-trustline banner because adding a trustline itself requires XLM (#1196, #1130).
 4. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
-5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`
-   (balance below the minimum deposit).
+5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.isBelowMinimum`
+   (balance below the minimum deposit and no confirmed deposit request). Neither this nor the
+   USDC-trustline banner shows while a deposit request awaits verification or its claim, so the
+   steps card and its Claim stay reachable after depositing the whole balance (#2015).
 6. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
 
 **Insufficient-balance line (#1628):** independent of the banner, while `flow.exceedsBalance` is true
@@ -1967,6 +2026,8 @@ Activity page wired to `GET /v1/requests`.
 - Disconnected empty state additionally renders a primary-dark "Connect Wallet" button (16 px below the caption) that opens the shared connect modal (#1184); connected-but-empty keeps the caption-only state.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
+
+**Refresh after a confirmed action (#1810):** rows refresh through the expectation poll of `useRequests`, so a new Buy / Sell / Stake row (or a claimed Deposit flipping to Completed) appears without a reload. See [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
 
 **Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`). **Chain-served gate (#1605):** on an unserved EVM chain the page renders `ChainNotServedNotice` instead of the header, tabs and feed.
 

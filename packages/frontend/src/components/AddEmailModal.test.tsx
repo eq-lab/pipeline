@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddEmailModal } from "./AddEmailModal";
 
@@ -98,15 +104,35 @@ describe("AddEmailModal (#1459)", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("does not render Continue with wallet, OR, or the sign-in footer", () => {
+  it("does not render Continue with wallet or OR", () => {
     renderModal();
     expect(
       screen.queryByRole("button", { name: /Continue with wallet/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("OR")).not.toBeInTheDocument();
+  });
+
+  it("renders no sign-in link without onSignIn", () => {
+    renderModal();
     expect(
       screen.queryByText(/Already have an account\?/),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders 'Already have an account? Sign in' below Save and calls onSignIn on click", async () => {
+    const user = userEvent.setup();
+    const onSignIn = vi.fn();
+    renderModal({ onSignIn });
+    const line = screen.getByText(/Already have an account\?/).closest("p");
+    expect(line?.textContent).toBe("Already have an account? Sign in");
+    const save = screen.getByRole("button", { name: "Save" });
+    const link = screen.getByRole("button", { name: "Sign in" });
+    expect(
+      save.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(link).toHaveAttribute("type", "button");
+    await user.click(link);
+    expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("submit is disabled with both fields empty", () => {
@@ -211,9 +237,12 @@ describe("AddEmailModal (#1459)", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
-    resolveSubmit();
-    await screen.findByRole("button", { name: "Save" });
-    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    await act(async () => {
+      resolveSubmit();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled(),
+    );
   });
 
   it("renders the turnstileSlot when provided", () => {

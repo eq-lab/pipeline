@@ -12,6 +12,13 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
+pub const LATEST_PRICES_FOR_PAIRS_SQL: &str =
+    "SELECT DISTINCT ON (p.asset, p.price_provider) p.asset, p.price_provider, p.price_usd, p.timestamp
+     FROM loan_asset_prices p
+     JOIN UNNEST($1::text[], $2::text[]) AS w(asset, price_provider)
+       ON w.asset = p.asset AND w.price_provider = p.price_provider
+     ORDER BY p.asset, p.price_provider, p.timestamp DESC";
+
 pub struct LoanAssetPriceRepo {
     pub pool: PgPool,
 }
@@ -173,5 +180,21 @@ impl LoanAssetPriceRepo {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    pub async fn latest_prices_for(
+        &self,
+        pairs: &[(String, String)],
+    ) -> Result<Vec<(String, String, BigDecimal, DateTime<Utc>)>, sqlx::Error> {
+        if pairs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let assets: Vec<String> = pairs.iter().map(|(a, _)| a.clone()).collect();
+        let providers: Vec<String> = pairs.iter().map(|(_, p)| p.clone()).collect();
+        sqlx::query_as(LATEST_PRICES_FOR_PAIRS_SQL)
+            .bind(assets)
+            .bind(providers)
+            .fetch_all(&self.pool)
+            .await
     }
 }

@@ -1,6 +1,7 @@
 // spec: docs/product-specs/deposits.md#stellar-plusd-mint-leg
 // spec: docs/product-specs/loan-repayment-recovery.md
 // spec: docs/product-specs/withdrawals.md#bank-wire-withdrawals-lp-app
+// spec: docs/product-specs/cash-reporter-bookings.md
 import {
   Contract,
   TransactionBuilder,
@@ -22,6 +23,7 @@ import {
   type RelayResult,
 } from "./accessManager";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
+import { sha256Hex } from "./hash";
 
 export type RecordWireInStage = RelayStage;
 
@@ -161,18 +163,14 @@ export async function buildRecordWireInEnvelope({
   return assembled.toXDR();
 }
 
-function toId(native: unknown, min: number): number | null {
+function toId(native: unknown): number | null {
   const n =
     typeof native === "bigint"
       ? Number(native)
       : typeof native === "number"
         ? native
         : NaN;
-  return Number.isInteger(n) && n >= min ? n : null;
-}
-
-function toWireId(native: unknown): number | null {
-  return toId(native, 1);
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? n : null;
 }
 
 function wireIdFromReturnValue(
@@ -180,7 +178,7 @@ function wireIdFromReturnValue(
 ): number | null {
   if (!finalResult.returnValue) return null;
   try {
-    return toWireId(scValToNative(finalResult.returnValue));
+    return toId(scValToNative(finalResult.returnValue));
   } catch {
     return null;
   }
@@ -197,7 +195,7 @@ function wireIdFromEvents(
       const idTopic = topics[1];
       if (!nameTopic || !idTopic) continue;
       if (scValToNative(nameTopic) === "wire_in") {
-        const id = toWireId(scValToNative(idTopic));
+        const id = toId(scValToNative(idTopic));
         if (id != null) return id;
       }
     }
@@ -380,7 +378,7 @@ function repaymentIdFromReturnValue(
 ): number | null {
   if (!finalResult.returnValue) return null;
   try {
-    return toId(scValToNative(finalResult.returnValue), 0);
+    return toId(scValToNative(finalResult.returnValue));
   } catch {
     return null;
   }
@@ -396,7 +394,7 @@ function repaymentIdFromEvents(
       const nameTopic = v0.topics()[0];
       if (!nameTopic || scValToNative(nameTopic) !== "cash_repaid") continue;
       const data = scValToNative(v0.data()) as { repayment_id?: unknown };
-      const id = toId(data?.repayment_id, 0);
+      const id = toId(data?.repayment_id);
       if (id != null) return id;
     }
   } catch {
@@ -453,16 +451,6 @@ export async function repay({
   };
 }
 
-async function sha256Hex(preimage: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(preimage),
-  );
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
 export function repaymentRefHash({
   registryId,
   loanId,
@@ -473,6 +461,232 @@ export function repaymentRefHash({
   nextRepaymentId: number;
 }): Promise<string> {
   return sha256Hex(`pipeline:repay:${registryId}:${loanId}:${nextRepaymentId}`);
+}
+
+// ── record_income ─────────────────────────────────────────────────────────────
+
+export type RecordIncomeStage = RecordWireInStage;
+
+export interface RecordIncomeArgs {
+  caller: string;
+  amount: string;
+  valueDate: number;
+  refHash: string;
+}
+
+export interface BuildRecordIncomeEnvelopeParams extends RecordIncomeArgs {
+  minterId: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+export interface RecordIncomeParams extends BuildRecordIncomeEnvelopeParams {
+  signTransaction: RecordWireInParams["signTransaction"];
+  onStageChange?: (stage: RecordIncomeStage) => void;
+}
+
+export interface RecordIncomeResult {
+  hash: string;
+}
+
+export function encodeRecordIncomeArgs({
+  caller,
+  amount,
+  valueDate,
+  refHash,
+}: RecordIncomeArgs): xdr.ScVal[] {
+  if (!Number.isInteger(valueDate) || valueDate <= 0) {
+    throw new Error(
+      `encodeRecordIncomeArgs: valueDate must be a positive Unix-seconds integer, got ${valueDate}`,
+    );
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error(
+      "encodeRecordIncomeArgs: refHash must not be the zero hash",
+    );
+  }
+  return [
+    new Address(caller).toScVal(),
+    nativeToScVal(parseUsdDollarsToI128(amount), { type: "i128" }),
+    nativeToScVal(BigInt(valueDate), { type: "u64" }),
+    hexToBytes32ScVal(refHash),
+  ];
+}
+
+export async function buildRecordIncomeEnvelope({
+  minterId,
+  rpcUrl,
+  networkPassphrase,
+  ...args
+}: BuildRecordIncomeEnvelopeParams): Promise<string> {
+  if (!minterId) {
+    throw new Error("buildRecordIncomeEnvelope: minterId must not be empty");
+  }
+  if (!args.caller) {
+    throw new Error("buildRecordIncomeEnvelope: caller must not be empty");
+  }
+
+  const encoded = encodeRecordIncomeArgs(args);
+
+  const contract = new Contract(minterId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(args.caller);
+  const op = contract.call("record_income", ...encoded);
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`recordIncome simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+export async function recordIncome({
+  signTransaction,
+  onStageChange,
+  ...build
+}: RecordIncomeParams): Promise<RecordIncomeResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildRecordIncomeEnvelope(build);
+
+  const { networkPassphrase, rpcUrl, caller } = build;
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `recordIncome: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `recordIncome: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return { hash: sendResult.hash };
+}
+
+export interface ReadRefHashSeenParams extends SimulateReadOptions {
+  minterId: string;
+  refHash: string;
+}
+
+export async function readRefHashSeen({
+  minterId,
+  refHash,
+  rpcUrl,
+  networkPassphrase,
+}: ReadRefHashSeenParams): Promise<boolean> {
+  if (!minterId) {
+    throw new Error("readRefHashSeen: minterId must not be empty");
+  }
+  const seen = await simulateRead(
+    minterId,
+    "ref_hash_seen",
+    [hexToBytes32ScVal(refHash)],
+    { rpcUrl, networkPassphrase },
+  );
+  return seen === true;
+}
+
+export async function bankReferenceRefHash(reference: string): Promise<string> {
+  const trimmed = reference.trim();
+  if (!trimmed) {
+    throw new Error("bankReferenceRefHash: reference must not be empty");
+  }
+  return sha256Hex(trimmed);
+}
+
+// ── disburse ──────────────────────────────────────────────────────────────────
+
+export interface DisburseArgs {
+  loanId: number;
+  amountRaw: string;
+  valueDate: number;
+  refHash: string;
+}
+
+export function encodeDisburseArgs({
+  loanId,
+  amountRaw,
+  valueDate,
+  refHash,
+}: DisburseArgs): xdr.ScVal[] {
+  if (!Number.isInteger(loanId) || loanId < 0 || loanId > 0xffffffff) {
+    throw new Error(`encodeDisburseArgs: invalid loanId ${loanId}`);
+  }
+  if (!/^\d+$/.test(amountRaw) || BigInt(amountRaw) <= 0n) {
+    throw new Error(
+      `encodeDisburseArgs: amountRaw must be a positive integer string, got "${amountRaw}"`,
+    );
+  }
+  if (!Number.isInteger(valueDate) || valueDate <= 0) {
+    throw new Error(
+      `encodeDisburseArgs: valueDate must be a positive Unix-seconds integer, got ${valueDate}`,
+    );
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error("encodeDisburseArgs: refHash must not be the zero hash");
+  }
+  return [
+    nativeToScVal(loanId, { type: "u32" }),
+    nativeToScVal(BigInt(amountRaw), { type: "i128" }),
+    nativeToScVal(BigInt(valueDate), { type: "u64" }),
+    hexToBytes32ScVal(refHash),
+  ];
+}
+
+export type DisburseParams = Omit<
+  RelayParams,
+  "mode" | "target" | "fn" | "args"
+> & { minterId: string } & DisburseArgs;
+
+export function disburse({
+  minterId,
+  loanId,
+  amountRaw,
+  valueDate,
+  refHash,
+  ...rest
+}: DisburseParams): Promise<RelayResult> {
+  return relay({
+    ...rest,
+    mode: "execute",
+    target: minterId,
+    fn: "disburse",
+    args: encodeDisburseArgs({ loanId, amountRaw, valueDate, refHash }),
+  });
 }
 
 // ── reverse_repay ─────────────────────────────────────────────────────────────
@@ -719,7 +933,7 @@ function wireOutIdFromReturnValue(
 ): number | null {
   if (!finalResult.returnValue) return null;
   try {
-    return toId(scValToNative(finalResult.returnValue), 0);
+    return toId(scValToNative(finalResult.returnValue));
   } catch {
     return null;
   }
@@ -736,7 +950,7 @@ function wireOutIdFromEvents(
       const idTopic = topics[1];
       if (!nameTopic || !idTopic) continue;
       if (scValToNative(nameTopic) === "wire_out_requested") {
-        const id = toId(scValToNative(idTopic), 0);
+        const id = toId(scValToNative(idTopic));
         if (id != null) return id;
       }
     }
@@ -815,10 +1029,6 @@ export interface ReadMinterWireOutParams extends SimulateReadOptions {
   id: number;
 }
 
-export interface ReadMinterPausedParams extends SimulateReadOptions {
-  minterId: string;
-}
-
 function decodeWireOutStatus(raw: unknown): MinterWireOutStatus {
   const variant = Array.isArray(raw) ? raw[0] : raw;
   const found = WIRE_OUT_STATUSES.find((s) => s === variant);
@@ -854,19 +1064,4 @@ export async function readMinterWireOut({
     requestedAt: Number(data.requested_at ?? 0),
     status: decodeWireOutStatus(data.status),
   };
-}
-
-export async function readMinterPaused({
-  minterId,
-  rpcUrl,
-  networkPassphrase,
-}: ReadMinterPausedParams): Promise<boolean> {
-  if (!minterId) {
-    throw new Error("readMinterPaused: minterId must not be empty");
-  }
-  const paused = await simulateRead(minterId, "paused", [], {
-    rpcUrl,
-    networkPassphrase,
-  });
-  return paused === true;
 }

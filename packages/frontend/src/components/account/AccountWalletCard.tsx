@@ -1,5 +1,7 @@
 // spec: docs/frontend/account-page.md#accountwalletcard
 import { Button, CoinIcon, useCopyToClipboard } from "@pipeline/ui";
+import { useContext } from "react";
+import { AuthFlowContext } from "@/auth/AuthFlowContext";
 import { useActiveWalletAccount } from "@/wallet";
 import { namespaceLabel } from "@pipeline/wallet-connect";
 import { AccountIconTile } from "./AccountIconTile";
@@ -91,6 +93,17 @@ export function AccountWalletCard() {
   } = useActiveWalletAccount();
 
   const { copy } = useCopyToClipboard();
+  const authFlow = useContext(AuthFlowContext);
+  const settlement = authFlow?.settlement;
+  const canLink =
+    !!authFlow &&
+    authFlow.lpRead !== "absent" &&
+    authFlow.kybStatus !== "Failed";
+
+  function handleConnect() {
+    settlement?.onArmConnectLink?.();
+    connect();
+  }
 
   function handleCopy() {
     if (address) void copy(address);
@@ -208,8 +221,12 @@ export function AccountWalletCard() {
           <div className="flex size-18 items-center justify-center rounded-[var(--radius-pipeline-pill)] bg-[color:var(--color-pipeline-fill-muted)] text-[color:var(--color-pipeline-ink-subtle)]">
             <WalletGlyph size={36} />
           </div>
-          <Button variant="primary-dark" className="w-full" onClick={connect}>
-            Connect Wallet
+          <Button
+            variant="primary-dark"
+            className="w-full"
+            onClick={handleConnect}
+          >
+            {canLink ? "Link Wallet" : "Connect Wallet"}
           </Button>
         </div>
       )}

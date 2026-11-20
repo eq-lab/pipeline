@@ -7,6 +7,7 @@ import {
   formatMaturityDate,
   formatSubmittedDate,
   sampleAxisDates,
+  sampleAxisDatesByTime,
 } from "./formatDate";
 
 // ── formatMaturityDate ──────────────────────────────────────────────────────
@@ -113,5 +114,26 @@ describe("sampleAxisDates", () => {
       "Jul 15",
       "Jul 30",
     ]);
+  });
+});
+
+describe("sampleAxisDatesByTime (#1629)", () => {
+  it("matches sampleAxisDates for a uniform grid", () => {
+    const day = 86_400_000;
+    const base = Date.UTC(2026, 6, 1, 12);
+    const grid = Array.from({ length: 9 }, (_, i) => base + i * day);
+    expect(sampleAxisDatesByTime(grid)).toEqual(sampleAxisDates(grid));
+  });
+
+  it("picks the bucket nearest the time midpoint for a gapped series", () => {
+    const day = 86_400_000;
+    const base = Date.UTC(2026, 6, 1, 12);
+    const gapped = [0, 1, 2, 3, 30].map((d) => base + d * day);
+    expect(sampleAxisDatesByTime(gapped)[2]).toBe("Jul 4");
+    expect(sampleAxisDates(gapped)[2]).toBe("Jul 3");
+  });
+
+  it("returns an empty array for an empty series", () => {
+    expect(sampleAxisDatesByTime([])).toEqual([]);
   });
 });

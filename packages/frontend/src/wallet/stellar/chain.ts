@@ -82,7 +82,7 @@ export const stakedPlusdId: string = ENV.STELLAR_STAKED_PLUSD_ID;
  * G-address of the account that issued the PLUSD classic Stellar asset.
  * Used to read total PLUSD supply via Horizon:
  *   `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
- * → `balances.authorized` gives the total PLUSD in circulation.
+ * → `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`.
  *
  * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
  * Empty string means "unconfigured" — hook short-circuits to `undefined`.

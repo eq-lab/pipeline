@@ -76,6 +76,7 @@ vi.mock("./useStellarWallet", () => ({
     address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
     isConnected: true,
     signTransaction: mockSignTransaction,
+    signMessage: vi.fn(),
   })),
 }));
 
@@ -239,6 +240,7 @@ beforeEach(() => {
     isConnected: true,
     isSettled: true,
     signTransaction: mockSignTransaction,
+    signMessage: vi.fn(),
     connect: vi.fn(),
     disconnect: vi.fn(),
   }));
@@ -315,6 +317,7 @@ describe("useStellarStake", () => {
       isConnected: false,
       isSettled: true,
       signTransaction: mockSignTransaction,
+      signMessage: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn(),
     });
@@ -572,6 +575,7 @@ describe("useStellarStakedPlusdBalance", () => {
       isConnected: false,
       isSettled: true,
       signTransaction: mockSignTransaction,
+      signMessage: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn(),
     });
@@ -613,6 +617,7 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       isConnected: true,
       isSettled: true,
       signTransaction: mockSignTransaction,
+      signMessage: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn(),
     });

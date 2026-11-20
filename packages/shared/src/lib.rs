@@ -3,8 +3,10 @@
 // about macro output we do not write. See TD-115.
 #![allow(clippy::double_must_use)]
 
+pub mod access_manager_repo;
 pub mod account_repo;
 pub mod auth_user_repo;
+pub mod bank_account;
 pub mod bitgo;
 pub mod book_weighting;
 pub mod chains;
@@ -18,6 +20,7 @@ pub mod elliptic;
 pub mod email;
 pub mod events;
 pub mod evm;
+pub mod http_client;
 pub mod json_numeric;
 pub mod kyb_document_repo;
 pub mod kyc_repo;
@@ -35,17 +38,27 @@ pub mod login_attempt_repo;
 pub mod lp_bank_deposit_repo;
 pub mod lp_ledger_repo;
 pub mod lp_repo;
+pub mod lp_requested_bank_details_repo;
 pub mod metadata_fetcher;
 pub mod metal_price;
 pub mod migrations;
 pub mod minted_yield;
 pub mod object_store;
 pub mod otp_repo;
+pub mod plusd_seed;
+pub mod plusd_seed_repo;
+pub mod pocket;
+pub mod pocket_repo;
 pub mod position_repo;
 pub mod price_provider;
+pub mod security_marks;
+pub mod security_registry;
+pub mod security_registry_repo;
+pub mod security_state;
 pub mod signature;
 pub mod stellar_voucher;
 pub mod submitted_loan_repo;
 pub mod sumsub;
+pub mod system_configuration_repo;
 pub mod time_weighted_return;
-pub mod yield_mint_outbox_repo;
+pub mod withdrawal_rate;

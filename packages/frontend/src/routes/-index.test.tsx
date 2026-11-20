@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useAccount } from "wagmi";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider } from "@/wallet";
 import { Route } from "./index";
@@ -101,6 +102,10 @@ vi.mock("@/auth", () => ({
   }),
 }));
 
+const mockPositionsHistory = vi.hoisted(() => ({
+  current: undefined as Record<string, unknown> | undefined,
+}));
+
 const mockPnlData = vi.hoisted(() => ({
   current: undefined as
     | {
@@ -179,7 +184,22 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
+const { mockUsePaymentDetails, MockApiError } = vi.hoisted(() => ({
+  mockUsePaymentDetails: vi.fn(),
+  MockApiError: class MockApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
+
 vi.mock("@/api", () => ({
+  ApiError: MockApiError,
+  usePaymentDetails: (request: unknown) => mockUsePaymentDetails(request),
+  chainDisplayName: (kind: string, chainId: number) =>
+    kind === "stellar" ? "Stellar" : `chain ${chainId}`,
   useChainServed: () => mockChainServed(),
   getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
@@ -209,7 +229,7 @@ vi.mock("@/api", () => ({
     refetch: vi.fn(),
   }),
   usePositionsHistory: () => ({
-    data: undefined,
+    data: mockPositionsHistory.current,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -222,6 +242,36 @@ vi.mock("@/api", () => ({
 }));
 
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
+
+function composite(
+  last: Record<string, string>,
+  stats: Record<string, { max: string; min: string; average: string }> = {},
+) {
+  const stat = (max: string) => ({ max, min: "0", average: "0" });
+  mockPositionsHistory.current = {
+    wallet: WALLET_ADDRESS,
+    interval: "hourly",
+    history: [
+      {
+        timestamp: "2026-09-21T00:00:00Z",
+        shares_balance: "0",
+        avg_cost_basis: "0",
+        cumulative_realized_pnl: "0",
+        total_balance: "1.000000",
+      },
+      {
+        timestamp: "2026-09-21T01:00:00Z",
+        shares_balance: "0",
+        avg_cost_basis: "0",
+        cumulative_realized_pnl: "0",
+        ...last,
+      },
+    ],
+    shares_balance: stat("0"),
+    cumulative_realized_pnl: stat("0"),
+    ...stats,
+  };
+}
 
 function renderHome() {
   const HomePage = Route.options.component as React.ComponentType;
@@ -245,6 +295,7 @@ function renderHomeStellar() {
 
 beforeEach(() => {
   mockPnlData.current = undefined;
+  mockPositionsHistory.current = undefined;
   mockAuthState.isAuthenticated = true;
   mockAuthState.lpRead = "loaded";
   mockAuthState.kybStatus = undefined;
@@ -252,6 +303,7 @@ beforeEach(() => {
   mockOpenAccountSetup.mockClear();
   mockOpenAddEmail.mockClear();
   mockGetMyLp.mockClear();
+  mockUsePaymentDetails.mockReset().mockReturnValue({ status: "idle" });
 });
 
 describe("Home page — disconnected state", () => {
@@ -890,19 +942,21 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("headline and StakeCard value use convertToAssets, not the share count (#1658)", async () => {
+  it("StakeCard uses convertToAssets and the headline is a dash without a served composite (#1658, #2057)", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
       "1001500000000000000",
     );
     renderHome();
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("heading", { name: "$1,001.50" }).length,
-      ).toBeGreaterThanOrEqual(1);
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
       expect(subLine?.textContent).toContain("1,001.50 sPLUSD · $1,001.50");
     });
+    expect(screen.queryByRole("heading", { name: "$1,001.50" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "$0.00" })).toBeNull();
+    expect(
+      screen.getAllByRole("heading", { name: "—" }).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByTestId("splusd-shares")[0]?.textContent).toContain(
       "1,000.00",
     );
@@ -1070,17 +1124,18 @@ describe("Home page — Stellar connected balances (#688)", () => {
     localStorage.clear();
   });
 
-  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows sPLUSD only, Stake enabled, mobile state plusd", async () => {
+  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows the served composite, Stake enabled, mobile state plusd", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
       "5000000000",
     );
 
+    composite({ total_balance: "500.000000", plusd_balance: "500.000000" });
     renderHomeStellar();
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$0.00",
+        name: "$500.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
       expect(
@@ -1105,7 +1160,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares in currency format, mobile state splusd, RecentActivityCard present", async () => {
+  it("Case 2: has sPLUSD — Total Balance shows the served composite, StakeCard the sPLUSD value, mobile state splusd, RecentActivityCard present", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
       "1000000000",
@@ -1119,6 +1174,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
       "1000000000",
     );
 
+    composite({ total_balance: "154.000000", plusd_balance: "50.000000" });
     renderHomeStellar();
 
     await waitFor(() => {
@@ -1128,7 +1184,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$104.00",
+        name: "$154.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
@@ -1307,31 +1363,39 @@ describe("Home page — zero state, no session (#1421)", () => {
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
-  it("clicking Buy on the desktop grid opens the create-account auth flow", async () => {
+  it("clicking Buy on the desktop grid navigates to /deposit without opening sign-up", async () => {
     const user = userEvent.setup();
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const buyBtn = within(grid).getByRole("button", { name: "Buy" });
+    const buyBtn = await within(grid).findByRole("button", { name: "Buy" });
     await user.click(buyBtn);
 
     await waitFor(() => {
-      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "deposit" },
+      });
     });
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
-  it("clicking the Stake CTA on the desktop grid opens the create-account auth flow", async () => {
+  it("clicking the Stake CTA on the desktop grid navigates to /stake?tab=stake without opening sign-up", async () => {
     const user = userEvent.setup();
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
+    const stakeBtn = await within(grid).findByRole("button", { name: "Stake" });
     await user.click(stakeBtn);
 
     await waitFor(() => {
-      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/stake",
+        search: { tab: "stake" },
+      });
     });
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
@@ -1852,15 +1916,17 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     await expectLegacyConnectedLayout();
   });
 
-  it.each(["Passed"])(
-    "kybStatus %s keeps the legacy connected layout",
-    async (kybStatus) => {
-      connect();
-      mockAuthState.kybStatus = kybStatus;
-      renderHome();
-      await expectLegacyConnectedLayout();
-    },
-  );
+  it("kybStatus Passed with zero balances renders the passed-empty grid instead (#1819)", async () => {
+    connect();
+    mockAuthState.kybStatus = "Passed";
+    renderHome();
+    await waitFor(() => {
+      expect(screen.getByTestId("home-add-usd-card")).toHaveAttribute(
+        "data-variant",
+        "unlocked",
+      );
+    });
+  });
 
   it("lpRead error keeps the legacy connected layout", async () => {
     connect();
@@ -1914,7 +1980,8 @@ describe("Home page — plusd-held state (#1424)", () => {
     localStorage.clear();
   });
 
-  it("the top-left card shows Total Balance, $0.00 and the split Stake PLUSD / Add USD sentence", async () => {
+  it("the top-left card shows Total Balance, the served composite and the split Stake PLUSD / Add USD sentence", async () => {
+    composite({ total_balance: "1000.000000", plusd_balance: "1000.000000" });
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
@@ -1923,7 +1990,10 @@ describe("Home page — plusd-held state (#1424)", () => {
     expect(portfolio).toHaveAttribute("data-node-id", "6701:97451");
     expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
     expect(
-      within(portfolio).getByRole("heading", { name: "$0.00" }),
+      within(portfolio).getByRole("heading", { name: "$1,000.00" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByTestId("total-balance-includes-plusd"),
     ).toBeInTheDocument();
     expect(
       within(portfolio).getByRole("link", { name: "Stake PLUSD" }),
@@ -2044,7 +2114,7 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     );
   }
 
-  it("a non-zero sPLUSD balance keeps the legacy connected layout", async () => {
+  it("a non-zero sPLUSD balance renders the passed-staked grid, not plusd-held (#1819)", async () => {
     connectWithPlusd();
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
@@ -2052,9 +2122,13 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     );
     renderHome();
     const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(within(grid).getByTestId("home-add-usd-card")).toHaveAttribute(
+      "data-variant",
+      "unlocked",
+    );
     expect(
-      within(grid).queryByTestId("home-add-usd-card"),
-    ).not.toBeInTheDocument();
+      within(grid).getByTestId("home-portfolio-placeholder"),
+    ).not.toHaveAttribute("data-variant", "stake-or-add-usd");
   });
 
   it("a disconnected wallet keeps the legacy disconnected layout even with Passed", async () => {
@@ -2085,6 +2159,180 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     expect(
       within(grid).queryByTestId("home-portfolio-placeholder"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — passed-empty state (#1819)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "Passed";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("AddUsdCard renders unlocked with the Figma node id and Transfers unlocked", async () => {
+    renderHome();
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "unlocked");
+      expect(card).toHaveAttribute("data-node-id", "6701:97494");
+    });
+    expect(screen.getByText("Transfers unlocked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Funds" })).toBeEnabled();
+  });
+
+  it("the hero is the get-plusd Total Balance card with the served $0.00", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).toHaveAttribute("data-variant", "get-plusd");
+    expect(
+      within(portfolio).getByRole("heading", { name: "$0.00" }),
+    ).toBeInTheDocument();
+  });
+
+  it("Buy is enabled while Sell and Stake follow the zero balances", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(
+      within(startHere).getByRole("button", { name: "Buy" }),
+    ).toBeEnabled();
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeDisabled();
+    const stake = within(grid).getByTestId("home-stake-card");
+    expect(
+      within(stake).getByRole("button", { name: "Nothing to Stake" }),
+    ).toBeDisabled();
+  });
+
+  it("grid occupancy: StartHere+Stake on the left, AddUsd+Earned on the right", async () => {
+    renderHome();
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(
+        within(leftStack).getByTestId("home-start-here-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(leftStack).getByTestId("home-stake-card"),
+      ).toBeInTheDocument();
+      expect(rightStack).toHaveAttribute("data-node-id", "6701:97493");
+      expect(
+        within(rightStack).getByTestId("home-add-usd-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(rightStack).getByTestId("home-earned-card"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clicking Add Funds opens the funding details modal with every row '—'", async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByTestId("home-add-usd-card");
+    await user.click(screen.getByRole("button", { name: "Add Funds" }));
+    const modal = await screen.findByTestId("funding-details-modal");
+    expect(
+      within(modal).getByTestId("funding-details-row-company-name"),
+    ).toHaveTextContent("—");
+  });
+});
+
+describe("Home page — passed-staked state (#1819)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "Passed";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
+      "1000000",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the unlocked AddUsdCard in the state-5 Add-USD stack geometry", async () => {
+    renderHome();
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "unlocked");
+    });
+    expect(screen.getByTestId("home-add-usd-stack")).toHaveAttribute(
+      "data-node-id",
+      "6701:97288",
+    );
+    expect(screen.getByTestId("home-balances-stack")).toHaveAttribute(
+      "data-node-id",
+      "6701:97257",
+    );
+  });
+
+  it("with PLUSD = 0 the compact StartHere card keeps the Get-PLUSD copy and Sell disabled", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(
+      within(startHere).queryByText("PLUSD Balance"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeDisabled();
+  });
+
+  it("with PLUSD > 0 the compact StartHere card switches to balance mode with Buy and Sell enabled", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000",
+    );
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    await waitFor(() => {
+      expect(within(startHere).getByText("PLUSD Balance")).toBeInTheDocument();
+    });
+    expect(
+      within(startHere).getByRole("button", { name: "Buy" }),
+    ).toBeEnabled();
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeEnabled();
+    expect(within(grid).getByTestId("home-add-usd-card")).toHaveAttribute(
+      "data-variant",
+      "unlocked",
+    );
+  });
+
+  it("the hero is the connected Total Balance card, not the stake-or-add-usd sentence", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).not.toHaveAttribute("data-variant", "stake-or-add-usd");
+    expect(portfolio).not.toHaveAttribute("data-variant", "get-plusd");
+    expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
   });
 });
 
@@ -2491,5 +2739,364 @@ describe("Home — active chain not served by the API (#1605)", () => {
     expect(screen.getByTestId("home-welcome-header")).toBeInTheDocument();
     expect(screen.queryByTestId("home-mobile-layout")).not.toBeInTheDocument();
     expect(screen.queryByTestId("home-dashboard-card")).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — Funding details wiring (#1817)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockAuthState.kybStatus = "Passed";
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const readyDetails = {
+    company_name: "Example Trust LLC",
+    bank_name: "Example Bank",
+    bank_address: "1 Example Street",
+    account_number: "00000000",
+    iban: "XX00 TEST 0000 0000 0000 00",
+    swift_bic_code: "TESTXXXXXXX",
+    payment_details: "PL-0000-0000-0000",
+    chain_id: 560048,
+    receiver_address: "0x1234000000000000000000000000000000000001",
+  };
+
+  function connect() {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  }
+
+  async function clickAddFunds() {
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Add Funds" });
+    await user.click(button);
+    return user;
+  }
+
+  it("requests nothing until Add Funds is clicked, then requests the active chain once per open", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({ status: "loading" });
+    renderHome();
+    await screen.findByRole("button", { name: "Add Funds" });
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith(null);
+
+    const user = await clickAddFunds();
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith({
+      openId: 1,
+      chainId: 560048,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith(null);
+
+    await user.click(screen.getByRole("button", { name: "Add Funds" }));
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith({
+      openId: 2,
+      chainId: 560048,
+    });
+  });
+
+  it("renders the served details and reference once ready", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({
+      status: "ready",
+      data: readyDetails,
+    });
+    renderHome();
+    await clickAddFunds();
+    expect(await screen.findByText("PL-0000-0000-0000")).toBeInTheDocument();
+    expect(
+      screen.getByTitle(readyDetails.receiver_address),
+    ).toBeInTheDocument();
+  });
+
+  it("a 409 renders the not-linked notice and Go to Account navigates to /account", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({
+      status: "unavailable",
+      error: new MockApiError(409, "no address"),
+    });
+    renderHome();
+    const user = await clickAddFunds();
+    expect(
+      await screen.findByTestId("funding-details-notice"),
+    ).toHaveTextContent("Bank details need a chain 560048 wallet linked");
+    await user.click(screen.getByRole("button", { name: "Go to Account" }));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/account",
+      search: { state: undefined },
+    });
+    expect(
+      screen.queryByTestId("funding-details-modal"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — pending wallet reconnect (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = false;
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      status: "reconnecting",
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  it("the desktop grid renders the loading skeleton, not the zero-state promo", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(grid).getAllByTestId("home-loading-block").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(grid).queryByTestId("home-connect-wallet-card"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Stake and Buy navigate immediately without opening the connect modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/stake",
+      search: { tab: "stake" },
+    });
+
+    const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
+    await user.click(buyBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/deposit",
+      search: { direction: "deposit" },
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — nothing navigates after the connect modal opens (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("settled and disconnected: Stake opens the modal, and a later connect does not navigate", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockConnectModalOpen).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    const HomePage = Route.options.component as React.ComponentType;
+    rerender(
+      <EvmWalletProvider>
+        <HomePage />
+      </EvmWalletProvider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("settled and connected: Stake navigates immediately", async () => {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000",
+    );
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/stake",
+      search: { tab: "stake" },
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — Total Balance on the served total_balance (#1629, #2057)", () => {
+  const stat = (max: string) => ({ max, min: "0", average: "0" });
+  const item = (h: string, extra: Record<string, string>) => ({
+    timestamp: h,
+    shares_balance: "999000000",
+    avg_cost_basis: "0",
+    cumulative_realized_pnl: "0",
+    ...extra,
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  function serve(
+    history: Record<string, unknown>[],
+    stats: Record<string, unknown> = {
+      total_balance: stat("2000.000000"),
+      splusd_value: stat("9000.000000"),
+    },
+  ) {
+    mockPositionsHistory.current = {
+      wallet: WALLET_ADDRESS,
+      interval: "hourly",
+      history,
+      shares_balance: stat("999000000"),
+      cumulative_realized_pnl: stat("0"),
+      ...stats,
+    };
+  }
+
+  const fullHistory = () => [
+    item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+    item("2026-09-21T01:00:00Z", { total_balance: "1500.000000" }),
+    item("2026-09-21T02:00:00Z", {
+      total_balance: "1500.250000",
+      splusd_value: "1000.000000",
+      plusd_balance: "500.250000",
+    }),
+  ];
+
+  it("headline is the last bucket's total_balance on mobile and desktop, with the incl. PLUSD label", async () => {
+    serve(fullHistory());
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$1,500.25" }).length,
+      ).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      screen.getAllByTestId("total-balance-includes-plusd").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("heading", { name: "$1,000.00" })).toBeNull();
+  });
+
+  it("derives the Y axis from total_balance.max and renders one slot per bucket", async () => {
+    serve(fullHistory());
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("chart-value-axis-max")[0],
+      ).toHaveTextContent("$2K");
+    });
+    expect(screen.getAllByTestId("chart-value-axis-mid")[0]).toHaveTextContent(
+      "$1K",
+    );
+    expect(
+      screen.getAllByTestId("chart-value-axis-bottom")[0],
+    ).toHaveTextContent("$0");
+    expect(document.querySelectorAll("[data-bar-slot]").length % 3).toBe(0);
+    expect(document.querySelectorAll("[data-bar-slot]").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("shows no incl. PLUSD suffix when the last bucket has no plusd_balance", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { total_balance: "600.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$600.00" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByTestId("total-balance-includes-plusd"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a dash, never splusd_value, when the last bucket lacks total_balance", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { splusd_value: "1000.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "—" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByRole("heading", { name: "$1,000.00" })).toBeNull();
+  });
+
+  it("renders no Y axis when the total_balance stat is absent", async () => {
+    serve(fullHistory(), { splusd_value: stat("9000.000000") });
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("tab", { name: "All" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByTestId("chart-value-axis")).not.toBeInTheDocument();
+  });
+
+  it("marks a mid-series bucket without total_balance as missing", async () => {
+    serve([
+      item("2026-09-21T00:00:00Z", { total_balance: "500.000000" }),
+      item("2026-09-21T01:00:00Z", { splusd_value: "700.000000" }),
+      item("2026-09-21T02:00:00Z", { total_balance: "900.000000" }),
+    ]);
+    renderHome();
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll('[data-bar-slot][data-missing="true"]')
+          .length,
+      ).toBeGreaterThan(0);
+    });
   });
 });

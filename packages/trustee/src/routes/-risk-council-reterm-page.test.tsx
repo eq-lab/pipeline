@@ -1,19 +1,34 @@
-/**
- * Render tests for the Risk Council "Amend economics — off-cycle re-term"
- * route (`risk-council.reterm.$id.tsx`, issue #782, flow 11, Figma
- * `4116-13481`).
- *
- * Mocks the raw API hooks (`useLoanBook`, `useLoanFinancials`) rather than the
- * presenter — mirrors `-risk-council-escalate-page.test.tsx`. Covers: the
- * "Risk proposal" header + MOCK timestamp, the three chips, the REAL Current
- * terms (loan/coupon/CCR), the MOCK Proposed terms, the read-only (disabled)
- * "View Safe proposal" button, and the loading / error / not-found states.
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { LoanBookResponse } from "@/api/useLoanBook";
-import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import {
+  DELAYED,
+  EVM,
+  EVM_LOAN_REGISTRY,
+  EVM_SCHEDULER,
+  IMMEDIATE,
+  NO_ROLE,
+  SCHEDULED,
+  STELLAR,
+  accessResult,
+  evmLoanRegistryOp,
+  loanBookResult,
+  loanEntry,
+  loanRegistryOp,
+  loanState,
+  minterOp,
+  pendingExecuteResult,
+  pendingOp,
+  relayResult,
+  SCHEDULER,
+  securityResult,
+} from "./-riskCouncilFixtures";
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
@@ -24,260 +39,632 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({
       children,
       to,
-      ...rest
+      params,
+      search,
+      "data-testid": testId,
     }: {
       children: React.ReactNode;
       to: string;
-    } & Record<string, unknown>) => (
-      <a href={to} {...rest}>
+      params?: Record<string, string>;
+      search?: { chain: number };
+      "data-testid"?: string;
+    }) => (
+      <a
+        data-testid={testId}
+        href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}
+      >
         {children}
       </a>
     ),
   };
 });
 
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  const { LOAN_REGISTRY, EVM_LOAN_REGISTRY } =
+    await import("./-riskCouncilFixtures");
+  return {
+    ...actual,
+    ENV: {
+      ...actual.ENV,
+      STELLAR_LOAN_REGISTRY_ID: LOAN_REGISTRY,
+      EVM_LOAN_REGISTRY_ADDRESS: EVM_LOAN_REGISTRY,
+    },
+  };
+});
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
+
+const HASH = "cd".repeat(32);
+vi.mock("@pipeline/wallet-connect", () => ({
+  FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
+  SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
+  riskCouncilReasonHash: vi.fn(async () => "cd".repeat(32)),
+  useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
+}));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
-vi.mock("@/api/useLoanFinancials", () => ({ useLoanFinancials: vi.fn() }));
+vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
+vi.mock("@/api/useRiskCouncil", async () => {
+  const actual = await vi.importActual<typeof import("@/api/useRiskCouncil")>(
+    "@/api/useRiskCouncil",
+  );
+  return {
+    NoLongerScheduledError: actual.NoLongerScheduledError,
+    PendingArgsMismatchError: actual.PendingArgsMismatchError,
+    PendingTargetMismatchError: actual.PendingTargetMismatchError,
+    RegistryPausedError: actual.RegistryPausedError,
+    useRiskCouncilAccess: vi.fn(),
+    useRiskCouncilLoanState: vi.fn(),
+    useRiskCouncilRelay: vi.fn(),
+    usePendingOperationExecute: vi.fn(),
+  };
+});
 
 import { useLoanBook } from "@/api/useLoanBook";
-import { useLoanFinancials } from "@/api/useLoanFinancials";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
+import {
+  usePendingOperationExecute,
+  useRiskCouncilAccess,
+  useRiskCouncilLoanState,
+  useRiskCouncilRelay,
+} from "@/api/useRiskCouncil";
+import { _resetRiskCouncilOpsForTests } from "@/lib/riskCouncilOps";
 import { Route } from "./risk-council.reterm.$id";
 
-const mockUseLoanBook = vi.mocked(useLoanBook);
-const mockUseLoanFinancials = vi.mocked(useLoanFinancials);
+const mockLoanBook = vi.mocked(useLoanBook);
+const mockSecurity = vi.mocked(useLoanSecurity);
+const mockAccess = vi.mocked(useRiskCouncilAccess);
+const mockLoanState = vi.mocked(useRiskCouncilLoanState);
+const mockRelay = vi.mocked(useRiskCouncilRelay);
+const mockPendingExecute = vi.mocked(usePendingOperationExecute);
 
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4471",
 });
 (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
-  () => ({
-    chain: 99_000_001,
-  });
+  () => ({ chain: STELLAR });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
 
-const LOAN_BOOK_RESPONSE: LoanBookResponse = {
-  summary: {
-    total_deployed: "0.000000",
-    total_collateral: null,
-    senior_debt_coverage: null,
-    avg_yield: null,
-    avg_duration_days: null,
-    deployed_senior: "0.000000",
-    weighted_rate: null,
-    weighted_tenor_days: null,
-    at_risk_wl_and_default_senior: "0.000000",
-    at_risk_wl_and_default_pct: null,
-    top_concentration: null,
-  },
-  loans: [
-    {
-      loan_id: "4471",
-      chain_id: 99_000_001,
-      originator: "Delta Commodities",
-      borrower: "b1",
-      commodity: "Coffee",
-      principal: "2300000.000000",
-      senior_outstanding: "1840000.000000",
-      original_senior_tranche: "1840000.000000",
-      // 15 Aug 2026 00:00:00 UTC.
-      maturity: 1_786_838_400,
-      next_payment_timestamp: 1_786_838_400,
-      days_overdue: null,
-      spot_price: "4500",
-      spot_change_7d: "-0.18",
-      collateral: "2106000.000000",
-      ltv: null,
-      // 114%.
-      ccr_bps: 11_400,
-      duration_days: 88,
-      rate: "0.120000",
-      protection: null,
-      status: "WatchList",
-      onchain_status: "WatchList",
-      documents: [],
-      repaid_to_date: "0.000000",
-      disbursed: true,
-      days_on_watchlist: 18,
-      watchlist_entered_at: 0,
-    },
-  ],
-};
+let relay: ReturnType<typeof relayResult>;
+let pendingExecute: ReturnType<typeof pendingExecuteResult>;
 
-const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
-  loan_id: "4471",
-  status: "WatchList",
-  onchain_status: "WatchList",
-  // Current epoch coupon = 12.0%.
-  epoch: {
-    number: 1,
-    current_apy_bps: 1200,
-    start_date: "2026-05-15T00:00:00Z",
-    maturity_date: "2026-08-15T00:00:00Z",
-  },
-  offtaker: "2000000.000000",
-  principal: "1800000.000000",
-  interest: "0.000000",
-  fees: "0.000000",
-  minted_yield: "0.000000",
-  not_minted_yield: "0.000000",
-  offtaker_outstanding: "2000000.000000",
-};
+function setup(
+  access: Parameters<typeof accessResult>[0],
+  status = "WatchList",
+  pending?: ReturnType<typeof pendingOp>[],
+) {
+  mockLoanBook.mockReturnValue(
+    loanBookResult([loanEntry({ pending_operations: pending })]),
+  );
+  mockPendingExecute.mockReturnValue(pendingExecute as never);
+  mockSecurity.mockReturnValue(securityResult());
+  mockAccess.mockReturnValue(accessResult(access) as never);
+  mockLoanState.mockReturnValue({
+    data: loanState({ status, interestAdjustment: "-12000000" }),
+  } as never);
+  mockRelay.mockReturnValue(relay as never);
+}
 
-function ready() {
-  mockUseLoanBook.mockReturnValue({
-    data: LOAN_BOOK_RESPONSE,
-    isLoading: false,
-    error: null,
-    refetch: () => {},
+function fillAmend(rate = "14.5", date = "2026-12-15") {
+  fireEvent.change(screen.getByTestId("risk-council-reterm-rate"), {
+    target: { value: rate },
   });
-  mockUseLoanFinancials.mockReturnValue({
-    data: FINANCIALS_RESPONSE,
-    isLoading: false,
-    error: null,
-    refetch: () => {},
+  fireEvent.change(screen.getByTestId("risk-council-reterm-maturity-input"), {
+    target: { value: date },
   });
 }
 
 beforeEach(() => {
-  mockUseLoanBook.mockReset();
-  mockUseLoanFinancials.mockReset();
+  vi.clearAllMocks();
+  relay = relayResult();
+  pendingExecute = pendingExecuteResult();
+  walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
+  _resetRiskCouncilOpsForTests();
 });
 
-describe("Risk Council — Off-cycle re-term route (ready)", () => {
-  beforeEach(ready);
+describe("Amend economics — current terms", () => {
+  it("shows the chain-sourced terms", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-loan")).toHaveTextContent(
+      "Delta Commodities — Coffee",
+    );
+    expect(screen.getByTestId("risk-council-reterm-coupon")).toHaveTextContent(
+      "14.5%",
+    );
+    expect(
+      screen.getByTestId("risk-council-reterm-maturity"),
+    ).toHaveTextContent("15 Dec 2026");
+    expect(screen.getByTestId("risk-council-reterm-accrued")).toHaveTextContent(
+      "$0.50",
+    );
+    expect(
+      screen.getByTestId("risk-council-reterm-adjustment"),
+    ).toHaveTextContent("-$1.20");
+  });
 
-  it("renders the 'Risk proposal' header, the MOCK timestamp, and the three chips", () => {
+  it("shows the LTV row from the security state and no CCR row", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "81.3% — margin call at 85%",
+    );
+    expect(screen.queryByText("CCR")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading marker while /security loads", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, isLoading: true }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "Loading…",
+    );
+  });
+
+  it("shows an error marker when /security fails", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, error: new Error("boom") }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "Couldn't load",
+    );
+  });
+
+  it("omits the LTV row when security is not configured", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, notConfigured: true }),
+    );
     renderRoute();
     expect(
-      screen.getByRole("heading", { name: "Risk proposal" }),
+      screen.queryByTestId("risk-council-reterm-ltv"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("has no Safe, proposal or timestamp artefacts", () => {
+    setup(DELAYED);
+    const { container } = renderRoute();
+    expect(container.textContent).not.toMatch(/safe|proposal|timelock/i);
+    expect(
+      screen.queryByTestId("risk-council-reterm-timestamp"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Amend economics — form", () => {
+  it("echoes bps live and flags an invalid rate", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-reterm-rate-bps"),
+    ).toHaveTextContent("1 bp = 0.01%");
+    fireEvent.change(screen.getByTestId("risk-council-reterm-rate"), {
+      target: { value: "14.5" },
+    });
+    expect(
+      screen.getByTestId("risk-council-reterm-rate-bps"),
+    ).toHaveTextContent("= 1450 bps");
+    fireEvent.change(screen.getByTestId("risk-council-reterm-rate"), {
+      target: { value: "abc" },
+    });
+    expect(
+      screen.getByTestId("risk-council-reterm-rate-error"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("risk-council-reterm-timestamp"),
-    ).toHaveTextContent("21 Jun 2026, 14:32 UTC");
-    expect(
-      screen.getByTestId("risk-council-reterm-chip-timelock"),
-    ).toHaveTextContent("24h timelock");
-    expect(
-      screen.getByTestId("risk-council-reterm-chip-guardian"),
-    ).toHaveTextContent("Guardian can cancel");
-    expect(
-      screen.getByTestId("risk-council-reterm-chip-cannot-execute"),
-    ).toHaveTextContent("Trustee cannot execute");
   });
 
-  it("renders the REAL Current terms (loan, coupon, CCR) from the loan-book + financials", () => {
+  it("keeps the button disabled until the form is valid, then schedules", () => {
+    setup(DELAYED);
     renderRoute();
-    const card = screen.getByTestId("risk-council-reterm-current");
-    expect(card).toHaveTextContent("Delta Commodities — Coffee");
-    // Current epoch APY 1200 bps → 12.0%.
-    expect(card).toHaveTextContent("12.0%");
-    // ccr_bps 11400 → 114%.
-    expect(card).toHaveTextContent("114%");
+    const button = screen.getByTestId("risk-council-reterm-amend-button");
+    expect(button).toHaveTextContent("Schedule amendment");
+    expect(button).toBeDisabled();
+    fillAmend();
+    expect(mockAccess).toHaveBeenCalledWith(
+      STELLAR,
+      expect.objectContaining({ fn: "amend_economics" }),
+      "amend_economics",
+    );
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "amend_economics",
+        loanId: 4471,
+        rateBps: 1450,
+        maturity: 1_797_292_800,
+      },
+      chainId: STELLAR,
+    });
   });
 
-  it("renders the MOCK Proposed terms (no proposal backend)", () => {
+  it("shows the existing schedule for re-entered args and offers the execute", () => {
+    setup(SCHEDULED);
     renderRoute();
-    const card = screen.getByTestId("risk-council-reterm-proposed");
-    expect(card).toHaveTextContent("14.5%");
-    expect(card).toHaveTextContent("+45 days");
-    expect(card).toHaveTextContent("weekly reporting");
-    expect(card).toHaveTextContent("Watchlist");
-  });
-
-  it("renders a read-only (disabled) 'View Safe proposal' button — the Trustee cannot execute", () => {
-    renderRoute();
-    const btn = screen.getByTestId("risk-council-reterm-view-safe");
-    expect(btn).toHaveTextContent("View Safe proposal");
-    expect(btn).toBeDisabled();
-    // Read-only review page: no submit/draft control like flow 10 has.
-    const footer = screen.getByTestId("risk-council-reterm-footer");
+    fillAmend();
     expect(
-      within(footer).getByText(
-        /only shows review, evidence, and voting status/,
+      screen.getByTestId("risk-council-reterm-amend-role"),
+    ).toHaveTextContent("Scheduled. Executable from 2027-01-15 08:00 UTC.");
+    const button = screen.getByTestId("risk-council-reterm-amend-button");
+    expect(button).toHaveTextContent("Execute amendment");
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "execute" }),
+    );
+  });
+
+  it("executes at once on the immediate path", () => {
+    setup(IMMEDIATE);
+    renderRoute();
+    fillAmend();
+    const button = screen.getByTestId("risk-council-reterm-amend-button");
+    expect(button).toHaveTextContent("Amend economics");
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "execute" }),
+    );
+  });
+});
+
+describe("Adjust interest — form", () => {
+  it("wires the reason hash and schedules a signed delta", async () => {
+    setup(DELAYED);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-reterm-delta"), {
+      target: { value: "-1,000.5" },
+    });
+    fireEvent.change(screen.getByTestId("risk-council-reterm-reason"), {
+      target: { value: "  Waiver agreed  " },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("risk-council-reterm-reason-hash")).toHaveValue(
+        HASH,
       ),
-    ).toBeInTheDocument();
+    );
+    const button = screen.getByTestId("risk-council-reterm-adjust-button");
+    expect(button).toHaveTextContent("Schedule adjustment");
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "adjust_interest",
+        loanId: 4471,
+        delta: "-10005000000",
+        reasonHash: HASH,
+      },
+      chainId: STELLAR,
+    });
   });
 
-  it("falls back to the loan-book rate when no epoch coupon is on record", () => {
-    mockUseLoanFinancials.mockReturnValue({
-      data: { ...FINANCIALS_RESPONSE, epoch: null },
-      isLoading: false,
-      error: null,
-      refetch: () => {},
-    });
+  it("stays disabled without a reason", () => {
+    setup(DELAYED);
     renderRoute();
-    // rate "0.120000" → 12.0%.
-    expect(screen.getByTestId("risk-council-reterm-current")).toHaveTextContent(
-      "12.0%",
-    );
+    fireEvent.change(screen.getByTestId("risk-council-reterm-delta"), {
+      target: { value: "5" },
+    });
+    expect(
+      screen.getByTestId("risk-council-reterm-adjust-button"),
+    ).toBeDisabled();
   });
 });
 
-describe("Risk Council — Off-cycle re-term route (top-level states)", () => {
-  it("renders a loading skeleton while the loan book is loading", () => {
-    mockUseLoanBook.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-      refetch: () => {},
-    });
-    mockUseLoanFinancials.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-      refetch: () => {},
-    });
+describe("Amend economics — read-only states", () => {
+  it("is read-only for a wallet without the role", () => {
+    setup(NO_ROLE);
     renderRoute();
     expect(
-      screen.getByTestId("risk-council-reterm-loading"),
-    ).toBeInTheDocument();
+      screen.getByTestId("risk-council-reterm-amend-role"),
+    ).toHaveTextContent("Changing loan economics belongs to the Risk Council.");
+    expect(
+      screen.getByTestId("risk-council-reterm-adjust-role"),
+    ).toHaveTextContent("Changing loan economics belongs to the Risk Council.");
+    expect(screen.getByTestId("risk-council-reterm-chip")).toHaveTextContent(
+      "Risk Council only",
+    );
+    fillAmend();
+    expect(
+      screen.getByTestId("risk-council-reterm-amend-button"),
+    ).toBeDisabled();
   });
 
-  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
-    const user = userEvent.setup();
-    mockUseLoanBook.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error("network error"),
-      refetch: () => {},
-    });
-    mockUseLoanFinancials.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: null,
-      refetch: () => {},
-    });
+  it("is unavailable for a Closed loan", () => {
+    setup(DELAYED, "Closed");
     renderRoute();
-    const alert = screen.getByTestId("risk-council-reterm-error");
-    expect(alert).toHaveTextContent("Failed to load the loan.");
-    expect(alert).not.toHaveTextContent("network error");
+    expect(
+      screen.getByTestId("risk-council-reterm-eligibility"),
+    ).toHaveTextContent("Not available for a Closed loan.");
+    fillAmend();
+    expect(
+      screen.getByTestId("risk-council-reterm-amend-button"),
+    ).toBeDisabled();
+  });
 
-    await user.click(screen.getByTestId("inline-error-view-details"));
-    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
-      "network error",
+  it("shows the Stellar-only reason for another chain", () => {
+    (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+      () => ({ chain: 1 });
+    mockLoanBook.mockReturnValue(loanBookResult([loanEntry({ chain_id: 1 })]));
+    mockAccess.mockReturnValue(accessResult(undefined) as never);
+    mockLoanState.mockReturnValue({ data: undefined } as never);
+    mockRelay.mockReturnValue(relay as never);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-coupon")).toHaveTextContent(
+      "—",
+    );
+    expect(
+      screen.getByTestId("risk-council-reterm-amend-role"),
+    ).toHaveTextContent(/On-chain actions run on Stellar only/);
+    (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+      () => ({ chain: STELLAR });
+  });
+});
+
+describe("Amend economics — scheduled operations", () => {
+  const PENDING = "risk-council-reterm-pending";
+  const AMEND = loanRegistryOp("amend_economics", {
+    args: [4471, 145_000, "1816128000"],
+    args_xdr: "AMENDXDR",
+  });
+  const ADJUST = loanRegistryOp("adjust_interest", {
+    args: [4471, "-1000000", HASH],
+    args_xdr: "ADJUSTXDR",
+  });
+  const WRITE_DOWN = loanRegistryOp("write_down", { args: [4471, "5000000"] });
+  const SET_TERMS = pendingOp({ operation_id: "61".repeat(32) });
+  const REVERSE = minterOp({ args: [4471, 2, HASH] });
+  const id = (op: ReturnType<typeof pendingOp>) =>
+    `${PENDING}-${op.operation_id}`;
+
+  it("renders first in the right column, above Amend economics, with every operation of the loan", () => {
+    setup(DELAYED, "WatchList", [
+      AMEND,
+      ADJUST,
+      WRITE_DOWN,
+      SET_TERMS,
+      REVERSE,
+    ]);
+    renderRoute();
+    const card = screen.getByTestId(PENDING);
+    expect(
+      card.compareDocumentPosition(
+        screen.getByTestId("risk-council-reterm-amend"),
+      ),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(5);
+    expect(screen.getByTestId(`${id(AMEND)}-args`)).toHaveTextContent(
+      "New rate14.5% (1450 bps)",
+    );
+    expect(screen.getByTestId(`${id(ADJUST)}-args`)).toHaveTextContent(
+      "Delta-$0.10",
     );
   });
 
-  it("renders a not-found state when the loan isn't in the book", () => {
-    mockUseLoanBook.mockReturnValue({
-      data: { ...LOAN_BOOK_RESPONSE, loans: [] },
-      isLoading: false,
-      error: null,
-      refetch: () => {},
+  it("gives Execute to amend_economics and adjust_interest and links the rest", () => {
+    setup(DELAYED, "WatchList", [
+      AMEND,
+      ADJUST,
+      WRITE_DOWN,
+      SET_TERMS,
+      REVERSE,
+    ]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeEnabled();
+    expect(screen.getByTestId(`${id(ADJUST)}-button`)).toBeEnabled();
+    const links: Array<[ReturnType<typeof pendingOp>, string, string]> = [
+      [
+        WRITE_DOWN,
+        "Open Default resolution",
+        `/risk-council/writedown/4471?chain=${STELLAR}`,
+      ],
+      [
+        SET_TERMS,
+        "Open Security",
+        `/risk-council/security/4471?chain=${STELLAR}`,
+      ],
+      [
+        REVERSE,
+        "Open loan · Repayment recovery",
+        `/loans/4471?chain=${STELLAR}`,
+      ],
+    ];
+    for (const [op, label, href] of links) {
+      expect(screen.queryByTestId(`${id(op)}-button`)).toBeNull();
+      expect(screen.getByTestId(`${id(op)}-link`)).toHaveTextContent(label);
+      expect(screen.getByTestId(`${id(op)}-link`)).toHaveAttribute(
+        "href",
+        href,
+      );
+    }
+  });
+
+  it("shows the empty state", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toHaveTextContent(
+      "No scheduled operations found.",
+    );
+  });
+
+  it("executes with the served args verbatim and no form input", () => {
+    setup(DELAYED, "WatchList", [AMEND]);
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${id(AMEND)}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: STELLAR,
+      operationId: AMEND.operation_id,
+      caller: SCHEDULER,
+      target: AMEND.target,
+      expectedTarget: AMEND.target,
+      paused: false,
+      fn: "amend_economics",
+      argsXdr: "AMENDXDR",
+      calldata: null,
+      targetKind: "loan_registry",
     });
-    mockUseLoanFinancials.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: null,
-      refetch: () => {},
-    });
+  });
+
+  it("shows the other-wallet copy for another wallet", () => {
+    walletState.address = "GOTHERWALLETADDRESS1234567890XYZ";
+    setup(DELAYED, "WatchList", [AMEND]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeDisabled();
+    expect(screen.getByTestId(`${id(AMEND)}-notice`)).toHaveTextContent(
+      "Only the scheduling wallet",
+    );
+  });
+
+  it("disables ready owned rows for a Closed loan and leaves link rows alone", () => {
+    setup(DELAYED, "Closed", [AMEND, WRITE_DOWN]);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeDisabled();
+    expect(screen.getByTestId(`${id(AMEND)}-notice`)).toHaveTextContent(
+      "Not available for a Closed loan.",
+    );
+    expect(screen.queryByTestId(`${id(WRITE_DOWN)}-notice`)).toBeNull();
+    expect(screen.getByTestId(`${id(WRITE_DOWN)}-link`)).toBeInTheDocument();
+  });
+
+  it("does not block while the on-chain status is unknown", () => {
+    setup(DELAYED, "WatchList", [AMEND, ADJUST]);
+    mockLoanState.mockReturnValue({ data: undefined } as never);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeEnabled();
+    expect(screen.getByTestId(`${id(ADJUST)}-button`)).toBeEnabled();
+    expect(screen.queryByTestId(`${id(AMEND)}-notice`)).toBeNull();
+  });
+
+  it("never executes a link row", () => {
+    setup(DELAYED, "WatchList", [WRITE_DOWN, SET_TERMS, REVERSE]);
     renderRoute();
     expect(
-      screen.getByTestId("risk-council-reterm-not-found"),
-    ).toBeInTheDocument();
+      within(screen.getByTestId(PENDING)).queryAllByRole("button"),
+    ).toHaveLength(0);
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Amend economics — EVM loan", () => {
+  const useChain = (chain: number) => {
+    (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+      () => ({ chain });
+  };
+
+  beforeEach(() => {
+    useChain(EVM);
+    walletState.evmAddress = EVM_SCHEDULER;
+  });
+
+  afterEach(() => useChain(STELLAR));
+
+  function setupEvm(
+    access: Parameters<typeof accessResult>[0],
+    pending?: ReturnType<typeof pendingOp>[],
+  ) {
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({ chain_id: EVM, pending_operations: pending }),
+      ]),
+    );
+    mockPendingExecute.mockReturnValue(pendingExecute as never);
+    mockSecurity.mockReturnValue(securityResult());
+    mockAccess.mockReturnValue(accessResult(access) as never);
+    mockLoanState.mockReturnValue({
+      data: loanState({ status: "WatchList", interestAdjustment: "-12000000" }),
+    } as never);
+    mockRelay.mockReturnValue(relay as never);
+  }
+
+  it("shows the current terms from the EVM read and schedules an amendment on the EVM chain", () => {
+    setupEvm(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-coupon")).toHaveTextContent(
+      "14.5%",
+    );
+    expect(
+      screen.getByTestId("risk-council-reterm-adjustment"),
+    ).toHaveTextContent("-$12.00");
+    fillAmend();
+    const button = screen.getByTestId("risk-council-reterm-amend-button");
+    expect(button).toBeEnabled();
+    expect(mockAccess).toHaveBeenCalledWith(
+      EVM,
+      expect.objectContaining({ fn: "amend_economics" }),
+      "amend_economics",
+    );
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "amend_economics",
+        loanId: 4471,
+        rateBps: 1450,
+        maturity: 1_797_292_800,
+      },
+      chainId: EVM,
+    });
+  });
+
+  it("converts the adjust delta at 6 decimals", async () => {
+    setupEvm(DELAYED);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-reterm-delta"), {
+      target: { value: "-1,000.5" },
+    });
+    fireEvent.change(screen.getByTestId("risk-council-reterm-reason"), {
+      target: { value: "Waiver agreed" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("risk-council-reterm-reason-hash")).toHaveValue(
+        HASH,
+      ),
+    );
+    fireEvent.click(screen.getByTestId("risk-council-reterm-adjust-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: {
+        fn: "adjust_interest",
+        loanId: 4471,
+        delta: "-1000500000",
+        reasonHash: HASH,
+      },
+      chainId: EVM,
+    });
+  });
+
+  it("lists an EVM amendEconomics row with Execute against the configured LoanRegistry", () => {
+    const row = evmLoanRegistryOp("amendEconomics", {
+      args: ["4471", 145_000, "1816128000"],
+    });
+    setupEvm(DELAYED, [row]);
+    renderRoute();
+    const button = screen.getByTestId(
+      `risk-council-reterm-pending-${row.operation_id}-button`,
+    );
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chainId: EVM,
+        target: EVM_LOAN_REGISTRY,
+        expectedTarget: EVM_LOAN_REGISTRY,
+        fn: "amend_economics",
+        calldata: row.calldata,
+        argsXdr: null,
+      }),
+    );
   });
 });

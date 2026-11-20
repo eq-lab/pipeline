@@ -315,9 +315,10 @@ matching both the error frame (weak password → disabled) and the enabled frame
 
 ### AddEmailModal
 
-`packages/frontend/src/components/AddEmailModal.tsx` (#1459). **This screen is the create-account
+`packages/frontend/src/components/AddEmailModal.tsx` (#1459, #2054). **This screen is the create-account
 registration (email + password → OTP → session), reached from `/account`'s `Add email` row instead
-of the header's `Sign Up` button.** It is not a new account type and does not link the visitor's
+of the header's `Sign Up` button; since #2054 it also carries an `Already have an account? Sign in`
+link for a visitor who already has an email account.** It is not a new account type and does not link the visitor's
 connected wallet to the resulting account — nothing about the wallet is read by, or sent to, this
 flow (see `account-page.md#wallet-only-variant-1458`). There is no change to
 `POST /v1/auth/signup`/`verify-otp`/`resend-otp`; `EmailAuthFlow` (below) routes this screen through
@@ -347,6 +348,13 @@ dismisses the whole flow (not a `goTo*` cross-link) because this screen has no s
    `CreateAccountModal`, same markup and tokens.
 2. **Save** — `Button variant="primary-blue" type="submit"`, label "Save", `h-12` (48px), `radius-s`
    (4px, resolved via `get_variable_defs`), fill `#000080`, `opacity-[0.32]` when disabled.
+3. **Sign-in link (#2054, no Figma frame)** — below `Save` (`gap-4`, inside the same `gap-12` slot),
+   the same caption-size line and tokens as `CreateAccountModal`'s footer: muted `Already have an
+   account?` + an ink `Sign in` `<button type="button">`. Rendered when `onSignIn` is supplied;
+   `EmailAuthFlow` wires it to `goToSignIn`, so it opens the existing `"sign-in"` screen (Forgot
+   password and Sign up stay reachable from there). Close/back and a successful login leave through
+   the flow's `onClose`/`onAuthenticated` exactly as on the add-email path, so the visitor lands back
+   on `/account`. Nothing about the wallet is sent.
 
 **Geometry.** The form wrapper is `mt-6 flex w-full flex-col gap-12 pb-16`: `mt-6` plus the shell
 column's own `gap-6` reproduces the frame's 48px heading→fields gap (the same `mt-*` technique
@@ -354,7 +362,7 @@ column's own `gap-6` reproduces the frame's 48px heading→fields gap (the same 
 reproduces the Container's 64px bottom padding. With `align="center"` (`my-auto`), this is what
 centers the rendered column where Figma's 438px container centers: `86 + 48 + 144 + 48 + 48 + 64 =
 438`. No field is nested further than the plan above — there is no wallet button, no "OR" divider,
-and no footer line anywhere in this screen.
+and no footer line other than the #2054 sign-in link.
 
 **Validation.** `useAuthCredentialsForm({ open, onSubmit, passwordRule: "policy" })` — the identical
 hook, policy, and error copy as `CreateAccountModal` (see its section above): `Save` stays disabled
@@ -636,6 +644,8 @@ border and other TextField defaults stay unchanged.
 
 A profile card above the upload card contains labelled Name (`legal_name`, a shared `TextField`) and Country (`country`, the searchable `CountryField` combobox, #1715) fields. Clearing the country sends `null`, a stored value that is not in the list stays selectable as "<value> (as saved)", and the field becomes a free-text `TextField` when the list cannot load (see [Country select](./account-page.md#country-select-1715)). Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and a staged document for a new LP; an eligible existing LP may save changed Name or Country and submit persisted documents without staging another file. With files staged, it saves the profile before uploading. The upload response's ordered per-file results distinguish stored files from failed files, including HTTP 400 when all files are rejected: only failures stay staged, and the refreshed LP supplies persisted filenames. Same-LP document refreshes preserve unsaved Name and Country drafts; a new LP identity resets the fields. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. After fully successful uploads, Submit requests backend review; the confirmation requires a server UnderReview response. Submission failures retain uploaded files and allow Submit for review without duplicate uploads. Profile-only setup submission requires eligible persisted files. **Uncertain uploads (#1371, hardened #1572 / BUG-23):** when the upload request fails with a network error (no HTTP response), the modal reads the LP back and reconciles the newly returned document ids against the staged list it uploaded, through the same pure helper the Account page uses (`components/account/reconcileUploads.ts`): each returned filename removes one staged file of that name; a name that is duplicated on either side (two staged copies, or two returned documents) is **ambiguous** — none of its staged copies is removed, Submit stays blocked, "Check uploads" is replaced by **Discard uncertain staged files**, and the alert explains that the modal cannot tell which copy uploaded. Discarding removes every staged copy of the ambiguous names so the LP reviews the uploaded list and re-selects anything missing. If the read-back itself fails, Submit stays blocked until **Check uploads** succeeds; the upload row and staged-row Remove are disabled for the whole request window, so an index can never point at a different file than the one the request was issued for.
 
+**Settlement bank account (#1885).** The shared `SettlementBankAccountSection` sits in the first card after the settlement address rows (see [Settlement bank account](./account-page.md#settlement-bank-account-1885); built without a Figma frame). A non-blank draft is sent in the upsert Submit already makes before uploading, and a `settlement_bank_account.{field}` 400 shows inline and stops before any upload, keeping the staged files. It is hidden in the `/test` preview. The modal cannot save a bank account without a submittable set (staged files or eligible persisted documents); the Account page's Save profile covers that case.
+
 The paragraphs below record the original #1278 layout and preview behavior. The production behavior is described above.
 
 **Redesigned 2026-09-22 (#1278) — V1.0 flat upload.** `packages/frontend/src/components/CompanyDocsModal.tsx`
@@ -715,7 +725,9 @@ outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename
 caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
 accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-**Out of scope for #1371.** Account-page document hub, wallet linking, home-page state matrix, and KYB review submission or status transitions.
+**Settlement rows (#1813, #1825).** An optional `settlement` prop (`SettlementControls`, from `useAuthFlow().settlement`) renders `SettlementAddressRows` (one row per chain kind, with `Link wallet` / `Change wallet` / `Try again` buttons, the inline change confirmation and the opt-in `Use a different address` form, #1849) below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address`](./account-page.md#settlement-address).
+
+**Out of scope for #1371.** Account-page document hub, home-page state matrix, and KYB review submission or status transitions. Wallet linking was out of scope here and is added by #1813.
 
 **Accessibility:** `<ul role="list">` for the staged files; the hidden file input is paired with a
 labelled `Upload`/`Remove {file.name}` button so the picker and remove affordances stay operable
@@ -899,8 +911,8 @@ create-account's submit, add-email's submit, and sign-in's `403 email_not_verifi
 arrow must return to whichever one sent it there. `otpBackScreen` (reset to `"sign-in"` whenever the
 flow opens) records that origin; `goBackFromOtp()` returns to `"add-email"` when it is `"add-email"`
 and to `"sign-in"` otherwise, covering both the create-account and the sign-in-403 origins (`OtpModal`
-only ever wires one `onBack`). `AddEmailModal` itself has no cross-link back to sign-in, so
-`otpBackScreen` cannot leak from an add-email submit into Create account before a later OTP+403
+only ever wires one `onBack`). `AddEmailModal`'s `Sign in` link (#2054) only calls `goToSignIn`, which
+never touches `otpBackScreen`, so it cannot leak from an add-email submit into Create account before a later OTP+403
 sequence.
 
 Wiring, screen by screen:
@@ -976,12 +988,13 @@ Wiring, screen by screen:
 `packages/frontend/src/auth/AuthFlowContext.ts` + `AuthFlowProvider.tsx` (#1362), exported from
 the `auth/index.ts` barrel alongside `useAuthSession`. The single app-wide `EmailAuthFlow`
 instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern for
-`ConnectWalletModal`. Mounted in `main.tsx` inside `ConnectModalProvider` (needs
-`useConnectModal()` for "Continue with wallet") and above `WalletViewProvider`/`RouterProvider`,
+`ConnectWalletModal`. Mounted in `main.tsx` inside `ConnectModalProvider` and `ToastProvider` (needs
+`useConnectModal()` for "Continue with wallet", and the toast for link failures) and above `WalletViewProvider`/`RouterProvider`,
 so every route renders under it.
 
 `useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
-openAccountSetup(), openAddEmail() }` (widened by #1422 for the home route's state derivation —
+openAccountSetup(), openAddEmail(), adoptLp(lp), settlement }` (`adoptLp` and `settlement` added by #1813 and reshaped by #1825,
+below; widened by #1422 for the home route's state derivation —
 `docs/frontend/dashboard-components.md#home-route` — and by #1458 for the Account page's
 wallet-only `Add email` row). `open()` defaults to the `"sign-in"` screen when called with no
 argument. Unlike `useConnectModal()` (no-op fallback for partial test trees), `useAuthFlow()`
@@ -1019,6 +1032,12 @@ and dismissal close it without logging out or navigating. Modal state belongs to
 session token and is cleared on session changes or reload. Submission adopts the server LP and freezes editing. Failed or partial uploads do not submit;
 unknown submission status requires Check submission status before writes resume.
 
+**Settlement address link (#1813, #1825).** The provider calls `useSettlementAddressLink` but never links on its own:
+it exposes `settlement = { rows, onLink, onChange, onCancel, onOther, onLinkOther }`, where `rows` come from `deriveSettlementRows` and the
+callbacks are the hook's `link`, `beginChange`, `cancelChange`, `beginOther` and `linkOther`. `adoptLp(lp)` replaces the provider's LP (the single
+adopt path, shared with `CompanyDocsModal.onLpChange` and the Account page's `useAccountPage` `onLpAdopted`). Flow, row
+rules, errors and captions: [`account-page.md#settlement-address`](./account-page.md#settlement-address).
+
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (no session, no wallet) call
 `open("sign-in")` / `open("create-account")`; the account icon (session, or a connected wallet
 with no session — #1458) does not call it at all — it navigates to `/account`. `MobileNavMenu`
@@ -1044,7 +1063,13 @@ host can prevent submission until a fresh token arrives. Script load and render 
 the cached load attempt,
 allowing a retry to reinsert and render the widget without reloading the page. If
 `ENV.TURNSTILE_SITE_KEY` is empty, it reports an unavailable configuration state. A failed or
-unconfigured challenge is never treated as a valid captcha token. `siteverify` is never
+unconfigured challenge is never treated as a valid captcha token. The one exception is the local
+e2e stack (#1982): under `vite dev` with `VITE_E2E_CAPTCHA` set and no site key,
+`ENV.E2E_CAPTCHA_TOKEN` is `pipeline-e2e-captcha` and the wrapper hands it out as the token
+(`ready`) without loading Cloudflare's script, again after each `reset`. The stack's API runs
+without `TURNSTILE_SECRET_KEY`, so it accepts the token; an API with the secret rejects it. The
+value sits behind the literal `import.meta.env.DEV`, so a production build drops it, and
+`scripts/e2e/assert-prod-wallet.ts` (CI) fails if a production bundle contains it. `siteverify` is never
 called client-side — only the token is sent to the API, which verifies it server-side (see the
 product spec's "Bot defense" section).
 

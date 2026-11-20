@@ -74,22 +74,35 @@ Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_ex
 - **Stellar:** the same text is signed with SEP-0053 (`SHA256("Stellar Signed Message:\n" ||
   message)`), which hashes the raw UTF-8 bytes, so newlines and length are not a concern.
 
+### Settlement-address proof
+
+A second challenge kind proves an LP controls the wallet it names as a settlement address (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address). It reuses the sign-in mechanics but is stored in its own table, `lp_address_challenges`, with one live row per `(lp_id, chain_id)`.
+
+- **Binding.** The row holds `address` and `signer_address`, and the message embeds `lp_id`, `chain_id`, both addresses, the nonce and the expiry. A challenge cannot be used for another LP, chain, address or signer. Its text differs from the sign-in message, so a sign-in signature never verifies as a link proof.
+- **TTL and reuse.** 1 hour (`LINK_CHALLENGE_TTL_SECS`; the sign-in challenge keeps its 5 minutes). One SQL upsert on the database clock reuses the stored nonce only when the stored `address` and `signer_address` equal the requested ones **and** more than 60 seconds remain. Otherwise a fresh nonce overwrites the row, so a challenge for a different address invalidates the previous one.
+- **Message.** A single line, unlike the multi-line sign-in text. Clients sign the `message` string exactly as returned, never its JSON-escaped form. A challenge issued before the TTL change no longer rebuilds to the same bytes, so the LP requests a new one.
+- **Consume.** After the signature verifies against the stored signer, `verify` runs `DELETE FROM lp_address_challenges WHERE lp_id = $1 AND chain_id = $2 AND nonce = $3 AND expires_at > now() RETURNING address, signer_address`. The link uses the returned row, never the request body. No row means a concurrent replay. A bad signature does not consume.
+- **Errors.** Every proof failure is `422` with the one body `settlement address proof failed`: no live challenge, an address or signer different from the stored binding, a signature that does not verify, a lost consume race. `401` stays reserved for a missing or invalid token (`AuthClaims`).
+- **Signers.** EVM signatures are EIP-191 `personal_sign` by an EOA, so ERC-1271 contract wallets cannot sign. Stellar signatures are SEP-0053, base64 or hex.
+
 ## API Contract
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the stored nonce while more than 60 s remain, else issues a new 5-minute one. `401` if the address is not authorized. No per-IP limit. |
 | `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` (one shared body, `authentication failed`) for unknown address, no live or expired challenge, a replayed nonce, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
+| `GET`  | `/v1/lps/me/link-address/challenge?chain_id&address&signer_address` | bearer (LP owner) | Required `chain_id` (`400` as for the sign-in challenge); `signer_address` optional. Validates the address and signer (`400`), then LP eligibility (`404` no LP; `409` for a `Failed` LP or an address held by another LP). Returns `{ message, nonce }`, a single-line message valid for 1 hour. See [Settlement-address proof](#settlement-address-proof). |
+| `POST` | `/v1/lps/me/link-address/verify` | bearer (LP owner) | Body `{ chain_id, address, signer_address?, signature }`. `200` with the refreshed LP record. `400` for validation, `404` no LP, `409` for ineligibility re-checked after the consume, `422 settlement address proof failed` for every proof failure. `401` only for a missing or invalid token. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
 | `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403 account_suspended` for a suspended one, `429` past the attempt limit. |
 | `POST` | `/v1/auth/forgot-password` | none | Body `{ email, captcha_token }`. Always `202`; a reset link is mailed only to a verified, active account, at most once per 60 seconds. `403`/`503` per the captcha, `429` past 10 requests per hour per client address. See [api-authorization-password-reset.md](./api-authorization-password-reset.md). |
 | `POST` | `/v1/auth/reset-password` | none | Body `{ token, password }`. `204` on success, with no token issued; every token the account held before is rejected from then on. `400` for a password failing the policy, `401` for every link failure, with one shared message. |
-| `POST` | `/v1/loan-book/loan?chain_id` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](./api-authorization-loan-submission.md)). Required `chain_id` is the target chain (missing, malformed or not in `CHAINS` → `400`, checked before the token). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
-| `GET`  | `/v1/loan-book/submissions?status&chain_id` | none (public) | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. Optional `chain_id` filters by target chain; omitted returns all submissions, a configured id filters by target, a well-formed id not in `CHAINS` is `200` with an empty list. `400` on an unknown status value or a malformed/repeated `chain_id`. Each item carries `target_chain_id` and the nullable drawn `chain_id` / `loan_id`. |
+| `POST` | `/v1/loan-book/loan?chain_id` | bearer + `originator` role | Submit a loan application (the `draw_loan` inputs, `data_room_id` optional for now; see [Loan submission](./api-authorization-loan-submission.md)). Required `chain_id` is the target chain (missing, malformed or not in `CHAINS` → `400`, checked before the token). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id, draw_loan }` on success (`draw_loan`: contract-ready args with `borrower_ref` and `missing_inputs`; `null` for an unconfigured target chain), `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
+| `GET`  | `/v1/loan-book/submissions?status&chain_id` | none (public) | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. Optional `chain_id` filters by target chain; omitted returns all submissions, a configured id filters by target, a well-formed id not in `CHAINS` is `200` with an empty list. `400` on an unknown status value or a malformed/repeated `chain_id`. Each item carries `target_chain_id`, the nullable drawn `chain_id` / `loan_id`, and `draw_loan` (contract-ready `draw_loan` args with `borrower_ref` and `missing_inputs`; `null` for an unconfigured target chain). |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
-| `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`; the target chain is kept. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
+| `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`; the target chain is kept. `200 { id, draw_loan }` on success (`draw_loan` is served for Stellar and EVM targets, money at 7 and 6 dp respectively; `null` only for an unconfigured chain, #1573), `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
 
 Tokens are **ES256** (P-256) signed, expire **24 hours** after issuance
 (`expires_in = 86400`), and carry `sub`, `chain_id`, `account_id`, `roles`,
@@ -134,6 +147,18 @@ returning `403 Forbidden` when absent (see `routes::loan_book::submit_loan`).
 
 Rows are inserted manually (there is no admin endpoint). Address normalization
 must follow the convention above so lookups match.
+
+`lp_address_challenges` — one live settlement-address challenge per LP and chain:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `lp_id` | `BIGINT` | part of the primary key; references `lps(id)` |
+| `chain_id` | `BIGINT` | part of the primary key |
+| `address` | `TEXT` | the settlement address the challenge is bound to, normalized |
+| `signer_address` | `TEXT` | the wallet that must sign, normalized |
+| `nonce` | `TEXT` | single-use GUID embedded in the message |
+| `expires_at` | `TIMESTAMPTZ` | 1 hour after issue |
+| `created_at` | `TIMESTAMPTZ` | bookkeeping |
 
 `lps.owner_account_id` is the LP-ownership key and is **UNIQUE** — one account
 owns at most one LP, which is why the LP-facing routes are keyed on the session:

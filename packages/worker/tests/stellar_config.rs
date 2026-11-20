@@ -621,7 +621,7 @@ fn withdrawal_queue_wallet_id_rejects_malformed_address() {
 }
 
 #[test]
-fn yield_minter_id_rejects_a_bad_strkey_checksum() {
+fn minter_id_rejects_a_bad_strkey_checksum() {
     use pipeline_worker::indexer::config::StellarIndexerSettings;
 
     let id = 99_000_033_i64;

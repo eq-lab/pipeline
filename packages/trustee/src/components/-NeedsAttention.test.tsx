@@ -53,7 +53,6 @@ const SUBMISSION: SubmissionView = {
   updated_at: "2026-06-18T10:00:00Z",
   documents: [],
   loan_data: {
-    to: "G...",
     metadata_uri: "ipfs://...",
     originator: "Open Mineral",
     borrower_id: "borrower-1",
@@ -68,13 +67,6 @@ const SUBMISSION: SubmissionView = {
       senior_interest_rate_bps: 1400,
       origination_date: 1_750_000_000,
       original_maturity_date: 1_797_292_800,
-    },
-    initial_ccr: 1_500_000,
-    initial_location: {
-      location_type: "Vessel",
-      location_identifier: "MV Example",
-      tracking_url: "https://example.com",
-      updated_at: 1_750_000_000,
     },
   },
 };

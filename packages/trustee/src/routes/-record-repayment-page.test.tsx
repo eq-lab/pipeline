@@ -1,18 +1,4 @@
-/**
- * Render tests for the Record Repayment — Principal full-page route
- * (`loans.$id_.record-repayment.tsx`, issue #884, Figma node `4116-11621`).
- *
- * Mocks the raw API hooks (`useLoanBook`, `useLoanFinancials`,
- * `useLoanWaterfall`) rather than the presenter, and mocks `useRecordPayment`
- * / `useCloseLoan` (both pull in `@pipeline/wallet-connect`) — mirrors
- * `-record-coupon-page.test.tsx`'s convention.
- *
- * Covers: the two cards + the REAL (non-zero, non-disabled) senior-principal
- * row; `buildRepaymentInput`-equivalent recording with real principal +
- * equity residual; the Close-loan action hidden until fully repaid and shown
- * once terminal, calling `useCloseLoan` with the resolved `reason`; loading /
- * error / not-found states.
- */
+// spec: docs/frontend/trustee-flows.md#recording-a-payment--minterrepay-1712
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -85,6 +71,25 @@ vi.mock("@/api/useCloseLoan", () => ({
   useCloseLoan: () => mockCloseLoan,
 }));
 
+const { mockRole } = vi.hoisted(() => ({
+  mockRole: {
+    reason: null as string | null,
+    lastEnabled: false,
+    lastChain: undefined as number | null | undefined,
+  },
+}));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: (
+    _fn: string,
+    enabled: boolean,
+    chainId?: number | null,
+  ) => {
+    mockRole.lastEnabled = enabled;
+    mockRole.lastChain = chainId;
+    return { reason: enabled ? mockRole.reason : null };
+  },
+}));
+
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
@@ -136,11 +141,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       maturity: 1_782_172_800,
       next_payment_timestamp: 1_782_172_800,
       days_overdue: null,
-      spot_price: "10450",
-      spot_change_7d: null,
-      collateral: null,
-      ltv: null,
-      ccr_bps: null,
       duration_days: 85,
       rate: "0.130000",
       protection: null,
@@ -195,6 +195,7 @@ function readyWith(overrides: {
   senior?: string;
   offtaker?: string;
   notMinted?: string;
+  chain?: number;
 }) {
   mockUseLoanBook.mockReturnValue({
     data: {
@@ -202,6 +203,7 @@ function readyWith(overrides: {
       loans: [
         {
           ...LOAN_BOOK_RESPONSE.loans[0]!,
+          chain_id: overrides.chain ?? LOAN_BOOK_RESPONSE.loans[0]!.chain_id,
           senior_outstanding:
             overrides.senior ?? LOAN_BOOK_RESPONSE.loans[0]!.senior_outstanding,
         },
@@ -263,6 +265,7 @@ beforeEach(() => {
   mockCloseLoan.isPending = false;
   mockCloseLoan.error = null;
   mockCloseLoan.stage = null;
+  mockRole.reason = null;
 });
 
 describe("Record Repayment route — ready state", () => {
@@ -454,6 +457,7 @@ describe("Record Repayment route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       valueDate: expect.any(Number),
+      chainId: 99_000_001,
       repayment: {
         offtaker_received: "61500000000000",
         senior_principal_repaid: "48000000000000",
@@ -464,6 +468,96 @@ describe("Record Repayment route — ready state", () => {
         oet_alloc: "75000000000",
       },
     });
+  });
+
+  it("disables the submit and shows the Cash reporter reason for a wallet without the role", async () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-role-blocked"),
+    ).toHaveTextContent("Only the Cash reporter can book repayments.");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.getByTestId("record-repayment-submit")).toBeDisabled();
+  });
+
+  function onChain(chain: number, run: () => void | Promise<void>) {
+    const RouteWithSearch = Route as unknown as {
+      useSearch: () => { chain: number };
+    };
+    const previous = RouteWithSearch.useSearch;
+    RouteWithSearch.useSearch = () => ({ chain });
+    return Promise.resolve(run()).finally(() => {
+      RouteWithSearch.useSearch = previous;
+    });
+  }
+
+  function readyOnChain(chain: number, senior: string, offtaker: string) {
+    readyWith({ senior, offtaker, chain });
+  }
+
+  it("opens an EVM loan: the role read is enabled for that chain and the record passes the chain id", async () => {
+    mockWaterfall(WATERFALL_TERMINAL);
+    readyOnChain(560048, "4800000.000000", "6150000.000000");
+    await onChain(560048, async () => {
+      renderRoute();
+      expect(
+        screen.queryByTestId("record-repayment-onchain-blocked"),
+      ).not.toBeInTheDocument();
+      expect(mockRole.lastEnabled).toBe(true);
+      expect(mockRole.lastChain).toBe(560048);
+      fireEvent.change(screen.getByTestId("record-repayment-amount"), {
+        target: { value: "6150000" },
+      });
+      const submit = screen.getByTestId("record-repayment-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ loanId: 4488, chainId: 560048 }),
+      );
+    });
+  });
+
+  it("closes an EVM loan with the chain id", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
+    readyOnChain(560048, "0", "0.000000");
+    await onChain(560048, async () => {
+      renderRoute();
+      const closeBtn = screen.getByTestId("record-repayment-close-submit");
+      expect(closeBtn).toBeEnabled();
+      fireEvent.click(closeBtn);
+      await waitFor(() =>
+        expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
+          loanId: 4488,
+          reason: "ScheduledMaturity",
+          chainId: 560048,
+        }),
+      );
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("blocks an unknown chain with the Stellar-only reason, no role read and no close", async () => {
+    readyOnChain(1234, "0", "0.000000");
+    await onChain(1234, async () => {
+      renderRoute();
+      expect(
+        screen.getByTestId("record-repayment-onchain-blocked"),
+      ).toBeInTheDocument();
+      expect(mockRole.lastEnabled).toBe(false);
+      expect(
+        screen.getByTestId("record-repayment-close-submit"),
+      ).toBeDisabled();
+    });
+    expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+    expect(mockCloseLoan.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps Close-loan enabled when the checklist passes for a wallet without the role", () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    readyWith({ senior: "0", offtaker: "0.000000" });
+    renderRoute();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
   });
 
   it("keeps submit disabled through the prefill debounce window, then records the prefilled amount (#1622)", async () => {
@@ -567,6 +661,7 @@ describe("Record Repayment route — ready state", () => {
       expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
         reason: "ScheduledMaturity",
+        chainId: 99_000_001,
       }),
     );
     await waitFor(() =>
@@ -594,6 +689,7 @@ describe("Record Repayment route — ready state", () => {
       expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
         reason: "EarlyRepayment",
+        chainId: 99_000_001,
       }),
     );
     nowSpy.mockRestore();
@@ -684,6 +780,7 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
       expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
         reason: "ScheduledMaturity",
+        chainId: 99_000_001,
       }),
     );
     nowSpy.mockRestore();
@@ -797,6 +894,7 @@ describe("Record Repayment route — closable after an interest-only coupon (#16
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       valueDate: expect.any(Number),
+      chainId: 99_000_001,
       repayment: expect.objectContaining({
         senior_principal_repaid: WATERFALL_TERMINAL.senior_principal_returned,
       }),

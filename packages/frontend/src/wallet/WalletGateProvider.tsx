@@ -38,18 +38,20 @@ export function WalletGateProvider({
   const [gateOpen, setGateOpen] = useState(false);
   // Stored `onProceed` callback from the wallet hook that triggered the gate.
   const onProceedRef = useRef<(() => void) | null>(null);
+  const onDismissRef = useRef<(() => void) | null>(null);
   // Track the element that triggered the gate so focus can be restored on close.
   const triggerRef = useRef<HTMLElement | null>(null);
 
   const { acknowledge } = useTermsAcknowledgement();
 
   const openGate = useCallback(
-    (onProceed: () => void) => {
+    (onProceed: () => void, onDismiss?: () => void) => {
       // Deduplicate: if gate is already open do nothing.
       if (gateOpen) return;
       // Capture current focus for restoration.
       triggerRef.current = document.activeElement as HTMLElement | null;
       onProceedRef.current = onProceed;
+      onDismissRef.current = onDismiss ?? null;
       setGateOpen(true);
     },
     [gateOpen],
@@ -64,12 +66,16 @@ export function WalletGateProvider({
     // Invoke the chain-specific connect callback.
     const proceed = onProceedRef.current;
     onProceedRef.current = null;
+    onDismissRef.current = null;
     proceed?.();
   }, [acknowledge]);
 
   const handleDismiss = useCallback(() => {
     setGateOpen(false);
     onProceedRef.current = null;
+    const dismissed = onDismissRef.current;
+    onDismissRef.current = null;
+    dismissed?.();
     // Restore focus to the trigger element.
     triggerRef.current?.focus();
     triggerRef.current = null;

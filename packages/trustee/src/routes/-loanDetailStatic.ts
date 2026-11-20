@@ -2,8 +2,7 @@
  * Static UI configuration for the Trustee loan-detail page.
  *
  * These constants are product copy and route/action availability rules. Values
- * that describe a particular loan (amounts, rates, dates, status, collateral,
- * CCR history) are built from API responses in `-useLoanDetail.ts`.
+ * that describe a particular loan (amounts, rates, dates, status, security) are built from API responses in `-useLoanDetail.ts`.
  */
 
 export type TileTone = "muted" | "positive" | "attention" | "negative";
@@ -50,12 +49,12 @@ export const PERFORMING_OTHER_ACTIONS: OtherActions = {
     "Close loan",
     "Escalate to Risk Council",
   ],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };
 
 export const DISBURSING_OTHER_ACTIONS: OtherActions = {
   actions: ["Update lifecycle", "Escalate to Risk Council"],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };
 
 /** A closed loan is terminal — no lifecycle or cash actions remain (#1092). */
@@ -68,7 +67,7 @@ export const WATCHLIST_CURRENT_STAGE: CurrentStage = {
   title: "Current stage — escalation decision pending",
   tag: "Risk Council · 24h timelock",
   tagTone: "risk",
-  body: "CCR has crossed the maintenance threshold. If the loan is past recovery on the active path, draft a setDefault proposal.",
+  body: "A margin call is open or the LTV is above the margin-call ratio. The borrower has the cure period to bring the LTV back to the advance ratio. The end of the cure period does not trigger default by itself: if the loan is past recovery, escalate it to the Risk Council.",
   actionLabel: "Open escalation →",
 };
 
@@ -90,5 +89,5 @@ export const MATURED_OTHER_ACTIONS: OtherActions = {
     "Roll over",
     "Escalate to Risk Council",
   ],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };

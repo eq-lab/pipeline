@@ -54,6 +54,8 @@ of the disbursement signing chain. The LoanRegistry mint and the Capital Wallet
 disbursement are independent actions: the mint is a Trustee-key transaction on LoanRegistry;
 the disbursement is an MPC co-signature on the Capital Wallet.
 
+On Stellar each drawn loan also gets a per-loan DEBT token: after `draw_loan` the Trustee registers it with `DealTokenFactory.register_deal(loan_id)` (separate signature; `sync_debt` follows later). On EVM the Trustee registers it after the draw with `registerDeal` through `AccessManager.execute` (#1892).
+
 ### Genesis economics
 
 The `ImmutableLoanData` struct is written once at mint and is never rewritten by any role.
@@ -62,7 +64,7 @@ It holds seven numeric fields:
 - `originalFacilitySize`, `originalSeniorTranche`, `originalEquityTranche`
 - `originalOfftakerPrice`, the total USDC the end buyer is contracted to pay for the cargo.
   Outstanding offtaker balance is `originalOfftakerPrice − offtakerReceivedTotal` — a hard
-  ceiling for fixed-price deals only; a quotational (concentrate) settlement may exceed it and is then flagged, not rejected (see [yield.md](./yield.md), issue #963).
+  ceiling on every loan, enforced by the LoanRegistry (`OfftakerExceedsPrice`) and by the waterfall (see [yield.md](./yield.md), #2123).
 - `seniorInterestRateBps`, the genesis annualised coupon rate for the Senior tranche in
   basis points (e.g. 1200 = 12%). The Equity tranche has no fixed rate and receives the
   residual.
@@ -122,9 +124,9 @@ The following fields are updated during the loan's life by the `TRUSTEE` (Truste
 | `Any → Closed` (scheduled / early repayment) | `TRUSTEE` | Trustee-key transaction, no timelock |
 | `Any → Closed` (default / write-down) | `RISK_COUNCIL` | 3-of-5 multisig, 24h timelock |
 
-`updateMutable()` accepts only `{Performing, Watchlist, Matured}` for `status`. It reverts
-on `Default` (callers must use `setDefault()`) and on `Closed` (callers must use
-`closeLoan()`).
+`update_mutable()` toggles `status` between `{Performing, WatchList}`; on `Approved` / `Default` it
+is metadata-only (same status). It reverts on `Closed` and on any other transition
+(`setDefault()` / `closeLoan()` own those).
 
 Loan-tied PLUSD minting is permitted only while the loan is `Performing` or `Watchlist`.
 `Matured`, `Default`, and `Closed` refuse mints. The normal final-coupon mint happens while

@@ -29,7 +29,7 @@ export function useCompleteDisbursement() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
       void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-valuation"] });
+      void queryClient.invalidateQueries({ queryKey: ["loan-security"] });
     },
   });
 }

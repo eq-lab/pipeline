@@ -1,7 +1,6 @@
 //! Shared decoders for Soroban `simulateTransaction` response fields.
 //!
-//! Extracted from `whitelist.rs` so the whitelist and yield-mint phases share
-//! one implementation (avoids drift).
+//! Used by the whitelist phase.
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
