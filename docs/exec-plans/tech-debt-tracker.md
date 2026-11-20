@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-196.**
+**Next free number: TD-197.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,14 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-196: Fee targets above the contract fee cap are never caught up
+
+- **Date:** 2026-11-19
+- **Location:** `packages/api/src/routes/waterfall.rs` (`fit_interest_to_fee_cap`, `ASSUMED_MAX_FEE_BPS`), `docs/product-specs/yield.md` — Issue #2124.
+- **Gap:** The registries cap `mgmt + perf + oet` at `max_fee_bps` of the interest paid. A loan whose fee rates exceed that cap every period has its excess moved to the vault coupon, so the unpaid mgmt/perf targets grow without bound and are never recovered.
+- **Impact:** Treasury receives permanently reduced fees on such loans, and the vault coupon takes the difference.
+- **Suggested fix:** Set fee rates at or below the cap at origination, or have the contracts allow carrying a fee deficit. Contracts are frozen, so this is a product decision.
 
 ### TD-192: The LP app's e2e test wallets share one flag but need a key per chain
 

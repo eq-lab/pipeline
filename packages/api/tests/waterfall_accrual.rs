@@ -366,7 +366,7 @@ fn prior_recorded_amounts_and_adjustment_clamp_the_coupon_to_the_headroom() {
 }
 
 #[test]
-fn over_recorded_fee_legs_drop_the_coupon_and_scale_the_fees() {
+fn over_recorded_fee_legs_still_pay_the_headroom_under_the_fee_cap() {
     let s = snapshot_with_repayment(T, repayment("10000000000", "100000000000", "0"), 1200);
     let events = [disbursed(ORIGINATION, T)];
     let b = run(&s, ONE_YEAR_LATER, &fees(100, 2000, 0), &events);
@@ -376,10 +376,10 @@ fn over_recorded_fee_legs_drop_the_coupon_and_scale_the_fees() {
         ("10000000000", "100000000000", "0"),
     );
     assert_eq!(room, dec("10000000000"));
-    assert_eq!(b.senior_coupon_net, dec("0"));
-    assert!(suggested_interest(&b) <= room);
+    assert_eq!(b.senior_coupon_net, dec("5000000000"));
+    assert_eq!(suggested_interest(&b), room);
     assert_eq!(b.management_fee, dec("0"));
-    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.performance_fee, dec("5000000000"));
 }
 
 #[test]
