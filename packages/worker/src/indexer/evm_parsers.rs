@@ -21,7 +21,7 @@ use super::{
         parse_loan_closed, parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over,
         parse_loan_status_updated, parse_loan_written_down, parse_minter_event,
         parse_payment_recorded, parse_payment_unrecorded, parse_request_claimed,
-        parse_staking_deposit, parse_staking_withdraw, parse_undisbursed,
+        parse_share_transfer, parse_staking_deposit, parse_staking_withdraw, parse_undisbursed,
         parse_withdrawal_requested,
     },
     poller::EvmEventPollerBuilder,
@@ -79,6 +79,7 @@ pub fn register_evm_handlers(
     let cr_repo = repos.repo.clone();
     let minter_addrs = contracts.yield_minter_contracts.clone();
     let cr_addrs = contracts.collateral_registry_contracts.clone();
+    let splusd_addrs = contracts.splusd_contracts.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
@@ -119,8 +120,12 @@ pub fn register_evm_handlers(
             // is parsed, so the burn yields one `StakingWithdrawal` row. Do not add a
             // `SharesBurned` parser here (the Stellar arm needs one only because it has no
             // `withdraw` event for the burn).
+            if !is_emitted_by(log, &splusd_addrs) {
+                return None;
+            }
             parse_staking_deposit(log)
                 .or_else(|| parse_staking_withdraw(log))
+                .or_else(|| parse_share_transfer(log, &splusd_addrs))
                 .map(|ev| {
                     Box::new(
                         ContractLogMapper::new(ev, chain_id, splusd_repo.clone())

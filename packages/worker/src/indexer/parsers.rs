@@ -3,7 +3,10 @@ use serde_json::json;
 
 use shared::events::ContractLog;
 
-use crate::indexer::loan_mapper::{closure_reason_name, loan_status_name};
+use crate::indexer::{
+    asset_transfers::Transfer,
+    loan_mapper::{closure_reason_name, loan_status_name},
+};
 
 sol! {
     event DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount);
@@ -172,6 +175,31 @@ pub fn parse_staking_withdraw(log: &Log) -> Option<ContractLog> {
             "owner": decoded.owner.to_checksum(None),
             "assets": decoded.assets.to_string(),
             "shares": decoded.shares.to_string(),
+        }),
+    })
+}
+
+pub fn parse_share_transfer(log: &Log, vaults: &[Address]) -> Option<ContractLog> {
+    if !vaults.contains(&log.address()) {
+        return None;
+    }
+    let decoded = Transfer::decode_log(log.as_ref(), true).ok()?;
+    if decoded.from == Address::ZERO || decoded.to == Address::ZERO || decoded.value.is_zero() {
+        return None;
+    }
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "ShareTransfer".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "from": decoded.from.to_checksum(None),
+            "to": decoded.to.to_checksum(None),
+            "amount": decoded.value.to_string(),
         }),
     })
 }
