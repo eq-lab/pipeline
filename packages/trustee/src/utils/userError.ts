@@ -202,6 +202,8 @@ const WATERFALL_REINDEX_MESSAGE =
   "Loan data is incomplete — the indexer needs a re-sync. Contact support.";
 const WATERFALL_DEFAULT_MESSAGE =
   "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a smaller amount.";
+const WATERFALL_STATUS_MESSAGE =
+  "This loan can't take a repayment in its current status. Repayments are recorded only while the loan is Performing, Watchlist or Default.";
 const RESUBMIT_URI_COLLISION_PATTERN = /metadata_uri .* already used/i;
 
 // spec: docs/frontend/trustee-flows.md#amend-and-resubmit-originationidedit-1913
@@ -236,6 +238,7 @@ export function mapResubmitError(error: Error | null): UserFacingError | null {
 }
 
 const WATERFALL_DEFAULT_PATTERN = /^loan is in Default\b/i;
+const WATERFALL_STATUS_PATTERN = /^loan status is /i;
 
 // spec: docs/frontend/error-handling.md#waterfall-preview-no-details-on-the-expected-input-case-d5
 export function mapWaterfallError(error: Error | null): UserFacingError | null {
@@ -255,6 +258,17 @@ export function mapWaterfallError(error: Error | null): UserFacingError | null {
   ) {
     return {
       message: WATERFALL_DEFAULT_MESSAGE,
+      details: error.message,
+      isSpecific: true,
+    };
+  }
+  if (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    WATERFALL_STATUS_PATTERN.test(error.message)
+  ) {
+    return {
+      message: WATERFALL_STATUS_MESSAGE,
       details: error.message,
       isSpecific: true,
     };

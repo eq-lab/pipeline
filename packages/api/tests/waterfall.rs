@@ -11,7 +11,8 @@ use bigdecimal::BigDecimal;
 use pipeline_api::error::ApiError;
 
 use pipeline_api::routes::waterfall::{
-    build_response, compute_waterfall, fit_interest_to_fee_cap, WaterfallDoc,
+    build_response, compute_waterfall, fit_interest_to_fee_cap, LatestLoanState,
+    WaterfallBreakdown, WaterfallDoc,
 };
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
@@ -94,6 +95,10 @@ fn snapshot_with_repayment(
     }
 }
 
+fn latest(s: &LoanSnapshot) -> LatestLoanState {
+    LatestLoanState::from(s)
+}
+
 fn fees(mgmt: i32, perf: i32, oet: i32) -> FeeScheduleRow {
     FeeScheduleRow {
         mgmt_fee_rate_bps: mgmt,
@@ -138,6 +143,7 @@ fn full_repayment_one_year_with_fees() {
     let amount = dec("1125000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -167,6 +173,7 @@ fn principal_capped_at_outstanding() {
     let amount = dec("1000000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -191,6 +198,7 @@ fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
     let amount = dec("500000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -219,6 +227,7 @@ fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
     let amount = dec("60000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -244,6 +253,7 @@ fn interest_tier_shortfall_dust_goes_to_the_coupon_not_lost() {
     let amount = dec("61");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -271,6 +281,7 @@ fn principal_shrinks_last_when_amount_falls_short() {
     let amount = dec("1050000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -303,6 +314,7 @@ fn principal_reduced_to_zero_when_amount_exactly_covers_coupon_and_fees() {
     let amount = dec("125000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -328,6 +340,7 @@ fn fractional_amount_principal_truncated_to_whole_base_unit() {
     let amount = dec("500000.9");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -347,6 +360,7 @@ fn zero_fee_schedule_routes_all_interest_to_coupon() {
     let amount = dec("1120000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -368,6 +382,7 @@ fn zero_tenor_accrues_no_interest_or_fees() {
     let amount = dec("1000000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ORIGINATION,
         &fees(100, 2000, 50),
@@ -387,6 +402,7 @@ fn as_of_before_origination_is_rejected() {
     let s = snapshot("1000000", "0", 1200);
     let err = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1000000"),
         ORIGINATION - 1,
         &fees(100, 2000, 50),
@@ -428,6 +444,7 @@ fn second_repayment_nets_out_amounts_already_recorded() {
     let amount = dec("743500");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -465,6 +482,7 @@ fn already_recorded_amount_exceeding_the_target_clamps_to_zero() {
     let amount = dec("1000000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -491,6 +509,7 @@ fn equity_absorbs_the_remainder_after_principal() {
     let amount = dec("1200000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -524,6 +543,7 @@ fn equity_is_zero_when_amount_exactly_covers_every_other_bucket() {
     let amount = dec("1125000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -551,6 +571,7 @@ fn amount_exceeding_outstanding_offtaker_is_rejected() {
     };
     let err = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1125000"),
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -586,6 +607,7 @@ fn offtaker_ceiling_accounts_for_amounts_already_received() {
     };
     let over = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("100001"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -598,6 +620,7 @@ fn offtaker_ceiling_accounts_for_amounts_already_received() {
     // Exactly the remaining headroom is fine.
     assert!(compute_waterfall(
         &s,
+        &latest(&s),
         &dec("100000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -633,6 +656,7 @@ fn already_over_received_loan_rejects_every_further_amount_including_zero() {
     assert!(
         compute_waterfall(
             &s,
+            &latest(&s),
             &dec("0"),
             ONE_YEAR_LATER,
             &fees(0, 0, 0),
@@ -644,6 +668,7 @@ fn already_over_received_loan_rejects_every_further_amount_including_zero() {
     );
     assert!(compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -679,6 +704,7 @@ fn qp_repriced_settlement_above_offtaker_price_is_rejected() {
     let s = qp_snapshot();
     let over = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1764807"),
         ORIGINATION,
         &fees(0, 0, 0),
@@ -691,6 +717,7 @@ fn qp_repriced_settlement_above_offtaker_price_is_rejected() {
 
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1096691"),
         ORIGINATION,
         &fees(0, 0, 0),
@@ -711,6 +738,7 @@ fn fractional_amount_is_rounded_down_before_the_offtaker_ceiling() {
     };
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1000000.9"),
         ORIGINATION,
         &fees(0, 0, 0),
@@ -724,6 +752,7 @@ fn fractional_amount_is_rounded_down_before_the_offtaker_ceiling() {
 
     let short = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("999999.9"),
         ORIGINATION,
         &fees(0, 0, 0),
@@ -735,6 +764,7 @@ fn fractional_amount_is_rounded_down_before_the_offtaker_ceiling() {
 
     assert!(compute_waterfall(
         &s,
+        &latest(&s),
         &dec("1000001"),
         ORIGINATION,
         &fees(0, 0, 0),
@@ -757,6 +787,7 @@ fn default_loan_rejects_amount_above_offtaker_price() {
     let s = default_snapshot("500000");
     let over = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("600000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -773,6 +804,7 @@ fn default_loan_accepts_amount_equal_to_outstanding_offtaker() {
     let s = default_snapshot("500000");
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("500000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -789,6 +821,7 @@ fn default_loan_offtaker_ceiling_wins_over_headroom_rejection() {
     let s = default_snapshot("500000");
     let over = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("5000000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -816,6 +849,7 @@ fn principal_ceiling_holds_even_against_a_wildly_oversized_amount() {
     // At origination: zero interest/fees, isolating principal-only behavior.
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ORIGINATION,
         &fees(0, 0, 0),
@@ -841,6 +875,7 @@ fn response_maps_the_components() {
     let f = fees(100, 2000, 50);
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &amount,
         ONE_YEAR_LATER,
         &f,
@@ -878,6 +913,7 @@ fn openapi_doc_registers_path() {
 fn run(s: &LoanSnapshot, amount: &str) -> pipeline_api::routes::waterfall::WaterfallBreakdown {
     compute_waterfall(
         s,
+        &latest(s),
         &dec(amount),
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
@@ -1077,6 +1113,7 @@ fn run_with(
 ) -> pipeline_api::routes::waterfall::WaterfallBreakdown {
     compute_waterfall(
         s,
+        &latest(s),
         &dec(amount),
         as_of,
         &fees(300, 2000, 0),
@@ -1265,6 +1302,7 @@ fn missing_max_fee_bps_is_service_unavailable() {
     let s = snapshot("1000000", "0", 1200);
     let r = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("5000000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -1280,6 +1318,7 @@ fn default_loan_does_not_need_max_fee_bps() {
     s.status = "Default".to_owned();
     let b = compute_waterfall(
         &s,
+        &latest(&s),
         &dec("500000"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
@@ -1288,4 +1327,178 @@ fn default_loan_does_not_need_max_fee_bps() {
     )
     .unwrap();
     assert!(b.senior_principal_returned > dec("0"));
+}
+
+// ── #2145: running counters come from the latest state, accrual from as_of ────
+
+const HALF: i64 = ORIGINATION + CONTRACT_YEAR / 2;
+
+fn backdated(
+    s: &LoanSnapshot,
+    latest: &LatestLoanState,
+    amount: &str,
+    max_fee_bps: Option<u32>,
+) -> Result<WaterfallBreakdown, ApiError> {
+    compute_waterfall(
+        s,
+        latest,
+        &dec(amount),
+        HALF,
+        &fees(100, 2000, 50),
+        &genesis(s),
+        max_fee_bps,
+    )
+}
+
+fn later_state(s: &LoanSnapshot, edit: impl FnOnce(&mut LoanSnapshot)) -> LatestLoanState {
+    let mut l = s.clone();
+    edit(&mut l);
+    LatestLoanState::from(&l)
+}
+
+#[test]
+fn issue_2145_backdated_offtaker_ceiling_uses_latest_received() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.original_offtaker_price = dec("1000000");
+    let l = later_state(&s, |l| {
+        l.repayment.offtaker_received = dec("600000");
+        l.repayment.equity_distributed = dec("600000");
+    });
+    let err = backdated(&s, &l, "500000", Some(MAX_FEE_BPS)).unwrap_err();
+    assert!(matches!(
+        err,
+        ApiError::BadRequest(m)
+            if m.contains("exceeds the loan's outstanding offtaker balance") && m.contains("600000")
+    ));
+    assert!(backdated(&s, &LatestLoanState::from(&s), "500000", Some(MAX_FEE_BPS)).is_ok());
+    let ok = backdated(&s, &l, "400000", Some(MAX_FEE_BPS)).unwrap();
+    assert!(ok.offtaker_fully_received);
+}
+
+#[test]
+fn backdated_principal_cap_uses_latest_repaid() {
+    let s = snapshot("1000000", "0", 1200);
+    let l = later_state(&s, |l| {
+        l.repaid = dec("900000");
+        l.repayment.senior_principal_repaid = dec("900000");
+        l.repayment.offtaker_received = dec("900000");
+    });
+    let b = backdated(&s, &l, "1000000", Some(MAX_FEE_BPS)).unwrap();
+    assert_eq!(b.senior_principal_returned, dec("100000"));
+    assert_eq!(b.equity_distributed, dec("837500"));
+    assert!(b.senior_principal_fully_repaid);
+    assert!(b.senior_principal_returned <= l.outstanding_senior_principal);
+}
+
+#[test]
+fn backdated_principal_cap_does_not_return_principal_disbursed_after_as_of() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.disbursed = dec("500000");
+    let l = later_state(&s, |l| l.disbursed = dec("1000000"));
+    let b = backdated(&s, &l, "1000000", Some(MAX_FEE_BPS)).unwrap();
+    assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert!(!b.senior_principal_fully_repaid);
+}
+
+#[test]
+fn backdated_interest_headroom_uses_latest_recorded_totals() {
+    let s = snapshot("1000000", "0", 1200);
+    let l = later_state(&s, |l| {
+        l.repayment.senior_interest = dec("88000");
+        l.repayment.mgmt_fee = dec("10000");
+        l.repayment.perf_fee = dec("22000");
+        l.repayment.oet_alloc = dec("5000");
+        l.repayment.offtaker_received = dec("125000");
+    });
+    let b = backdated(&s, &l, "50000", Some(MAX_FEE_BPS)).unwrap();
+    assert_eq!(b.senior_coupon_net, dec("0"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("50000"));
+    let contract_headroom = (dec("120000") - dec("120000") + dec("0")).max(dec("0"));
+    assert!(b.senior_coupon_net <= contract_headroom);
+}
+
+#[test]
+fn backdated_waterfall_uses_latest_interest_adjustment() {
+    let s = snapshot("1000000", "0", 1200);
+    let l = later_state(&s, |l| l.interest_adjustment = dec("-60000"));
+    let b = compute_waterfall(
+        &s,
+        &l,
+        &dec("2000000"),
+        ONE_YEAR_LATER,
+        &fees(100, 2000, 50),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap();
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("10000"));
+    assert_eq!(b.senior_coupon_net, dec("40000"));
+}
+
+#[test]
+fn loan_defaulted_after_as_of_uses_the_default_split() {
+    let s = snapshot("1000000", "0", 1200);
+    let l = later_state(&s, |l| "Default".clone_into(&mut l.status));
+    for max_fee_bps in [Some(MAX_FEE_BPS), None] {
+        let b = backdated(&s, &l, "1050000", max_fee_bps).unwrap();
+        assert_eq!(b.senior_principal_returned, dec("1000000"));
+        assert_eq!(b.senior_coupon_net, dec("50000"));
+        assert_eq!(b.management_fee, dec("0"));
+        assert_eq!(b.performance_fee, dec("0"));
+        assert_eq!(b.oet_allocation, dec("0"));
+        assert_eq!(b.equity_distributed, dec("0"));
+    }
+}
+
+#[test]
+fn loan_cured_after_as_of_uses_the_normal_cascade() {
+    let mut s = snapshot("1000000", "0", 1200);
+    "Default".clone_into(&mut s.status);
+    let l = later_state(&s, |l| "WatchList".clone_into(&mut l.status));
+    let b = backdated(&s, &l, "5000000", Some(MAX_FEE_BPS)).unwrap();
+    assert_eq!(b.management_fee, dec("5000"));
+    assert_eq!(b.performance_fee, dec("11000"));
+    assert_eq!(b.senior_coupon_net, dec("44000"));
+    assert_eq!(b.oet_allocation, dec("2500"));
+}
+
+#[test]
+fn latest_status_outside_the_record_payment_range_is_rejected() {
+    let s = snapshot("1000000", "0", 1200);
+    for status in ["Approved", "Closed", "Unknown"] {
+        let l = later_state(&s, |l| status.clone_into(&mut l.status));
+        let err = backdated(&s, &l, "1000", Some(MAX_FEE_BPS)).unwrap_err();
+        assert!(matches!(err, ApiError::BadRequest(m) if m.contains(status)));
+    }
+}
+
+#[test]
+fn closed_after_as_of_is_rejected_even_though_as_of_state_was_performing() {
+    let s = snapshot("1000000", "0", 1200);
+    let l = later_state(&s, |l| "Closed".clone_into(&mut l.status));
+    assert!(matches!(
+        backdated(&s, &l, "1000", Some(MAX_FEE_BPS)),
+        Err(ApiError::BadRequest(_))
+    ));
+}
+
+#[test]
+fn approved_at_as_of_but_performing_now_is_accepted() {
+    let mut s = snapshot("1000000", "0", 1200);
+    "Approved".clone_into(&mut s.status);
+    let l = later_state(&s, |l| "Performing".clone_into(&mut l.status));
+    assert!(backdated(&s, &l, "1000", Some(MAX_FEE_BPS)).is_ok());
+}
+
+#[test]
+fn performing_and_watchlist_latest_statuses_are_accepted() {
+    let s = snapshot("1000000", "0", 1200);
+    for status in ["Performing", "WatchList", "Default"] {
+        let l = later_state(&s, |l| status.clone_into(&mut l.status));
+        assert!(backdated(&s, &l, "1000", Some(MAX_FEE_BPS)).is_ok());
+    }
 }

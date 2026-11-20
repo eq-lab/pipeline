@@ -14,7 +14,7 @@ EVM `pipeline-contracts` `src/loanRegistry/LoanRegistryUpgradeable.sol` (`150631
 
 | # | Check (both chains) | State it reads at execution | Waterfall today | Decision |
 |---|---|---|---|---|
-| 1 | Status in `Performing..=Default` (`_requireStatusRange` / `require_status_range`), else `WrongCurrentStatus` | current `status` | not checked | Out of scope. Logged as a known bug (step 7) |
+| 1 | Status in `Performing..=Default` (`_requireStatusRange` / `require_status_range`), else `WrongCurrentStatus` | current `status` | not checked | **Latest** status outside the range is a `400` (human decision 2026-11-20) |
 | 2 | Sum of components `== offtakerReceived` (`WrongRepaymentData`) | none | always holds | No change |
 | 3 | `status == Default` ⇒ `mgmt + perf + oet + equity == 0` (`NonZeroOnDefault`) | current `status` | as_of `status` | **Latest** status |
 | 4 | `seniorInterest ≤ _accruedInterest()` (`InterestExceedsMax`), where `_accruedInterest = max(0, gross(block.timestamp) − recorded(seniorInterest + mgmt + perf) + interestAdjustment)`, and `0` when `Closed` | current gross, current recorded totals, current `interestAdjustment`, current `status` | as_of gross, as_of recorded, as_of adjustment, as_of status | Gross stays at **as_of**. Recorded totals, adjustment and Closed status become **latest** |
@@ -49,7 +49,7 @@ After the fix, the waterfall ceiling is `original_offtaker_price − latest offt
 ### Out of scope
 
 - New routes or query parameters (minimal endpoint surface). The route still takes `amount` and `as_of`.
-- Rejecting a loan whose latest status is outside `Performing..=Default` (`Approved`, `Closed`). `recordPayment` reverts `WrongCurrentStatus` there, and the API has always returned a breakdown for those statuses (`approved_loan_accrues_nothing_and_returns_no_principal`). Log it as a known bug (step 7). Do not fix it here.
+- Rejecting a loan whose latest status is outside `Performing..=Default` was out of scope in the first draft. It is now in scope (Open Questions, step 7).
 - Relaxing the API's interest bound from `senior + mgmt + perf` to the contract's `senior` only.
 - Contracts (frozen), Trustee frontend. The 400 message text keeps its "exceeds the loan's outstanding offtaker balance" prefix, so `mapWaterfallError` in `packages/trustee/src/utils/userError.ts` still matches.
 
@@ -66,7 +66,10 @@ After the fix, the waterfall ceiling is `original_offtaker_price − latest offt
 
 ## Open Questions
 
-- **Stage-2 targets on latest recorded totals (non-blocking, recommended yes).** The contracts only force the latest totals on the offtaker ceiling, the principal cap, the senior-interest headroom and the Default status. This plan also subtracts the **latest** recorded mgmt / perf / OET / coupon totals when computing targets (stage 2), so payments recorded out of order never charge the same accrual period's fees or OET twice. The alternative, as_of totals for stage 2 with only the headroom on latest totals, can propose fees and OET that the contract accepts but that double-count. Confirm the recommended behaviour.
+Resolved by the human on 2026-11-20 (issue comment).
+
+- **Stage-2 targets on latest recorded totals: yes.** Stage 2 subtracts the latest recorded coupon / mgmt / perf / OET totals, so payments recorded out of order never charge the same accrual period's fees or OET twice.
+- **BUG-42 is fixed in this PR, not logged.** The waterfall returns `400` when the loan's latest status is outside `Performing..=Default`, the range `recordPayment` accepts on both chains (EVM `_requireStatusRange(.., Performing, Default)` in `_recordPayment`, Stellar `require_status_range(.., Performing, Default)` in `record_payment`; `Approved` and `Closed` give `WrongCurrentStatus`). The check is on the latest status, before the offtaker ceiling. The Closed-status zero in `interest_headroom` is removed because a Closed loan never reaches it.
 
 ## Implementation Steps
 
@@ -92,7 +95,7 @@ All paths are relative to the worktree `/Users/aabliazimov/Documents/work/pipeli
    - Accrual (`:366-370`) stays on `s` and `rate_events`, unchanged.
    - Headroom (`:322-328`, `:371`): `interest_headroom(latest, &gross_accrued)` reads `latest.status` (`Closed` → 0), `latest.repayment.{senior_interest,mgmt_fee,perf_fee}` and `latest.interest_adjustment`.
    - `senior_gross_interest_cum` (`:372-373`): `gross_accrued + latest.interest_adjustment`, floored at 0.
-   - Stage 2 (`:395-402`): subtract `latest.repayment.{mgmt_fee,perf_fee,senior_interest,oet_alloc}` (subject to the Open Question; if the answer is "as_of", keep `s.repayment.*` here only).
+   - Stage 2 (`:395-402`): subtract `latest.repayment.{mgmt_fee,perf_fee,senior_interest,oet_alloc}`.
    - Default branch (`:413-414`): `LoanStatus::parse(&latest.status) == Some(LoanStatus::Default)`.
    - Flags (`:462-464`): `senior_principal_fully_repaid = latest.disbursed >= s.original_senior_tranche && &latest.outstanding_senior_principal - &senior_principal_returned <= 0`. `offtaker_fully_received` uses the new `outstanding_offtaker`.
 
@@ -118,7 +121,7 @@ All paths are relative to the worktree `/Users/aabliazimov/Documents/work/pipeli
    - `docs/product-specs/yield.md:61` (Offtaker-price ceiling): "cumulative `offtaker_received`" becomes "the loan's latest cumulative `offtaker_received`, whatever the `as_of`".
    - `docs/product-specs/trustee-dashboard.md:77`: after "first disbursement→`as_of` (#1630)", add "; ceilings, caps and recorded totals use the loan's latest state (#2145)".
 
-7. **Known bug.** In `docs/exec-plans/known-bugs.md`, add `BUG-42` (next free number; check with `grep -n '^### BUG-' docs/exec-plans/known-bugs.md`): "Waterfall returns a breakdown for a loan whose latest status is `Approved` or `Closed`, which `recordPayment` rejects (`WrongCurrentStatus`)". Location `packages/api/src/routes/waterfall.rs`. Root cause: no status-range check. Workaround: none needed, since the Trustee cannot record on those statuses anyway. Found while planning #2145.
+7. **Status range (BUG-42, fixed here).** `compute_waterfall` returns `400` ("loan status is X: a repayment can only be recorded while the loan is Performing, WatchList or Default") when `latest.status` is not one of those three, before the offtaker ceiling. Remove the `Closed` branch of `interest_headroom`. No known-bugs entry. Tests: `latest_status_outside_the_record_payment_range_is_rejected`, `closed_after_as_of_is_rejected_even_though_as_of_state_was_performing`, `approved_at_as_of_but_performing_now_is_accepted`, `performing_and_watchlist_latest_statuses_are_accepted`; `closed_loan_has_no_headroom` becomes `closed_loan_is_rejected_like_the_contract_does`. The Trustee `mapWaterfallError` shows its generic 4xx copy for this 400 (read-only check; no frontend change here).
 
 8. **User stories.** Create `docs/user-stories/epic-2129/2145-waterfall-backdated-ceiling.md` (format as `2124-waterfall-fee-cap-interest.md`, Status `Initial`) and add its row to the `## Epic #2129 — Math correctness` table in `docs/user-stories/index.md`. Stories:
    - **Backdated payment after a later one.** The loan has price 1,000,000. Payment B of 600,000 is recorded. Record Repayment for A with an as-of date before B and an amount of 500,000. Expected: `/waterfall` answers `400` ("exceeds the loan's outstanding offtaker balance"), the page shows the "amount is too high" copy, and nothing is recordable. An amount of 400,000 gives a `200` split that `recordPayment` accepts, with `offtaker_fully_received = true`.
@@ -166,5 +169,4 @@ npx tsx scripts/lint-docs.ts
 - `docs/product-specs/yield.md`, § Waterfall components (`:56`) and § Offtaker-price ceiling (`:61`): accrual at `as_of`, running counters from the latest state, principal cap `min`.
 - `docs/product-specs/trustee-dashboard.md:77`: one clause on the latest state (#2145).
 - `packages/api/src/routes/waterfall.rs` module doc: stages 2 and 3, the principal cap and the contract-bounds sentences.
-- `docs/exec-plans/known-bugs.md`: new BUG for the `Approved` / `Closed` status-range gap.
 - `docs/user-stories/epic-2129/2145-waterfall-backdated-ceiling.md` (new) and its row in `docs/user-stories/index.md`.

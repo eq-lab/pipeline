@@ -3,7 +3,8 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::waterfall::{
-    compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, WaterfallBreakdown,
+    compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, LatestLoanState,
+    WaterfallBreakdown,
 };
 use shared::book_weighting::LoanAccrual;
 use shared::contract_logs_repo::LoanRateEventRow;
@@ -86,6 +87,10 @@ fn gross_accrual(genesis_ppm: u32, events: &[LoanRateEventRow], until: i64) -> B
     LoanAccrual::from_ppm(genesis_ppm, &refs).accrued_floored_per_epoch(until)
 }
 
+fn latest(s: &LoanSnapshot) -> LatestLoanState {
+    LatestLoanState::from(s)
+}
+
 fn fees(mgmt: i32, perf: i32, oet: i32) -> FeeScheduleRow {
     FeeScheduleRow {
         mgmt_fee_rate_bps: mgmt,
@@ -114,7 +119,16 @@ fn run(
     f: &FeeScheduleRow,
     events: &[LoanRateEventRow],
 ) -> WaterfallBreakdown {
-    compute_waterfall(s, &dec(HUGE_AMOUNT), as_of, f, events, Some(MAX_FEE_BPS)).unwrap()
+    compute_waterfall(
+        s,
+        &latest(s),
+        &dec(HUGE_AMOUNT),
+        as_of,
+        f,
+        events,
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap()
 }
 
 fn suggested_interest(b: &WaterfallBreakdown) -> BigDecimal {
@@ -403,12 +417,21 @@ fn fully_recorded_interest_leaves_no_headroom() {
 }
 
 #[test]
-fn closed_loan_has_no_headroom() {
+fn closed_loan_is_rejected_like_the_contract_does() {
     let mut s = snapshot(T, "0", 1200);
     "Closed".clone_into(&mut s.status);
     let events = [disbursed(ORIGINATION, T)];
-    let b = run(&s, ONE_YEAR_LATER, &fees(0, 0, 0), &events);
-    assert_eq!(suggested_interest(&b), dec("0"));
+    let err = compute_waterfall(
+        &s,
+        &latest(&s),
+        &dec(HUGE_AMOUNT),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &events,
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap_err();
+    assert!(matches!(err, ApiError::BadRequest(m) if m.contains("Closed")));
 }
 
 #[test]
@@ -477,6 +500,7 @@ fn run_amount(s: &LoanSnapshot, amount: &str) -> Result<WaterfallBreakdown, ApiE
     let events = [disbursed(ORIGINATION, T)];
     compute_waterfall(
         s,
+        &latest(s),
         &dec(amount),
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
