@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatTokenAmount,
+  formatDecimalAmount,
   formatActivityTime,
   formatBigintCurrency,
   formatRawDecimalUSD,
@@ -144,5 +145,19 @@ describe("isDisplayZero — zero at the rendered 2dp value (#1186)", () => {
   it("false for real balances", () => {
     expect(isDisplayZero(1_000_000_000_000_000_000n, 18)).toBe(false);
     expect(isDisplayZero(10_000_000n, 7)).toBe(false);
+  });
+});
+
+describe("formatDecimalAmount", () => {
+  it("formats served decimal strings to two fraction digits", () => {
+    expect(formatDecimalAmount("986.301369")).toBe("986.30");
+    expect(formatDecimalAmount("1234.5")).toBe("1,234.50");
+    expect(formatDecimalAmount("0.000000")).toBe("0.00");
+  });
+
+  it("renders an em dash for missing or non-numeric values", () => {
+    expect(formatDecimalAmount(undefined)).toBe("—");
+    expect(formatDecimalAmount("")).toBe("—");
+    expect(formatDecimalAmount("abc")).toBe("—");
   });
 });

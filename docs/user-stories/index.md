@@ -273,6 +273,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1576 Home: loading state while GET /v1/lps/me is in flight](https://github.com/eq-lab/pipeline/issues/1576) | [1576-home-loading-state.md](./epic-1419/1576-home-loading-state.md) | Initial |
 | [#1819 Home: show the "Transfers unlocked / Add Funds" card for every signed-in, wallet-connected, KYB-passed LP](https://github.com/eq-lab/pipeline/issues/1819) | [1819-home-passed-unlocked-card.md](./epic-1419/1819-home-passed-unlocked-card.md) | Initial |
 | [#2057 Home: Total Balance headline and graph on the served composite total_balance](https://github.com/eq-lab/pipeline/issues/2057) | [2057-home-composite-total-balance.md](./epic-1419/2057-home-composite-total-balance.md) | Initial |
+| [#2058 Home: merged Recent activity feed with bank wire-ins and wire-outs](https://github.com/eq-lab/pipeline/issues/2058) | [2058-merged-activity-feed.md](./epic-1419/2058-merged-activity-feed.md) | Initial |
 | [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
 | [#1837 AddEmailModal async-submit test is deterministic](https://github.com/eq-lab/pipeline/issues/1837) | [1837-add-email-modal-flaky-test.md](./epic-1419/1837-add-email-modal-flaky-test.md) | Initial |
 
@@ -378,7 +379,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+| [#1757 LP: bank wire-out — request a withdrawal to a bank account and list wire-out requests with status](https://github.com/eq-lab/pipeline/issues/1757) | [1757-bank-wire-out.md](./epic-1795/1757-bank-wire-out.md) | Initial |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+| [#1759 LP: withdrawal queue position, payable-now state, queue aggregates and the recovery rate](https://github.com/eq-lab/pipeline/issues/1759) | [1759-withdrawal-queue-position.md](./epic-1795/1759-withdrawal-queue-position.md) | Initial |
 | [#1761 Trustee: Risk Council pages on the AccessManager model](https://github.com/eq-lab/pipeline/issues/1761) | [1761-risk-council-access-manager.md](./epic-1795/1761-risk-council-access-manager.md) | Initial |
 | [#1762 Trustee: Cash reporter gating and bank income booking](https://github.com/eq-lab/pipeline/issues/1762) | [1762-cash-reporter-bookings.md](./epic-1795/1762-cash-reporter-bookings.md) | Initial |
 | [#1763 Trustee: escrowed incoming wires — list, assign to lender or return](https://github.com/eq-lab/pipeline/issues/1763) | [1763-trustee-escrowed-wires.md](./epic-1795/1763-trustee-escrowed-wires.md) | Initial |

@@ -79,6 +79,35 @@ function isWalletRejection(raw: string): boolean {
 
 export const SOROBAN_VOUCHER_EXPIRED_CODE = 4;
 
+export const WITHDRAW_CUSTODY_SHORT_MESSAGE =
+  "The withdrawal custody account is short. Claims for your position wait until it is funded.";
+
+const SOROBAN_WITHDRAW_CLAIM_TOO_EARLY_CODE = 2;
+
+export interface UserErrorOptions {
+  context?: "withdrawClaim" | "wireOut";
+}
+
+const WIRE_OUT_NOT_AUTHORISED =
+  "Your address must be authorised to hold PLUSD to request a bank wire-out.";
+const WIRE_OUT_ZERO_AMOUNT = "Enter an amount greater than zero.";
+const WIRE_OUT_INSUFFICIENT_BALANCE = "Insufficient PLUSD balance.";
+const WIRE_OUT_PAUSED =
+  "Bank wire-outs are paused. Check the status page before retrying.";
+
+const WIRE_OUT_SOROBAN_COPY: Record<number, string> = {
+  16: WIRE_OUT_NOT_AUTHORISED,
+  6: WIRE_OUT_ZERO_AMOUNT,
+  10: WIRE_OUT_INSUFFICIENT_BALANCE,
+  1000: WIRE_OUT_PAUSED,
+};
+
+const WIRE_OUT_EVM_COPY: Array<[RegExp, string]> = [
+  [/EnforcedPause/, WIRE_OUT_PAUSED],
+  [/MinterInvalidAmount/, WIRE_OUT_ZERO_AMOUNT],
+  [/ERC20InsufficientBalance/, WIRE_OUT_INSUFFICIENT_BALANCE],
+];
+
 const SOROBAN_ERROR_COPY: Record<number, string> = {
   // unconfirmed: #3 is presumed to be the $5M per-transaction / per-LP-window
   // deposit-amount guard — circumstantial evidence only (no contract source
@@ -118,6 +147,9 @@ function matchHttp(raw: string): string | null {
 // ── EVM revert / network matching ──────────────────────────────────────────
 
 function matchEvm(raw: string): string | null {
+  if (/WithdrawalQueueTooEarly/.test(raw)) {
+    return WITHDRAW_CUSTODY_SHORT_MESSAGE;
+  }
   if (/execution reverted/i.test(raw)) {
     return "The transaction was rejected by the contract.";
   }
@@ -141,7 +173,10 @@ function matchEvm(raw: string): string | null {
  * wallet/user rejection → Soroban contract error → HTTP/API failure →
  * EVM revert/network → generic fallback.
  */
-export function toUserError(err: unknown): UserFacingError {
+export function toUserError(
+  err: unknown,
+  options: UserErrorOptions = {},
+): UserFacingError {
   const details = toError(err).message;
 
   if (isWalletRejection(details)) {
@@ -153,6 +188,25 @@ export function toUserError(err: unknown): UserFacingError {
   }
 
   const contractCode = parseSorobanContractErrorCode(details);
+  if (
+    options.context === "withdrawClaim" &&
+    contractCode === SOROBAN_WITHDRAW_CLAIM_TOO_EARLY_CODE
+  ) {
+    return {
+      message: WITHDRAW_CUSTODY_SHORT_MESSAGE,
+      details,
+      isSpecific: true,
+    };
+  }
+  if (options.context === "wireOut") {
+    const wireOutCopy =
+      contractCode !== null
+        ? WIRE_OUT_SOROBAN_COPY[contractCode]
+        : WIRE_OUT_EVM_COPY.find(([pattern]) => pattern.test(details))?.[1];
+    if (wireOutCopy !== undefined) {
+      return { message: wireOutCopy, details, isSpecific: true };
+    }
+  }
   if (contractCode !== null) {
     const copy = SOROBAN_ERROR_COPY[contractCode];
     if (copy !== undefined) {

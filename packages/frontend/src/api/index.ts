@@ -52,11 +52,20 @@ export { useRequests } from "./useRequests";
 export { useActionConfirmedRefresh } from "./activityRefresh";
 export type {
   RequestItem,
+  WireInItem,
+  WireOutItem,
   RequestType,
   RequestStatus,
   RequestsResponse,
   UseRequestsResult,
 } from "./useRequests";
+export { useWireOutRequests, getAuditLog } from "./useWireOutRequests";
+export type {
+  AuditLogItem,
+  AuditLogResponse,
+  WireOutRequestItem,
+  UseWireOutRequestsResult,
+} from "./useWireOutRequests";
 export { useDepositVoucher } from "./useDepositVoucher";
 export type {
   VoucherResponse,

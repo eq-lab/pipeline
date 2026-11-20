@@ -27,6 +27,7 @@ export type WithdrawalVoucherStatus = "idle" | "pending" | "ready" | "failed";
 export interface UseWithdrawalVoucherResult {
   data: WithdrawalVoucherResponse | undefined;
   status: WithdrawalVoucherStatus;
+  expired: boolean;
   error: Error | null;
   refetch: () => void;
   invalidate: () => void;
@@ -101,6 +102,7 @@ export function useWithdrawalVoucher(
   return {
     data: expired ? undefined : query.data,
     status,
+    expired: false,
     error: query.error,
     refetch: () => void query.refetch(),
     invalidate: () =>

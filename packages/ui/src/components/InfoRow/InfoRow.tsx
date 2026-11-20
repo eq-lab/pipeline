@@ -10,6 +10,8 @@ export interface InfoRowProps extends React.HTMLAttributes<HTMLDivElement> {
   label: string;
   /** Right-side value (e.g. "1 USDC = 1 PLUSD", "~$1.20"). */
   value: React.ReactNode;
+  /** Lets a long label wrap onto extra lines while the value stays on the right. */
+  wrapLabel?: boolean;
 }
 
 const rootClasses = [
@@ -23,7 +25,6 @@ const labelClasses = [
   "text-[length:var(--text-pipeline-body)]",
   "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink-muted)]",
-  "whitespace-nowrap",
 ].join(" ");
 
 const valueClasses = [
@@ -34,8 +35,13 @@ const valueClasses = [
   "whitespace-nowrap",
 ].join(" ");
 
+const wrapValueClasses = "shrink-0";
+
 export const InfoRow = React.forwardRef<HTMLDivElement, InfoRowProps>(
-  function InfoRow({ label, value, className, ...rest }, ref) {
+  function InfoRow(
+    { label, value, wrapLabel = false, className, ...rest },
+    ref,
+  ) {
     const composed = [rootClasses, className].filter(Boolean).join(" ");
     // Stable test id derived from the label; a caller-supplied data-testid
     // (via ...rest) still wins.
@@ -46,8 +52,16 @@ export const InfoRow = React.forwardRef<HTMLDivElement, InfoRowProps>(
 
     return (
       <div ref={ref} data-testid={derivedTestId} className={composed} {...rest}>
-        <span className={labelClasses}>{label}</span>
-        <span className={valueClasses}>{value}</span>
+        <span
+          className={`${labelClasses} ${wrapLabel ? "min-w-0" : "whitespace-nowrap"}`}
+        >
+          {label}
+        </span>
+        <span
+          className={`${valueClasses} ${wrapLabel ? wrapValueClasses : ""}`.trim()}
+        >
+          {value}
+        </span>
       </div>
     );
   },

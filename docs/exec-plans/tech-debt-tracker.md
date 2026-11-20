@@ -2532,3 +2532,11 @@ line, whichever section it lands in.
 - **Gap:** The Stellar poller caps the committed range at the minimum `latestLedger` the RPC reported. On EVM, `eth_getLogs` against a load-balanced node that is behind the head often clamps to its own head without an error, so a range can be committed with its last block unseen. `LOG_CONFIRMATIONS_DELAY` lowers the odds but does not remove them.
 - **Impact:** A log in the last block or blocks of a polled range can be skipped silently when the node serving `eth_getLogs` lags the node that served `eth_blockNumber`.
 - **Suggested fix:** Read `eth_blockNumber` from the same provider immediately after `eth_getLogs` and report `covered_to = min(to, that head)`.
+
+### TD-196: The withdraw page's wire-out list still reads the audit log although `GET /v1/requests` serves `wire_outs[]`
+
+- **Date:** 2026-11-19
+- **Location:** `packages/frontend/src/api/useWireOutRequests.ts`, `packages/frontend/src/components/withdraw/useWireOutList.ts`
+- **Gap:** #2058 sources the activity feed from the served `wire_outs[]`, while `useWireOutRequests` (audit-log listing plus per-id contract reads, #1757) still feeds the withdraw page's "Your bank wire-outs" list.
+- **Impact:** Two sources for the same rows can disagree, and the audit-log path costs extra reads.
+- **Suggested fix:** Move `useWireOutList` onto `useRequests().data.wire_outs` and drop `useWireOutRequests` once the epic #1795 branch lands.

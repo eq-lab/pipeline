@@ -65,6 +65,7 @@ const mockConnectModalOpen = vi.fn();
 vi.mock("@/wallet", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/wallet")>()),
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
+  useWireOuts: () => ({}),
 }));
 
 const {
@@ -202,6 +203,12 @@ vi.mock("@/api", () => ({
   useChainServed: () => mockChainServed(),
   getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
+  useWireOutRequests: () => ({
+    items: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
   useDashboardSummary: () => ({
     data: undefined,

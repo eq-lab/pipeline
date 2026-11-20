@@ -218,7 +218,13 @@ Supported runtime keys:
 | `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` | `0x7A8B7628Cd2DdE7E065F1BB441A0A8AcA993c1a9` |
 | `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` | `0x369033D21a4A62f837D4eeF9F65407Ae00357e75` |
 | `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` | `0x87CD1002bdB9401423cb50A860314FC8f11440Cd` |
+| `VITE_EVM_MINTER_ADDRESS`       | `0x0000000000000000000000000000000000000000` | `0x621BaAb0ced6b11f88019582183b081A118755f4` |
+| `VITE_STELLAR_YIELD_MINTER_ID`  | empty (unconfigured)                         | set per environment                          |
 | `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 | set per environment                          |
+
+`VITE_EVM_MINTER_ADDRESS` and `VITE_STELLAR_YIELD_MINTER_ID` (#1757) are the minter targets of the LP
+bank wire-out section; when the active chain's value is empty or the zero address the section stays
+hidden.
 
 Local container verification:
 

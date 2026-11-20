@@ -1,21 +1,4 @@
-/**
- * Typed Soroban client for the Pipeline WithdrawalQueue contract.
- *
- * Contract ID (testnet):  CC3TWGFXP2XUZJXGLVTM2G4K2PF2YTC6BKDRPZIUPSVETNYAO57GU3Q7
- *                         (redeployed 2026-06-16; old stale address CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL)
- * Interface captured:     2026-06-10  (extracted from testnet WASM via
- *                         `stellar contract info interface --id <C...> --network testnet`)
- *
- * WARNING — Stellar testnet is periodically reset. If contract calls start
- * failing with "contract not found", re-deploy and update
- * `VITE_STELLAR_WITHDRAWAL_QUEUE_ID`. The checked-in bindings remain valid
- * as long as the same WASM is re-deployed.
- *
- * Only the frontend-relevant subset is exposed here:
- *   Reads:  asset, share, paused, verifier, get_request, digest, domain_separator
- *   Writes: request_withdrawal (builder only — no submit), claim_request (builder only)
- */
-
+// spec: docs/frontend/wallet-flows.md#withdrawal-queue-reads
 import {
   Account,
   Contract,
@@ -181,6 +164,82 @@ export class WithdrawalQueueClient {
     const op = this.contract.call("domain_separator");
     const retval = await this.simulateReadCall(op);
     return scValToNative(retval) as Uint8Array;
+  }
+
+  async rate(): Promise<bigint> {
+    const retval = await this.simulateReadCall(this.contract.call("rate"));
+    return BigInt(scValToNative(retval) as bigint | number | string);
+  }
+
+  async totalQueued(): Promise<bigint> {
+    const retval = await this.simulateReadCall(
+      this.contract.call("total_queued"),
+    );
+    return BigInt(scValToNative(retval) as bigint | number | string);
+  }
+
+  async totalClaimed(): Promise<bigint> {
+    const retval = await this.simulateReadCall(
+      this.contract.call("total_claimed"),
+    );
+    return BigInt(scValToNative(retval) as bigint | number | string);
+  }
+
+  async claimable(requestId: bigint): Promise<boolean> {
+    const retval = await this.simulateReadCall(
+      this.contract.call(
+        "claimable",
+        nativeToScVal(requestId, { type: "u128" }),
+      ),
+    );
+    return scValToNative(retval) as boolean;
+  }
+
+  async withdrawalRequestQueued(requestId: bigint): Promise<bigint> {
+    const retval = await this.simulateReadCall(
+      this.contract.call(
+        "withdrawal_request_queued",
+        nativeToScVal(requestId, { type: "u128" }),
+      ),
+    );
+    return BigInt(scValToNative(retval) as bigint | number | string);
+  }
+
+  async simulateClaimPayout(
+    sender: string,
+    requestId: bigint,
+    verifierSignature: Uint8Array,
+    deadline: bigint,
+  ): Promise<bigint> {
+    const op = this.contract.call(
+      "claim_request",
+      nativeToScVal(requestId, { type: "u128" }),
+      xdr.ScVal.scvBytes(
+        Uint8Array.from(verifierSignature) as Parameters<
+          typeof xdr.ScVal.scvBytes
+        >[0],
+      ),
+      nativeToScVal(deadline, { type: "u64" }),
+    );
+    const tx = new TransactionBuilder(new Account(sender, "0"), {
+      fee: BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(op)
+      .setTimeout(30)
+      .build();
+    const result = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(result)) {
+      throw new Error(
+        `WithdrawalQueue.claim_request simulation error: ${result.error}`,
+      );
+    }
+    if (!result.result) {
+      throw new Error("WithdrawalQueueClient: simulation returned no result");
+    }
+    return BigInt(
+      scValToNative(result.result.retval) as bigint | number | string,
+    );
   }
 
   // ── Write builders (unsigned) ──────────────────────────────────────────────

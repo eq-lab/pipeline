@@ -245,6 +245,44 @@ describe("useRequests — mock-key path", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("passes served wire_ins and wire_outs through untouched", async () => {
+    const withWires: RequestsResponse = {
+      requests: [],
+      wire_ins: [
+        {
+          chain_id: 1,
+          id: 4,
+          status: "Direct",
+          amount: "986.301369",
+          value_date: "2026-05-01",
+          ref_hash: "0xaa",
+          recorded_at: "2026-05-01T10:00:00Z",
+        },
+      ],
+      wire_outs: [
+        {
+          chain_id: 1,
+          id: 7,
+          status: "Pending",
+          amount: "2.5",
+          requested_at: "2026-05-02T10:00:00Z",
+        },
+      ],
+    };
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/requests",
+      JSON.stringify(withWires),
+    );
+
+    const { result } = renderHook(() => useRequests(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(withWires);
+    });
+  });
+
   it("per-wallet mock key takes priority over the alias key", async () => {
     const perWalletFixture: RequestsResponse = { requests: [] };
     localStorage.setItem(

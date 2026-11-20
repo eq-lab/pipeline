@@ -33,8 +33,33 @@ export interface RequestItem {
   created_at: string;
 }
 
+export interface WireInItem {
+  chain_id: number;
+  id: number;
+  status: string;
+  amount: string;
+  value_date: string;
+  ref_hash: string;
+  recorded_at: string;
+  assigned_at?: string;
+}
+
+export interface WireOutItem {
+  chain_id: number;
+  id: number;
+  status: string;
+  amount: string;
+  requested_at: string;
+  settled_at?: string;
+  value_date?: string;
+  ref_hash?: string;
+  cancelled_at?: string;
+}
+
 export interface RequestsResponse {
   requests: RequestItem[];
+  wire_ins?: WireInItem[];
+  wire_outs?: WireOutItem[];
 }
 
 // ── Mock-version external store ────────────────────────────────────────────────

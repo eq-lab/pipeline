@@ -8,9 +8,10 @@ import {
   EmptyState,
   SegmentedTabs,
 } from "@pipeline/ui";
-import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
-import { renderRequestRow } from "@/components/activity/renderRequestRow";
+import { renderActivityRow } from "@/components/activity/renderBankTransferRow";
+import type { ActivityFeedItem } from "@/components/activity/useActivityFeed";
+import { useActivityFeed } from "@/components/activity/useActivityFeed";
 import {
   useConnectModal,
   useEvmWallet,
@@ -39,9 +40,16 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
   Unstake: "unstake",
 };
 
+function tabOf(entry: ActivityFeedItem): string {
+  if (entry.kind === "wireIn") return "buy";
+  if (entry.kind === "wireOut") return "sell";
+  return TYPE_TO_TAB[entry.item.type];
+}
+
 function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
-  const { data, isLoading, error, refetch } = useRequests();
+  const { items, requests } = useActivityFeed();
+  const { data, isLoading, error, refetch } = requests;
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
   const evmStakeDecimals = useEvmStakeDecimals();
@@ -50,11 +58,10 @@ function Transactions() {
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
-  const items = data?.requests ?? [];
   const filtered =
     activeTab === "all"
       ? items
-      : items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
+      : items.filter((entry) => tabOf(entry) === activeTab);
 
   const shouldRenderEmpty =
     !isLoading && !error && (!isConnected || filtered.length === 0);
@@ -139,10 +146,10 @@ function Transactions() {
 
               {!shouldRenderEmpty &&
                 filtered.length > 0 &&
-                filtered.map((item, i) => (
+                filtered.map((entry, i) => (
                   <React.Fragment key={i}>
-                    {renderRequestRow(
-                      item,
+                    {renderActivityRow(
+                      entry,
                       kind,
                       `transactions-row-${i}`,
                       "pb-4",

@@ -9,8 +9,8 @@ import {
   useStellarWallet,
   useWalletView,
 } from "@/wallet";
-import { useRequests } from "@/api";
-import { renderRequestRow } from "@/components/activity/renderRequestRow";
+import { renderActivityRow } from "@/components/activity/renderBankTransferRow";
+import { useActivityFeed } from "@/components/activity/useActivityFeed";
 
 export interface RecentActivityCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -37,9 +37,9 @@ export const RecentActivityCard = React.forwardRef<
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
-  const { data, isLoading, error } = useRequests();
-  const requests = data?.requests ?? [];
-  const showList = isConnected && !isLoading && !error && requests.length > 0;
+  const { items, requests } = useActivityFeed({ limit: MAX_ROWS });
+  const { isLoading, error } = requests;
+  const showList = isConnected && !isLoading && !error && items.length > 0;
 
   const composed = [
     "flex flex-col gap-4",
@@ -85,10 +85,10 @@ export const RecentActivityCard = React.forwardRef<
         {showList ? (
           <>
             <ul className="flex flex-col" data-testid="home-activity-list">
-              {requests.slice(0, MAX_ROWS).map((item, i) => (
+              {items.map((entry, i) => (
                 <li key={i} data-testid={`home-activity-row-${i}`}>
-                  {renderRequestRow(
-                    item,
+                  {renderActivityRow(
+                    entry,
                     kind,
                     `home-activity-row-inner-${i}`,
                     "pb-4",

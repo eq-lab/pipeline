@@ -100,6 +100,45 @@ describe("toUserError — Soroban contract error mapping", () => {
   });
 });
 
+describe("toUserError — withdraw claim too-early mapping", () => {
+  const CUSTODY_SHORT =
+    "The withdrawal custody account is short. Claims for your position wait until it is funded.";
+
+  it("#2 with the withdrawClaim context → custody-short copy", () => {
+    const result = toUserError(new Error("Error(Contract, #2)"), {
+      context: "withdrawClaim",
+    });
+    expect(result.message).toBe(CUSTODY_SHORT);
+    expect(result.isSpecific).toBe(true);
+    expect(result.details).toBe("Error(Contract, #2)");
+  });
+
+  it("#2 without the context stays generic", () => {
+    const result = toUserError(new Error("Error(Contract, #2)"));
+    expect(result.message).toBe(GENERIC_MESSAGE);
+    expect(result.isSpecific).toBe(false);
+  });
+
+  it("#4 with the withdrawClaim context is unchanged", () => {
+    const result = toUserError(new Error("Error(Contract, #4)"), {
+      context: "withdrawClaim",
+    });
+    expect(result.message).toBe(
+      "The voucher expired or did not match the request. Your app fetches a fresh voucher.",
+    );
+  });
+
+  it("EVM WithdrawalQueueTooEarly() → custody-short copy before the generic revert match", () => {
+    const result = toUserError(
+      new Error(
+        "The contract function reverted with: execution reverted: WithdrawalQueueTooEarly()",
+      ),
+    );
+    expect(result.message).toBe(CUSTODY_SHORT);
+    expect(result.isSpecific).toBe(true);
+  });
+});
+
 describe("toUserError — wallet / user rejection (checked first)", () => {
   it.each([
     "User rejected the request",
@@ -210,5 +249,74 @@ describe("toUserError — 'network' keyword maps to the EVM network-problem copy
     expect(result.message).toBe("Network problem. Please try again.");
     expect(result.isSpecific).toBe(true);
     expect(result.details).toBe("network failure");
+  });
+});
+
+describe("toUserError — wireOut context", () => {
+  const ctx = { context: "wireOut" } as const;
+
+  it.each([
+    [
+      16,
+      "Your address must be authorised to hold PLUSD to request a bank wire-out.",
+    ],
+    [6, "Enter an amount greater than zero."],
+    [10, "Insufficient PLUSD balance."],
+    [1000, "Bank wire-outs are paused. Check the status page before retrying."],
+  ])("Soroban #%i maps in context", (code, copy) => {
+    const result = toUserError(new Error(`Error(Contract, #${code})`), ctx);
+    expect(result.message).toBe(copy);
+    expect(result.isSpecific).toBe(true);
+  });
+
+  it("keeps the global copy for #13 and #11 inside the context", () => {
+    expect(toUserError(new Error("Error(Contract, #13)"), ctx).message).toBe(
+      "A required trustline is missing. Enable the asset and try again.",
+    );
+    expect(toUserError(new Error("Error(Contract, #11)"), ctx).message).toBe(
+      "Your PLUSD balance is not authorized yet. Try again shortly.",
+    );
+  });
+
+  it("does not remap these codes without the context", () => {
+    for (const code of [16, 6, 10, 1000]) {
+      const result = toUserError(new Error(`Error(Contract, #${code})`));
+      expect(result.message).toBe(GENERIC_MESSAGE);
+      expect(result.isSpecific).toBe(false);
+    }
+  });
+
+  it.each([
+    [
+      "execution reverted: EnforcedPause()",
+      "Bank wire-outs are paused. Check the status page before retrying.",
+    ],
+    [
+      "execution reverted: MinterInvalidAmount()",
+      "Enter an amount greater than zero.",
+    ],
+    [
+      "execution reverted: ERC20InsufficientBalance(0x1, 1, 2)",
+      "Insufficient PLUSD balance.",
+    ],
+  ])("EVM %s maps before the generic revert copy", (raw, copy) => {
+    expect(toUserError(new Error(raw), ctx).message).toBe(copy);
+    expect(toUserError(new Error(raw)).message).toBe(
+      "The transaction was rejected by the contract.",
+    );
+  });
+
+  it("wallet rejection still wins", () => {
+    expect(
+      toUserError(new Error("User rejected the request"), ctx).message,
+    ).toBe("You cancelled the transaction in your wallet.");
+  });
+
+  it("withdrawClaim #2 is unchanged", () => {
+    expect(
+      toUserError(new Error("Error(Contract, #2)"), {
+        context: "withdrawClaim",
+      }).isSpecific,
+    ).toBe(true);
   });
 });

@@ -128,6 +128,8 @@ React Query hook that fetches the connected wallet's full request history.
 ```ts
 const { data, isLoading, error, refetch } = useRequests();
 // data?.requests — RequestItem[]
+// data?.wire_ins — WireInItem[] | undefined (bank wires in, served on Stellar minter chains)
+// data?.wire_outs — WireOutItem[] | undefined (bank wire-out requests, same scope)
 ```
 
 Disabled when the wallet is disconnected. Automatically refetches when any

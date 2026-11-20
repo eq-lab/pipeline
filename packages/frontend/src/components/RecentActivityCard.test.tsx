@@ -625,3 +625,99 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
   });
 });
+
+describe("RecentActivityCard — bank transfer rows (#2058)", () => {
+  const WIRE_IN = {
+    chain_id: 1,
+    id: 4,
+    status: "Direct",
+    amount: "1234.5",
+    value_date: "2026-05-14",
+    ref_hash: "0xaa",
+    recorded_at: "2026-05-14T12:00:00Z",
+  };
+  const WIRE_OUT = {
+    chain_id: 1,
+    id: 7,
+    status: "Pending",
+    amount: "2.5",
+    requested_at: "2026-05-14T11:00:00Z",
+  };
+
+  beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GSTELLAR",
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function withData(data: RequestsResponse) {
+    mockUseRequests.mockReturnValue({
+      data,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+  }
+
+  it("interleaves wire-in and wire-out rows between requests by time", () => {
+    withData({
+      ...FIXTURE_3,
+      wire_ins: [WIRE_IN],
+      wire_outs: [WIRE_OUT],
+    });
+    renderCard();
+    const rows = screen.getAllByTestId(/^home-activity-row-\d+$/);
+    expect(rows).toHaveLength(5);
+    expect(rows[1]).toHaveTextContent("Add funds");
+    expect(rows[1]).toHaveTextContent("+1,234.50 USD");
+    expect(rows[1]).toHaveTextContent("Bank transfer · Direct");
+    expect(rows[2]).toHaveTextContent("Withdraw funds");
+    expect(rows[2]).toHaveTextContent("−2.50 PLUSD");
+    expect(rows[2]).toHaveTextContent("Bank transfer · Pending");
+  });
+
+  it("renders omitted wire lists as on-chain rows only", () => {
+    withData(FIXTURE_3);
+    renderCard();
+    expect(screen.getAllByTestId(/^home-activity-row-\d+$/)).toHaveLength(3);
+    expect(screen.queryByText(/Bank transfer/)).not.toBeInTheDocument();
+  });
+
+  it("slices to five rows after the merge", () => {
+    withData({ ...FIXTURE_6, wire_ins: [WIRE_IN], wire_outs: [WIRE_OUT] });
+    renderCard();
+    expect(screen.getAllByTestId(/^home-activity-row-\d+$/)).toHaveLength(5);
+  });
+
+  it("shows the list and View All for a wallet with only bank rows", () => {
+    withData({ requests: [], wire_ins: [WIRE_IN] });
+    renderCard();
+    expect(screen.getByTestId("home-activity-list")).toBeInTheDocument();
+    expect(screen.getByText(/View All/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("You will see all transactions here"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows em dashes for a missing status and amount", () => {
+    withData({
+      requests: [],
+      wire_outs: [{ ...WIRE_OUT, status: "", amount: "" }],
+    });
+    renderCard();
+    expect(screen.getByText("−— PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("Bank transfer · —")).toBeInTheDocument();
+  });
+});
