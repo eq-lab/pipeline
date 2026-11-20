@@ -1,0 +1,3 @@
+specs/flex/limits.md#A limit above the maximum is clamped to it
+specs/flex/limits.md#A limit within the maximum is kept
+specs/flex/limits.md#A missing limit takes the default
