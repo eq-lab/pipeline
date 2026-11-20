@@ -287,6 +287,17 @@ describe("mapWaterfallError (consolidated, D5)", () => {
     expect(result?.isSpecific).toBe(true);
   });
 
+  it("maps the loan-status 400 to the status copy with raw details (#2145)", () => {
+    const raw =
+      "loan status is Closed: a repayment can only be recorded while the loan is Performing, WatchList or Default";
+    const result = mapWaterfallError(new ApiError(raw, 400));
+    expect(result?.message).toBe(
+      "This loan can't take a repayment in its current status. Repayments are recorded only while the loan is Performing, Watchlist or Default.",
+    );
+    expect(result?.details).toBe(raw);
+    expect(result?.isSpecific).toBe(true);
+  });
+
   it("keeps other waterfall 400s on the generic amount copy with no details (#1661)", () => {
     const result = mapWaterfallError(
       new ApiError(
