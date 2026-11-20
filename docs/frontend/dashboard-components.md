@@ -1202,9 +1202,10 @@ removed to match Figma exactly (resolved decision for issue #749) — this table
 width, and `headerAggregates` populates the header row at all widths too.
 
 **Column widths** (Figma node `3283-14552`, Table container): Commodity is flexible (fills
-remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); LTV 112px (`3704:1082`);
-Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px (`3704:1091`) — fixed
-columns total 544px, remainder goes to Commodity (Figma's Collateral 112px `3704:1079` is removed). `table-layout: fixed`
+remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); LTV 176px (Figma `3704:1082`
+is 112px; widened so the longest value, "No security value", fits with a gap before Duration,
+#2148); Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px (`3704:1091`) — fixed
+columns total 608px, remainder goes to Commodity (Figma's Collateral 112px `3704:1079` is removed). `table-layout: fixed`
 
 - `<colgroup>` enforces these widths so long strings in the commodity column don't push the
   numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
