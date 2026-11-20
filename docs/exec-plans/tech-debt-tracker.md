@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-198.**
+**Next free number: TD-200.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2549,3 +2549,19 @@ line, whichever section it lands in.
 - **Gap:** The unit of a standard-goods price is not stored anywhere. `quote_quantity` hard-codes `XAU`, `XAG`, `XPT` and `XPD` as per troy ounce, separate from `security_marks::QuoteUnit`. Every other asset reads unpriced until a per-anchor quote unit exists. Submission does not reject a standard-goods asset with no known unit (follow-up next to TD-55 / #1328).
 - **Impact:** Standard-goods loans on non-precious assets (for example `XCU`, `KC`) show `collateral: null` and `missing_inputs: ["quote_unit"]` on `/valuations`.
 - **Suggested fix:** Persist a quote unit on the anchor (or reuse `QuoteUnit`), validate it at submission, and drop the table.
+
+### TD-198: EVM inspection writes are not built in the Trustee
+
+- **Date:** 2026-11-20
+- **Location:** `packages/trustee/src/routes/-SecurityRecordsCard.tsx`, `packages/wallet-connect/src/evm/contracts/securityRegistry.ts` — Issue #1857.
+- **Gap:** Enter inspection and Approve are Stellar only. The EVM `PipelineSecurityRecordNft` has the same pair, `recordInspection(uint256, NewInspection) restricted returns (uint256)` and `approveInspection(uint256) restricted`, both direct calls from `msg.sender` (`SecurityRecordNftSameOperator` / `AlreadyApproved` / `NotInspector`).
+- **Impact:** An EVM loan shows the inspections and the panel read-only; operators cannot enter or approve from the Trustee.
+- **Suggested fix:** Add an EVM arm with `useChainWallet` and a direct `restricted` call, reusing the form and the four-eyes hide rule.
+
+### TD-199: The inspector panel on the loan page is the served copy and can lag set_inspectors
+
+- **Date:** 2026-11-20
+- **Location:** `packages/trustee/src/routes/-loanSecurityRecords.ts` (`panel`), `packages/trustee/src/routes/-InspectionDialog.tsx` — Issue #1857.
+- **Gap:** The Enter inspection dialog offers the panel served by `/security` `inspectors` (`security_registry_state`), not the on-chain `inspectors` view.
+- **Impact:** A `set_inspectors` executed seconds ago may not be listed for one fold cycle; an inspector just added cannot be picked, and one just removed can be picked and is then rejected with `NotInspector`.
+- **Suggested fix:** Read the panel on-chain at submit time (`useSecurityInspectors`), or serve the panel with a freshness marker.

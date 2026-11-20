@@ -41,7 +41,7 @@ export interface CheckCoverageInput {
   loanId: number;
 }
 
-interface WriteContext {
+export interface WriteContext {
   caller: string;
   signTransaction: ReturnType<typeof useStellarWallet>["signTransaction"];
   onStageChange: (stage: RelayStage) => void;
@@ -61,7 +61,7 @@ export function checkCoverageConfigured(): boolean {
   return !!ENV.STELLAR_SECURITY_REGISTRY_ID;
 }
 
-function rpc() {
+export function rpc() {
   return {
     rpcUrl: ENV.STELLAR_RPC_URL,
     networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
@@ -75,7 +75,11 @@ function invalidateSecurity(queryClient: QueryClient) {
 }
 
 export function useSecurityRegistryAccess(
-  fn: "revalue" | "record_extension_consent",
+  fn:
+    | "revalue"
+    | "record_extension_consent"
+    | "record_inspection"
+    | "approve_inspection",
   enabled: boolean,
 ) {
   const { address } = useStellarWallet();
@@ -95,15 +99,15 @@ export function useSecurityRegistryAccess(
   });
 }
 
-function useSecurityWrite<I extends { chainId: number | null | undefined }>(
-  configured: () => boolean,
-  run: (input: I, ctx: WriteContext) => Promise<{ hash: string }>,
-) {
+export function useSecurityWrite<
+  I extends { chainId: number | null | undefined },
+  R extends { hash: string } = { hash: string },
+>(configured: () => boolean, run: (input: I, ctx: WriteContext) => Promise<R>) {
   const { address, isConnected, signTransaction } = useStellarWallet();
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation<{ hash: string }, Error, I>({
+  const mutation = useMutation<R, Error, I>({
     mutationFn: async (input) => {
       setStage(null);
       const blocked = stellarOnlyActionReason(input.chainId);

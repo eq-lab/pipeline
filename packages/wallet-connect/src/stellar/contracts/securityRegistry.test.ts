@@ -18,7 +18,13 @@ vi.mock("./simulateRead", () => ({ simulateRead: mockSimulateRead }));
 
 import {
   decimal7ToI128,
+  encodeApproveInspectionArgs,
+  encodeNewInspection,
+  encodeRecordInspectionArgs,
   encodeSecurityRegistryArgs,
+  inspectionMeasuresQuantity,
+  INSPECTION_KINDS,
+  type NewInspectionInput,
   isSecurityBenchmark,
   readSecurityInspectors,
   readSecurityRegistrySchedule,
@@ -390,5 +396,115 @@ describe("encodeSecurityRegistryArgs record_extension_consent", () => {
       target: "CSEC",
       fn: "record_extension_consent",
     });
+  });
+});
+
+describe("encodeNewInspection", () => {
+  const input: NewInspectionInput = {
+    inspector: G2,
+    kind: "DraftSurvey",
+    inspectedAt: 1798675200,
+    region: "Santos",
+    siteHash: HASH,
+    quantity: "1234.5",
+    grade: "0",
+    certificateHash: "ab".repeat(32),
+    certificateNo: "CERT-1",
+  };
+
+  it("builds the sorted map with the contract's types", () => {
+    const val = encodeNewInspection(input);
+    expect(val.switch().name).toBe("scvMap");
+    const entries = val.map()!;
+    expect(entries.map((e) => e.key().sym().toString())).toEqual([
+      "certificate_hash",
+      "certificate_no",
+      "grade",
+      "inspected_at",
+      "inspector",
+      "kind",
+      "quantity",
+      "region",
+      "site_hash",
+    ]);
+    expect(entries.map((e) => e.val().switch().name)).toEqual([
+      "scvBytes",
+      "scvString",
+      "scvI128",
+      "scvU64",
+      "scvAddress",
+      "scvVec",
+      "scvI128",
+      "scvString",
+      "scvBytes",
+    ]);
+    expect(scValToNative(entries[6]!.val())).toBe(12345000000n);
+    expect(scValToNative(entries[2]!.val())).toBe(0n);
+    expect(scValToNative(entries[3]!.val())).toBe(1798675200n);
+    expect(scValToNative(entries[5]!.val())).toEqual(["DraftSurvey"]);
+  });
+
+  it("is stable for a fixed input", () => {
+    expect(encodeNewInspection(input).toXDR("base64")).toBe(
+      encodeNewInspection({ ...input }).toXDR("base64"),
+    );
+  });
+
+  it("rejects bad quantity, grade, inspector, kind, hash and u64", () => {
+    expect(() => encodeNewInspection({ ...input, quantity: "-1" })).toThrow(
+      /quantity/,
+    );
+    expect(() =>
+      encodeNewInspection({ ...input, quantity: "1.12345678" }),
+    ).toThrow(/quantity/);
+    expect(() => encodeNewInspection({ ...input, grade: "-0.5" })).toThrow(
+      /grade/,
+    );
+    expect(() => encodeNewInspection({ ...input, inspector: "GBAD" })).toThrow(
+      /inspector/,
+    );
+    expect(() =>
+      encodeNewInspection({ ...input, kind: "Other" as never }),
+    ).toThrow(/kind/);
+    expect(() =>
+      encodeNewInspection({ ...input, certificateHash: "zz" }),
+    ).toThrow(/certificateHash/);
+    expect(() => encodeNewInspection({ ...input, siteHash: "" })).toThrow(
+      /siteHash/,
+    );
+    expect(() =>
+      encodeNewInspection({ ...input, inspectedAt: (2n ** 64n).toString() }),
+    ).toThrow(/inspectedAt/);
+  });
+
+  it("lists the kinds in contract order and flags the sampling assay", () => {
+    expect(INSPECTION_KINDS).toEqual([
+      "LoadingTally",
+      "DraftSurvey",
+      "SamplingAssay",
+      "DischargeSurvey",
+      "StockCount",
+    ]);
+    expect(inspectionMeasuresQuantity("SamplingAssay")).toBe(false);
+    expect(inspectionMeasuresQuantity("StockCount")).toBe(true);
+  });
+
+  it("puts the caller first and enforces u32 ids", () => {
+    const record = encodeRecordInspectionArgs(G1, 7, input);
+    expect(record.map((a) => a.switch().name)).toEqual([
+      "scvAddress",
+      "scvU32",
+      "scvMap",
+    ]);
+    expect(scValToNative(record[1]!)).toBe(7);
+    expect(() => encodeRecordInspectionArgs(G1, 2 ** 32, input)).toThrow(
+      /recordId/,
+    );
+    const approve = encodeApproveInspectionArgs(G1, 9);
+    expect(approve.map((a) => a.switch().name)).toEqual([
+      "scvAddress",
+      "scvU32",
+    ]);
+    expect(() => encodeApproveInspectionArgs(G1, -1)).toThrow(/inspectionId/);
   });
 });

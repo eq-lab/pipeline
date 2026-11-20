@@ -24,6 +24,12 @@ export interface LoanSecurityInspection {
   inspector?: string;
   kind?: string;
   inspected_at?: string | null;
+  region?: string | null;
+  site_hash?: string | null;
+  certificate_hash?: string | null;
+  certificate_no?: string | null;
+  resolution_reason_hash?: string | null;
+  needs_view?: boolean | null;
   entered_by?: string | null;
   entered_at?: string | null;
   approved_by?: string | null;
@@ -80,6 +86,7 @@ export interface LoanSecurityRecordLot {
   latest_inspection_id?: string | null;
   latest_inspected_at?: string | null;
   latest_quantity?: string | null;
+  complete?: boolean | null;
 }
 
 export interface LoanSecurityRecord {
@@ -90,6 +97,8 @@ export interface LoanSecurityRecord {
   unit?: string | null;
   status?: string;
   open?: boolean;
+  region?: string | null;
+  site_hash?: string | null;
   flagged_by?: string | null;
   reference_quantity?: string | null;
   reference_grade?: string | null;

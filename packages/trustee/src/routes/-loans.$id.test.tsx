@@ -166,6 +166,7 @@ vi.mock("./-SecurityActionsCard", () => ({
 
 vi.mock("@/api/useSecurityMarks", () => ({
   securityMarksConfigured: () => false,
+  checkCoverageConfigured: () => false,
   useSecurityRegistryAccess: () => ({ data: undefined }),
 }));
 
@@ -727,7 +728,15 @@ describe("Loan detail route — Security records card (#1767)", () => {
 
   it("shows the empty line when no records are registered", () => {
     mockUseLoanDetail.mockReturnValue(
-      makeResult({ securityRecords: { state: "empty", records: [] } }),
+      makeResult({
+        securityRecords: {
+          state: "empty",
+          records: [],
+          panel: null,
+          paused: false,
+          tolerances: { quantity: "—", grade: "—" },
+        },
+      }),
     );
     renderRoute();
     expect(
@@ -737,7 +746,15 @@ describe("Loan detail route — Security records card (#1767)", () => {
 
   it("renders no records card when hidden", () => {
     mockUseLoanDetail.mockReturnValue(
-      makeResult({ securityRecords: { state: "hidden", records: [] } }),
+      makeResult({
+        securityRecords: {
+          state: "hidden",
+          records: [],
+          panel: null,
+          paused: false,
+          tolerances: { quantity: "—", grade: "—" },
+        },
+      }),
     );
     renderRoute();
     expect(

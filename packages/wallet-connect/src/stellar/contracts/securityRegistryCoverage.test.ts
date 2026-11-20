@@ -51,7 +51,13 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
   };
 });
 
-import { buildCheckCoverageEnvelope, checkCoverage } from "./securityRegistry";
+import { StrKey, xdr } from "@stellar/stellar-sdk";
+import {
+  approveInspection,
+  buildCheckCoverageEnvelope,
+  checkCoverage,
+  recordInspection,
+} from "./securityRegistry";
 
 const params = {
   registryId: "CSEC",
@@ -115,5 +121,77 @@ describe("checkCoverage", () => {
         signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "s" }),
       }),
     ).rejects.toThrow(/failed with status FAILED/);
+  });
+});
+
+describe("direct inspection writes", () => {
+  const caller = StrKey.encodeEd25519PublicKey(Buffer.alloc(32, 1));
+  const direct = {
+    registryId: "CSEC",
+    caller,
+    rpcUrl: "https://rpc.test",
+    networkPassphrase: "Test SDF Network ; September 2015",
+    signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "s" }),
+  };
+  const inspection = {
+    inspector: caller,
+    kind: "StockCount" as const,
+    inspectedAt: 1798675200,
+    region: "Santos",
+    siteHash: "cd".repeat(32),
+    quantity: "10",
+    grade: "0",
+    certificateHash: "ab".repeat(32),
+    certificateNo: "C-1",
+  };
+
+  it("calls record_inspection on the registry with the wallet as source and returns the u32 id", async () => {
+    m.poll.mockResolvedValue({
+      status: "SUCCESS",
+      returnValue: xdr.ScVal.scvU32(42),
+    });
+    const stages: string[] = [];
+    const result = await recordInspection({
+      ...direct,
+      recordId: 7,
+      inspection,
+      onStageChange: (stage) => stages.push(stage),
+    });
+    expect(result).toEqual({ hash: "tx-hash", inspectionId: 42 });
+    expect(stages).toEqual(["awaiting-signature", "submitting", "confirming"]);
+    expect(m.getAccount).toHaveBeenCalledWith(caller);
+    const [method, ...args] = m.call.mock.calls[0]!;
+    expect(method).toBe("record_inspection");
+    expect(args.map((a: xdr.ScVal) => a.switch().name)).toEqual([
+      "scvAddress",
+      "scvU32",
+      "scvMap",
+    ]);
+  });
+
+  it("returns a null inspection id when the return value is absent", async () => {
+    await expect(
+      recordInspection({ ...direct, recordId: 7, inspection }),
+    ).resolves.toEqual({ hash: "tx-hash", inspectionId: null });
+  });
+
+  it("calls approve_inspection with the caller and the u32 id", async () => {
+    await expect(
+      approveInspection({ ...direct, inspectionId: 42 }),
+    ).resolves.toEqual({ hash: "tx-hash" });
+    const [method, ...args] = m.call.mock.calls[0]!;
+    expect(method).toBe("approve_inspection");
+    expect(args.map((a: xdr.ScVal) => a.switch().name)).toEqual([
+      "scvAddress",
+      "scvU32",
+    ]);
+  });
+
+  it("surfaces simulation errors by label", async () => {
+    m.isSimError.mockReturnValue(true);
+    m.simulate.mockResolvedValue({ error: "Error(Contract, #31)" });
+    await expect(
+      approveInspection({ ...direct, inspectionId: 1 }),
+    ).rejects.toThrow(/approveInspection simulation error: .*#31/);
   });
 });

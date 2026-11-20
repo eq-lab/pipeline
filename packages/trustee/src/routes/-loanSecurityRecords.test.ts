@@ -11,6 +11,7 @@ import {
   formatQuantity,
   formatVariance,
 } from "./-loanSecurityRecords";
+import { COUNTED_QTY_NOTE } from "@/lib/securityInspections";
 import { securityResult } from "./-riskCouncilFixtures";
 
 const T0 = String(Date.UTC(2026, 5, 1) / 1000);
@@ -48,7 +49,7 @@ const GOODS: LoanSecurityRecord = {
       kind: "periodic",
       inspected_at: T0,
       quantity: "1200.0000000",
-      grade: "A",
+      grade: "98.5000000",
       entered_by: ADDR,
       entered_at: T0,
       approved_by: ADDR,
@@ -151,6 +152,11 @@ describe("buildSecurityRecords", () => {
       { label: "Commodity", value: "Copper Cathode" },
       { label: "Document quantity", value: "1,250 MT" },
       { label: "Counted quantity", value: "1,200 MT" },
+      {
+        label: "Latest inspection",
+        value: "—",
+        note: COUNTED_QTY_NOTE,
+      },
       { label: "Value", value: "$11,400,600" },
       { label: "Price", value: "LME Copper · $9,500.5 per MT" },
       { label: "Price updated", value: "10 Jun 2026" },
@@ -226,7 +232,7 @@ describe("buildSecurityRecords", () => {
       kind: "periodic",
       inspected: "1 Jun 2026",
       quantity: "1,200 MT",
-      grade: "A",
+      grade: "98.5",
       entered: { address: ADDR, date: "1 Jun 2026" },
       approved: { address: ADDR, date: "10 Jun 2026" },
       varianceReference: "120 bps",
@@ -329,5 +335,126 @@ describe("buildSecurityRecords mark suggestions (#1859)", () => {
     expect(
       view({ record_id: "1", protection: "cash_cover", open: true }).revalue,
     ).toBeNull();
+  });
+});
+
+describe("buildSecurityRecords inspections (#1857)", () => {
+  const GOODS_OPEN: LoanSecurityRecord = {
+    ...GOODS,
+    protection: "WarehousePledge",
+    region: "Santos",
+    site_hash: "ab".repeat(32),
+    reference_grade: "97.2500000",
+    lot: {
+      latest_inspection_id: "11",
+      latest_quantity: "1200.0000000",
+      latest_inspected_at: T0,
+    },
+    inspections: [
+      {
+        inspection_id: "12",
+        inspector: ADDR,
+        certificate_no: "C-9",
+        entered_by: ADDR,
+        approved_by: null,
+        complete: true,
+      },
+    ],
+  };
+
+  it("maps the new inspection row fields verbatim", () => {
+    const [row] =
+      buildSecurityRecords(withRecords([GOODS_OPEN])).records[0]?.inspections ??
+      [];
+    expect(row).toMatchObject({
+      inspectionId: 12,
+      inspector: ADDR,
+      certificateNo: "C-9",
+      enteredBy: ADDR,
+      awaitingApproval: true,
+    });
+  });
+
+  it("dashes unserved fields and never marks an incomplete row awaiting", () => {
+    const [row] =
+      buildSecurityRecords(
+        withRecords([
+          { inspections: [{ approved_by: null, complete: false }] },
+        ]),
+      ).records[0]?.inspections ?? [];
+    expect(row).toMatchObject({
+      inspectionId: null,
+      inspector: null,
+      certificateNo: "—",
+      enteredBy: null,
+      awaitingApproval: false,
+    });
+  });
+
+  it("builds the latest inspection row from the lot, or a dash", () => {
+    const row = (record: LoanSecurityRecord) =>
+      buildSecurityRecords(withRecords([record])).records[0]?.rows.find(
+        (r) => r.label === "Latest inspection",
+      );
+    expect(row(GOODS_OPEN)?.value).toBe(
+      "1,200 MT · Inspection #11 · 1 Jun 2026",
+    );
+    expect(row(GOODS_OPEN)?.note).toMatch(/smaller of the document quantity/);
+    expect(row({ ...GOODS_OPEN, lot: null })?.value).toBe("—");
+  });
+
+  it("offers the enter form for an inspectable goods record only", () => {
+    const [open] = buildSecurityRecords(withRecords([GOODS_OPEN])).records;
+    expect(open?.inspect?.seed).toMatchObject({
+      recordId: 7,
+      unit: "MT",
+      region: "Santos",
+      siteHash: "ab".repeat(32),
+    });
+    expect(open?.inspect?.rows).toEqual([
+      { label: "Commodity", value: "Copper Cathode" },
+      { label: "Document quantity", value: "1,250 MT" },
+      { label: "Reference grade", value: "97.25" },
+    ]);
+    const [cash] = buildSecurityRecords(
+      withRecords([{ ...GOODS_OPEN, protection: "CashCover" }]),
+    ).records;
+    expect(cash?.inspect).toBeNull();
+  });
+
+  it("shows the open flag only when flagged_by is served", () => {
+    const flag = (flagged_by: string | null) =>
+      buildSecurityRecords(withRecords([{ ...GOODS_OPEN, flagged_by }]))
+        .records[0]?.openFlag;
+    expect(flag("12")).toEqual({ inspectionId: "12" });
+    expect(flag(null)).toBeNull();
+  });
+
+  it("serves the panel, paused flag and tolerances", () => {
+    const view = (data: LoanSecurityResponse) =>
+      buildSecurityRecords(securityResult({ data }));
+    expect(view({ records: [], inspectors: [ADDR] }).panel).toEqual([ADDR]);
+    expect(view({ records: [], inspectors: [] }).panel).toEqual([]);
+    expect(view({ records: [] }).panel).toBeNull();
+    expect(view({ records: [], paused: true }).paused).toBe(true);
+    expect(view({ records: [] }).paused).toBe(false);
+    expect(
+      view({
+        records: [],
+        terms: { tolerance_bps: 100, grade_tolerance_bps: 50 },
+      }).tolerances,
+    ).toEqual({ quantity: "100 bps", grade: "50 bps" });
+    expect(view({ records: [] }).tolerances).toEqual({
+      quantity: "—",
+      grade: "—",
+    });
+  });
+
+  it("never throws on a partial inspection", () => {
+    expect(() =>
+      buildSecurityRecords(
+        withRecords([{ ...GOODS_OPEN, lot: {}, inspections: [{}] }]),
+      ),
+    ).not.toThrow();
   });
 });

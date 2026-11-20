@@ -854,10 +854,21 @@ Per record (`records[]`), everything verbatim from the served value:
   (`attested_by`, `AddressText`). `valuation` is `null` for a record that does not count or has no
   snapshot (quantity and value `—`); `mark` is `null` for non-goods records (price `—`).
 - **Inspections table** (`inspections[]`, served order; "No inspections." when empty): Inspection
-  (`#id`, "latest" when `is_lot_latest`), Kind, Inspected, Quantity (+ record unit), Grade,
+  (`#id`, "latest" when `is_lot_latest`), Inspector (`inspector`, `AddressText`), Certificate
+  (`certificate_no`), Kind, Inspected, Quantity (+ record unit), Grade (`formatDecimal7`),
   Entered (address + date), Approved (address + date; "Awaiting approval" when `approved_by` is
-  null and `complete !== false`; `—` otherwise), the three variances in bps, a "Flagged" pill and
-  the resolution.
+  null and `complete !== false`; `—` otherwise), the three variances in bps, a "Flagged" pill, the
+  resolution and an action column ([Security inspections (#1857)](#security-inspections-1857)).
+- **Latest inspection** row under Counted quantity: "{`lot.latest_quantity`} {unit} · Inspection
+  #{`lot.latest_inspection_id`} · {`lot.latest_inspected_at`}", `—` when no latest inspection is
+  served, with the static note "Counted quantity is the smaller of the document quantity and the
+  latest approved inspection." (`docs/user-docs/risks/credit-policy.md`).
+- **Open flag** row when `flagged_by` is set: "Inspection #{flagged_by}. The Risk Council settles
+  it." with an "Open" link to `/risk-council/security/$id?chain=` (`loan-detail-open-flag`).
+- **Inspector panel** block above the records (`loan-detail-inspector-panel`): the served
+  `/security` `inspectors` as `AddressText` rows, "No inspectors are on the panel." when the list
+  is empty, `—` when the field is not served, and an "Inspector panel" link to
+  `/risk-council/inspectors`.
 
 Formatting is display-only: 7-decimal strings are grouped and trailing zeros trimmed by string
 math (`"1250.0000000"` → `1,250`), unix-second strings become dates, and nothing is rescaled or
@@ -868,7 +879,8 @@ Test ids: `loan-detail-security-records`, `-records-empty`, `loan-detail-securit
 (`data-record-id`), `-record-chip`, `loan-detail-security-inspection`.
 
 Mark suggestions, the Set price button and the "Security actions" card are specified in
-[Security marks (#1859)](#security-marks-1859). Not shown
+[Security marks (#1859)](#security-marks-1859); the Enter inspection and Approve buttons in
+[Security inspections (#1857)](#security-inspections-1857). Not shown
 here: record documents, repayments, agent release, margin-call events and pending operations. Risk
 Council writes stay on `/risk-council/security/$id`.
 
@@ -946,6 +958,145 @@ cycles. Config: `VITE_STELLAR_SECURITY_REGISTRY_ID` and `VITE_STELLAR_LOAN_REGIS
 `loan-detail-security-actions`, `check-coverage-button`, `-result`, `-error`, `-connect`,
 `loan-detail-extension-consent(s)`, `extension-consent-date`, `-reference`, `-hash`, `-submit`,
 `-result`, `-error`, `-no-role`, `-validation`.
+
+#### Security inspections (#1857)
+
+The two INSPECTION_OPERATOR writes on the loan detail page, Stellar loans only: `record_inspection`
+and `approve_inspection` (four-eyes: one operator enters, a second approves). No Figma frames exist
+(no-design exception granted on the Issue): everything is built from the loan-detail primitives, the
+`-RevalueDialog.tsx` dialog shell and the `-SecurityActionsCard.tsx` form controls. The app computes
+nothing: every inspection, variance, flag and panel entry is the served value, `—` when missing.
+
+**Sources.** `pipeline-stellar-contracts@e9881ac` `contracts/security-registry/src/lib.rs`:
+`record_inspection(caller: Address, record_id: u32, inspection: NewInspection) -> u32` and
+`approve_inspection(caller: Address, inspection_id: u32)`, both `#[when_not_paused]`, guarded by
+`ensure_can_inspect` and `ensure_can_call`. Types in `types.rs` (`NewInspection`, `InspectionKind`),
+errors in `error.rs`. Roles: `deployments/justfile` `setup-access` maps both functions to
+`INSPECTION_OPERATOR` with delay 0 and at least two members; user docs
+`governance/multisig-roles.md`, `technical/smart-contracts.md`, `references/glossary.md`.
+Reads: `GET /v1/loan-book/{loan_id}/security` ([loan-security-state.md](../product-specs/loan-security-state.md)).
+Code: `wallet-connect` `stellar/contracts/securityRegistry.ts` (`encodeNewInspection`,
+`recordInspection`, `approveInspection`), `api/useSecurityInspections.ts`,
+`lib/securityInspections.ts`, `routes/-InspectionDialog.tsx`, `routes/-ApproveInspectionDialog.tsx`,
+`routes/-SecurityRecordsCard.tsx`.
+
+**Direct call, no AccessManager relay.** The contract runs `caller.require_auth()` and then the
+AccessManager `can_call(caller, registry, fn).immediate`. The transaction therefore invokes the
+SecurityRegistry itself with the wallet as source and `caller` (the `checkCoverage` envelope
+pattern, `buildDirectEnvelope` / `submitDirect`), never `AM.execute`, which would make the
+AccessManager the invoker and fail the check. The stages are `awaiting-signature`, `submitting`,
+`confirming`; `recordInspection` also returns the new `inspection_id` read from the transaction's
+`u32` return value (`null` when absent).
+
+**Availability.** The buttons are hidden for an EVM loan or when `VITE_STELLAR_SECURITY_REGISTRY_ID`
+or `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` is unset (the executor id is only needed for the
+`can_call` read). Enter inspection is shown on a record that is `open`, has a goods protection
+(`EndorsedBl`, `WarehousePledge`, `CollateralManagement`) and a `PendingPerfection` or `Active`
+status, mirroring `ensure_can_inspect`; the contract stays the authority. Both buttons are
+disabled with a note (`loan-detail-inspection-note`) when no wallet is connected, when the served
+`paused === true`, or when `can_call` for the function is not `immediate`; Enter is also disabled
+when the served panel is empty. No copy names a role.
+
+| Case | Copy |
+|---|---|
+| Enter, `can_call` not immediate | "This wallet is not allowed to enter inspections." |
+| Approve, `can_call` not immediate | "This wallet is not allowed to approve inspections." |
+| Row entered by the connected wallet | "Entered by this wallet. A second operator approves it." |
+| No wallet (enter / approve) | "Connect a Stellar wallet to enter an inspection." / "Connect a Stellar wallet to approve." |
+| Paused | "The SecurityRegistry is paused. Inspections can't be entered or approved until it resumes." |
+| Empty panel | "No inspectors are on the panel. The Risk Council sets the panel." |
+
+The pause panic code is not mapped: the UI gates on the served `paused`.
+
+**Four-eyes hide rule.** Approve is offered on a row that awaits approval (`approved_by` null and
+`complete !== false`) and has a numeric `inspection_id`, unless the served `entered_by` equals the
+connected wallet (exact Strkey); then the row shows the "Entered by this wallet" note instead. When
+`entered_by` is not served, Approve is still offered and the contract decides (`SameOperator`, #31).
+
+**Enter inspection** (`-InspectionDialog.tsx`, `inspection-dialog`). Context rows: record title,
+Commodity, Document quantity and Reference grade, verbatim. `NewInspection` fields and encoding
+(an `scMap` with sorted `Symbol` keys):
+
+| Field | Test id | Input | Encoding |
+|---|---|---|---|
+| Inspector | `inspection-inspector` | select of the served panel (only entry preselected) | `Address` |
+| Kind | `inspection-kind` | `LoadingTally`, `DraftSurvey`, `SamplingAssay`, `DischargeSurvey`, `StockCount` | `Vec[Symbol]` |
+| Inspection date (UTC) | `inspection-date` | date, not after today (UTC), sent as 00:00 UTC | `u64` seconds |
+| Quantity found ({unit}) | `inspection-quantity` | decimal, at most 7 dp; disabled for `SamplingAssay` (sent as `0`) | `i128` raw x 1e7 |
+| Grade | `inspection-grade` | optional decimal, at most 7 dp; empty is sent as `0` (not measured) | `i128` raw x 1e7 |
+| Region | `inspection-region` | text, prefilled from the record's served `region` | `String` |
+| Site hash | `inspection-site-hash` | 64 hex, prefilled from the record's served `site_hash`, editable | `BytesN<32>` |
+| Certificate no | `inspection-certificate-no` | text, required | `String` |
+| Certificate hash | `inspection-certificate-hash` | 64 hex pasted by the operator, lowercased | `BytesN<32>` |
+
+The contract stores `certificate_hash` as a salted sha256 of the certificate as received and
+`site_hash` as a salted sha256 of the vessel IMO or warehouse. No salting convention exists in the
+repo, so the operator computes the hash off-chain and the app never sees the file or the salt. Date
+precision is one day: two approved inspections on the same day tie and the later approval becomes
+the lot's latest (contract `>=`). Validation is input-only and shows the first failing rule in
+`inspection-validation`; errors go to `inspection-error`; the button is `inspection-confirm`
+labelled "Enter inspection" with the stage label while pending. Helper text: "An entered
+inspection counts for nothing until a second operator approves it."
+
+**Approve inspection** (`-ApproveInspectionDialog.tsx`, `approve-inspection-dialog`). Rows: kind,
+inspector, inspected date, quantity, grade, certificate no, entered by and date, and the loan's
+served `terms.tolerance_bps` / `grade_tolerance_bps` as "{n} bps". Text: "Approving computes the
+variances against the document quantity, the lot's latest inspection and the reference grade. The
+record is flagged when a variance is above the loan's tolerance; only the Risk Council clears a
+flag." Button `approve-inspection-confirm` "Approve inspection"; errors `approve-inspection-error`.
+
+**Errors by contract name** (`inspectionErrorCopy`). The call is direct, so `Error(Contract, #N)` is
+the SecurityRegistry's own code. The message is "{copy} ({Name})". A known code without copy reads
+"SecurityRegistry error {Name} (#N)."; an unknown code keeps the generic text with the raw details
+behind "View details"; "You cancelled the transaction" passes through.
+
+| Code | Name | Copy |
+|---|---|---|
+| 1 | NonExistentRecord | "This record does not exist on-chain." |
+| 4 | InvalidQuantity | "The quantity found must be greater than zero." |
+| 12 | WrongRecordStatus | "This record's status does not allow an inspection." |
+| 14 | NoTerms | "This loan has no security terms yet. Set them first." |
+| 23 | Unauthorized | "This wallet is not allowed to enter or approve inspections." |
+| 25 | NonExistentInspection | "This inspection does not exist on-chain." |
+| 26 | NotGoodsRecord | "Only goods records are inspected." |
+| 27 | NotInspector | "The inspector is not on the inspector panel. The panel may have changed; reload." |
+| 28 | InvalidInspectionDate | "The inspection date can't be in the future." |
+| 29 | TooManyInspections | "A record holds at most 64 inspections." |
+| 30 | AlreadyApproved | "This inspection has already been approved." |
+| 31 | SameOperator | "The operator who entered an inspection can't approve it. A second operator must approve it." |
+
+The full code table 1 to 32 is pinned in `SECURITY_REGISTRY_ERROR_NAMES` from `error.rs`.
+
+**Panel and lag.** The panel is the served `/security` `inspectors` (from `security_registry_state`,
+refreshed by the `inspectors_set` event and the hourly view), not the on-chain
+`useSecurityInspectors` read of the Inspector panel page. A `set_inspectors` executed seconds ago may
+not be listed yet; the contract rejects an off-panel inspector with `NotInspector`.
+
+**After a write.** The result line (`loan-detail-inspection-result`) reads "Inspection #{id} entered
+on record #{r}. Transaction {hash}. It counts once a second operator approves it." ("Inspection
+entered…" when the id is not returned) or "Inspection #{id} approved. Transaction {hash}. Variances
+and any flag show once indexed." `loan-security`, `loan-book` and `audit-log` are invalidated
+immediately and at 5 s and 15 s; a new inspection and an approval's variances and flag show after one
+or two 30 s fold cycles.
+
+**Served fields used.** `records[].{region, site_hash, flagged_by, lot.{latest_inspection_id,
+latest_inspected_at, latest_quantity}, reference_quantity, reference_grade, protection, status,
+open}`, `records[].inspections[].{inspection_id, inspector, kind, inspected_at, quantity, grade,
+certificate_no, entered_by, entered_at, approved_by, complete}`, top-level `inspectors` and
+`paused`, and `terms.{tolerance_bps, grade_tolerance_bps}`.
+
+**Scope.** Stellar only. On an EVM loan the display additions render (`/security` serves EVM) but
+Enter and Approve are hidden (`stellarOnlyActionReason`). The EVM `PipelineSecurityRecordNft` pair for
+a follow-up is `recordInspection(uint256 recordId, NewInspection newInspection) restricted returns
+(uint256)` and `approveInspection(uint256 inspectionId) restricted`, both `_requireDirectCall`
+(caller is `msg.sender`), with `NewInspection` the tuple `(address inspector, uint8 kind, uint64
+inspectedAt, uint256 quantity, uint256 grade, bytes32 siteHash, bytes32 certificateHash, string
+region, string certificateNo)`. Not built: a cross-loan awaiting-approval queue (no aggregated
+endpoint) and certificate file upload.
+
+Test ids: `loan-detail-enter-inspection`, `loan-detail-approve-inspection` (`data-inspection-id`),
+`loan-detail-inspection-note`, `-inspection-result`, `loan-detail-inspector-panel`,
+`loan-detail-open-flag`, `inspection-*`, `approve-inspection-*`.
 
 ### Registry state & derived (#852)
 

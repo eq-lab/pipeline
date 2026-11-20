@@ -30,6 +30,7 @@ export type LtvTone = "negative" | "attention" | "neutral";
 export interface SecurityRow {
   label: string;
   value: string;
+  note?: string;
 }
 
 export interface SecurityCardView {

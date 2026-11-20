@@ -6,6 +6,11 @@ import type {
 } from "@/api/useLoanSecurity";
 import { formatFullUsd, formatUsdExact } from "@/utils/formatUsd";
 import {
+  COUNTED_QTY_NOTE,
+  inspectionSeed,
+  type InspectionSeed,
+} from "@/lib/securityInspections";
+import {
   formatMoveBps,
   markDueReasonsText,
   suggestionStatusLabel,
@@ -35,6 +40,11 @@ export interface SecurityActor {
 
 export interface SecurityInspectionRow {
   id: string;
+  inspectionId: number | null;
+  inspector: string | null;
+  certificateNo: string;
+  enteredBy: string | null;
+  awaitingApproval: boolean;
   kind: string;
   inspected: string;
   quantity: string;
@@ -60,11 +70,22 @@ export interface SecurityRecordView {
   inspections: SecurityInspectionRow[];
   revalue: RevalueSeed | null;
   revalueRows: SecurityRow[];
+  inspect: InspectionTarget | null;
+  openFlag: { inspectionId: string } | null;
+}
+
+export interface InspectionTarget {
+  seed: InspectionSeed;
+  title: string;
+  rows: SecurityRow[];
 }
 
 export interface SecurityRecordsView {
   state: "hidden" | "empty" | "ready";
   records: SecurityRecordView[];
+  panel: string[] | null;
+  paused: boolean;
+  tolerances: { quantity: string; grade: string };
 }
 
 function trimDecimal(value: unknown): string | null {
@@ -200,6 +221,23 @@ function recordChips(record: LoanSecurityRecord): SecurityRecordChip[] {
   return chips;
 }
 
+function servedAddress(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function servedId(value: unknown): number | null {
+  return typeof value === "string" && /^\d+$/.test(value)
+    ? Number(value)
+    : null;
+}
+
+function formatLatestInspection(record: LoanSecurityRecord): string {
+  const lot = record.lot;
+  const id = lot?.latest_inspection_id;
+  if (typeof id !== "string" || id.length === 0) return "—";
+  return `${formatQuantity(lot?.latest_quantity, record.unit)} · Inspection #${id} · ${formatUnixDate(lot?.latest_inspected_at)}`;
+}
+
 function inspectionRow(
   inspection: LoanSecurityInspection,
   unit: unknown,
@@ -212,10 +250,15 @@ function inspectionRow(
   }
   return {
     id: verbatim(inspection.inspection_id),
+    inspectionId: servedId(inspection.inspection_id),
+    inspector: servedAddress(inspection.inspector),
+    certificateNo: verbatim(inspection.certificate_no),
+    enteredBy: servedAddress(inspection.entered_by),
+    awaitingApproval: approved === "awaiting",
     kind: verbatim(inspection.kind),
     inspected: formatUnixDate(inspection.inspected_at),
     quantity: formatQuantity(inspection.quantity, unit),
-    grade: verbatim(inspection.grade),
+    grade: formatDecimal7(inspection.grade),
     entered: formatActor(inspection.entered_by, inspection.entered_at),
     approved,
     varianceReference: formatVariance(inspection.variance_reference_bps),
@@ -230,10 +273,12 @@ function inspectionRow(
 function recordView(
   record: LoanSecurityRecord,
   index: number,
+  panel: string[] | null,
 ): SecurityRecordView {
   const recordId = verbatim(record.record_id);
   const title = `Record #${recordId} · ${verbatim(record.protection)}`;
   const seed = revalueSeed(record, title);
+  const inspectSeed = inspectionSeed(record, panel);
   return {
     key: `${recordId}-${index}`,
     recordId,
@@ -250,6 +295,11 @@ function recordView(
         label: "Counted quantity",
         value: formatQuantity(record.valuation?.counted_quantity, record.unit),
       },
+      {
+        label: "Latest inspection",
+        value: formatLatestInspection(record),
+        note: COUNTED_QTY_NOTE,
+      },
       { label: "Value", value: formatFullUsd(record.valuation?.value) },
       { label: "Price", value: formatPrice(record) },
       { label: "Price updated", value: formatUnixDate(record.mark?.at) },
@@ -265,21 +315,59 @@ function recordView(
     ),
     revalue: seed,
     revalueRows: seed == null ? [] : revalueRows(record),
+    inspect:
+      inspectSeed == null
+        ? null
+        : {
+            seed: inspectSeed,
+            title,
+            rows: [
+              { label: "Commodity", value: verbatim(record.commodity) },
+              {
+                label: "Document quantity",
+                value: formatQuantity(record.reference_quantity, record.unit),
+              },
+              {
+                label: "Reference grade",
+                value: formatDecimal7(record.reference_grade),
+              },
+            ],
+          },
+    openFlag:
+      typeof record.flagged_by === "string" && record.flagged_by.length > 0
+        ? { inspectionId: record.flagged_by }
+        : null,
   };
+}
+
+function servedPanel(value: unknown): string[] | null {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : null;
 }
 
 export function buildSecurityRecords(
   result: UseLoanSecurityResult,
 ): SecurityRecordsView {
+  const panel = servedPanel(result.data?.inspectors);
+  const terms = result.data?.terms;
+  const tolerances = {
+    quantity: formatVariance(terms?.tolerance_bps),
+    grade: formatVariance(terms?.grade_tolerance_bps),
+  };
+  const paused = result.data?.paused === true;
   if (buildSecurityCard(result).state !== "ready") {
-    return { state: "hidden", records: [] };
+    return { state: "hidden", records: [], panel, paused, tolerances };
   }
   const records = result.data?.records;
   if (!Array.isArray(records) || records.length === 0) {
-    return { state: "empty", records: [] };
+    return { state: "empty", records: [], panel, paused, tolerances };
   }
   return {
     state: "ready",
-    records: records.map((r, i) => recordView(r ?? {}, i)),
+    records: records.map((r, i) => recordView(r ?? {}, i, panel)),
+    panel,
+    paused,
+    tolerances,
   };
 }
