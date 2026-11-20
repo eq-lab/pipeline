@@ -63,7 +63,11 @@ const state = vi.hoisted(() => ({
   execute: undefined as unknown,
   record: undefined as unknown,
   financials: { data: undefined as unknown },
-  waterfall: { data: undefined as unknown, error: null, isLoading: false },
+  waterfall: {
+    data: undefined as unknown,
+    error: null as Error | null,
+    isLoading: false,
+  },
   audit: { data: undefined as unknown },
   loanBook: { data: undefined as unknown },
   walletAddress: null as string | null,
