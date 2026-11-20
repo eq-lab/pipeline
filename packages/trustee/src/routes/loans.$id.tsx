@@ -1344,7 +1344,11 @@ function LoanDetail() {
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityRecordsCard
+            view={detail.securityRecords}
+            chainId={chain}
+            loanId={id}
+          />
           <SecurityActionsCard
             view={detail.securityActions}
             chainId={chain}
@@ -1396,7 +1400,11 @@ function LoanDetail() {
               />
             )}
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityRecordsCard
+            view={detail.securityRecords}
+            chainId={chain}
+            loanId={id}
+          />
           <SecurityActionsCard
             view={detail.securityActions}
             chainId={chain}
@@ -1454,7 +1462,11 @@ function LoanDetail() {
             <SecurityCard card={detail.security} loanId={id} chain={chain} />
             <RegistryCard registry={detail.registry} />
           </div>
-          <SecurityRecordsCard view={detail.securityRecords} chainId={chain} />
+          <SecurityRecordsCard
+            view={detail.securityRecords}
+            chainId={chain}
+            loanId={id}
+          />
           <SecurityActionsCard
             view={detail.securityActions}
             chainId={chain}

@@ -393,6 +393,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1858 Trustee: Risk Council security actions — set terms, resolve flag, release with consent, inspector panel (SecurityRegistry, scheduled 24 h)](https://github.com/eq-lab/pipeline/issues/1858) | [1858-risk-council-security-actions.md](./epic-1795/1858-risk-council-security-actions.md) | Initial |
 | [#1767 Trustee: loan detail security registry card — cure period, margin call, security records and inspections](https://github.com/eq-lab/pipeline/issues/1767) | [1767-trustee-security-registry-card.md](./epic-1795/1767-trustee-security-registry-card.md) | Initial |
 | [#1859 Trustee: price marks, extension consent and check coverage (SecurityRegistry revalue / record_extension_consent / check_coverage)](https://github.com/eq-lab/pipeline/issues/1859) | [1859-trustee-security-marks.md](./epic-1795/1859-trustee-security-marks.md) | Initial |
+| [#1857 Trustee: inspections — enter and approve (four-eyes), variances and flags (SecurityRegistry)](https://github.com/eq-lab/pipeline/issues/1857) | [1857-trustee-security-inspections.md](./epic-1795/1857-trustee-security-inspections.md) | Initial |
 | [#1892 Trustee: EVM arm of debt-token registration (PipelineDealTokenFactory.registerDeal after drawLoan)](https://github.com/eq-lab/pipeline/issues/1892) | [1892-trustee-evm-register-deal.md](./epic-1795/1892-trustee-evm-register-deal.md) | Initial |
 
 ---

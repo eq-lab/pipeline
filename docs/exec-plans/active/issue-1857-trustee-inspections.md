@@ -136,7 +136,7 @@ Errors are in `error.rs`. Roles: `deployments/justfile` `setup-access` maps `rec
 Every new file opens with one 2–3-line `// spec:` header pointing at
 `docs/frontend/trustee-flows.md#security-inspections-1857`. Files carry no other comments.
 
-### 1. wallet-connect: Stellar encoder and direct invoke
+### 1. wallet-connect: Stellar encoder and direct invoke (done)
 
 `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts`:
 - Add the following exports:
@@ -171,7 +171,7 @@ Every new file opens with one 2–3-line `// spec:` header pointing at
   `pollTransaction(...).returnValue` via `scValToNative`, giving `null` if absent. Also export `approveInspection(params) → { hash }`.
 - Export the new symbols from `packages/wallet-connect/src/index.ts`. They join the existing `securityRegistry` export block (:359-382).
 
-### 2. Trustee API hooks
+### 2. Trustee API hooks (done)
 
 - `packages/trustee/src/api/useLoanSecurity.ts`:
   - Add the served fields to `LoanSecurityInspection`: `region`, `site_hash`, `certificate_hash`, `certificate_no`,
@@ -188,7 +188,7 @@ Every new file opens with one 2–3-line `// spec:` header pointing at
   - `useApproveInspection()` calls `approveInspection(...)`.
   - Both use `useSecurityWrite(checkCoverageConfigured, ...)`. Only the registry id is needed: there is no AM relay, and `can_call` is read separately.
 
-### 3. Pure logic
+### 3. Pure logic (done)
 
 New file `packages/trustee/src/lib/securityInspections.ts`.
 
@@ -251,7 +251,7 @@ New file `packages/trustee/src/lib/securityInspections.ts`.
   isSpecific: true }`. A known code without copy shows `"SecurityRegistry error {Name} (#N)."`. An unknown code keeps the generic `toUserError` text with the raw
   details. "You cancelled the transaction" passes through.
 
-### 4. Records view
+### 4. Records view (done)
 
 `packages/trustee/src/routes/-loanSecurityRecords.ts` (pure):
 - `SecurityInspectionRow` gains the following fields:
@@ -269,7 +269,7 @@ New file `packages/trustee/src/lib/securityInspections.ts`.
 - `SecurityRecordsView` gains `panel: string[] | null` (served `inspectors`; `null` when not an array) and `paused: boolean`
   (`=== true`).
 
-### 5. UI
+### 5. UI (done)
 
 **`packages/trustee/src/routes/-SecurityRecordsCard.tsx`.** The card takes new props `loanId` and `chainId`. The route already passes `chainId`, the loan's own `chain`.
 - **Panel block.** Under the title: an "Inspector panel" `KeyValueRow` list (`AddressText`), `NO_PANEL` when empty, and a link
@@ -322,7 +322,7 @@ New file `packages/trustee/src/lib/securityInspections.ts`.
 `packages/trustee/src/routes/loans.$id.tsx`: pass `loanId` to the three `SecurityRecordsCard` call sites (:1347, :1399,
 :1457). Pass the served terms through `detail.securityRecords` if they are not already there. The layout does not change.
 
-### 6. Docs
+### 6. Docs (done)
 
 See Docs to Update. Write them in the same PR.
 

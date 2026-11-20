@@ -7,6 +7,7 @@ import {
   TransactionBuilder,
   nativeToScVal,
   rpc as SorobanRpc,
+  scValToNative,
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
@@ -26,6 +27,12 @@ import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
 export type SecurityPaymentTerm = "Lc" | "Dp" | "Da" | "OpenAccount";
 export type FlagOutcome = "Accepted" | "TopUpRequired" | "Escalated";
+export type InspectionKind =
+  | "LoadingTally"
+  | "DraftSurvey"
+  | "SamplingAssay"
+  | "DischargeSurvey"
+  | "StockCount";
 
 export const SECURITY_PAYMENT_TERMS: readonly SecurityPaymentTerm[] = [
   "Lc",
@@ -38,6 +45,29 @@ export const FLAG_OUTCOMES: readonly FlagOutcome[] = [
   "TopUpRequired",
   "Escalated",
 ];
+export const INSPECTION_KINDS: readonly InspectionKind[] = [
+  "LoadingTally",
+  "DraftSurvey",
+  "SamplingAssay",
+  "DischargeSurvey",
+  "StockCount",
+];
+
+export function inspectionMeasuresQuantity(kind: InspectionKind): boolean {
+  return kind !== "SamplingAssay";
+}
+
+export interface NewInspectionInput {
+  inspector: string;
+  kind: InspectionKind;
+  inspectedAt: number | string;
+  region: string;
+  siteHash: string;
+  quantity: string;
+  grade: string;
+  certificateHash: string;
+  certificateNo: string;
+}
 
 export interface SecurityTermsInput {
   advanceRatioBps: number;
@@ -113,12 +143,12 @@ export function isSecurityBenchmark(value: string): boolean {
   return BENCHMARK.test(value);
 }
 
-export function decimal7ToI128(text: string): bigint {
+export function decimal7ToI128(text: string, what = "value per unit"): bigint {
   const match = DECIMAL_7DP.exec(text.trim());
-  if (!match) fail("value per unit", text);
+  if (!match) fail(what, text);
   const [, whole = "0", fraction = ""] = match;
   const raw = BigInt(whole) * 10n ** 7n + BigInt(fraction.padEnd(7, "0"));
-  if (raw > I128_MAX) fail("value per unit", text);
+  if (raw > I128_MAX) fail(what, text);
   return raw;
 }
 
@@ -172,6 +202,49 @@ function encodeTerms(terms: SecurityTermsInput): xdr.ScVal {
 
 export function isInspectorAddress(value: string): boolean {
   return StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value);
+}
+
+export function encodeNewInspection(input: NewInspectionInput): xdr.ScVal {
+  if (!isInspectorAddress(input.inspector)) fail("inspector", input.inspector);
+  if (!INSPECTION_KINDS.includes(input.kind)) fail("kind", input.kind);
+  return scMap([
+    ["certificate_hash", hashArg(input.certificateHash, "certificateHash")],
+    ["certificate_no", nativeToScVal(input.certificateNo, { type: "string" })],
+    [
+      "grade",
+      nativeToScVal(decimal7ToI128(input.grade, "grade"), { type: "i128" }),
+    ],
+    ["inspected_at", u64Arg(input.inspectedAt, "inspectedAt")],
+    ["inspector", new Address(input.inspector).toScVal()],
+    ["kind", variant(input.kind)],
+    [
+      "quantity",
+      nativeToScVal(decimal7ToI128(input.quantity, "quantity"), {
+        type: "i128",
+      }),
+    ],
+    ["region", nativeToScVal(input.region, { type: "string" })],
+    ["site_hash", hashArg(input.siteHash, "siteHash")],
+  ]);
+}
+
+export function encodeRecordInspectionArgs(
+  caller: string,
+  recordId: number,
+  input: NewInspectionInput,
+): xdr.ScVal[] {
+  return [
+    new Address(caller).toScVal(),
+    u32Arg(recordId, "recordId"),
+    encodeNewInspection(input),
+  ];
+}
+
+export function encodeApproveInspectionArgs(
+  caller: string,
+  inspectionId: number,
+): xdr.ScVal[] {
+  return [new Address(caller).toScVal(), u32Arg(inspectionId, "inspectionId")];
 }
 
 export function encodeSecurityRegistryArgs(
@@ -307,28 +380,43 @@ export interface BuildCheckCoverageEnvelopeParams {
   networkPassphrase: string;
 }
 
+type SignTransaction = (
+  xdrStr: string,
+  opts?: { networkPassphrase?: string; address?: string },
+) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+
 export interface CheckCoverageParams extends BuildCheckCoverageEnvelopeParams {
-  signTransaction: (
-    xdrStr: string,
-    opts?: { networkPassphrase?: string; address?: string },
-  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  signTransaction: SignTransaction;
   onStageChange?: (stage: RelayStage) => void;
 }
 
-export async function buildCheckCoverageEnvelope({
-  registryId,
-  loanId,
-  caller,
-  rpcUrl,
-  networkPassphrase,
-}: BuildCheckCoverageEnvelopeParams): Promise<string> {
+interface DirectCallParams {
+  registryId: string;
+  caller: string;
+  fn: string;
+  args: xdr.ScVal[];
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+async function buildDirectEnvelope(
+  label: string,
+  { registryId, caller, fn, args, rpcUrl, networkPassphrase }: DirectCallParams,
+): Promise<string> {
   if (!registryId) {
-    throw new Error("buildCheckCoverageEnvelope: registryId must not be empty");
+    throw new Error(
+      `build${capitalise(label)}Envelope: registryId must not be empty`,
+    );
   }
   if (!caller) {
-    throw new Error("buildCheckCoverageEnvelope: caller must not be empty");
+    throw new Error(
+      `build${capitalise(label)}Envelope: caller must not be empty`,
+    );
   }
-  const args = [u32Arg(loanId, "loanId")];
   const server = new SorobanRpc.Server(rpcUrl, {
     allowHttp: rpcUrl.startsWith("http://"),
   });
@@ -337,47 +425,129 @@ export async function buildCheckCoverageEnvelope({
     fee: BASE_FEE,
     networkPassphrase,
   })
-    .addOperation(new Contract(registryId).call("check_coverage", ...args))
+    .addOperation(new Contract(registryId).call(fn, ...args))
     .setTimeout(30)
     .build();
   const simResult = await server.simulateTransaction(tx);
   if (SorobanRpc.Api.isSimulationError(simResult)) {
-    throw new Error(`checkCoverage simulation error: ${simResult.error}`);
+    throw new Error(`${label} simulation error: ${simResult.error}`);
   }
   return SorobanRpc.assembleTransaction(tx, simResult).build().toXDR();
 }
 
-export async function checkCoverage({
-  signTransaction,
-  onStageChange,
-  ...params
-}: CheckCoverageParams): Promise<RelayResult> {
+async function submitDirect(
+  label: string,
+  params: DirectCallParams & {
+    signTransaction: SignTransaction;
+    onStageChange?: (stage: RelayStage) => void;
+  },
+): Promise<{ hash: string; returnValue: xdr.ScVal | undefined }> {
+  const { signTransaction, onStageChange, ...call } = params;
   onStageChange?.("awaiting-signature");
-  const assembledXdr = await buildCheckCoverageEnvelope(params);
+  const assembledXdr = await buildDirectEnvelope(label, call);
   const { signedTxXdr } = await signTransaction(assembledXdr, {
-    networkPassphrase: params.networkPassphrase,
-    address: params.caller,
+    networkPassphrase: call.networkPassphrase,
+    address: call.caller,
   });
   onStageChange?.("submitting");
-  const server = new SorobanRpc.Server(params.rpcUrl, {
-    allowHttp: params.rpcUrl.startsWith("http://"),
+  const server = new SorobanRpc.Server(call.rpcUrl, {
+    allowHttp: call.rpcUrl.startsWith("http://"),
   });
   const signedTx = TransactionBuilder.fromXDR(
     signedTxXdr,
-    params.networkPassphrase,
+    call.networkPassphrase,
   );
   const sendResult = await server.sendTransaction(signedTx as Transaction);
   if (sendResult.status === "ERROR") {
     throw new Error(
-      `checkCoverage: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+      `${label}: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
     );
   }
   onStageChange?.("confirming");
   const finalResult = await server.pollTransaction(sendResult.hash);
   if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
     throw new Error(
-      `checkCoverage: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+      `${label}: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
     );
   }
-  return { hash: sendResult.hash };
+  return {
+    hash: sendResult.hash,
+    returnValue: (finalResult as { returnValue?: xdr.ScVal }).returnValue,
+  };
+}
+
+export async function buildCheckCoverageEnvelope({
+  loanId,
+  ...rest
+}: BuildCheckCoverageEnvelopeParams): Promise<string> {
+  return buildDirectEnvelope("checkCoverage", {
+    ...rest,
+    fn: "check_coverage",
+    args: [u32Arg(loanId, "loanId")],
+  });
+}
+
+export async function checkCoverage({
+  loanId,
+  ...rest
+}: CheckCoverageParams): Promise<RelayResult> {
+  const { hash } = await submitDirect("checkCoverage", {
+    ...rest,
+    fn: "check_coverage",
+    args: [u32Arg(loanId, "loanId")],
+  });
+  return { hash };
+}
+
+export interface RecordInspectionParams {
+  registryId: string;
+  caller: string;
+  recordId: number;
+  inspection: NewInspectionInput;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: SignTransaction;
+  onStageChange?: (stage: RelayStage) => void;
+}
+
+export interface ApproveInspectionParams {
+  registryId: string;
+  caller: string;
+  inspectionId: number;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: SignTransaction;
+  onStageChange?: (stage: RelayStage) => void;
+}
+
+export async function recordInspection({
+  recordId,
+  inspection,
+  ...rest
+}: RecordInspectionParams): Promise<{
+  hash: string;
+  inspectionId: number | null;
+}> {
+  const { hash, returnValue } = await submitDirect("recordInspection", {
+    ...rest,
+    fn: "record_inspection",
+    args: encodeRecordInspectionArgs(rest.caller, recordId, inspection),
+  });
+  const native = returnValue == null ? null : scValToNative(returnValue);
+  return {
+    hash,
+    inspectionId: typeof native === "number" ? native : null,
+  };
+}
+
+export async function approveInspection({
+  inspectionId,
+  ...rest
+}: ApproveInspectionParams): Promise<{ hash: string }> {
+  const { hash } = await submitDirect("approveInspection", {
+    ...rest,
+    fn: "approve_inspection",
+    args: encodeApproveInspectionArgs(rest.caller, inspectionId),
+  });
+  return { hash };
 }
