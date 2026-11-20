@@ -967,6 +967,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Trim (and likely upper-case) `asset` at submission before persisting, or
   validate it against `[A-Z0-9]{2,6}`. Consider the same normalization for
   `price_provider`. Low-risk, no schema change.
+- **Resolution (2026-11-19, #1328):** `submit_loan` and `resubmit_loan` trim and upper-case `asset` and trim and lower-case `price_provider` before validation; `asset` must match `[A-Z0-9_-]{1,16}` (same rule as `SECURITY_MARK_COMMODITIES`). Migration `20261119000001` backfills stored anchors. Metal and element names in the valuation math (`assemble_metals`, `assemble_penalties`) now match case- and whitespace-insensitively, and `POST /assay` and `POST /offtake` store trimmed names and reject empty or case-duplicate names. A stored list that already holds names differing only by case would now match twice; not expected in real data.
 
 ### TD-56: No global React error boundary in the LP frontend
 

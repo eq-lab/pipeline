@@ -494,6 +494,11 @@ pub struct DrawLoanEconomics {
 pub const STELLAR_LOAN_MONEY_DECIMALS: u32 = 7;
 pub const EVM_LOAN_MONEY_DECIMALS: u32 = 6;
 
+pub fn normalize_collateral_valuation(cv: &mut CollateralValuationInput) {
+    cv.asset = cv.asset.trim().to_ascii_uppercase();
+    cv.price_provider = cv.price_provider.trim().to_ascii_lowercase();
+}
+
 pub fn normalize_data_room_id(raw: Option<String>) -> Option<String> {
     raw.and_then(|s| {
         let t = s.trim();
@@ -839,6 +844,7 @@ async fn submit_loan(
     }
 
     payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
+    normalize_collateral_valuation(&mut payload.collateral_valuation);
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
 
     // Structural checks pass; now confirm the on-chain metadata pointer resolves to a
@@ -955,6 +961,7 @@ async fn resubmit_loan(
     }
 
     payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
+    normalize_collateral_valuation(&mut payload.collateral_valuation);
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
     validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
         .await
@@ -1294,8 +1301,15 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
             ))
         }
     }
-    if req.collateral_valuation.asset.trim().is_empty() {
-        return Err("`asset` must not be empty".to_owned());
+    if !shared::security_marks::valid_asset(&req.collateral_valuation.asset) {
+        return Err(format!(
+            "`asset` must be 1-16 characters of A-Z, 0-9, `_` or `-` (got `{}`)",
+            req.collateral_valuation
+                .asset
+                .chars()
+                .take(32)
+                .collect::<String>()
+        ));
     }
     if !is_known_provider(&req.collateral_valuation.price_provider) {
         return Err(format!(

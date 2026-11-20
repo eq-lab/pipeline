@@ -43,13 +43,17 @@ fn grams_per_troy_oz() -> BigDecimal {
 /// its collateral cannot be priced, so the loan reads "unpriced" rather than being
 /// silently mispriced against another metal's feed.
 pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
-    match metal.to_ascii_lowercase().as_str() {
+    match metal.trim().to_ascii_lowercase().as_str() {
         "gold" => Some("XAU"),
         "silver" => Some("XAG"),
         "platinum" => Some("XPT"),
         "palladium" => Some("XPD"),
         _ => None,
     }
+}
+
+pub fn same_name(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
 }
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
@@ -337,7 +341,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
     prices: &HashMap<String, BigDecimal, S>,
 ) -> anyhow::Result<Option<Vec<PayableMetal>>> {
     let mut metals = Vec::with_capacity(offtake.payable_terms.0.len());
-    for term in &offtake.payable_terms.0 {
+    for (i, term) in offtake.payable_terms.0.iter().enumerate() {
+        if offtake.payable_terms.0[..i]
+            .iter()
+            .any(|p| same_name(&p.metal, &term.metal))
+        {
+            continue;
+        }
         let Some(reference_price) = asset_for_metal(&term.metal).and_then(|a| prices.get(a)) else {
             return Ok(None);
         };
@@ -345,13 +355,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
             .assays
             .0
             .iter()
-            .find(|m| m.metal == term.metal)
+            .find(|m| same_name(&m.metal, &term.metal))
             .map_or("0", |m| m.grade_g_per_t.as_str());
         let rc = offtake
             .refining_charges
             .0
             .iter()
-            .find(|r| r.metal == term.metal)
+            .find(|r| same_name(&r.metal, &term.metal))
             .map_or("0", |r| r.rc_per_oz.as_str());
         metals.push(PayableMetal {
             grade_g_per_t: dec("grade_g_per_t", grade)?,
@@ -394,7 +404,7 @@ fn assemble_penalties(
                 .deleterious
                 .0
                 .iter()
-                .find(|d| d.element == tier.element)
+                .find(|d| same_name(&d.element, &tier.element))
             {
                 Some(d) => to_pct(dec("deleterious.level", &d.level)?, &d.unit),
                 None => BigDecimal::zero(),

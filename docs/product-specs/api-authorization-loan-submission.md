@@ -64,7 +64,7 @@ most 6 fractional digits, bps rate, origination/maturity timestamps), an optiona
 `fee_schedule`. `to`, `initial_ccr` and `initial_location` are deprecated: still
 accepted and stored verbatim when sent, never validated, and not `draw_loan` inputs.
 The whole payload is stored verbatim as JSONB. `data_room_id` is trimmed at ingest and
-an empty value is treated as absent. Submission validation mirrors the three contract
+an empty value is treated as absent. `collateral_valuation.asset` is trimmed and upper-cased at ingest and must match `[A-Z0-9_-]{1,16}`; `price_provider` is trimmed and lower-cased before the known-provider check. Both are stored normalized in `loan_data` and in the valuation anchor. Submission validation mirrors the three contract
 invariants (tranches sum to the facility size, maturity is after origination, offtaker
 price covers the facility) plus the valuation and fee-schedule checks.
 
