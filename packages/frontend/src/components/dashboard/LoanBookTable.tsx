@@ -102,7 +102,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
           {/* Commodity — flexible, fills remaining width */}
           <col />
           <col style={{ width: "112px" }} />
-          <col style={{ width: "112px" }} />
+          <col style={{ width: "176px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "128px" }} />
