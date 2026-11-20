@@ -122,6 +122,11 @@ pub(crate) async fn simulate_view(
     Ok((value, sim.latest_ledger))
 }
 
+pub(crate) async fn read_max_fee_bps(rpc: &StellarRpc, registry_id: &str) -> Result<u32> {
+    let (value, _ledger) = simulate_view(rpc, registry_id, "max_fee_bps", vec![]).await?;
+    decode_max_fee_bps(&value)
+}
+
 // ── Trait impls ───────────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -168,6 +173,13 @@ impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader {
 }
 
 // ── Pure ScVal decoders (pub(crate) for unit tests) ───────────────────────────
+
+pub fn decode_max_fee_bps(value: &ScVal) -> Result<u32> {
+    match crate::stellar::scval::scval_u32(value) {
+        Some(v) => Ok(v),
+        None => anyhow::bail!("max_fee_bps: expected U32, got {value:?}"),
+    }
+}
 
 /// Decode the `ImmutableLoanData` return value of `immutable_loan_data(loan_id)`.
 ///

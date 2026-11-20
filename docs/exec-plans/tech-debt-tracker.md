@@ -25,7 +25,7 @@ line, whichever section it lands in.
 ### TD-196: Fee targets above the contract fee cap are never caught up
 
 - **Date:** 2026-11-19
-- **Location:** `packages/api/src/routes/waterfall.rs` (`fit_interest_to_fee_cap`, `ASSUMED_MAX_FEE_BPS`), `docs/product-specs/yield.md` — Issue #2124.
+- **Location:** `packages/api/src/routes/waterfall.rs` (`fit_interest_to_fee_cap`), `docs/product-specs/yield.md` — Issue #2124.
 - **Gap:** The registries cap `mgmt + perf + oet` at `max_fee_bps` of the interest paid. A loan whose fee rates exceed that cap every period has its excess moved to the vault coupon, so the unpaid mgmt/perf targets grow without bound and are never recovered.
 - **Impact:** Treasury receives permanently reduced fees on such loans, and the vault coupon takes the difference.
 - **Suggested fix:** Set fee rates at or below the cap at origination, or have the contracts allow carrying a fee deficit. Contracts are frozen, so this is a product decision.

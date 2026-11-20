@@ -1,8 +1,8 @@
 use alloy::primitives::{FixedBytes, I256, U256};
-use alloy::sol_types::SolValue;
+use alloy::sol_types::{SolCall, SolValue};
 use pipeline_worker::indexer::loan_mapper::{closure_reason_name, loan_status_name};
 use pipeline_worker::indexer::loan_registry_reader::{
-    decode_immutable_loan_data, decode_mutable_loan_data, ILoanRegistry,
+    decode_immutable_loan_data, decode_max_fee_bps, decode_mutable_loan_data, ILoanRegistry,
 };
 
 fn mutable_payload(status: u8, closure_reason: u8, current_rate: u32) -> Vec<u8> {
@@ -161,5 +161,25 @@ fn decode_immutable_loan_data_all_zero_borrower_ref_is_some_zero() {
         view.borrower_ref,
         Some(FixedBytes::<32>::ZERO),
         "an all-zero on-chain borrowerRef must decode to Some(ZERO), not None"
+    );
+}
+
+#[test]
+fn decode_max_fee_bps_reads_a_uint32() {
+    let encoded = 5_000u32.abi_encode();
+    assert_eq!(decode_max_fee_bps(&encoded).unwrap(), 5_000);
+}
+
+#[test]
+fn decode_max_fee_bps_rejects_empty_and_short_buffers() {
+    assert!(decode_max_fee_bps(&[]).is_err());
+    assert!(decode_max_fee_bps(&[0u8; 31]).is_err());
+}
+
+#[test]
+fn max_fee_bps_selector_matches_the_deployed_registry() {
+    assert_eq!(
+        ILoanRegistry::maxFeeBpsCall::SELECTOR,
+        [0xbf, 0x76, 0x9a, 0x3f]
     );
 }

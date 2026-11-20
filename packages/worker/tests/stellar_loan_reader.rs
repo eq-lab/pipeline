@@ -10,7 +10,8 @@
 use alloy::primitives::{FixedBytes, I256, U256};
 use pipeline_worker::indexer::loan_mapper::loan_status_name;
 use pipeline_worker::indexer::stellar::loan_registry_reader::{
-    decode_cumulative_repayment_data, decode_immutable_loan_data, decode_mutable_loan_data,
+    decode_cumulative_repayment_data, decode_immutable_loan_data, decode_max_fee_bps,
+    decode_mutable_loan_data,
 };
 use stellar_xdr::curr::{
     Int128Parts, ScBytes, ScMap, ScMapEntry, ScString, ScSymbol, ScVal, ScVec, StringM,
@@ -358,4 +359,16 @@ fn decode_cumulative_repayment_data_u128_max() {
         decode_cumulative_repayment_data(&scval).expect("should decode u128::MAX repayment data");
 
     assert_eq!(view.offtaker_received, U256::from(u128::MAX));
+}
+
+#[test]
+fn decode_max_fee_bps_reads_a_u32() {
+    assert_eq!(decode_max_fee_bps(&ScVal::U32(5_000)).unwrap(), 5_000);
+}
+
+#[test]
+fn decode_max_fee_bps_rejects_other_variants() {
+    let i128_val = ScVal::I128(Int128Parts { hi: 0, lo: 5_000 });
+    assert!(decode_max_fee_bps(&i128_val).is_err());
+    assert!(decode_max_fee_bps(&ScVal::Void).is_err());
 }
