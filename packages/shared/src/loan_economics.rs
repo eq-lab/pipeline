@@ -9,7 +9,7 @@ pub const BPS_DENOM: i64 = 10_000;
 /// The LoanRegistry contract's fixed-point `ONE` (= 100%); on-chain rates are u32 ppm of it.
 pub const RATE_ONE: i64 = 1_000_000;
 
-/// Whole-bps floor of a ppm rate (`ppm / 100`), the legacy mirror kept in snapshots.
+/// Whole-bps floor of a ppm rate (`ppm / 100`): the legacy snapshot mirror and the audit-log `new_rate_bps` (`112_550` to `1_125`).
 pub fn ppm_to_bps_floor(ppm: u32) -> u32 {
     ppm / 100
 }
@@ -71,11 +71,4 @@ pub fn build_epochs(
 /// Raw `new_rate` (ppm) as `u32`; an unparseable rate decodes to 0.
 pub fn rate_ppm_from_event(new_rate: i64) -> u32 {
     u32::try_from(new_rate).unwrap_or(0)
-}
-
-/// Contract-1e6-scaled event rate → bps: `new_rate × 10_000 / 1_000_000 = new_rate / 100`,
-/// truncated (floor), the same rule as the worker's snapshot `raw / 100` (`150_000` → `1_500` bps = 15%; `112_550` → `1_125`).
-pub fn economics_rate_to_bps(new_rate: i64) -> u32 {
-    let bps = new_rate * BPS_DENOM / RATE_ONE;
-    bps as u32
 }

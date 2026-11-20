@@ -45,7 +45,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::AuditLogRow;
-use shared::loan_economics::economics_rate_to_bps;
+use shared::loan_economics::ppm_to_bps_floor;
 
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
@@ -526,9 +526,7 @@ fn iso_param(params: &Value, key: &str) -> Option<String> {
 
 fn economics_rate_pct(params: &Value, key: &str) -> Option<String> {
     let rate = u32::try_from(param_i64(params, key)?).ok()?;
-    Some(pct_from_bps(i64::from(economics_rate_to_bps(i64::from(
-        rate,
-    )))))
+    Some(pct_from_bps(i64::from(ppm_to_bps_floor(rate))))
 }
 
 /// Map an `(event_name, params)` pair to a human-readable action string plus a curated
@@ -1469,7 +1467,9 @@ fn with_amount(
 /// bps) and `new_maturity_timestamp`, read from the top level or the nested `event`.
 fn economics_details(params: &Value) -> Value {
     json!({
-        "new_rate_bps": param_i64(params, "new_rate").map(economics_rate_to_bps),
+        "new_rate_bps": param_i64(params, "new_rate")
+            .and_then(|rate| u32::try_from(rate).ok())
+            .map(ppm_to_bps_floor),
         "new_maturity_timestamp": param_i64(params, "new_maturity_timestamp"),
     })
 }

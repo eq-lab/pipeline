@@ -83,7 +83,7 @@ fn with_ppm(mut s: LoanSnapshot, genesis_ppm: u32) -> LoanSnapshot {
 
 fn gross_accrual(genesis_ppm: u32, events: &[LoanRateEventRow], until: i64) -> BigDecimal {
     let refs: Vec<&LoanRateEventRow> = events.iter().collect();
-    LoanAccrual::from_ppm(genesis_ppm, &refs).accrued_floored_per_segment(until)
+    LoanAccrual::from_ppm(genesis_ppm, &refs).accrued_floored_per_epoch(until)
 }
 
 fn fees(mgmt: i32, perf: i32, oet: i32) -> FeeScheduleRow {

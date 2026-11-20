@@ -243,3 +243,22 @@ fn legacy_row_defaults_ppm_fields_to_none_and_round_trips_some() {
     let restored: LoanSnapshot = serde_json::from_value(value).expect("deserialize");
     assert_eq!(restored.senior_interest_rate_ppm, Some(120_000));
 }
+
+#[test]
+fn absent_ppm_is_omitted_and_a_null_key_reads_as_none() {
+    let mut snapshot = snapshot_with(1);
+    snapshot.senior_interest_rate_ppm = None;
+    snapshot.current_rate_ppm = None;
+    let mut value = serde_json::to_value(&snapshot).expect("serialize");
+    let object = value.as_object_mut().expect("object");
+    assert!(!object.contains_key("senior_interest_rate_ppm"));
+    assert!(!object.contains_key("current_rate_ppm"));
+    object.insert(
+        "senior_interest_rate_ppm".to_owned(),
+        serde_json::Value::Null,
+    );
+    object.insert("current_rate_ppm".to_owned(), serde_json::Value::Null);
+    let restored: LoanSnapshot = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(restored.senior_interest_rate_ppm, None);
+    assert_eq!(restored.current_rate_ppm, None);
+}

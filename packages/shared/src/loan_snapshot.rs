@@ -35,7 +35,7 @@ pub struct LoanSnapshot {
     /// u32 on-chain; stored as u32 here (widened from i32 in prior schema).
     pub senior_interest_rate_bps: u32,
     /// Full-precision genesis rate (ppm, `ONE = 1_000_000`); `None` on rows written before #2126.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub senior_interest_rate_ppm: Option<u32>,
     /// Cast from u64 on-chain.
     pub origination_date: i64,
@@ -54,7 +54,7 @@ pub struct LoanSnapshot {
     #[serde(default)]
     pub current_rate: u32,
     /// Full-precision current rate (ppm); `None` on rows written before #2126.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_rate_ppm: Option<u32>,
     pub closure_reason: String,
     /// `#[serde(default)]`: pre-rework rows predate this field.

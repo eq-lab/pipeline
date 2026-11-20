@@ -12,7 +12,7 @@ use shared::book_weighting::{
 };
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::{LoanRateEventRow, LoanSnapshotRow};
-use shared::loan_economics::economics_rate_to_bps;
+use shared::loan_economics::ppm_to_bps_floor;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
@@ -464,9 +464,9 @@ fn rate_event_ppm_is_kept_untruncated() {
     events.push(rate_event(1, "EconomicsAmended", 5, 112_550));
     events.push(rate_event(2, "EconomicsAmended", 5, 112_550));
     assert_apy(apy_at(&loans, &events, 10), 0.11255);
-    assert_eq!(economics_rate_to_bps(112_550), 1125);
-    assert_eq!(economics_rate_to_bps(112_599), 1125);
-    assert_eq!(economics_rate_to_bps(112_550) as i64, 112_550 / 100);
+    assert_eq!(ppm_to_bps_floor(112_550), 1125);
+    assert_eq!(ppm_to_bps_floor(112_599), 1125);
+    assert_eq!(ppm_to_bps_floor(112_550) as i64, 112_550 / 100);
 }
 
 // ── helper functions ─────────────────────────────────────────────────────────

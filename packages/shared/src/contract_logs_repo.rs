@@ -873,6 +873,28 @@ pub struct MinterEventRow {
     pub params: serde_json::Value,
 }
 
+pub const LOANS_MISSING_RATE_PPM_SQL: &str = "SELECT DISTINCT (params->>'loan_id')::numeric
+    FROM contract_logs
+    WHERE chain_id = $1
+      AND contract_address = $2
+      AND event_name = ANY($3)
+      AND params ? 'snapshot'
+      AND params->'snapshot'->>'senior_interest_rate_ppm' IS NULL
+      AND params->>'loan_id' IS NOT NULL";
+
+pub const RATE_BACKFILL_ROWS_SQL: &str = "SELECT id,
+                    event_name,
+                    params->'event'->'new_rate' AS new_rate,
+                    params->'snapshot'->'senior_interest_rate_bps' AS stored_bps,
+                    (params->'snapshot'->>'senior_interest_rate_ppm' IS NOT NULL) AS has_ppm
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND contract_address = $2
+               AND event_name = ANY($3)
+               AND params ? 'snapshot'
+               AND (params->>'loan_id')::numeric = $4
+             ORDER BY block_number, log_index";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RateBackfillRow {
     pub id: i64,
@@ -1529,21 +1551,12 @@ impl ContractLogsRepo {
         chain_id: i64,
         contract_address: &str,
     ) -> anyhow::Result<Vec<BigDecimal>> {
-        let ids: Vec<BigDecimal> = sqlx::query_scalar(
-            "SELECT DISTINCT (params->>'loan_id')::numeric
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND contract_address = $2
-               AND event_name = ANY($3)
-               AND params ? 'snapshot'
-               AND NOT (params->'snapshot' ? 'senior_interest_rate_ppm')
-               AND params->>'loan_id' IS NOT NULL",
-        )
-        .bind(chain_id)
-        .bind(contract_address)
-        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
-        .fetch_all(&self.pool)
-        .await?;
+        let ids: Vec<BigDecimal> = sqlx::query_scalar(LOANS_MISSING_RATE_PPM_SQL)
+            .bind(chain_id)
+            .bind(contract_address)
+            .bind(LOAN_LIFECYCLE_EVENT_NAMES)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(ids)
     }
 
@@ -1554,26 +1567,13 @@ impl ContractLogsRepo {
         loan_id: &BigDecimal,
     ) -> anyhow::Result<Vec<RateBackfillRow>> {
         use sqlx::Row;
-        let rows = sqlx::query(
-            "SELECT id,
-                    event_name,
-                    params->'event'->'new_rate' AS new_rate,
-                    params->'snapshot'->'senior_interest_rate_bps' AS stored_bps,
-                    (params->'snapshot' ? 'senior_interest_rate_ppm') AS has_ppm
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND contract_address = $2
-               AND event_name = ANY($3)
-               AND params ? 'snapshot'
-               AND (params->>'loan_id')::numeric = $4
-             ORDER BY block_number, log_index",
-        )
-        .bind(chain_id)
-        .bind(contract_address)
-        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
-        .bind(loan_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query(RATE_BACKFILL_ROWS_SQL)
+            .bind(chain_id)
+            .bind(contract_address)
+            .bind(LOAN_LIFECYCLE_EVENT_NAMES)
+            .bind(loan_id)
+            .fetch_all(&self.pool)
+            .await?;
         rows.iter()
             .map(|row| {
                 let new_rate: Option<serde_json::Value> = row.try_get("new_rate")?;

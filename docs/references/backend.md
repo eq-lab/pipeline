@@ -561,7 +561,7 @@ Issue #2126. The readers keep the contract's raw ppm rate (`ONE = 1_000_000`) in
 
 **Guard.** A loan is backfilled only if every row's stored `senior_interest_rate_bps` equals `genesis_ppm / 100`; a mismatch, an RPC error or a decode error logs `warn`, skips the loan and retries on the next start. The pass is idempotent: rows that already carry the keys are not rewritten, and a restart finds nothing to do. Rows of pre-rework LoanRegistry addresses are not touched and keep the `bps × 100` fallback. The pass logs `info` with `loans_done`, `rows_done` and `loans_skipped` per chain.
 
-**Verify.** `SELECT count(*) FROM contract_logs WHERE params ? 'snapshot' AND NOT (params->'snapshot' ? 'senior_interest_rate_ppm')` drops to the pre-rework rows only. The waterfall's gross interest for a loan equals `loanMoney(loanId).accruedInterest` (EVM) or `accrued_interest(loan_id)` (Stellar) at the same timestamp.
+**Verify.** `SELECT count(*) FROM contract_logs WHERE params ? 'snapshot' AND params->'snapshot'->>'senior_interest_rate_ppm' IS NULL` drops to the pre-rework rows only. The waterfall's interest headroom (gross interest plus adjustment, minus recorded senior interest and fees) equals `loanMoney(loanId).accruedInterest` (EVM) or `accrued_interest(loan_id)` (Stellar) at the same timestamp, since the contract value is net of recorded interest. "Missing" means the key is absent or JSON `null`; new rows omit the key instead of writing `null`.
 
 #### EVM DealTokenFactory (#1485)
 

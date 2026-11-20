@@ -1,6 +1,6 @@
 // spec: docs/product-specs/loans.md#economics-epochs-rate-and-maturity-over-the-loans-life
 use shared::contract_logs_repo::EconomicsEventRow;
-use shared::loan_economics::{build_epochs, economics_rate_to_bps, ppm_to_bps_floor};
+use shared::loan_economics::{build_epochs, ppm_to_bps_floor};
 
 fn event(name: &str, new_rate: i64, new_maturity: i64) -> EconomicsEventRow {
     EconomicsEventRow {
@@ -45,9 +45,5 @@ fn fractional_event_rates_keep_full_precision() {
 fn ppm_to_bps_floor_truncates() {
     assert_eq!(ppm_to_bps_floor(72_550), 725);
     assert_eq!(ppm_to_bps_floor(99), 0);
-}
-
-#[test]
-fn rate_conversion_floors_ppm_to_bps() {
-    assert_eq!(economics_rate_to_bps(112_550), 1_125);
+    assert_eq!(ppm_to_bps_floor(112_550), 1_125);
 }

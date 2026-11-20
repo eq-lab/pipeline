@@ -210,7 +210,7 @@ impl LoanAccrual {
 
     /// Contract gross accrual over `[0, until)`: floored to a whole unit once per contract epoch.
     /// An epoch opens at every outstanding event except `LoanDefaulted` and at every rate event.
-    pub fn accrued_floored_per_segment(&self, until: i64) -> BigDecimal {
+    pub fn accrued_floored_per_epoch(&self, until: i64) -> BigDecimal {
         let floor = |numerator: &BigDecimal| {
             (numerator / rate_denominator()).with_scale_round(0, RoundingMode::Down)
         };

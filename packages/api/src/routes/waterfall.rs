@@ -367,7 +367,7 @@ pub fn compute_waterfall(
     let accrual = LoanAccrual::from_ppm(s.genesis_rate_ppm(), &event_refs);
     let outstanding_seconds = accrual.outstanding_seconds(as_of);
 
-    let gross_accrued = accrual.accrued_floored_per_segment(as_of);
+    let gross_accrued = accrual.accrued_floored_per_epoch(as_of);
     let headroom = interest_headroom(s, &gross_accrued);
     let senior_gross_interest_cum =
         (&gross_accrued + &s.interest_adjustment).max(BigDecimal::zero());

@@ -1,13 +1,12 @@
 // spec: docs/references/backend.md#loanregistry-rate-ppm-backfill
 use shared::{
+    book_weighting::RATE_EVENT_NAMES,
     contract_logs_repo::{ContractLogsRepo, RateBackfillRow},
     loan_economics::{ppm_to_bps_floor, rate_ppm_from_event},
 };
 use sqlx::PgPool;
 
 use super::loan_metadata::{ImmutableDataResolver, LoanAddress, LoanId};
-
-const RATE_EVENT_NAMES: [&str; 2] = ["LoanRolledOver", "EconomicsAmended"];
 
 pub fn plan_rate_ppm_backfill(
     genesis_ppm: u32,
