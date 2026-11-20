@@ -50,8 +50,8 @@ Logs come from the Grafana HTTP API (Loki datasource proxy) with a Viewer servic
 | Table | Meaning | Read by |
 |---|---|---|
 | `log_collector_state` (`chain_id`, `last_indexed_block`, `updated_at`) | Indexer cursor per chain, EVM and Stellar alike. Despite its name, `last_indexed_block` holds the next block (EVM) or ledger (Stellar) to index: the worker writes `commit + 1` and seeds it with the start block, so the last indexed one is `last_indexed_block − 1` | `indexer_lag` (`lagBlocks = max(0, head − (last_indexed_block − 1))`, head from `eth_blockNumber` on EVM, `getLatestLedger` on Stellar), `health` (stale `updated_at`) |
-| `security_registry_state` (`chain_id`, `contract_address`, `projected_log_id`, `projected_snapshot_at`, `updated_at`) | SecurityRegistry projection cursor | `indexer_lag` (projection lag vs max `contract_logs.id`) |
-| `access_manager_sync_state` (`chain_id`, `contract_address`, `last_log_id`, `updated_at`) | AccessManager sync cursor | `indexer_lag` (same comparison) |
+| `security_registry_state` (`chain_id`, `contract_address`, `projected_log_id`, `projected_snapshot_at`, `updated_at`) | SecurityRegistry projection cursor | `indexer_lag` (projection lag: `projected_log_id` vs max `contract_logs.id` for the same `chain_id` and the registry's log contracts, as the worker's projection step computes it; never the table-wide max, which other contracts keep moving) |
+| `access_manager_sync_state` (`chain_id`, `contract_address`, `last_log_id`, `updated_at`) | AccessManager sync cursor | `indexer_lag` (`last_log_id` vs max `contract_logs.id` for the same `chain_id`, `contract_address` and the three `AccessManagerOperation*` events the sync reads, since the watermark only advances over those) |
 | `kyc_outbox` (`chain_id`, `processed_at`, `error`, `created_at`) | KYC status pushes to chain | `queues` (unprocessed count and age, recent `error`) |
 | `yield_mint_outbox` (`chain_id`, `status`, `last_error`, `submitted_at`, `confirmed_at`) | yield mint submissions | `queues` (count per `status`, recent `last_error`) |
 
