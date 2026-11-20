@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::evm_http::evm_rpc_client;
 use alloy::primitives::{Address, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use anyhow::Context;
@@ -19,12 +20,12 @@ pub async fn run_evm_price_poller_job(
     settings: EvmPricePollerSettings,
     repo: Arc<PositionRepo>,
 ) -> anyhow::Result<()> {
-    let provider: HttpProvider = ProviderBuilder::new().on_http(
+    let provider: HttpProvider = ProviderBuilder::new().on_client(evm_rpc_client(
         settings
             .rpc_url
             .parse()
             .context("price-poller RPC URL must be valid")?,
-    );
+    ));
     let interval = Duration::from_secs(settings.poll_interval_secs);
     let addr = settings.staked_plusd_address;
 

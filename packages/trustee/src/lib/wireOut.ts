@@ -5,6 +5,7 @@ import {
   type WireOutRecord,
 } from "@pipeline/wallet-connect";
 import type { WireOutFn } from "@/api/useWireOuts";
+import { rawToDecimal, SAC_DECIMALS } from "@/utils/stellarSacUnits";
 import {
   parseSorobanContractErrorCode,
   toUserError,
@@ -16,6 +17,10 @@ export const NOT_PENDING_COPY =
   "This wire-out is no longer pending. Refresh the list.";
 export const LP_NOT_AUTHORIZED_COPY =
   "This lender's address is not authorised to hold PLUSD, so the PLUSD cannot be returned.";
+export const NO_BANK_ACCOUNT_COPY =
+  "No bank account on file for this lender. Do not send a wire until one is added; cancel the request to return the PLUSD.";
+export const UNRESOLVED_LENDER_BANK_COPY =
+  "This wire-out is not linked to a lender, so no bank account is served.";
 export const REUSED_BANK_REFERENCE_COPY =
   "This bank reference is already recorded on-chain. Use the outgoing wire's own reference.";
 
@@ -111,10 +116,7 @@ export function wireOutStateReason(
 }
 
 export function rawToDecimal7(raw: string): string {
-  const digits = raw.replace(/^0+(?=\d)/, "").padStart(8, "0");
-  const whole = digits.slice(0, -7);
-  const fraction = digits.slice(-7).replace(/0+$/, "");
-  return fraction === "" ? whole : `${whole}.${fraction}`;
+  return rawToDecimal(raw, SAC_DECIMALS);
 }
 
 export function valueDateSeconds(dateInput: string): number {

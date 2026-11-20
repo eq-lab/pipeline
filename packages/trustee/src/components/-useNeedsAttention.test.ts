@@ -1,21 +1,3 @@
-/**
- * Tests for `useNeedsAttention.ts` — the Overview page's Needs Attention
- * (Origination group) extractor (`mapSubmissionToNeedsAttentionRow`) and
- * query-state hook (issue #818).
- *
- * Covers:
- *   - Title built from `loan_data.originator` (friendly name) + `loan_data.commodity`,
- *     with a status-derived suffix: "new request" (InReview) vs
- *     "changes requested" (ChangesRequested, #1046).
- *   - Subtitle: commodity · corridor (arrow-formatted) · submitted <date>,
- *     backed fields only.
- *   - Missing/malformed `loan_data` fields degrade to "—"/omitted segments,
- *     never fabricated, never throwing.
- *   - `state` derivation: loading/error/empty/ready.
- *   - Origination-group inclusion set is exactly normalized
- *     {InReview, ChangesRequested}: Approved, Rejected, and backend
- *     merged/lifecycle statuses are excluded (#892, #1044, #1046).
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import {
@@ -200,8 +182,6 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     ...overrides,
   };
 }
-
-/** Minimal loan-book query result (only `.loans` is read by the hook). */
 function bookResult(loans: LoanBookEntry[]) {
   return {
     data: { loans } as unknown as LoanBookResponse,
@@ -219,6 +199,21 @@ describe("loanAttentionLabel / mapLoanToNeedsAttentionRow (#867)", () => {
     expect(loanAttentionLabel("Performing")).toBeNull();
     expect(loanAttentionLabel("Disbursing")).toBeNull();
     expect(loanAttentionLabel("Closed")).toBeNull();
+  });
+
+  it("includes an open margin call, once per loan", () => {
+    expect(loanAttentionLabel("Performing", true)).toBe("Margin call open");
+    expect(loanAttentionLabel("WatchList", true)).toBe(
+      "Watchlist · margin call open",
+    );
+    expect(loanAttentionLabel("Past Due", true)).toBe(
+      "Matured · margin call open",
+    );
+    expect(loanAttentionLabel("Closed", true)).toBeNull();
+    expect(loanAttentionLabel("Default", true)).toBeNull();
+    expect(loanAttentionLabel("Performing", null)).toBeNull();
+    expect(loanAttentionLabel("Performing", false)).toBeNull();
+    expect(loanAttentionLabel("Performing")).toBeNull();
   });
 
   it("maps a loan to a Loans-group row (title + subtitle + loanId)", () => {
@@ -242,7 +237,6 @@ describe("loanAttentionLabel / mapLoanToNeedsAttentionRow (#867)", () => {
 
 describe("useNeedsAttention", () => {
   beforeEach(() => {
-    // Default: no needs-attention loans (existing submission tests unaffected).
     vi.mocked(useLoanBook).mockReturnValue(bookResult([]));
   });
   it("returns 'loading' while the query is loading", () => {
@@ -304,6 +298,78 @@ describe("useNeedsAttention", () => {
     expect(result.current.rows[0]?.title).toBe(
       "Open Mineral — Copper Concentrate: new request",
     );
+  });
+
+  it("lists a margin-call loan with the margin-call label, once, and skips Closed / Default", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useLoanBook).mockReturnValue(
+      bookResult([
+        makeLoanEntry({
+          loan_id: "1",
+          status: "Performing",
+          margin_call_open: true,
+        }),
+        makeLoanEntry({
+          loan_id: "2",
+          status: "WatchList",
+          margin_call_open: true,
+        }),
+        makeLoanEntry({
+          loan_id: "3",
+          status: "Closed",
+          margin_call_open: true,
+        }),
+        makeLoanEntry({
+          loan_id: "4",
+          status: "Default",
+          margin_call_open: true,
+        }),
+        makeLoanEntry({
+          loan_id: "5",
+          status: "Performing",
+          margin_call_open: null,
+        }),
+      ]),
+    );
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.loanRows.map((r) => r.loanId)).toEqual(["1", "2"]);
+    expect(result.current.loanRows[0]?.subtitle).toBe(
+      "Margin call open · loan #1 · Stellar",
+    );
+    expect(result.current.loanRows[1]?.subtitle).toBe(
+      "Watchlist · margin call open · loan #2 · Stellar",
+    );
+  });
+
+  it("lists an EVM margin-call loan with its chain label (#1942)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useLoanBook).mockReturnValue(
+      bookResult([
+        makeLoanEntry({
+          loan_id: "9",
+          chain_id: 560048,
+          status: "Performing",
+          margin_call_open: true,
+        }),
+      ]),
+    );
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.loanRows).toHaveLength(1);
+    expect(result.current.loanRows[0]).toMatchObject({
+      loanId: "9",
+      chainId: 560048,
+      subtitle: "Margin call open · loan #9 · Hoodi",
+    });
   });
 
   it("fetches submissions UNFILTERED — no server-side status option (#1046)", () => {
@@ -411,7 +477,6 @@ describe("useNeedsAttention", () => {
       ]),
     );
     const { result } = renderHook(() => useNeedsAttention());
-    // Ready on loan rows alone, even though there are no in-review submissions.
     expect(result.current.state).toBe("ready");
     expect(result.current.rows).toEqual([]);
     expect(result.current.loanRows.map((r) => r.loanId)).toEqual(["1", "2"]);

@@ -11,7 +11,7 @@ pub struct CrystalClient {
 impl CrystalClient {
     pub fn new(settings: CrystalSettings) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http_client::http_client(),
             settings,
         }
     }

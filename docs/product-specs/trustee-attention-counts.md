@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Trustee sidebar shows a count badge on Origination, Loans and Cash Management. `GET /v1/attention-counts` serves those counts, so the frontend does no counting (wiring is #1350, TD-36). The route is Trustee-only and reads data the backend already stores. It has no table, no migration and no RPC call. Counts are JSON integers; there are no amounts.
+The Trustee sidebar shows a count badge on Origination, Loans and Cash Management. `GET /v1/attention-counts` serves those counts, so the frontend does no counting (wired in #1350). The route is Trustee-only and reads data the backend already stores. It has no table, no migration and no RPC call. Counts are JSON integers; there are no amounts.
 
 ## Behavior
 
@@ -24,7 +24,7 @@ The minter terms are `null` when the chain has no minter (every EVM chain). `pen
 
 **Loan selection.** Loans are selected as the Loans page selects them: through `LoanTimeline` (legacy `LoanDefaulted` and `LoanClosed` events merged, `origination_date <= now`), so a loan the page does not show is never counted. Closed loans are skipped; Default loans are served as `defaulted` only.
 
-**Union rules.** Combined sections are per-chain sums. A nullable field is `null` at the top only when it is `null` on every in-scope chain. `count` is never `null`. An EVM chain contributes its submissions, loan statuses and pending ramp events; its minter and margin-call fields are `null`.
+**Union rules.** Combined sections are per-chain sums. A nullable field is `null` at the top only when it is `null` on every in-scope chain. `count` is never `null`. An EVM chain contributes its submissions, loan statuses and pending ramp events; its minter fields are `null`, and its `margin_call_open` is served when the chain's API SecurityRegistry keys are set (and `null` otherwise).
 
 **Known limits.** A submission targeting an unconfigured chain is not counted. A drawn submission that is still `InReview` (the #831 residual) is excluded by `loan_id IS NULL`. Open margin calls are matched to the chain's LoanRegistry snapshots by `loan_id`, as on `GET /v1/loan-book/{loan_id}/security`, and reflect the projection, not the chain. Any failing sub-read fails the whole response with `500`. The counts are recomputed per request (TD-174).
 

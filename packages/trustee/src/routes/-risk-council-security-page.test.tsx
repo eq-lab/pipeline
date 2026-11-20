@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -8,15 +9,35 @@ import {
   within,
 } from "@testing-library/react";
 import {
+  _resetRiskCouncilOpsForTests,
+  markOperationExecuted,
+  recordScheduledOp,
+} from "@/lib/riskCouncilOps";
+import {
   DELAYED,
+  HASH_A,
+  HASH_B,
   IMMEDIATE,
   NO_ROLE,
+  READY_AT,
   SCHEDULED,
+  SCHEDULER,
   STELLAR,
+  EVM,
+  EVM_CALLDATA,
+  EVM_OPERATION_ID,
+  EVM_SCHEDULER,
+  EVM_SECURITY_REGISTRY,
+  EVM_SET_TERMS_F92D719_CALLDATA,
   accessResult,
   loanBookResult,
   loanEntry,
+  loanRegistryOp,
   loanState,
+  evmPendingOp,
+  evmPendingOpF92d719,
+  minterOp,
+  pendingOp,
   relayResult,
   securityResult,
 } from "./-riskCouncilFixtures";
@@ -27,14 +48,54 @@ vi.mock("@tanstack/react-router", async () => {
   );
   return {
     ...actual,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
+    Link: ({
+      children,
+      to,
+      params,
+      search,
+      "data-testid": testId,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      params?: Record<string, string>;
+      search?: { chain: number };
+      "data-testid"?: string;
+    }) => (
+      <a
+        data-testid={testId}
+        href={`${to.replace("$id", params?.id ?? "")}?chain=${search?.chain}`}
+      >
+        {children}
+      </a>
     ),
+  };
+});
+
+const walletState = vi.hoisted(() => ({
+  address: null as string | null,
+  evmAddress: undefined as string | undefined,
+}));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  const { SECURITY_REGISTRY, EVM_SECURITY_REGISTRY } =
+    await import("./-riskCouncilFixtures");
+  return {
+    ...actual,
+    ENV: {
+      ...actual.ENV,
+      STELLAR_SECURITY_REGISTRY_ID: SECURITY_REGISTRY,
+      EVM_SECURITY_REGISTRY_ADDRESS: EVM_SECURITY_REGISTRY,
+    },
   };
 });
 
 const HASH = "cd".repeat(32);
 vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: () => ({ address: walletState.address }),
+  useEvmWallet: () => ({
+    address: walletState.evmAddress,
+    isConnected: walletState.evmAddress !== undefined,
+  }),
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   securityReasonHash: vi.fn(async () => "cd".repeat(32)),
@@ -42,15 +103,29 @@ vi.mock("@pipeline/wallet-connect", () => ({
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
-vi.mock("@/api/useRiskCouncil", () => ({
-  useRiskCouncilAccess: vi.fn(),
-  useRiskCouncilLoanState: vi.fn(),
-  useRiskCouncilRelay: vi.fn(),
-}));
+vi.mock("@/api/useRiskCouncil", async () => {
+  const actual = await vi.importActual<typeof import("@/api/useRiskCouncil")>(
+    "@/api/useRiskCouncil",
+  );
+  return {
+    NoLongerScheduledError: actual.NoLongerScheduledError,
+    PendingArgsMismatchError: actual.PendingArgsMismatchError,
+    PendingTargetMismatchError: actual.PendingTargetMismatchError,
+    RegistryPausedError: actual.RegistryPausedError,
+    useEvmSecurityTermsShape: vi.fn(),
+    useRiskCouncilAccess: vi.fn(),
+    useRiskCouncilLoanState: vi.fn(),
+    useRiskCouncilRelay: vi.fn(),
+    usePendingOperationExecute: vi.fn(),
+  };
+});
 
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
+  NoLongerScheduledError,
+  useEvmSecurityTermsShape,
+  usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
@@ -59,9 +134,11 @@ import { Route } from "./risk-council.security.$id";
 
 const mockLoanBook = vi.mocked(useLoanBook);
 const mockSecurity = vi.mocked(useLoanSecurity);
+const mockTermsShape = vi.mocked(useEvmSecurityTermsShape);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
+const mockPendingExecute = vi.mocked(usePendingOperationExecute);
 
 let chain = STELLAR;
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
@@ -123,6 +200,18 @@ const RECORDS = [
 ];
 
 let relay: ReturnType<typeof relayResult>;
+let pendingExecute: ReturnType<typeof pendingExecuteResult>;
+
+function pendingExecuteResult(error: Error | null = null) {
+  return {
+    mutateAsync: vi.fn().mockResolvedValue({ hash: "EH" }),
+    isPending: false,
+    error,
+    hash: null,
+    stage: null,
+    reset: vi.fn(),
+  };
+}
 
 function setup(
   access: Parameters<typeof accessResult>[0],
@@ -140,12 +229,18 @@ function setup(
   mockAccess.mockReturnValue(accessResult(access) as never);
   mockLoanState.mockReturnValue({ data: loanState() } as never);
   mockRelay.mockReturnValue(relay as never);
+  mockPendingExecute.mockReturnValue(pendingExecute as never);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   chain = STELLAR;
   relay = relayResult();
+  pendingExecute = pendingExecuteResult();
+  walletState.address = SCHEDULER;
+  walletState.evmAddress = undefined;
+  mockTermsShape.mockReturnValue({ data: undefined } as never);
+  _resetRiskCouncilOpsForTests();
 });
 
 describe("Security page — current terms", () => {
@@ -559,5 +654,789 @@ describe("Security page — read-only states", () => {
     expect(
       screen.getByTestId("risk-council-security-flag-2-error"),
     ).toHaveTextContent("This record has no flag to resolve.");
+  });
+});
+
+const PENDING = "risk-council-security-pending";
+const ID_READY = "ab".repeat(32);
+const ID_WAITING = "bb".repeat(32);
+const ID_EXPIRED = "cc".repeat(32);
+const ID_RELEASE = "dd".repeat(32);
+
+function served(...ops: ReturnType<typeof pendingOp>[]) {
+  return {
+    terms: TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  };
+}
+
+const READY_SET_TERMS = pendingOp({ operation_id: ID_READY });
+const WAITING_RESOLVE = pendingOp({
+  operation_id: ID_WAITING,
+  function: "resolve_flag",
+  args: [2, ["Escalated"], HASH_A],
+  state: "waiting",
+  ready_at: new Date((READY_AT + 100) * 1000).toISOString(),
+});
+const EXPIRED_RELEASE = pendingOp({
+  operation_id: ID_EXPIRED,
+  function: "release_with_consent",
+  args: [1, HASH_B],
+  state: "expired",
+  ready_at: new Date((READY_AT + 200) * 1000).toISOString(),
+});
+const READY_RELEASE = pendingOp({
+  operation_id: ID_RELEASE,
+  function: "release_with_consent",
+  args: [1, HASH_B],
+  args_xdr: "RELEASEXDR",
+});
+
+describe("Security page — scheduled operations", () => {
+  it("renders the card above Set terms with one row per operation", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    const card = screen.getByTestId(PENDING);
+    const setTerms = screen.getByTestId("risk-council-security-set-terms");
+    expect(card.compareDocumentPosition(setTerms)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(card).toHaveTextContent("Scheduled operations");
+    const rows = screen.getAllByTestId(`${PENDING}-row`);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent("Set terms");
+    expect(rows[0]).toHaveTextContent("Advance ratio70%");
+    expect(rows[0]).toHaveTextContent("Payment termLetter of credit (Lc)");
+    expect(rows[1]).toHaveTextContent("Resolve flag · record #2");
+    expect(rows[1]).toHaveTextContent("OutcomeEscalated");
+    expect(rows[1]).toHaveTextContent("Reason hashcdcdcdcdcd…");
+    expect(rows[2]).toHaveTextContent("Release with consent · record #1");
+    expect(rows[2]).toHaveTextContent("Consent hashefefefefef…");
+  });
+
+  it("shows who scheduled it and the state line of each row", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-caller`),
+    ).toHaveTextContent("GSCHED…ABCD · this wallet");
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-role`)).toHaveTextContent(
+      "Ready · expires 2027-01-22 08:00 UTC",
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-role`),
+    ).toHaveTextContent("Waiting · executable from 2027-01-15 08:01 UTC");
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_EXPIRED}-role`),
+    ).toHaveTextContent("Expired — schedule it again");
+  });
+
+  it("shows the empty copy with no rows or without the field", () => {
+    setup(DELAYED, served());
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toHaveTextContent(
+      "No scheduled operations found.",
+    );
+    setup(DELAYED, { terms: TERMS, records: RECORDS, paused: false });
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-empty`)).toHaveLength(2);
+  });
+
+  it("enables Execute only for the ready row of the connected wallet and sends the served args", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_EXPIRED}-button`),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_READY}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: STELLAR,
+      operationId: ID_READY,
+      caller: READY_SET_TERMS.caller,
+      target: READY_SET_TERMS.target,
+      expectedTarget: READY_SET_TERMS.target,
+      paused: false,
+      fn: "set_terms",
+      argsXdr: READY_SET_TERMS.args_xdr,
+      calldata: null,
+      targetKind: "security_registry",
+    });
+  });
+
+  it("shows the other-wallet copy and disables Execute for another wallet", () => {
+    walletState.address = "GOTHERWALLETADDRESS1234567890XYZ";
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent(
+      "Only the scheduling wallet (GSCHED…ABCD) can execute this.",
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-caller`),
+    ).not.toHaveTextContent("this wallet");
+  });
+
+  it("blocks Execute while the registry is paused", () => {
+    setup(DELAYED, { ...served(READY_SET_TERMS), paused: true });
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent("paused");
+  });
+
+  it("blocks a row that targets another SecurityRegistry", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_READY,
+          target: "COTHERTARGET1234567890XYZ",
+        }),
+      ),
+    );
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent("targets another SecurityRegistry");
+  });
+
+  it("asks for confirmation before executing a release", () => {
+    setup(DELAYED, served(READY_RELEASE));
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog-confirm`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "release_with_consent",
+        argsXdr: "RELEASEXDR",
+      }),
+    );
+  });
+
+  it("asks for confirmation for a release whose arguments do not decode", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_RELEASE,
+          function: "release_with_consent",
+          args: [1, "NOT-A-HASH"],
+        }),
+      ),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog-confirm`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a generic confirmation when the release record number is unknown", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_RELEASE,
+          function: "release_with_consent",
+          args: "garbage",
+        }),
+      ),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release this record?");
+  });
+
+  it("lists other contracts' operations with an owner link instead of Execute", () => {
+    setup(
+      DELAYED,
+      served(
+        READY_SET_TERMS,
+        pendingOp({
+          operation_id: ID_WAITING,
+          target_kind: "loan_registry",
+          function: "set_default",
+          args: [4471],
+        }),
+      ),
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(2);
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-${ID_WAITING}-link`)).toHaveAttribute(
+      "href",
+      `/risk-council/escalate/4471?chain=${STELLAR}`,
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-link`),
+    ).toHaveTextContent("Open Escalate to Default");
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("does not execute a security function served with another target kind", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_WAITING,
+          target_kind: "other",
+          function: "set_terms",
+        }),
+      ),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-link`),
+    ).toHaveTextContent("Open Security");
+  });
+
+  it("adds the loan-book operations of the loan with their owner links", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({
+          pending_operations: [
+            loanRegistryOp("write_down", { args: [4471, "5000000"] }),
+            minterOp({ args: [4471, 2, HASH_A] }),
+          ],
+        }),
+      ]) as never,
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(3);
+    const writeDownId = loanRegistryOp("write_down").operation_id;
+    const minterId = minterOp().operation_id;
+    expect(
+      screen.getByTestId(`${PENDING}-${writeDownId}-link`),
+    ).toHaveAttribute("href", `/risk-council/writedown/4471?chain=${STELLAR}`);
+    expect(
+      screen.getByTestId(`${PENDING}-${writeDownId}-link`),
+    ).toHaveTextContent("Open Default resolution");
+    expect(screen.getByTestId(`${PENDING}-${minterId}-link`)).toHaveAttribute(
+      "href",
+      `/loans/4471?chain=${STELLAR}`,
+    );
+    expect(
+      screen.queryByTestId(`${PENDING}-${writeDownId}-button`),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("lists an operation served by both sources once and keeps the security copy", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, args_xdr: "SECURITYCOPY" }));
+    mockLoanBook.mockReturnValue(
+      loanBookResult([
+        loanEntry({
+          pending_operations: [{ ...READY_SET_TERMS, args_xdr: "BOOKCOPY" }],
+        }),
+      ]) as never,
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_READY}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ argsXdr: "SECURITYCOPY" }),
+    );
+  });
+
+  it("keeps an executed row with its hash until the API stops serving it", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    const view = renderRoute();
+    act(() => markOperationExecuted(STELLAR, ID_READY, "EXECHASH", READY_AT));
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-role`)).toHaveTextContent(
+      "Executed",
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-hash`)).toHaveTextContent(
+      "EXECHASH",
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    const Page = Route.options.component as React.ComponentType;
+    mockSecurity.mockReturnValue(
+      securityResult({
+        data: served() as never,
+        dataUpdatedAt: Date.now() + 60_000,
+      }),
+    );
+    view.rerender(<Page />);
+    expect(screen.queryByTestId(`${PENDING}-row`)).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toBeInTheDocument();
+  });
+
+  it("shows the same operation again once it is re-scheduled with a new ready time", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    const view = renderRoute();
+    act(() => markOperationExecuted(STELLAR, ID_READY, "EXECHASH", READY_AT));
+    const Page = Route.options.component as React.ComponentType;
+    mockSecurity.mockReturnValue(
+      securityResult({
+        data: served(
+          pendingOp({
+            operation_id: ID_READY,
+            ready_at: new Date((READY_AT + 900) * 1000).toISOString(),
+          }),
+        ) as never,
+        dataUpdatedAt: Date.now() + 60_000,
+      }),
+    );
+    view.rerender(<Page />);
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_READY}-hash`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the no-longer-scheduled line after a cancelled operation", () => {
+    pendingExecute = pendingExecuteResult(new NoLongerScheduledError());
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-no-longer`),
+    ).toHaveTextContent("No longer scheduled");
+  });
+
+  it("falls back to the raw arguments when they do not decode", () => {
+    setup(
+      DELAYED,
+      served(pendingOp({ operation_id: ID_READY, args: [9, { weird: true }] })),
+    );
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-args`)).toHaveTextContent(
+      'Arguments[9,{"weird":true}]',
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("bridges an operation scheduled from this console until it is served", () => {
+    recordScheduledOp({
+      chainId: STELLAR,
+      loanId: 4471,
+      call: { fn: "release_with_consent", recordId: 1, consentHash: HASH_B },
+      operationId: ID_RELEASE,
+      readyAt: READY_AT,
+      caller: SCHEDULER,
+      target: READY_RELEASE.target,
+      argsXdr: "RELEASEXDR",
+    });
+    setup(DELAYED, served());
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-session`),
+    ).toHaveTextContent("Scheduled from this console.");
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+  });
+
+  it("drops the bridged row once the API serves the same operation", () => {
+    recordScheduledOp({
+      chainId: STELLAR,
+      loanId: 4471,
+      call: { fn: "release_with_consent", recordId: 1, consentHash: HASH_B },
+      operationId: ID_RELEASE,
+      readyAt: READY_AT,
+      caller: SCHEDULER,
+      target: READY_RELEASE.target,
+      argsXdr: "RELEASEXDR",
+    });
+    setup(DELAYED, served(READY_RELEASE));
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_RELEASE}-session`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the card when /security fails", () => {
+    setup(DELAYED, undefined);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, error: new Error("boom") }),
+    );
+    renderRoute();
+    expect(screen.queryByTestId(PENDING)).not.toBeInTheDocument();
+  });
+});
+
+describe("Security page — scheduled terms notice", () => {
+  const NOTICE = "risk-council-security-terms-pending-notice";
+
+  it("warns while a set_terms operation waits or is ready", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(screen.getByTestId(NOTICE)).toHaveTextContent(
+      "A terms change is already scheduled",
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-advanceRatio"),
+    ).toBeEnabled();
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeEnabled();
+  });
+
+  it("warns for a waiting set_terms too", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, state: "waiting" }));
+    renderRoute();
+    expect(screen.getByTestId(NOTICE)).toBeInTheDocument();
+  });
+
+  it("stays quiet for an expired operation, other functions or none", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, state: "expired" }));
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+    setup(DELAYED, served(WAITING_RESOLVE));
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+    setup(DELAYED, served());
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+  });
+});
+
+describe("Security page — EVM loan", () => {
+  const EVM_TERMS = {
+    ...TERMS,
+    default_ratio_bps: 9000,
+    originator_fee_rate: 10000,
+  };
+  const evmServed = (...ops: ReturnType<typeof pendingOp>[]) => ({
+    terms: EVM_TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  });
+
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER.toLowerCase();
+    mockTermsShape.mockReturnValue({ data: "terms15" } as never);
+  });
+
+  it("shows 12 term inputs and the two EVM rows in the current terms", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    const { container } = renderRoute();
+    expect(
+      container.querySelectorAll(
+        'input[data-testid^="risk-council-security-terms-"]',
+      ),
+    ).toHaveLength(12);
+    expect(
+      screen.getByTestId("risk-council-security-terms-defaultRatio"),
+    ).toHaveValue("90");
+    expect(
+      screen.getByTestId("risk-council-security-terms-originatorFeeRate"),
+    ).toHaveValue("1");
+    const terms = screen.getByTestId("risk-council-security-terms");
+    expect(terms).toHaveTextContent("Default ratio90%");
+    expect(terms).toHaveTextContent("Originator fee rate1%");
+  });
+
+  it("keeps the Stellar form at 10 inputs", () => {
+    chain = STELLAR;
+    setup(IMMEDIATE);
+    const { container } = renderRoute();
+    expect(
+      container.querySelectorAll(
+        'input[data-testid^="risk-council-security-terms-"]',
+      ),
+    ).toHaveLength(10);
+  });
+
+  it("enables Set terms per access and sends both EVM fields", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    renderRoute();
+    const button = screen.getByTestId("risk-council-security-terms-button");
+    expect(button).toHaveTextContent("Set terms");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "execute",
+      call: expect.objectContaining({
+        fn: "set_terms",
+        terms: expect.objectContaining({
+          defaultRatioBps: 9000,
+          originatorFeeRate: 10000,
+        }),
+      }),
+      chainId: EVM,
+      loanId: 4471,
+    });
+  });
+
+  it("flags a default ratio below the margin call ratio", () => {
+    setup(IMMEDIATE, evmServed(), EVM);
+    renderRoute();
+    fireEvent.change(
+      screen.getByTestId("risk-council-security-terms-defaultRatio"),
+      { target: { value: "80" } },
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-ratio-error"),
+    ).toHaveTextContent(
+      "The default ratio must be at least the margin call ratio.",
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("lists the EVM row with decoded args, this wallet, and executes with the calldata", () => {
+    setup(DELAYED, evmServed(evmPendingOp()), EVM);
+    renderRoute();
+    const args = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-args`);
+    expect(args).toHaveTextContent("Default ratio90%");
+    expect(args).toHaveTextContent("Originator fee rate1%");
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-caller`),
+    ).toHaveTextContent("this wallet");
+    const button = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`);
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: EVM,
+      operationId: EVM_OPERATION_ID,
+      caller: EVM_SCHEDULER,
+      target: EVM_SECURITY_REGISTRY,
+      expectedTarget: EVM_SECURITY_REGISTRY,
+      paused: false,
+      fn: "set_terms",
+      argsXdr: null,
+      calldata: EVM_CALLDATA,
+      targetKind: "security_registry",
+    });
+  });
+
+  it("shows the other-wallet copy for another wallet", () => {
+    walletState.evmAddress = "0x0000000000000000000000000000000000000001";
+    setup(DELAYED, evmServed(evmPendingOp()), EVM);
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-notice`),
+    ).toHaveTextContent("Only the scheduling wallet");
+  });
+
+  it("still asks for confirmation before executing a release", () => {
+    setup(
+      DELAYED,
+      evmServed(
+        evmPendingOp({
+          function: "releaseWithConsent",
+          args: ["1", HASH_B],
+        }),
+      ),
+      EVM,
+    );
+    renderRoute();
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    );
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(
+        `${PENDING}-${EVM_OPERATION_ID}-confirm-dialog-confirm`,
+      ),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "release_with_consent",
+        calldata: EVM_CALLDATA,
+      }),
+    );
+  });
+
+  it("links an EVM setDefault row to Escalate without an Execute button", () => {
+    setup(
+      DELAYED,
+      evmServed(
+        evmPendingOp({
+          function: "setDefault",
+          target_kind: "loan_registry",
+          args: ["4471"],
+        }),
+      ),
+      EVM,
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-link`),
+    ).toHaveTextContent("Open Escalate to Default");
+  });
+});
+
+describe("Security page — EVM loan on an f92d719 registry", () => {
+  const served = (...ops: ReturnType<typeof pendingOp>[]) => ({
+    terms: TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  });
+  const termsInputs = (container: HTMLElement) =>
+    container.querySelectorAll(
+      'input[data-testid^="risk-council-security-terms-"]',
+    );
+
+  beforeEach(() => {
+    chain = EVM;
+    walletState.evmAddress = EVM_SCHEDULER.toLowerCase();
+    mockTermsShape.mockReturnValue({ data: "terms12" } as never);
+  });
+
+  it("shows the 10 Stellar inputs and none of the EVM-only ones", () => {
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(termsInputs(container)).toHaveLength(10);
+    expect(
+      screen.queryByTestId("risk-council-security-terms-defaultRatio"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-originatorFeeRate"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-ratio-error"),
+    ).toBeNull();
+    const terms = screen.getByTestId("risk-council-security-terms");
+    expect(terms).not.toHaveTextContent("Default ratio");
+    expect(terms).not.toHaveTextContent("Originator fee rate");
+  });
+
+  it("relays set_terms without the extras", () => {
+    setup(IMMEDIATE, served(), EVM);
+    renderRoute();
+    const button = screen.getByTestId("risk-council-security-terms-button");
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    const call = relay.mutateAsync.mock.calls[0]![0].call;
+    expect(call.fn).toBe("set_terms");
+    expect(call.terms).not.toHaveProperty("defaultRatioBps");
+    expect(call.terms).not.toHaveProperty("originatorFeeRate");
+  });
+
+  it("still flags a margin call ratio below the advance ratio", () => {
+    setup(IMMEDIATE, served(), EVM);
+    renderRoute();
+    fireEvent.change(
+      screen.getByTestId("risk-council-security-terms-marginCallRatio"),
+      { target: { value: "60" } },
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-ratio-error"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("renders a served 12-key row like Stellar and executes the served calldata", () => {
+    setup(DELAYED, served(evmPendingOpF92d719()), EVM);
+    renderRoute();
+    const args = screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-args`);
+    expect(args).toHaveTextContent("Advance ratio70%");
+    expect(args).not.toHaveTextContent("Default ratio");
+    expect(args).not.toHaveTextContent("Originator fee rate");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${EVM_OPERATION_ID}-button`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "set_terms",
+        calldata: EVM_SET_TERMS_F92D719_CALLDATA,
+      }),
+    );
+  });
+
+  it("shows 10 inputs and disables Set terms while the build is unknown", () => {
+    mockTermsShape.mockReturnValue({ data: undefined } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(termsInputs(container)).toHaveLength(10);
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeDisabled();
+  });
+
+  it("holds the form with a reason while the build is checked", () => {
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-loading"),
+    ).toHaveTextContent("Checking the SecurityRegistry build…");
+    expect(termsInputs(container)).toHaveLength(0);
+    expect(
+      screen.queryByTestId("risk-council-security-terms-button"),
+    ).toBeNull();
+  });
+
+  it("shows the reason and a retry when the build cannot be identified", () => {
+    const refetch = vi.fn();
+    mockTermsShape.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("unrecognised setTerms selector"),
+      refetch,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-terms-shape-error"),
+    ).toHaveTextContent(
+      "Could not identify the SecurityRegistry build — Set terms is unavailable.",
+    );
+    expect(termsInputs(container)).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the form again once the retry resolves", () => {
+    mockTermsShape.mockReturnValue({
+      data: "terms12",
+      isLoading: false,
+      error: null,
+    } as never);
+    setup(IMMEDIATE, served(), EVM);
+    const { container } = renderRoute();
+    expect(
+      screen.queryByTestId("risk-council-security-terms-shape-error"),
+    ).toBeNull();
+    expect(termsInputs(container)).toHaveLength(10);
   });
 });

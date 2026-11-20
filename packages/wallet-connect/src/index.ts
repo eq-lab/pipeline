@@ -70,6 +70,7 @@ export {
 
 // ── Stellar namespace ─────────────────────────────────────────────────────────
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
+export { registerStellarE2EWallet } from "./stellar/config";
 export {
   useStellarWallet,
   useStellarConnectors,
@@ -325,6 +326,7 @@ export type {
 
 export {
   encodeRiskCouncilArgs,
+  riskCouncilArgsXdr,
   relayRiskCouncil,
   readRiskCouncilSchedule,
   riskCouncilReasonHash,
@@ -342,12 +344,28 @@ export type {
 } from "./stellar/contracts/riskCouncil";
 
 export {
+  decodeOperationArgs,
+  operationArgsXdr,
+  readScheduledOperation,
+  executeScheduledOperation,
+} from "./stellar/contracts/scheduledOperation";
+export type {
+  ScheduledOperationParams,
+  ExecuteScheduledOperationParams,
+} from "./stellar/contracts/scheduledOperation";
+
+export {
   encodeSecurityRegistryArgs,
+  securityRegistryArgsXdr,
   relaySecurityRegistry,
   readSecurityRegistrySchedule,
   readSecurityInspectors,
   securityReasonHash,
   isInspectorAddress,
+  isSecurityBenchmark,
+  decimal7ToI128,
+  buildCheckCoverageEnvelope,
+  checkCoverage,
   SECURITY_PAYMENT_TERMS,
   FLAG_OUTCOMES,
 } from "./stellar/contracts/securityRegistry";
@@ -359,14 +377,166 @@ export type {
   SecurityRegistryRelayParams,
   ReadSecurityRegistryScheduleParams,
   ReadSecurityInspectorsParams,
+  BuildCheckCoverageEnvelopeParams,
+  CheckCoverageParams,
 } from "./stellar/contracts/securityRegistry";
+
+// ── EVM Risk Council ──────────────────────────────────────────────────────────
+export {
+  EVM_TX_GAS_CAP,
+  EIP1967_IMPLEMENTATION_SLOT,
+  readEvmContract,
+  readEvmContractCode,
+  sendEvmContractCall,
+  sendEvmContractCallChecked,
+} from "./evm/contracts/write";
+export type {
+  ReadEvmContractParams,
+  SendEvmContractCallParams,
+  SendEvmContractCallResult,
+} from "./evm/contracts/write";
+export {
+  accessManagerAbi,
+  readEvmCanCall,
+  readEvmOperationSchedule,
+  relayEvm,
+  readEvmScheduledOperation,
+  executeEvmScheduledOperation,
+} from "./evm/contracts/accessManager";
+export type {
+  EvmAccessManagerCallParams,
+  ReadEvmCanCallParams,
+  ReadEvmOperationScheduleParams,
+  RelayEvmParams,
+  ReadEvmScheduledOperationParams,
+  ExecuteEvmScheduledOperationParams,
+} from "./evm/contracts/accessManager";
+export {
+  evmSecurityRegistryAbi,
+  evmSecurityRegistryTerms12Abi,
+  evmSecurityRecordNftAbi,
+  evmSecurityErrorAbi,
+  EVM_SECURITY_FUNCTION_NAMES,
+  EVM_SET_TERMS_SELECTORS,
+  evmSecuritySelector,
+  type EvmSecurityFn,
+  evmSecurityTermsShapeFromCode,
+  readEvmSecurityTermsShape,
+  encodeEvmSecurityRegistryCalldata,
+  evmSecurityTarget,
+  relayEvmSecurityRegistry,
+  readEvmSecurityRegistrySchedule,
+  readEvmSecurityInspectors,
+  isEvmInspectorAddress,
+  normalizeEvmAddress,
+} from "./evm/contracts/securityRegistry";
+export type {
+  EvmSecurityAddresses,
+  EvmSecurityCallParams,
+  EvmSecurityTermsShape,
+  RelayEvmSecurityRegistryParams,
+} from "./evm/contracts/securityRegistry";
+
+export {
+  evmLoanRegistryRiskCouncilAbi,
+  evmLoanRegistryErrorAbi,
+  evmRiskCouncilErrorAbi,
+  EVM_RISK_COUNCIL_FUNCTION_NAMES,
+  EVM_LOAN_STATUSES,
+  EVM_CLOSURE_REASONS,
+  evmRiskCouncilSelector,
+  encodeEvmRiskCouncilCalldata,
+  relayEvmRiskCouncil,
+  readEvmRiskCouncilSchedule,
+  readEvmLoanChainState,
+  readEvmLoanMoney,
+  readEvmLoanDisbursementState,
+} from "./evm/contracts/riskCouncil";
+export type {
+  EvmRiskCouncilCallParams,
+  RelayEvmRiskCouncilParams,
+  ReadEvmLoanParams,
+} from "./evm/contracts/riskCouncil";
+
+export {
+  drawEvmLoan,
+  encodeEvmDrawLoanCalldata,
+  evmLoanRegistryDrawAbi,
+  readEvmDrawnLoanId,
+  rolloverEvmLoan,
+  updateEvmMutable,
+  closeEvmLoan,
+  encodeEvmRolloverCalldata,
+  encodeEvmUpdateMutableCalldata,
+  encodeEvmCloseLoanCalldata,
+  evmLoanRegistryLifecycleAbi,
+} from "./evm/contracts/loanRegistry";
+export type {
+  DrawEvmLoanParams,
+  DrawEvmLoanResult,
+  EvmLoanRegistryCallParams,
+} from "./evm/contracts/loanRegistry";
+
+export {
+  readEvmDeal,
+  evmDealTokenFactoryAbi,
+  evmRegisterDealSelector,
+  encodeEvmRegisterDealCalldata,
+  evmRegisterDealErrorAbi,
+  relayEvmRegisterDeal,
+} from "./evm/contracts/dealTokenFactory";
+export type { RelayEvmRegisterDealParams } from "./evm/contracts/dealTokenFactory";
 
 export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
+  evmMinterErrorAbi,
+  evmRecoveryErrorAbi,
+  evmReverseRepaySelector,
+  evmRepaySelector,
+  evmReverseRepayRefHash,
+  relayEvmReverseRepay,
+  scheduleEvmReverseRepay,
+  executeEvmReverseRepay,
+  readEvmReverseRepaySchedule,
+  readEvmNextRepaymentId,
+  readEvmMinterRepayment,
+  readEvmRecoveryRepayments,
+  repayEvmLoan,
+  evmRepaymentRefHash,
+  readEvmRepaymentId,
+  evmRepayErrorAbi,
+  disburseEvmLoan,
+  encodeEvmDisburseCalldata,
+  evmDisburseSelector,
+  evmDisburseErrorAbi,
+  readEvmMinterPaused,
+  readEvmMinterBankCash,
+  readEvmRefHashSeen,
 } from "./evm/contracts/minter";
-export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
+export type {
+  EvmReverseRepayArgs,
+  EvmRepayArgs,
+  EvmReverseRepayCallParams,
+  RelayEvmReverseRepayParams,
+  ScheduleEvmReverseRepayParams,
+  EvmMinterRepaymentRecord,
+  EvmRecoveryRepayment,
+  ReadEvmRecoveryRepaymentsParams,
+  RepayEvmLoanParams,
+  DisburseEvmLoanParams,
+  EvmDisburseArgs,
+} from "./evm/contracts/minter";
+
+export {
+  EVM_LOG_CHUNK_BLOCKS,
+  isTransientRpcError,
+  readEvmHeadBlock,
+  scanEvmLogs,
+} from "./evm/contracts/logs";
+export type { ScanEvmLogsParams } from "./evm/contracts/logs";
+
 export { getErc20Balance } from "./evm/erc20Balance";
 export type { GetErc20BalanceParams, Erc20Balance } from "./evm/erc20Balance";
 

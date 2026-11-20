@@ -22,6 +22,7 @@ import {
   MAIN_CLASS,
   Muted,
   PageGate,
+  PendingOperationsCard,
 } from "./-RiskCouncilParts";
 
 function WriteDownCard({ form }: { form: WriteDownView }) {
@@ -148,6 +149,15 @@ function RiskCouncilWritedown() {
             />
           </Card>
           <div className="flex w-full flex-1 flex-col gap-[20px]">
+            <PendingOperationsCard
+              testId="risk-council-writedown-pending"
+              items={view.pending}
+              chainId={chain}
+              owner="writedown"
+              executeGate={null}
+              executeGateFor={view.pendingGateFor}
+              expectedTarget={view.expectedTarget}
+            />
             <WriteDownCard form={view.writeDown} />
             <CloseCard form={view.close} />
             <CureCard effects={view.cure.effects} view={view.cure.action} />

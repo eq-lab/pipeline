@@ -20,9 +20,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-use shared::book_weighting::{
-    bps_to_fraction_string, current_rate_bps, current_tenor_days, weighted_mean,
-};
+use shared::access_manager_repo::AccessManagerRepo;
+use shared::book_weighting::{current_tenor_days, ppm_to_fraction_string, weighted_mean};
 use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
@@ -41,6 +40,9 @@ use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, Submitted
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
+use crate::pending_operations::{
+    chain_scope, group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind,
+};
 use crate::routes::common::{
     chain_kind, loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
     RequiredChain,
@@ -105,12 +107,14 @@ pub struct LoanBookSummary {
     ///
     /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
-    /// Senior debt coverage = `total_collateral / Σ senior_tranche`, 2-decimal
-    /// string (e.g. `"1.50"`). The denominator is Σ senior tranche over **all**
-    /// active loans (not just priced ones), so unpriced loans make coverage more
-    /// conservative.
+    /// Senior debt coverage = `Σ collateral of active loans with outstanding senior > 0 /
+    /// Σ outstanding senior` (the book-level CCR), 2-decimal string (e.g. `"1.50"`). The
+    /// denominator is `deployed_senior`, over **all** active loans (not just priced ones),
+    /// so unpriced loans make coverage more conservative; collateral of a loan with nothing
+    /// outstanding (not yet disbursed, or fully repaid) covers no debt and is left out.
     ///
-    /// `null` when `total_collateral` is unavailable or Σ senior tranche is zero.
+    /// `null` when no active loan with outstanding senior has a priced collateral value, or
+    /// Σ outstanding senior is zero.
     pub senior_debt_coverage: Option<String>,
     /// Outstanding-senior-weighted current senior interest rate as a decimal fraction
     /// (e.g. `"0.112000"` = 11.2 %), 6-decimal string:
@@ -289,6 +293,7 @@ pub struct LoanBookEntry {
     pub ltv_bps: Option<u32>,
     pub margin_call_open: Option<bool>,
     pub price_stale: Option<bool>,
+    pub pending_operations: Vec<PendingOperation>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -443,12 +448,12 @@ pub struct SubmitLoanResponse {
     /// Identifier of the newly created submission (the `submitted_loans` PK — not
     /// the on-chain `loan_id`, which does not exist until the loan is drawn).
     pub id: i64,
-    /// Contract-ready Stellar `draw_loan` arguments for this submission. `null` for an
-    /// EVM target (until #1573) or an unconfigured `target_chain_id`.
+    /// Contract-ready `draw_loan` arguments for this submission. `null` only for an
+    /// unconfigured `target_chain_id`.
     pub draw_loan: Option<DrawLoanArgs>,
 }
 
-/// Contract-ready arguments of the Stellar loan-registry `draw_loan(metadata_uri, economics)`,
+/// Contract-ready arguments of the loan-registry `draw_loan` / `drawLoan(metadata_uri, economics)`,
 /// derived at read time from the stored submission. Units are in
 /// `docs/product-specs/api-authorization-loan-submission.md`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -468,13 +473,13 @@ pub struct DrawLoanArgs {
 pub struct DrawLoanEconomics {
     /// sha256 of the trimmed `data_room_id` (UTF-8), 64 lowercase hex characters without `0x`.
     pub borrower_ref: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_facility_size: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_senior_tranche: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_equity_tranche: Option<String>,
-    /// u128 in 7-decimal base units, as a plain integer string.
+    /// u128 base units of the target chain's loan money (7 dp Stellar, 6 dp EVM), as a plain integer string.
     pub original_offtaker_price: Option<String>,
     /// u32 fixed-point with `ONE = 1_000_000` = 100 %/yr, i.e. `senior_interest_rate_bps * 100`.
     pub senior_interest_rate: Option<u32>,
@@ -485,6 +490,12 @@ pub struct DrawLoanEconomics {
 }
 
 pub const STELLAR_LOAN_MONEY_DECIMALS: u32 = 7;
+pub const EVM_LOAN_MONEY_DECIMALS: u32 = 6;
+
+pub fn normalize_collateral_valuation(cv: &mut CollateralValuationInput) {
+    cv.asset = cv.asset.trim().to_ascii_uppercase();
+    cv.price_provider = cv.price_provider.trim().to_ascii_lowercase();
+}
 
 pub fn normalize_data_room_id(raw: Option<String>) -> Option<String> {
     raw.and_then(|s| {
@@ -521,6 +532,10 @@ pub fn usdc_to_base_units(amount: &str, decimals: u32) -> Option<String> {
 }
 
 pub fn draw_loan_args(loan_data: &serde_json::Value) -> DrawLoanArgs {
+    draw_loan_args_at(loan_data, STELLAR_LOAN_MONEY_DECIMALS)
+}
+
+pub fn draw_loan_args_at(loan_data: &serde_json::Value, money_decimals: u32) -> DrawLoanArgs {
     let mut missing: Vec<String> = Vec::new();
     let mut take = |name: &str, v: Option<String>| -> Option<String> {
         if v.is_none() {
@@ -532,7 +547,7 @@ pub fn draw_loan_args(loan_data: &serde_json::Value) -> DrawLoanArgs {
         v.get(key).and_then(|x| x.as_str()).map(str::to_owned)
     };
     let money = |econ: &serde_json::Value, key: &str| -> Option<String> {
-        str_of(econ, key).and_then(|a| usdc_to_base_units(&a, STELLAR_LOAN_MONEY_DECIMALS))
+        str_of(econ, key).and_then(|a| usdc_to_base_units(&a, money_decimals))
     };
     let empty = serde_json::Value::Null;
     let econ = loan_data.get("economics").unwrap_or(&empty);
@@ -603,8 +618,9 @@ pub fn draw_loan_for(
     loan_data: &serde_json::Value,
 ) -> Option<DrawLoanArgs> {
     match kind {
-        Some(ChainKind::Stellar) => Some(draw_loan_args(loan_data)),
-        Some(ChainKind::Evm) | None => None,
+        Some(ChainKind::Stellar) => Some(draw_loan_args_at(loan_data, STELLAR_LOAN_MONEY_DECIMALS)),
+        Some(ChainKind::Evm) => Some(draw_loan_args_at(loan_data, EVM_LOAN_MONEY_DECIMALS)),
+        None => None,
     }
 }
 
@@ -650,8 +666,8 @@ pub struct SubmissionView {
     /// lifted from `loan_data.documents` for direct consumption. Empty for legacy
     /// submissions that predate the field (`loan_data` still carries it verbatim).
     pub documents: Vec<LoanDocumentDto>,
-    /// Stellar-target submissions only; `null` for an EVM target (until #1573), an
-    /// unconfigured `target_chain_id`, or once the submission is drawn or `Rejected`.
+    /// `null` for an unconfigured `target_chain_id`, or once the submission is drawn or
+    /// `Rejected`.
     pub draw_loan: Option<DrawLoanArgs>,
     /// The submitted payload, verbatim (legacy rows may carry `to`/`initial_ccr`/`initial_location`).
     pub loan_data: serde_json::Value,
@@ -730,6 +746,9 @@ pub struct ReviewRequest {
         TopConcentration,
         LoanBookEntry,
         LoanPocket,
+        PendingOperation,
+        PendingOperationState,
+        PendingTargetKind,
         LoanDocumentDto,
         SubmitLoanRequest,
         SubmitLoanResponse,
@@ -802,7 +821,7 @@ async fn get_loan_book(
     params(RequiredChain),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 201, description = "Submission accepted; awaiting trustee review. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
+        (status = 201, description = "Submission accepted; awaiting trustee review. Carries the `draw_loan` args (`null` for an unconfigured target chain)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation, or missing, malformed, or unknown chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -823,6 +842,7 @@ async fn submit_loan(
     }
 
     payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
+    normalize_collateral_valuation(&mut payload.collateral_valuation);
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
 
     // Structural checks pass; now confirm the on-chain metadata pointer resolves to a
@@ -916,7 +936,7 @@ async fn insert_valuation_and_fee_rows(
     params(("id" = i64, Path, description = "Submission id")),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 200, description = "Resubmission accepted; submission reopened as InReview. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
+        (status = 200, description = "Resubmission accepted; submission reopened as InReview. Carries the `draw_loan` args (`null` for an unconfigured target chain)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -939,6 +959,7 @@ async fn resubmit_loan(
     }
 
     payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
+    normalize_collateral_valuation(&mut payload.collateral_valuation);
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
     validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
         .await
@@ -1278,8 +1299,15 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
             ))
         }
     }
-    if req.collateral_valuation.asset.trim().is_empty() {
-        return Err("`asset` must not be empty".to_owned());
+    if !shared::security_marks::valid_asset(&req.collateral_valuation.asset) {
+        return Err(format!(
+            "`asset` must be 1-16 characters of A-Z, 0-9, `_` or `-` (got `{}`)",
+            req.collateral_valuation
+                .asset
+                .chars()
+                .take(32)
+                .collect::<String>()
+        ));
     }
     if !is_known_provider(&req.collateral_valuation.price_provider) {
         return Err(format!(
@@ -1448,6 +1476,8 @@ pub async fn handle_loan_book(
     attach_pockets(&mut resp, &pockets);
     let security = security_by_loan(state, chain_ids).await?;
     attach_security(&mut resp, &security);
+    let pending = pending_ops_by_loan(state, chain_ids, to).await?;
+    attach_pending_operations(&mut resp, pending);
     Ok(resp)
 }
 
@@ -1496,6 +1526,43 @@ async fn security_by_loan(
     Ok(out)
 }
 
+async fn pending_ops_by_loan(
+    state: &AppState,
+    chain_ids: &[i64],
+    now: i64,
+) -> Result<HashMap<LoanRef, Vec<PendingOperation>>, ApiError> {
+    let repo = AccessManagerRepo::new(state.pool.clone());
+    let mut out = HashMap::new();
+    for &chain_id in chain_ids {
+        let scope = chain_scope(
+            chain_id,
+            &state.loan_registry_addresses,
+            &state.minter_addresses,
+            &state.security_registry_addresses,
+        );
+        let targets = scope.targets();
+        if targets.is_empty() {
+            continue;
+        }
+        let rows = repo
+            .list_pending_loan_ops(chain_id, &targets, scope.security_registry, None)
+            .await?;
+        out.extend(group_by_loan(chain_id, &rows, &scope, now));
+    }
+    Ok(out)
+}
+
+pub fn attach_pending_operations<S: std::hash::BuildHasher>(
+    resp: &mut LoanBookResponse,
+    mut by_loan: HashMap<LoanRef, Vec<PendingOperation>, S>,
+) {
+    for entry in &mut resp.loans {
+        entry.pending_operations = by_loan
+            .remove(&(entry.chain_id, entry.loan_id.clone()))
+            .unwrap_or_default();
+    }
+}
+
 pub fn attach_security<S: std::hash::BuildHasher>(
     resp: &mut LoanBookResponse,
     by_loan: &HashMap<LoanRef, LoanBookSecurityFields, S>,
@@ -1506,7 +1573,9 @@ pub fn attach_security<S: std::hash::BuildHasher>(
             .copied()
             .unwrap_or_default();
         entry.ltv_bps = fields.ltv_bps;
-        entry.margin_call_open = fields.margin_call_open;
+        entry.margin_call_open = fields
+            .margin_call_open
+            .map(|o| o && entry.status != "Closed");
         entry.price_stale = fields.price_stale;
     }
 }
@@ -1683,8 +1752,9 @@ fn principal_of(loan: &LoanSnapshotRow) -> BigDecimal {
 ///
 /// `collateral_by_loan` maps `loan_ref(chain_id, loan_id)` → collateral value in micro-USDC
 /// (the valuation record's collateral value × 1e6); loans absent from the map have no
-/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
-/// `senior_debt_coverage` are `null` when no active loan has a value.
+/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` is
+/// `null` when no active loan has a value, `senior_debt_coverage` when no active loan with
+/// outstanding senior has one.
 ///
 /// `disbursement_by_loan` maps `loan_ref(chain_id, loan_id)` → `off_ramp_complete`. Loans absent
 /// from the map are treated as NOT complete (still `Disbursing`), matching the
@@ -1705,7 +1775,7 @@ struct EntryComputation {
     entry: LoanBookEntry,
     principal: BigDecimal,
     outstanding_senior: BigDecimal,
-    rate_bps: u32,
+    rate_ppm: u32,
     duration_days: i64,
     collateral: Option<BigDecimal>,
 }
@@ -1727,8 +1797,8 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
     let key = loan_ref(loan.chain_id, &loan.loan_id);
     let principal = principal_of(loan);
     let duration_days = current_tenor_days(s);
-    let rate_bps = current_rate_bps(s);
-    let rate = bps_to_fraction_string(&BigDecimal::from(i64::from(rate_bps)));
+    let rate_ppm = s.current_rate_ppm();
+    let rate = ppm_to_fraction_string(&BigDecimal::from(i64::from(rate_ppm)));
 
     // Outstanding senior = disbursed − repaid − written_down, floored at zero. Drives the
     // "Senior outst." column, the CCR denominator, deployed_senior, and the top-concentration tile.
@@ -1818,13 +1888,14 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         ltv_bps: None,
         margin_call_open: None,
         price_stale: None,
+        pending_operations: Vec::new(),
     };
 
     EntryComputation {
         entry,
         principal,
         outstanding_senior,
-        rate_bps,
+        rate_ppm,
         duration_days,
         collateral: collateral_raw,
     }
@@ -1888,11 +1959,13 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // Collateral aggregation (micro-USDC). `any_collateral` tracks whether at least
     // one active loan had a priced value, so a book with none reports `null`.
     let mut total_collateral = BigDecimal::from(0);
-    // total_senior = Σ ORIGINAL senior (used by senior_debt_coverage);
     // total_outstanding_senior = Σ OUTSTANDING senior (net of repaid), used by
-    // deployed_senior + top_concentration so all "senior exposure" figures share a basis.
-    let mut total_senior = BigDecimal::from(0);
+    // deployed_senior, senior_debt_coverage and top_concentration so all "senior
+    // exposure" figures share a basis. covered_collateral = collateral of the loans
+    // that have outstanding senior (the coverage numerator).
     let mut total_outstanding_senior = BigDecimal::from(0);
+    let mut covered_collateral = BigDecimal::from(0);
+    let mut any_covered_collateral = false;
     // Outstanding senior per commodity, for the top-concentration tile.
     let mut senior_by_commodity: HashMap<&str, BigDecimal> = HashMap::new();
     let mut any_collateral = false;
@@ -1912,13 +1985,12 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         total_deployed += &comp.principal;
         rate_pairs.push((
             comp.outstanding_senior.clone(),
-            BigDecimal::from(i64::from(comp.rate_bps)),
+            BigDecimal::from(i64::from(comp.rate_ppm)),
         ));
         tenor_pairs.push((
             comp.outstanding_senior.clone(),
             BigDecimal::from(comp.duration_days),
         ));
-        total_senior += &s.original_senior_tranche;
         total_outstanding_senior += &comp.outstanding_senior;
         *senior_by_commodity
             .entry(s.commodity.as_str())
@@ -1926,6 +1998,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         if let Some(c) = &comp.collateral {
             any_collateral = true;
             total_collateral += c;
+            if comp.outstanding_senior > zero {
+                any_covered_collateral = true;
+                covered_collateral += c;
+            }
         }
 
         entries.push(comp.entry);
@@ -1946,20 +2022,21 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     }
 
     // Σ(outstanding senior × current rate) / Σ outstanding senior; `null` when nothing is outstanding.
-    let avg_yield: Option<String> = weighted_mean(rate_pairs).map(|m| bps_to_fraction_string(&m));
+    let avg_yield: Option<String> = weighted_mean(rate_pairs).map(|m| ppm_to_fraction_string(&m));
 
     // Outstanding-senior-weighted current full term, rounded to the nearest day.
     let avg_duration_days: Option<i64> = weighted_mean(tenor_pairs)
         .and_then(|m| m.with_scale_round(0, RoundingMode::HalfUp).to_i64());
 
     // total_collateral = Σ per-loan collateral (only loans that had a value);
-    // null when none did. Coverage = total_collateral / Σ senior, 2 decimals.
+    // null when none did. Coverage = covered_collateral / Σ outstanding senior, 2 decimals.
     let total_collateral_str = any_collateral.then(|| base6_to_decimal_string(&total_collateral));
-    let senior_debt_coverage = (any_collateral && total_senior > zero).then(|| {
-        (&total_collateral / &total_senior)
-            .with_scale_round(2, RoundingMode::HalfUp)
-            .to_plain_string()
-    });
+    let senior_debt_coverage =
+        (any_covered_collateral && total_outstanding_senior > zero).then(|| {
+            (&covered_collateral / &total_outstanding_senior)
+                .with_scale_round(2, RoundingMode::HalfUp)
+                .to_plain_string()
+        });
 
     // ── Trustee "Loans" page metrics ──────────────────────────────────────────
     // At-risk = Σ outstanding senior of at-risk loans, computed over the FULL `loans`

@@ -20,7 +20,7 @@ Wire and repayment details: [deposits.md](./deposits.md#stellar-plusd-mint-leg),
 
 - The app reads `AccessManager.can_call(wallet, minter, fn)` for the connected Stellar wallet. A booking is enabled only when `immediate` is true, which means execution delay 0.
 - It fails closed: disabled while the read is pending ("Checking this wallet's Cash reporter role…"), on a read error ("Could not verify this wallet's Cash reporter role."), and with a delay ("This wallet holds the Cash reporter role with a {h} h delay; the minter accepts only immediate calls."). Being a Trustee never enables a booking.
-- No `can_call` read runs on EVM sessions.
+- On the configured EVM chain Record Coupon / Record Repayment read `canCall(wallet, minter, repay)` (selector `0x87d2050a`, `MINT_CALLER_ROLE`) on the EVM AccessManager with the same copy (#1574). Mint PLUSD and Bank income have no EVM read and are never enabled on EVM.
 
 ## `record_income`
 
@@ -33,7 +33,7 @@ Wire and repayment details: [deposits.md](./deposits.md#stellar-plusd-mint-leg),
 
 ## EVM
 
-Read-only. `@pipeline/wallet-connect` has only calldata encoders for the EVM minter and no write client or AccessManager read (TD-152, #1573). Mint PLUSD, Record Coupon / Repayment and Bank income stay disabled with their existing reasons.
+Record Coupon / Repayment read `canCall(wallet, minter, repay)` and sign `PipelineMinter.repay` on the configured EVM chain (#1574, [loan-repay-minter.md](./loan-repay-minter.md)). Mint PLUSD (`record_wire_in`, #1501) and Bank income stay disabled with their existing reasons (TD-152).
 
 ## Verified on Stellar testnet, 2026-11-09 (simulation, nothing submitted)
 

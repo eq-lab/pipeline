@@ -26,7 +26,7 @@ fn dec(s: &str) -> BigDecimal {
     s.parse().unwrap()
 }
 
-/// A one-asset price map for a grid point (the standard-goods anchor prices on `KC`).
+/// A one-asset price map for a grid point (the standard-goods anchor prices on `XAU`).
 fn price_map(pairs: &[(&str, &str)]) -> HashMap<String, BigDecimal> {
     pairs
         .iter()
@@ -42,7 +42,7 @@ fn anchor(haircut: &str, quantity_dmt: &str) -> CollateralValuationRow {
         submitted_loan_id: 1,
         commodity: "Coffee".to_owned(),
         valuation_mode: ValuationMode::StandardGoods,
-        asset: "KC".to_owned(),
+        asset: "XAU".to_owned(),
         price_provider: "ICE".to_owned(),
         haircut_pct: dec(haircut),
         quantity_dmt: dec(quantity_dmt),
@@ -134,16 +134,16 @@ fn validate_window_rejects_bad_input() {
 
 #[test]
 fn build_response_computes_ccr_series_for_standard_goods() {
-    // haircut 0.20, quantity 1000. senior = 500_000 USD.
+    // haircut 0.20, quantity 1000 troy oz (0.0311035 t). senior = 500_000 USD.
     // collateral(price) = price * 1000 * 0.80 = 800 * price.
     // ccr_bps = collateral / senior * 10_000.
     //   price 1000 -> collateral 800_000 -> 800_000/500_000 = 1.6 -> 16_000 bps
     //   price  750 -> collateral 600_000 -> 1.2                 -> 12_000 bps
-    let anchor = anchor("0.20", "1000");
+    let anchor = anchor("0.20", "0.0311035");
     let senior = dec("500000");
     let grid = vec![
-        (0i64, price_map(&[("KC", "1000")])),
-        (3600, price_map(&[("KC", "750")])),
+        (0i64, price_map(&[("XAU", "1000")])),
+        (3600, price_map(&[("XAU", "750")])),
     ];
 
     let resp = build_response(
@@ -168,10 +168,10 @@ fn build_response_computes_ccr_series_for_standard_goods() {
 
 #[test]
 fn build_response_skips_points_without_a_price() {
-    let anchor = anchor("0.00", "1000");
+    let anchor = anchor("0.00", "0.0311035");
     let senior = dec("1000000");
     // First point has no price yet (empty map); second does.
-    let grid = vec![(0i64, HashMap::new()), (10, price_map(&[("KC", "1000")]))];
+    let grid = vec![(0i64, HashMap::new()), (10, price_map(&[("XAU", "1000")]))];
 
     let resp = build_response(
         &BigDecimal::from(42),
@@ -194,8 +194,8 @@ fn build_response_skips_points_without_a_price() {
 
 #[test]
 fn build_response_empty_when_structural_inputs_missing() {
-    let anchor = anchor("0.20", "1000");
-    let grid = vec![(0i64, price_map(&[("KC", "1000")]))];
+    let anchor = anchor("0.20", "0.0311035");
+    let grid = vec![(0i64, price_map(&[("XAU", "1000")]))];
 
     // Senior absent → no denominator, so no CCR is computable.
     let resp = build_response(
@@ -257,7 +257,10 @@ fn gold_silver_offtake() -> OfftakeTermsRow {
 #[test]
 fn required_assets_are_per_metal_for_concentrate_and_headline_for_standard() {
     // Standard goods → the anchor's headline asset only.
-    assert_eq!(required_assets(&anchor("0.20", "1000"), None), vec!["KC"]);
+    assert_eq!(
+        required_assets(&anchor("0.20", "0.0311035"), None),
+        vec!["XAU"]
+    );
 
     // Concentrate → each payable metal's own asset, sorted + deduped.
     let offtake = gold_silver_offtake();

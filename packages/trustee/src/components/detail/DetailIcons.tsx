@@ -85,3 +85,30 @@ export function CrossIcon({ size = 16, ...rest }: GlyphProps) {
     </Svg>
   );
 }
+
+export function CopyIcon({ size = 16, ...rest }: GlyphProps) {
+  return (
+    <Svg viewBox={STROKE_VIEWBOX} size={size} {...rest}>
+      <rect
+        x={5.5}
+        y={5.5}
+        width={8}
+        height={8}
+        rx={1.5}
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      <rect
+        x={2.5}
+        y={2.5}
+        width={8}
+        height={8}
+        rx={1.5}
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}

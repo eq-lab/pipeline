@@ -1,4 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100 (Target chain).
+import type { PendingTargetKind } from "@/api/pendingOperations";
 import { ENV } from "@/lib/env";
 import { SAC_DECIMALS } from "@/utils/stellarSacUnits";
 
@@ -39,6 +40,61 @@ export function stellarOnlyActionReason(
 ): string | null {
   if (isStellarTarget(chainId)) return null;
   return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
+}
+
+function isSignableChain(chainId: number | null | undefined): boolean {
+  return isStellarTarget(chainId) || chainId === ENV.EVM_CHAIN_ID;
+}
+
+export function loanActionChainReason(
+  chainId: number | null | undefined,
+): string | null {
+  if (isSignableChain(chainId)) return null;
+  return stellarOnlyActionReason(chainId);
+}
+
+export function riskCouncilChainReason(
+  chainId: number | null | undefined,
+): string | null {
+  return loanActionChainReason(chainId);
+}
+
+export function drawChainReason(
+  chainId: number | null | undefined,
+): string | null {
+  if (isSignableChain(chainId)) return null;
+  return `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(chainId)} from the Trustee app is not supported yet. Reject or request changes instead.`;
+}
+
+export function riskCouncilTargetId(
+  chainId: number | null | undefined,
+  kind: PendingTargetKind,
+): string {
+  const stellar = isStellarTarget(chainId);
+  switch (kind) {
+    case "loan_registry":
+      return stellar
+        ? ENV.STELLAR_LOAN_REGISTRY_ID
+        : ENV.EVM_LOAN_REGISTRY_ADDRESS;
+    case "minter":
+      return stellar ? ENV.STELLAR_YIELD_MINTER_ID : ENV.EVM_MINTER_ADDRESS;
+    case "security_registry":
+      return stellar
+        ? ENV.STELLAR_SECURITY_REGISTRY_ID
+        : ENV.EVM_SECURITY_REGISTRY_ADDRESS;
+    default:
+      return "";
+  }
+}
+
+export function sameChainAddress(
+  chainId: number | null | undefined,
+  a: string,
+  b: string,
+): boolean {
+  return isStellarTarget(chainId)
+    ? a === b
+    : a.toLowerCase() === b.toLowerCase();
 }
 
 export const EVM_USDC_DECIMALS = 6;

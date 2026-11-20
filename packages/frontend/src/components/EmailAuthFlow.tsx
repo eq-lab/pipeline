@@ -70,6 +70,7 @@ export function EmailAuthFlow({
       <AddEmailModal
         open={open && flow.screen === "add-email"}
         onBack={flow.dismiss}
+        onSignIn={flow.goToSignIn}
         onSubmit={flow.handleAddEmailSubmit}
         formError={flow.signupFormError}
         captchaStatus={flow.signupCaptchaStatus}

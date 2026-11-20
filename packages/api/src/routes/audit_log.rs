@@ -45,7 +45,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::AuditLogRow;
-use shared::loan_economics::economics_rate_to_bps;
+use shared::loan_economics::ppm_to_bps_floor;
 
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
@@ -130,6 +130,9 @@ pub const AUDIT_EVENT_NAMES: &[&str] = &[
     "SecurityInspectorsSet",
     "SecurityRegistryPaused",
     "SecurityRegistryUnpaused",
+    "SecurityDefaultBreach",
+    "SecurityDefaultBreachPriceStale",
+    "SecurityDefaultBreachCleared",
 ];
 
 const LEGACY_COLLATERAL_REGISTRY_NAMES: [&str; 11] = [
@@ -193,7 +196,7 @@ pub struct AuditLogItem {
     pub event_name: String,
     /// Curated scalar fields backing `action` (amounts already in decimal dollar units),
     /// so clients can re-render without re-parsing raw params. Shape varies by event.
-    /// `DealRegistered.cargo` is `null` when the deal has no CARGO token (Stellar, from contracts #38).
+    /// `DealRegistered.cargo` is `null` when the deal has no CARGO token (Stellar from contracts #38; EVM from contracts #51).
     pub details: Value,
 }
 
@@ -521,11 +524,9 @@ fn iso_param(params: &Value, key: &str) -> Option<String> {
     Some(iso_utc_from_unix(secs))
 }
 
-fn default_rate_pct(params: &Value) -> Option<String> {
-    let rate = u32::try_from(param_i64(params, "default_rate")?).ok()?;
-    Some(pct_from_bps(i64::from(economics_rate_to_bps(i64::from(
-        rate,
-    )))))
+fn economics_rate_pct(params: &Value, key: &str) -> Option<String> {
+    let rate = u32::try_from(param_i64(params, key)?).ok()?;
+    Some(pct_from_bps(i64::from(ppm_to_bps_floor(rate))))
 }
 
 /// Map an `(event_name, params)` pair to a human-readable action string plus a curated
@@ -1212,12 +1213,17 @@ fn render_security(
             let advance = bps_pct(params, "advance_ratio_bps");
             let margin = bps_pct(params, "margin_call_ratio_bps");
             let cure = duration_param(params, "cure_period");
-            let action = match (&advance, &margin, &cure) {
+            let default_ratio = bps_pct(params, "default_ratio_bps");
+            let mut action = match (&advance, &margin, &cure) {
                 (Some(a), Some(m), Some(c)) => format!(
                     "Security terms set — advance ratio {a}%, margin call ratio {m}%, cure period {c}"
                 ),
                 _ => "Security terms set".to_owned(),
             };
+            if let (Some(d), Some(_), Some(_), Some(_)) = (&default_ratio, &advance, &margin, &cure)
+            {
+                action = format!("{action}, default ratio {d}%");
+            }
             let mut details = pass(
                 params,
                 &[
@@ -1231,9 +1237,15 @@ fn render_security(
             );
             details["advance_ratio_pct"] = json!(advance);
             details["margin_call_ratio_pct"] = json!(margin);
-            details["default_rate_pct"] = json!(default_rate_pct(params));
+            details["default_rate_pct"] = json!(economics_rate_pct(params, "default_rate"));
             details["tolerance_pct"] = json!(bps_pct(params, "tolerance_bps"));
             details["grade_tolerance_pct"] = json!(bps_pct(params, "grade_tolerance_bps"));
+            if default_ratio.is_some() {
+                details["default_ratio_pct"] = json!(default_ratio);
+            }
+            if let Some(fee) = economics_rate_pct(params, "originator_fee_rate") {
+                details["originator_fee_rate_pct"] = json!(fee);
+            }
             (action, details)
         }
 
@@ -1292,6 +1304,40 @@ fn render_security(
             let action = match ltv_label(params) {
                 Some(l) => format!("Margin call cured — LTV {l}"),
                 None => "Margin call cured".to_owned(),
+            };
+            (action, json!({ "ltv_pct": ltv_pct(params) }))
+        }
+
+        "SecurityDefaultBreach" => {
+            let ratio = bps_pct(params, "default_ratio_bps");
+            let action = match (ltv_label(params), &ratio) {
+                (Some(l), Some(d)) => format!("Default breach — LTV {l} above {d}% default ratio"),
+                _ => "Default breach".to_owned(),
+            };
+            (
+                action,
+                json!({ "ltv_pct": ltv_pct(params), "default_ratio_pct": ratio }),
+            )
+        }
+
+        "SecurityDefaultBreachPriceStale" => {
+            let ratio = bps_pct(params, "default_ratio_bps");
+            let action = match (ltv_label(params), &ratio) {
+                (Some(l), Some(d)) => format!(
+                    "Price stale — LTV {l} above {d}% default ratio, no default breach until revalued"
+                ),
+                _ => "Price stale".to_owned(),
+            };
+            (
+                action,
+                json!({ "ltv_pct": ltv_pct(params), "default_ratio_pct": ratio }),
+            )
+        }
+
+        "SecurityDefaultBreachCleared" => {
+            let action = match ltv_label(params) {
+                Some(l) => format!("Default breach cleared — LTV {l}"),
+                None => "Default breach cleared".to_owned(),
             };
             (action, json!({ "ltv_pct": ltv_pct(params) }))
         }
@@ -1421,7 +1467,9 @@ fn with_amount(
 /// bps) and `new_maturity_timestamp`, read from the top level or the nested `event`.
 fn economics_details(params: &Value) -> Value {
     json!({
-        "new_rate_bps": param_i64(params, "new_rate").map(economics_rate_to_bps),
+        "new_rate_bps": param_i64(params, "new_rate")
+            .and_then(|rate| u32::try_from(rate).ok())
+            .map(ppm_to_bps_floor),
         "new_maturity_timestamp": param_i64(params, "new_maturity_timestamp"),
     })
 }

@@ -64,6 +64,7 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
                 original_equity_tranche: BigDecimal::from(0_i64),
                 original_offtaker_price: BigDecimal::from(0_i64),
                 senior_interest_rate_bps: rate_bps,
+                senior_interest_rate_ppm: None,
                 origination_date: start_day * DAY,
                 original_maturity_date: end_day * DAY,
                 // mutableLoanData
@@ -72,6 +73,7 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
                 status: "Performing".to_owned(),
                 current_maturity_timestamp: 0,
                 current_rate: rate_bps,
+                current_rate_ppm: None,
                 closure_reason: "None".to_owned(),
                 carved_out: false,
                 disbursed: BigDecimal::from(0_i64),

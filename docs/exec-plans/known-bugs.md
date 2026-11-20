@@ -17,19 +17,19 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-41: An EVM withdrawal claim reverted for an unfunded queue reports "That request could not be found"
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/utils/userError.ts` (`matchHttp`). Found in the #1971 browser pass.
+- **Symptom:** `claimWithdrawal` reverted with `ERC20InsufficientAllowance(queue, 0, 400e6)` (the custodian had not approved the queue for USDC); the toast says "That request could not be found. It may have already been processed."
+- **Root cause:** The custom error `0xfb8f41b2` is not in the app's ABI, so viem's message reads `Unable to decode signature … was not found on the provided ABI`, which the HTTP rule `/not found/i` matches.
+- **Workaround:** None needed for funds; the claim succeeds once the custodian approves the queue.
+
 ### BUG-37: `GET /v1/lps` OpenAPI documents `payment_details` as a required path parameter
 - **Date:** 2026-11-13
 - **Location:** `packages/api/src/routes/lps.rs` (`LpsQuery`). Found while planning #1887.
 - **Symptom:** `/api-docs/openapi.json` lists `payment_details` under `GET /v1/lps` as a required **path** parameter.
 - **Root cause:** `LpsQuery` lacks `#[into_params(parameter_in = Query)]`. The handler reads it correctly from the query string (`Query<LpsQuery>`), so the Trustee console is unaffected (its types are hand-mirrored, TD-42).
 - **Workaround:** None needed in the console. Fix in a backend issue; do not generate clients from the current spec for this endpoint.
-
-### BUG-32: Assay and offtake validation accepts unbounded decimal exponents, which the valuation math then expands
-- **Date:** 2026-11-09
-- **Location:** `packages/api/src/routes/collateral_valuation.rs` (`parse_dec`, `validate_assay`, `validate_offtake`) and `packages/shared/src/collateral_valuation/mod.rs` (`dec`, `compute_collateral`). Found while planning #1783.
-- **Symptom:** A stored `grade_g_per_t` or `payable_pct` such as `1e999999999` passes validation. Reads that call `compute_collateral` (`/valuations`, the loan book, `ccr-history`) can then spend unbounded time and memory expanding it.
-- **Root cause:** `parse_dec` only calls `BigDecimal::from_str`; neither the string length nor the exponent is bounded, and `dec` parses the stored strings the same way.
-- **Workaround:** The #1783 mark suggestion path bounds every such decimal first (`shared::security_marks::bounded_dec_str`: at most 64 bytes, exponent in [-40, 40], at most 60 digits). Apply the same bound at write time and in `dec`.
 
 ### BUG-28: The trustee wire-in error mapping treats Minter code 13 as a missing trustline, but the source has 13 = `NonExistentRepayment` and 15 = `ReceiverNotAuthorized`
 - **Date:** 2026-10-27
@@ -92,6 +92,40 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-42: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/wallet/stellar/` — `new Horizon.Server(horizonUrl)` in `useStellarToken.ts`, `useStellarXlmBalance.ts`, `useStellarSacToken.ts`, `useStellarDepositManager.ts`, `useStellarStakedPlusd.ts`, `useStellarWithdrawalQueue.ts`. Found in the #1971 browser pass.
+- **Symptom:** On the e2e stack (`VITE_STELLAR_HORIZON_URL=http://localhost:58000`) the connected test wallet's USDC balance shows `—` and the deposit input stays disabled, although Horizon serves 1000 USDC for the account. The Stellar deposit and withdrawal walk of the e2e skill cannot run.
+- **Root cause:** `Horizon.Server` throws `Cannot connect to insecure horizon server` for an `http` URL unless constructed with `{ allowHttp: true }`; the Soroban RPC client already passes `allowHttp: sorobanRpcUrl.startsWith("http://")`. Production (https) is unaffected.
+- **Workaround:** None in the browser; `run.ts` covers the Stellar LP flow without the app.
+- **Resolved:** #2014 constructs all six clients with `{ allowHttp: horizonUrl.startsWith("http://") }`, as the Soroban RPC clients do. The Stellar LP browser pass then ran end to end on a fresh stack (USDC balance, PLUSD trustline, deposit, claim, stake, withdrawal, desktop and 375 px): see the "#2014 rerun" section of [`docs/e2e/release-run.md`](../e2e/release-run.md).
+
+### BUG-40: The LP app hides the Claim step of a pending deposit when the remaining USDC is below the minimum deposit [FIXED 2026-11-18 / #2015]
+- **Date:** 2026-11-18
+- **Location:** `packages/frontend/src/routes/deposit.tsx` (`low-balance-banner` branch on `flow.hasBalance === false`) and `useDepositFlow.ts` (`evmHasBalance` compares the balance with `minDeposit`). Found in the #1971 browser pass on EVM.
+- **Symptom:** After `requestDeposit` of the whole balance (the anvil minimum is 1000 USDC and the test wallet holds 1000), the deposit page replaces the steps card with "Add funds to your USDC balance", so the Claim button of the `PendingClaim` request is unreachable; Activity lists it as Pending with no action.
+- **Root cause:** The banner is chosen on the wallet balance alone, not on whether a deposit request is waiting for its claim.
+- **Workaround:** Bring the balance back above the minimum (on the stack: `anvil_dealERC20`); the steps card and Claim return.
+- **Resolved:** #2015 shows the low-balance and USDC-trustline banners only on `flow.isBelowMinimum` (`useDepositFlow`: balance below the minimum and no confirmed deposit request), so a deposit request awaiting verification or its claim keeps the steps card on both EVM and Stellar.
+
+### BUG-39: The EVM worker drops the DEBT-only `DealRegistered(uint256,address)` [FIXED 2026-11-19 / #1892]
+- **Date:** 2026-11-19
+- **Tracked:** #1892; found while planning #1892.
+- **Location:** `packages/worker/src/indexer/deal_token_parsers.rs`, `deal_tokens.rs`.
+- **Symptom:** An EVM `registerDeal` leaves no `DealRegistered` row and no audit-log entry, and the DEBT token's `Transfer`s are not indexed.
+- **Root cause:** The decoder declares only the legacy `DealRegistered(uint256,address,address)`, `decode_log` validates topic0, and Hoodi / `150631a` emit `DealRegistered(uint256,address)`.
+- **Workaround:** None needed for the UI (it reads `deal()` on chain).
+- **Resolved:** #1892 accepts both shapes per log (`cargo: null` for DEBT-only) and tracks the DEBT token alone. No Hoodi registration existed before the fix (scan from block 3 955 455 to head), so nothing needs a backfill.
+
+### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1) [FIXED 2026-11-16 / #1927]
+- **Date:** 2026-11-16
+- **Tracked:** #1927 (epic #1920); Found while planning #1922.
+- **Location:** `packages/shared/src/access_manager_repo.rs` (`INSERT_SCHEDULED_SQL`) and the unique key `(chain_id, contract_address, operation_id, nonce)` of `access_manager_operations`.
+- **Symptom:** After a schedule is executed, canceled or expires, a later schedule of the same arguments by the same caller (typical for `set_default(loan)` and `cure(loan)`) can leave no row, or only the old executed, canceled or expired one, so the console shows nothing or a stale row.
+- **Root cause:** The contract nonce restarts at 1 once the temporary schedule entry's TTL lapses (`storage.rs:327`, `lib.rs:339`), so the new schedule has the same key as the old row and `ON CONFLICT DO NOTHING` drops it.
+- **Workaround:** None; the Risk Council can still execute by retyping the arguments, as before #1920.
+- **Resolved:** #1927 keys the table on `(chain_id, contract_address, operation_id, schedule_ledger, nonce)` and closes the newest schedule of the id logged before the closing event. Schedules dropped before the fix stay missing until the Risk Council schedules again.
 
 ### BUG-36: `-useRiskCouncil.test.tsx` — "relays schedule and execute with the right params" is timing-flaky [FIXED 2026-11-11 / #1888]
 - **Tracked:** #1888, seen on PR #1883 (CI run 42809806303).

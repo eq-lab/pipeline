@@ -54,7 +54,7 @@ of the disbursement signing chain. The LoanRegistry mint and the Capital Wallet
 disbursement are independent actions: the mint is a Trustee-key transaction on LoanRegistry;
 the disbursement is an MPC co-signature on the Capital Wallet.
 
-On Stellar each drawn loan also gets a per-loan DEBT token: after `draw_loan` the Trustee registers it with `DealTokenFactory.register_deal(loan_id)` (separate signature; `sync_debt` follows later; EVM is #1892).
+On Stellar each drawn loan also gets a per-loan DEBT token: after `draw_loan` the Trustee registers it with `DealTokenFactory.register_deal(loan_id)` (separate signature; `sync_debt` follows later). On EVM the Trustee registers it after the draw with `registerDeal` through `AccessManager.execute` (#1892).
 
 ### Genesis economics
 
@@ -64,7 +64,7 @@ It holds seven numeric fields:
 - `originalFacilitySize`, `originalSeniorTranche`, `originalEquityTranche`
 - `originalOfftakerPrice`, the total USDC the end buyer is contracted to pay for the cargo.
   Outstanding offtaker balance is `originalOfftakerPrice − offtakerReceivedTotal` — a hard
-  ceiling for fixed-price deals only; a quotational (concentrate) settlement may exceed it and is then flagged, not rejected (see [yield.md](./yield.md), issue #963).
+  ceiling on every loan, enforced by the LoanRegistry (`OfftakerExceedsPrice`) and by the waterfall (see [yield.md](./yield.md), #2123).
 - `seniorInterestRateBps`, the genesis annualised coupon rate for the Senior tranche in
   basis points (e.g. 1200 = 12%). The Equity tranche has no fixed rate and receives the
   residual.

@@ -1,8 +1,8 @@
 use alloy::primitives::{FixedBytes, I256, U256};
-use alloy::sol_types::SolValue;
+use alloy::sol_types::{SolCall, SolValue};
 use pipeline_worker::indexer::loan_mapper::{closure_reason_name, loan_status_name};
 use pipeline_worker::indexer::loan_registry_reader::{
-    decode_immutable_loan_data, decode_mutable_loan_data, ILoanRegistry,
+    decode_immutable_loan_data, decode_max_fee_bps, decode_mutable_loan_data, ILoanRegistry,
 };
 
 fn mutable_payload(status: u8, closure_reason: u8, current_rate: u32) -> Vec<u8> {
@@ -41,14 +41,14 @@ fn immutable_payload(borrower_ref: [u8; 32], senior_interest_rate: u32) -> Vec<u
 
 #[test]
 fn decode_mutable_loan_data_happy_path() {
-    let bytes = mutable_payload(1, 0, 100_000);
+    let bytes = mutable_payload(1, 0, 112_599);
 
     let view = decode_mutable_loan_data(&bytes).expect("should decode MutableLoanData");
 
     assert_eq!(view.next_economics_epochs_id, U256::from(1u64));
     assert_eq!(view.next_repayment_id, U256::from(2u64));
     assert_eq!(view.current_maturity_timestamp, 1_731_600_000);
-    assert_eq!(view.current_rate, 1_000, "100_000 ppm -> 1_000 bps (10%)");
+    assert_eq!(view.current_rate_ppm, 112_599);
     assert!(view.carved_out);
     assert_eq!(view.disbursed, U256::from(500_000u64));
     assert_eq!(view.repaid, U256::from(100_000u64));
@@ -131,7 +131,7 @@ fn decode_mutable_loan_data_rejects_pre_rework_payload() {
 #[test]
 fn decode_immutable_loan_data_happy_path() {
     let borrower_ref = [0xAB_u8; 32];
-    let bytes = immutable_payload(borrower_ref, 100_000);
+    let bytes = immutable_payload(borrower_ref, 72_550);
 
     let view = decode_immutable_loan_data(&bytes).expect("should decode ImmutableLoanData");
 
@@ -139,10 +139,7 @@ fn decode_immutable_loan_data_happy_path() {
         view.borrower_ref,
         Some(FixedBytes::<32>::from(borrower_ref))
     );
-    assert_eq!(
-        view.senior_interest_rate_bps, 1_000,
-        "100_000 ppm -> 1_000 bps (10%) — the #765 regression"
-    );
+    assert_eq!(view.senior_interest_rate_ppm, 72_550);
     assert_eq!(view.original_facility_size, U256::from(1_000_000u64));
     assert_eq!(view.original_senior_tranche, U256::from(800_000u64));
     assert_eq!(view.original_equity_tranche, U256::from(200_000u64));
@@ -161,5 +158,25 @@ fn decode_immutable_loan_data_all_zero_borrower_ref_is_some_zero() {
         view.borrower_ref,
         Some(FixedBytes::<32>::ZERO),
         "an all-zero on-chain borrowerRef must decode to Some(ZERO), not None"
+    );
+}
+
+#[test]
+fn decode_max_fee_bps_reads_a_uint32() {
+    let encoded = 5_000u32.abi_encode();
+    assert_eq!(decode_max_fee_bps(&encoded).unwrap(), 5_000);
+}
+
+#[test]
+fn decode_max_fee_bps_rejects_empty_and_short_buffers() {
+    assert!(decode_max_fee_bps(&[]).is_err());
+    assert!(decode_max_fee_bps(&[0u8; 31]).is_err());
+}
+
+#[test]
+fn max_fee_bps_selector_matches_the_deployed_registry() {
+    assert_eq!(
+        ILoanRegistry::maxFeeBpsCall::SELECTOR,
+        [0xbf, 0x76, 0x9a, 0x3f]
     );
 }

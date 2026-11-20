@@ -13,15 +13,37 @@
  * therefore NOT included in `defaultModules()`. It can be added in a later
  * iteration by passing a custom modules array.
  */
-import { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
+import { Networks, StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
 import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
 import { kitNetwork } from "./chain";
 
+const modules = defaultModules();
 StellarWalletsKit.init({
   network: kitNetwork,
-  modules: defaultModules(),
+  modules,
   // selectedWalletId is left unset — authModal lets the user pick.
 });
+
+/* eslint-disable no-restricted-syntax */
+export const E2E_WALLET_ID: string | undefined =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_E2E_WALLET &&
+  kitNetwork === Networks.STANDALONE
+    ? "pipeline-e2e-wallet"
+    : undefined;
+
+if (import.meta.env.DEV && E2E_WALLET_ID)
+  void import("@pipeline/wallet-connect/e2e-wallet").then(
+    ({ e2eWalletModule }) => {
+      const e2e = e2eWalletModule(import.meta.env, kitNetwork);
+      if (e2e)
+        StellarWalletsKit.init({
+          network: kitNetwork,
+          modules: [...modules, e2e],
+        });
+    },
+  );
+/* eslint-enable no-restricted-syntax */
 
 // Re-export the singleton class so the hook imports it from here (boundary).
 export { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";

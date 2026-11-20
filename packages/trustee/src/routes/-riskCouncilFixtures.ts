@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { vi } from "vitest";
 import type { LoanBookEntry, LoanBookResponse } from "@/api/useLoanBook";
+import type { PendingOperation } from "@/api/pendingOperations";
 import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
 import type {
   RiskCouncilAccess,
@@ -8,6 +9,7 @@ import type {
 } from "@/api/useRiskCouncil";
 
 export const STELLAR = 99_000_001;
+export const EVM = 560048;
 export const OTHER_CHAIN = 1;
 export const READY_AT = 1_800_000_000;
 
@@ -57,6 +59,7 @@ export function securityResult(
     isLoading: false,
     error: null,
     notConfigured: false,
+    dataUpdatedAt: 0,
     refetch: () => {},
     ...overrides,
   };
@@ -171,4 +174,231 @@ export function relayResult(
     reset: vi.fn(),
     ...overrides,
   };
+}
+
+export function pendingExecuteResult(error: Error | null = null) {
+  return {
+    mutateAsync: vi.fn().mockResolvedValue({ hash: "EH" }),
+    isPending: false,
+    error,
+    hash: null,
+    stage: null,
+    reset: vi.fn(),
+  };
+}
+
+export const SECURITY_REGISTRY = "CSECURITYREGISTRY1234567890";
+export const LOAN_REGISTRY = "CLOANREGISTRY1234567890XYZ";
+export const MINTER = "CMINTER1234567890ABCDEFGH";
+export const SCHEDULER = "GSCHEDULERADDRESS1234567890ABCD";
+export const OPERATION_ID = "ab".repeat(32);
+export const HASH_A = "cd".repeat(32);
+export const HASH_B = "ef".repeat(32);
+export const SECONDS_PER_WEEK = 604_800;
+
+export const SET_TERMS_ARGS = [
+  7,
+  {
+    advance_ratio_bps: 7000,
+    attestation_interval: "2592000",
+    cure_period: "604800",
+    default_rate: 20000,
+    grace_period: "259200",
+    grade_tolerance_bps: 25,
+    inspection_interval: "0",
+    margin_call_at: "0",
+    margin_call_ratio_bps: 8250,
+    payment_term: ["Lc"],
+    price_stale_after: "86400",
+    tolerance_bps: 50,
+  },
+];
+
+function isoAt(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toISOString();
+}
+
+export function pendingOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return {
+    operation_id: OPERATION_ID,
+    nonce: 1,
+    caller: SCHEDULER,
+    target: SECURITY_REGISTRY,
+    target_kind: "security_registry",
+    function: "set_terms",
+    args_xdr: "AAAAEAAAAAA=",
+    args: SET_TERMS_ARGS,
+    ready_at: isoAt(READY_AT),
+    expires_at: isoAt(READY_AT + SECONDS_PER_WEEK),
+    state: "ready",
+    ...overrides,
+  };
+}
+
+export const LOAN_REGISTRY_ARGS = {
+  set_default: [7],
+  cure: [7],
+  amend_economics: [7, 145_000, "1816128000"],
+  adjust_interest: [7, "-1000000", "ab".repeat(32)],
+  write_down: [7, "5000000"],
+  close_defaulted: [7, ["OtherWriteDown"]],
+} as const;
+
+export function loanRegistryOp(
+  fn: keyof typeof LOAN_REGISTRY_ARGS,
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: fnOperationId(fn),
+    target: LOAN_REGISTRY,
+    target_kind: "loan_registry",
+    function: fn,
+    args: LOAN_REGISTRY_ARGS[fn],
+    ...overrides,
+  });
+}
+
+export function minterOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: fnOperationId("reverse_repay"),
+    target: MINTER,
+    target_kind: "minter",
+    function: "reverse_repay",
+    args: [7, 2, "cd".repeat(32)],
+    ...overrides,
+  });
+}
+
+const OPERATION_FNS = [
+  ...Object.keys(LOAN_REGISTRY_ARGS),
+  "reverse_repay",
+] as const;
+
+function fnOperationId(fn: string): string {
+  const index = OPERATION_FNS.indexOf(fn as (typeof OPERATION_FNS)[number]);
+  return (0x50 + index).toString(16).repeat(32);
+}
+
+export const EVM_SECURITY_REGISTRY =
+  "0xB51E7f13420D106946376A67Fe5921C63B09BE15";
+export const EVM_SCHEDULER = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
+export const EVM_ACCESS_MANAGER = "0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992";
+export const EVM_RECORD_NFT = "0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09";
+export const EVM_OPERATION_ID = "cd".repeat(32);
+export const EVM_CALLDATA = `0x45f225f5${"00".repeat(60)}`;
+
+export const EVM_SET_TERMS_ARGS = [
+  "7",
+  {
+    advanceRatioBps: 7000,
+    marginCallRatioBps: 8250,
+    defaultRatioBps: 9000,
+    curePeriod: "604800",
+    priceStaleAfter: "86400",
+    paymentTerm: 0,
+    gracePeriod: "259200",
+    defaultRate: 20000,
+    originatorFeeRate: 10000,
+    attestationInterval: "2592000",
+    inspectionInterval: "0",
+    toleranceBps: 50,
+    gradeToleranceBps: 25,
+    marginCallAt: "0",
+    defaultBreachAt: "0",
+  },
+];
+
+export const EVM_SET_TERMS_F92D719_ARGS = [
+  "7",
+  {
+    advanceRatioBps: 7000,
+    marginCallRatioBps: 8250,
+    curePeriod: "604800",
+    priceStaleAfter: "86400",
+    paymentTerm: 0,
+    gracePeriod: "259200",
+    defaultRate: 20000,
+    attestationInterval: "2592000",
+    inspectionInterval: "0",
+    toleranceBps: 50,
+    gradeToleranceBps: 25,
+    marginCallAt: "0",
+  },
+];
+
+export const EVM_SET_TERMS_F92D719_CALLDATA =
+  "0x36b14cd200000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000001b58000000000000000000000000000000000000000000000000000000000000203a0000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000151800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f4800000000000000000000000000000000000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000000278d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003200000000000000000000000000000000000000000000000000000000000000190000000000000000000000000000000000000000000000000000000000000000";
+
+export function evmPendingOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: EVM_OPERATION_ID,
+    caller: EVM_SCHEDULER,
+    target: EVM_SECURITY_REGISTRY,
+    function: "setTerms",
+    args_xdr: null,
+    calldata: EVM_CALLDATA,
+    args: EVM_SET_TERMS_ARGS,
+    ...overrides,
+  });
+}
+
+export const EVM_LOAN_REGISTRY = "0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231";
+export const EVM_MINTER = "0x621BaAb0ced6b11f88019582183b081A118755f4";
+export const EVM_LOAN_CALLDATA = `0xe0da6b66${"00".repeat(32)}`;
+
+export const EVM_LOAN_REGISTRY_ARGS = {
+  setDefault: ["7"],
+  cure: ["7"],
+  amendEconomics: ["7", 145_000, "1767225600"],
+  adjustInterest: ["7", "-5000000", "ab".repeat(32)],
+  writeDown: ["7", "1000000"],
+  closeDefaulted: ["7", 4],
+} as const;
+
+export function evmLoanRegistryOp(
+  fn: keyof typeof EVM_LOAN_REGISTRY_ARGS,
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id:
+      `${(0x60 + Object.keys(EVM_LOAN_REGISTRY_ARGS).indexOf(fn)).toString(16)}`.repeat(
+        32,
+      ),
+    target: EVM_LOAN_REGISTRY,
+    target_kind: "loan_registry",
+    function: fn,
+    calldata: EVM_LOAN_CALLDATA,
+    args: EVM_LOAN_REGISTRY_ARGS[fn],
+    ...overrides,
+  });
+}
+
+export function evmMinterOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    operation_id: "7f".repeat(32),
+    target: EVM_MINTER,
+    target_kind: "minter",
+    function: "reverseRepay",
+    calldata: `0x0cff7536${"00".repeat(96)}`,
+    args: ["7", "2", "cd".repeat(32)],
+    ...overrides,
+  });
+}
+
+export function evmPendingOpF92d719(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return evmPendingOp({
+    calldata: EVM_SET_TERMS_F92D719_CALLDATA,
+    args: EVM_SET_TERMS_F92D719_ARGS,
+    ...overrides,
+  });
 }

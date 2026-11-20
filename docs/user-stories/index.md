@@ -169,6 +169,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#896 Trustee: show pointer cursor for active buttons](https://github.com/eq-lab/pipeline/issues/896) | [896-trustee-active-button-cursors.md](./epic-775/896-trustee-active-button-cursors.md) | Initial |
 | [#1864 Backend: per-section pending counts for the Trustee sidebar badges](https://github.com/eq-lab/pipeline/issues/1864) | [1864-trustee-attention-counts.md](./epic-775/1864-trustee-attention-counts.md) | Initial |
 | [#1913 Trustee: Originator amends and resubmits a submission after Request changes](https://github.com/eq-lab/pipeline/issues/1913) | [1913-originator-amend-resubmit.md](./epic-775/1913-originator-amend-resubmit.md) | Initial |
+| [#1350 Trustee: populate the sidebar badge counts](https://github.com/eq-lab/pipeline/issues/1350) | [1350-trustee-sidebar-badges.md](./epic-775/1350-trustee-sidebar-badges.md) | Initial |
 | [#1684 Trustee: EVM custody balance on the Capital Allocation card](https://github.com/eq-lab/pipeline/issues/1684) | [1684-trustee-evm-custody-balance.md](./epic-775/1684-trustee-evm-custody-balance.md) | Initial |
 
 ---
@@ -266,11 +267,13 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1426 Home state 6: KYB not verified due to a problem](https://github.com/eq-lab/pipeline/issues/1426) | [1426-home-kyb-problem-state.md](./epic-1419/1426-home-kyb-problem-state.md) | Initial |
 | [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
 | [#1459 Add email screen for a wallet-connected visitor — email + password, then OTP, then session](https://github.com/eq-lab/pipeline/issues/1459) | [1459-add-email-screen.md](./epic-1419/1459-add-email-screen.md) | Initial |
+| [#2054 Add email screen: 'Already have an account? Sign in' link for visitors who already have an email account](https://github.com/eq-lab/pipeline/issues/2054) | [2054-add-email-sign-in-link.md](./epic-1419/2054-add-email-sign-in-link.md) | Initial |
 | [#1460 Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0](https://github.com/eq-lab/pipeline/issues/1460) | [1460-home-wallet-only-state.md](./epic-1419/1460-home-wallet-only-state.md) | Initial |
 | [#1475 Account page opens on the connected wallet's tab; LP home heading reads "Welcome back" whenever the header shows the account icon](https://github.com/eq-lab/pipeline/issues/1475) | [1475-account-entry-tab-welcome-back.md](./epic-1419/1475-account-entry-tab-welcome-back.md) | Initial |
 | [#1577 Home: collapse the desktop home-grid branches into one shared layout](https://github.com/eq-lab/pipeline/issues/1577) | [1577-home-grid-shared-layout.md](./epic-1419/1577-home-grid-shared-layout.md) | Initial |
 | [#1576 Home: loading state while GET /v1/lps/me is in flight](https://github.com/eq-lab/pipeline/issues/1576) | [1576-home-loading-state.md](./epic-1419/1576-home-loading-state.md) | Initial |
 | [#1819 Home: show the "Transfers unlocked / Add Funds" card for every signed-in, wallet-connected, KYB-passed LP](https://github.com/eq-lab/pipeline/issues/1819) | [1819-home-passed-unlocked-card.md](./epic-1419/1819-home-passed-unlocked-card.md) | Initial |
+| [#2057 Home: Total Balance headline and graph on the served composite total_balance](https://github.com/eq-lab/pipeline/issues/2057) | [2057-home-composite-total-balance.md](./epic-1419/2057-home-composite-total-balance.md) | Initial |
 | [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
 | [#1837 AddEmailModal async-submit test is deterministic](https://github.com/eq-lab/pipeline/issues/1837) | [1837-add-email-modal-flaky-test.md](./epic-1419/1837-add-email-modal-flaky-test.md) | Initial |
 
@@ -349,6 +352,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1604 LP: API types, comments and README for the multi-chain contract](https://github.com/eq-lab/pipeline/issues/1604) | [1604-lp-multichain-api-types.md](./epic-1521/1604-lp-multichain-api-types.md) | Initial |
 | [#1620 Loan submission economics are human-unit USDC, converted exactly at draw](https://github.com/eq-lab/pipeline/issues/1620) | [1620-submission-economics-units.md](./epic-1521/1620-submission-economics-units.md) | Initial |
 | [#1625 Trustee: rollover rate parsed with parseInt (14.5 → 14 bps)](https://github.com/eq-lab/pipeline/issues/1625) | [1625-rollover-rate-units.md](./epic-1521/1625-rollover-rate-units.md) | Initial |
+| [#1629 LP: portfolio chart plots the served sPLUSD value on a timestamp axis](https://github.com/eq-lab/pipeline/issues/1629) | [1629-lp-portfolio-chart-value.md](./epic-1521/1629-lp-portfolio-chart-value.md) | Initial |
 | [#1658 LP: approve errors surfaced, requests invalidation + double-deposit guard, Stellar min_deposit from contract](https://github.com/eq-lab/pipeline/issues/1658) | [1658-lp-deposit-flow-fixes.md](./epic-1521/1658-lp-deposit-flow-fixes.md) | Initial |
 | [#1628 LP: Max / % chips can exceed the balance; deposit has no balance check](https://github.com/eq-lab/pipeline/issues/1628) | [1628-amount-chips-balance-gate.md](./epic-1521/1628-amount-chips-balance-gate.md) | Initial |
 | [#1626 Trustee: dates in local time, waterfall as_of at midnight, CCR trend start, compact formatter and other display fixes](https://github.com/eq-lab/pipeline/issues/1626) | [1626-trustee-display-fixes.md](./epic-1521/1626-trustee-display-fixes.md) | Initial |
@@ -366,6 +370,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1731 Trustee (staging): white screen after wallet sign-in and after logout](https://github.com/eq-lab/pipeline/issues/1731) | [1731-trustee-auth-transition-white-screen.md](./epic-1521/1731-trustee-auth-transition-white-screen.md) | Initial |
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
 | [#1667 Trustee: hide target-chain options the API does not serve](https://github.com/eq-lab/pipeline/issues/1667) | [1667-trustee-served-chains.md](./epic-1521/1667-trustee-served-chains.md) | Initial |
+| [#1573 Trustee: EVM draw_loan path so Approve works for EVM-targeted submissions](https://github.com/eq-lab/pipeline/issues/1573) | [1573-trustee-evm-draw-loan.md](./epic-1521/1573-trustee-evm-draw-loan.md) | Initial |
+| [#1574 Trustee: EVM write paths for rollover / update lifecycle / record payment / close loan (TD-152)](https://github.com/eq-lab/pipeline/issues/1574) | [1574-trustee-evm-lifecycle-writes.md](./epic-1521/1574-trustee-evm-lifecycle-writes.md) | Initial |
 
 ---
 
@@ -382,8 +388,12 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1766 Trustee: register the per-loan debt token (DealTokenFactory.register_deal) after loan creation](https://github.com/eq-lab/pipeline/issues/1766) | [1766-register-debt-token.md](./epic-1795/1766-register-debt-token.md) | Initial |
 | [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
 | [#1885 LP: settlement bank account — capture in KYB / Account and masked view](https://github.com/eq-lab/pipeline/issues/1885) | [1885-lp-settlement-bank-account-ui.md](./epic-1795/1885-lp-settlement-bank-account-ui.md) | Initial |
+| [#1886 Trustee: show the LP's settlement bank account on pending wire-outs and in LP detail / KYB review](https://github.com/eq-lab/pipeline/issues/1886) | [1886-trustee-settlement-bank-account.md](./epic-1795/1886-trustee-settlement-bank-account.md) | Initial |
 | [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 | [#1858 Trustee: Risk Council security actions — set terms, resolve flag, release with consent, inspector panel (SecurityRegistry, scheduled 24 h)](https://github.com/eq-lab/pipeline/issues/1858) | [1858-risk-council-security-actions.md](./epic-1795/1858-risk-council-security-actions.md) | Initial |
+| [#1767 Trustee: loan detail security registry card — cure period, margin call, security records and inspections](https://github.com/eq-lab/pipeline/issues/1767) | [1767-trustee-security-registry-card.md](./epic-1795/1767-trustee-security-registry-card.md) | Initial |
+| [#1859 Trustee: price marks, extension consent and check coverage (SecurityRegistry revalue / record_extension_consent / check_coverage)](https://github.com/eq-lab/pipeline/issues/1859) | [1859-trustee-security-marks.md](./epic-1795/1859-trustee-security-marks.md) | Initial |
+| [#1892 Trustee: EVM arm of debt-token registration (PipelineDealTokenFactory.registerDeal after drawLoan)](https://github.com/eq-lab/pipeline/issues/1892) | [1892-trustee-evm-register-deal.md](./epic-1795/1892-trustee-evm-register-deal.md) | Initial |
 
 ---
 
@@ -415,3 +425,54 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1783 Manual marks: suggested per-unit price and mark-due flags for the Trustee's revalue](https://github.com/eq-lab/pipeline/issues/1783) | [1783-manual-marks-suggested-price.md](./epic-1775/1783-manual-marks-suggested-price.md) | Initial |
 | [#1786 Retire CCR figures on all chains — Phase 1: loan-book `ltv_bps`, `margin_call_open`, `price_stale`](https://github.com/eq-lab/pipeline/issues/1786) | [1786-retire-ccr.md](./epic-1775/1786-retire-ccr.md) | Initial |
 | [#1906 Trustee: stop reading CCR (valuations, ccr-history, ccr_bps, initial_ccr) — use SecurityRegistry LTV on Stellar](https://github.com/eq-lab/pipeline/issues/1906) | [1906-trustee-stop-reading-ccr.md](./epic-1775/1906-trustee-stop-reading-ccr.md) | Initial |
+
+---
+
+## Epic #1920 — Risk Council scheduled operations from the chain
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1921 Stellar AccessManager indexer: scheduled / canceled / executed operations with args from the transaction](https://github.com/eq-lab/pipeline/issues/1921) | [1921-access-manager-indexer.md](./epic-1920/1921-access-manager-indexer.md) | Initial |
+| [#1922 API: pending AccessManager operations inline in loan-book and loan security responses](https://github.com/eq-lab/pipeline/issues/1922) | [1922-pending-operations-api.md](./epic-1920/1922-pending-operations-api.md) | Initial |
+| [#1923 Trustee: Risk Council security page — list pending operations and execute them with the scheduled args](https://github.com/eq-lab/pipeline/issues/1923) | [1923-rc-security-pending-ops.md](./epic-1920/1923-rc-security-pending-ops.md) | Initial |
+| [#1924 Trustee: Risk Council hub and loan pages — pending operations from the API, execute from any session](https://github.com/eq-lab/pipeline/issues/1924) | [1924-rc-hub-pending-ops.md](./epic-1920/1924-rc-hub-pending-ops.md) | Initial |
+
+---
+
+## Epic #1937 — EVM parity
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1938 EVM SecurityRegistry indexer: records, terms, marks, margin calls, inspections (SecurityRegistry + RecordNft)](https://github.com/eq-lab/pipeline/issues/1938) | [1938-evm-security-registry-indexer.md](./epic-1937/1938-evm-security-registry-indexer.md) | Initial |
+| [#1939 EVM AccessManager indexer: scheduled / canceled / executed operations with calldata](https://github.com/eq-lab/pipeline/issues/1939) | [1939-evm-access-manager-indexer.md](./epic-1937/1939-evm-access-manager-indexer.md) | Initial |
+| [#1940 API: /security and loan-book LTV fields for EVM chains](https://github.com/eq-lab/pipeline/issues/1940) | [1940-evm-security-api.md](./epic-1937/1940-evm-security-api.md) | Initial |
+| [#1941 API: pending_operations for EVM chains (calldata args)](https://github.com/eq-lab/pipeline/issues/1941) | [1941-evm-pending-operations-api.md](./epic-1937/1941-evm-pending-operations-api.md) | Initial |
+| [#1942 Trustee: Risk Council security page and inspectors on EVM loans](https://github.com/eq-lab/pipeline/issues/1942) | [1942-trustee-evm-security-page.md](./epic-1937/1942-trustee-evm-security-page.md) | Initial |
+| [#1943 Trustee: Risk Council hub, escalate, reterm, writedown and repayment recovery on EVM loans](https://github.com/eq-lab/pipeline/issues/1943) | [1943-trustee-evm-rc-pages.md](./epic-1937/1943-trustee-evm-rc-pages.md) | Initial |
+| [#2070 EVM SecurityRegistry: support the deployed f92d719 ABI alongside 150631a (indexer + API)](https://github.com/eq-lab/pipeline/issues/2070) | [2070-evm-sr-dual-abi.md](./epic-1937/2070-evm-sr-dual-abi.md) | Initial |
+| [#2074 Trustee: EVM repayment recovery list falls back to the legacy repayment() view](https://github.com/eq-lab/pipeline/issues/2074) | [2074-evm-recovery-legacy-view.md](./epic-1937/2074-evm-recovery-legacy-view.md) | Initial |
+| [#2082 Trustee + wallet-connect: EVM setTerms for the deployed f92d719 SecurityRegistry (12-field Terms)](https://github.com/eq-lab/pipeline/issues/2082) | [2082-evm-setterms-f92d719.md](./epic-1937/2082-evm-setterms-f92d719.md) | Initial |
+
+| [#2060 Trustee + wallet-connect: consolidate duplicated EVM preflight and helpers](https://github.com/eq-lab/pipeline/issues/2060) | [2060-evm-preflight-consolidation.md](./epic-1937/2060-evm-preflight-consolidation.md) | Initial |
+
+## Epic #2029 — Frontend tech debt
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1329 Add a Foundation/Tokens Storybook story for design-token visual review](https://github.com/eq-lab/pipeline/issues/1329) | [1329-tokens-storybook-story.md](./epic-2029/1329-tokens-storybook-story.md) | Initial |
+| [#2049 LP formatCompactUsd renders values just under a unit boundary as $1000.0K](https://github.com/eq-lab/pipeline/issues/2049) | [2049-compact-usd-rounding.md](./epic-2029/2049-compact-usd-rounding.md) | Initial |
+
+## Epic #2129 — Math correctness
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1328 Normalize collateral asset and metal names](https://github.com/eq-lab/pipeline/issues/1328) | [1328-normalize-collateral-names.md](./epic-2129/1328-normalize-collateral-names.md) | Initial |
+| [#2127 Trustee loan detail: Facility / disbursed and Facility / senior tiles show the wrong second value](https://github.com/eq-lab/pipeline/issues/2127) | [2127-trustee-facility-tiles.md](./epic-2129/2127-trustee-facility-tiles.md) | Initial |
+| [#1593 Indexer (EVM): sPLUSD peer-to-peer transfers are not indexed as ShareTransfer](https://github.com/eq-lab/pipeline/issues/1593) | [1593-evm-splusd-share-transfers.md](./epic-2129/1593-evm-splusd-share-transfers.md) | Initial |
+| [#1739 Stellar indexer: stalls past RPC retention, can skip a ledger behind a load-balanced RPC, no HTTP timeouts](https://github.com/eq-lab/pipeline/issues/1739) | [1739-stellar-indexer-cursor.md](./epic-2129/1739-stellar-indexer-cursor.md) | Initial |
+| [#2128 LP Dashboard: Active Loans counts Closed/Default, Liquid Cover shows 0.0x on null liquid figures](https://github.com/eq-lab/pipeline/issues/2128) | [2128-lp-dashboard-active-loans.md](./epic-2129/2128-lp-dashboard-active-loans.md) | Initial |
+| [#2125 Collateral valuation: StandardGoods multiplies a per-troy-oz price by tonnes](https://github.com/eq-lab/pipeline/issues/2125) | [2125-standard-goods-troy-oz.md](./epic-2129/2125-standard-goods-troy-oz.md) | Initial |
+| [#2123 Waterfall: reject quotational offtaker overpayment like both contracts (OfftakerExceedsPrice)](https://github.com/eq-lab/pipeline/issues/2123) | [2123-waterfall-quotational-overpay.md](./epic-2129/2123-waterfall-quotational-overpay.md) | Initial |
+| [#2124 Waterfall: interest leaks into principal/equity when the fee cap binds](https://github.com/eq-lab/pipeline/issues/2124) | [2124-waterfall-fee-cap-interest.md](./epic-2129/2124-waterfall-fee-cap-interest.md) | Initial |
+| [#1547 Waterfall: read max_fee_bps from the LoanRegistry instead of the assumed 5000](https://github.com/eq-lab/pipeline/issues/1547) | [1547-waterfall-max-fee-bps.md](./epic-2129/1547-waterfall-max-fee-bps.md) | Initial |
+| [#2126 Loan readers floor 1e6 rates to whole bps, so the API under-proposes interest](https://github.com/eq-lab/pipeline/issues/2126) | [2126-full-precision-rates.md](./epic-2129/2126-full-precision-rates.md) | Initial |

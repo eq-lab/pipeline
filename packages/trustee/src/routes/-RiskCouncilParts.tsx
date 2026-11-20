@@ -2,6 +2,23 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { InlineError } from "@pipeline/ui";
+import { useChainWallet } from "@/lib/chainWallet";
+import {
+  callerText,
+  pendingActionLabel,
+  pendingArgRows,
+  pendingOwner,
+  pendingStateText,
+  PENDING_CARD_TITLE,
+  PENDING_EMPTY,
+  PENDING_EXECUTED,
+  PENDING_OWNER_KINDS,
+  PENDING_OWNER_LINK_LABELS,
+  PENDING_SESSION_NOTE,
+  usePendingOperationView,
+  type PendingOpItem,
+  type PendingOwner,
+} from "./-risk-council-pending";
 import type { ActionView, LabelValue, PageState } from "./-risk-council-shared";
 
 export const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -364,5 +381,251 @@ export function ActionControls({
         />
       )}
     </div>
+  );
+}
+
+export const OWNER_ROUTE_PATHS = {
+  escalate: "/risk-council/escalate/$id",
+  reterm: "/risk-council/reterm/$id",
+  writedown: "/risk-council/writedown/$id",
+  security: "/risk-council/security/$id",
+  recovery: "/loans/$id",
+} as const satisfies Record<PendingOwner, string>;
+
+export function PendingOwnerLink({
+  owner,
+  loanId,
+  chainId,
+  testId,
+  className,
+  children,
+}: {
+  owner: PendingOwner;
+  loanId: number | string;
+  chainId: number;
+  testId?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      to={OWNER_ROUTE_PATHS[owner]}
+      params={{ id: String(loanId) }}
+      search={{ chain: chainId }}
+      data-testid={testId}
+      className={`text-[#000080] underline ${className ?? ""}`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function PendingExecuteControls({
+  prefix,
+  chainId,
+  item,
+  executeGate,
+  expectedTarget,
+  confirmText,
+  locked,
+  onBusyChange,
+}: {
+  prefix: string;
+  chainId: number;
+  item: PendingOpItem;
+  executeGate: string | null;
+  expectedTarget: string;
+  confirmText?: string;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
+}) {
+  const view = usePendingOperationView({
+    chainId,
+    item,
+    executeGate,
+    expectedTarget,
+  });
+  const { pending } = view;
+  useEffect(() => {
+    if (!onBusyChange) return;
+    onBusyChange(item.key, pending);
+    return () => onBusyChange(item.key, false);
+  }, [onBusyChange, item.key, pending]);
+  return (
+    <ActionControls
+      prefix={prefix}
+      view={locked ? { ...view, disabled: true } : view}
+      confirmText={confirmText}
+    />
+  );
+}
+
+function PendingOwnerLinkControls({
+  prefix,
+  chainId,
+  item,
+}: {
+  prefix: string;
+  chainId: number;
+  item: PendingOpItem;
+}) {
+  const owner = pendingOwner(item.fn);
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <Muted testId={`${prefix}-role`}>
+        {item.executed !== null ? PENDING_EXECUTED : pendingStateText(item)}
+      </Muted>
+      {owner !== null && item.loanId !== null && (
+        <PendingOwnerLink
+          owner={owner}
+          loanId={item.loanId}
+          chainId={chainId}
+          testId={`${prefix}-link`}
+          className="self-start text-[14px]"
+        >
+          {PENDING_OWNER_LINK_LABELS[owner]}
+        </PendingOwnerLink>
+      )}
+    </div>
+  );
+}
+
+export function PendingOperationItem({
+  prefix,
+  rowTestId,
+  chainId,
+  item,
+  owner,
+  executeGate,
+  expectedTarget,
+  confirmText,
+  locked,
+  onBusyChange,
+}: {
+  prefix: string;
+  rowTestId: string;
+  chainId: number;
+  item: PendingOpItem;
+  owner: PendingOwner;
+  executeGate: string | null;
+  expectedTarget: string;
+  confirmText?: string;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
+}) {
+  const { address } = useChainWallet(chainId);
+  const rows = pendingArgRows(item, chainId);
+  const owned =
+    pendingOwner(item.fn) === owner &&
+    item.targetKind === PENDING_OWNER_KINDS[owner];
+  return (
+    <div
+      data-testid={rowTestId}
+      className="flex flex-col gap-[10px] rounded-[4px] p-[14px]"
+      style={{ border: `1px solid ${LINE_COLOR}` }}
+    >
+      <strong className="font-[family-name:var(--font-body)] text-[16px]">
+        {pendingActionLabel(item)}
+      </strong>
+      <div data-testid={`${prefix}-args`}>
+        {rows.map((row) => (
+          <Row key={row.label} label={row.label} value={row.value} />
+        ))}
+        <Row
+          label="Scheduled by"
+          value={callerText(item, address, chainId)}
+          testId={`${prefix}-caller`}
+          isLast
+        />
+      </div>
+      {item.source === "session" && (
+        <Muted testId={`${prefix}-session`}>{PENDING_SESSION_NOTE}</Muted>
+      )}
+      {owned ? (
+        <PendingExecuteControls
+          prefix={prefix}
+          chainId={chainId}
+          item={item}
+          executeGate={executeGate}
+          expectedTarget={expectedTarget}
+          confirmText={confirmText}
+          locked={locked}
+          onBusyChange={onBusyChange}
+        />
+      ) : (
+        <PendingOwnerLinkControls
+          prefix={prefix}
+          chainId={chainId}
+          item={item}
+        />
+      )}
+    </div>
+  );
+}
+
+export function PendingOperationsList({
+  testId,
+  items,
+  chainId,
+  owner,
+  executeGate,
+  executeGateFor,
+  expectedTarget,
+  confirmTextFor,
+  locked,
+  onBusyChange,
+}: {
+  testId: string;
+  items: ReadonlyArray<PendingOpItem>;
+  chainId: number;
+  owner: PendingOwner;
+  executeGate: string | null;
+  executeGateFor?: (item: PendingOpItem) => string | null;
+  expectedTarget: string;
+  confirmTextFor?: (item: PendingOpItem) => string | undefined;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
+}) {
+  if (items.length === 0) {
+    return <Muted testId={`${testId}-empty`}>{PENDING_EMPTY}</Muted>;
+  }
+  return (
+    <>
+      {items.map((item) => (
+        <PendingOperationItem
+          key={item.key}
+          prefix={`${testId}-${item.operationId}`}
+          rowTestId={`${testId}-row`}
+          chainId={chainId}
+          item={item}
+          owner={owner}
+          executeGate={executeGateFor ? executeGateFor(item) : executeGate}
+          expectedTarget={expectedTarget}
+          confirmText={confirmTextFor?.(item)}
+          locked={locked}
+          onBusyChange={onBusyChange}
+        />
+      ))}
+    </>
+  );
+}
+
+export function PendingOperationsCard({
+  testId,
+  ...list
+}: {
+  testId: string;
+  items: ReadonlyArray<PendingOpItem>;
+  chainId: number;
+  owner: PendingOwner;
+  executeGate: string | null;
+  executeGateFor?: (item: PendingOpItem) => string | null;
+  expectedTarget: string;
+  confirmTextFor?: (item: PendingOpItem) => string | undefined;
+}) {
+  return (
+    <Card testId={testId} title={PENDING_CARD_TITLE}>
+      <PendingOperationsList testId={testId} {...list} />
+    </Card>
   );
 }

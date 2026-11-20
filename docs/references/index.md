@@ -8,7 +8,8 @@ External references and source documents for the Pipeline protocol.
 - [Smart Contract Design Spec v2.3](./smart-contracts.md) — Canonical smart contract specification; supersedes v0.3.8 contract descriptions
 - [Bridge Backend Spec](./backend.md) — Bridge service scope, flows, data model, and API surface (v2.3)
 - [CollateralRegistry events in `contract_logs`](./collateral-registry-events.md) — cross-arm (Stellar and EVM) stored shape of the 11 collateral-registry events
-- [SecurityRegistry events and projection (Stellar)](./security-registry-events.md) — stored events, view snapshots, fold rule and projection tables of the Stellar SecurityRegistry indexer (#1779)
+- [SecurityRegistry events and projection (Stellar and EVM)](./security-registry-events.md) — stored events, view snapshots, fold rule and projection tables of the Stellar (#1779) and EVM (#1938) SecurityRegistry indexers
+- [AccessManager scheduled operations](./access-manager-events.md) — scheduled / canceled / executed events, the `access_manager_operations` table and the shared sync loop of the AccessManager indexer: Stellar with argument recovery from the transaction (#1921), EVM with the calldata from the event (#1939)
 - [Mint Trust Model](./security.md) — Threat analysis, peer-protocol survey, and layered defence rationale for the PLUSD mint path (v2.3)
 
 ## Vendor Documentation

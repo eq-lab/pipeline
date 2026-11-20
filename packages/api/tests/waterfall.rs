@@ -8,10 +8,11 @@
 
 use bigdecimal::BigDecimal;
 
+use pipeline_api::error::ApiError;
+
 use pipeline_api::routes::waterfall::{
-    build_response, compute_waterfall, PricingBasis, WaterfallDoc, ASSUMED_MAX_FEE_BPS,
+    build_response, compute_waterfall, fit_interest_to_fee_cap, WaterfallDoc,
 };
-use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -26,6 +27,7 @@ fn dec(s: &str) -> BigDecimal {
 const ORIGINATION: i64 = 1_700_000_000;
 const CONTRACT_YEAR: i64 = 31_557_600;
 const ONE_YEAR_LATER: i64 = ORIGINATION + CONTRACT_YEAR;
+const MAX_FEE_BPS: u32 = 5_000;
 
 /// A loan snapshot with a 1,000,000-base-unit senior tranche at a 12% (1200 bps)
 /// genesis coupon, `senior_principal_repaid` configurable and no other cumulative
@@ -72,6 +74,7 @@ fn snapshot_with_repayment(
         // ceiling itself.
         original_offtaker_price: dec("100000000"),
         senior_interest_rate_bps: rate_bps,
+        senior_interest_rate_ppm: None,
         origination_date: ORIGINATION,
         original_maturity_date: ONE_YEAR_LATER,
         next_economics_epochs_id: dec("1"),
@@ -79,6 +82,7 @@ fn snapshot_with_repayment(
         status: "Performing".to_owned(),
         current_maturity_timestamp: ONE_YEAR_LATER,
         current_rate: rate_bps,
+        current_rate_ppm: None,
         closure_reason: String::new(),
         carved_out: false,
         disbursed: dec(senior_tranche),
@@ -138,7 +142,7 @@ fn full_repayment_one_year_with_fees() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -167,7 +171,7 @@ fn principal_capped_at_outstanding() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -191,7 +195,7 @@ fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -219,7 +223,7 @@ fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -235,13 +239,7 @@ fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
 }
 
 #[test]
-fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
-    // Same full-year targets/ratios as above (coupon 88,000 : mgmt 10,000 : perf 22,000,
-    // total 120,000). A 61-unit payment doesn't divide evenly by that ratio — each
-    // component's proportional share truncates down (44.7¯3 → 44, 5.08¯3 → 5,
-    // 11.18¯3 → 11 — summing to 60, one unit short of the full 61 paid in). That one unit
-    // of truncation dust is not lost: it flows into `remaining` and is picked up by OET,
-    // the next tier down, rather than vanishing from the accounting entirely.
+fn interest_tier_shortfall_dust_goes_to_the_coupon_not_lost() {
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("61");
     let b = compute_waterfall(
@@ -250,14 +248,14 @@ fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
-    assert_eq!(b.senior_coupon_net, dec("44"));
+    assert_eq!(b.senior_coupon_net, dec("45"));
     assert_eq!(b.management_fee, dec("5"));
     assert_eq!(b.performance_fee, dec("11"));
-    assert_eq!(b.oet_allocation, dec("1"));
+    assert_eq!(b.oet_allocation, dec("0"));
 
     let total = &b.senior_coupon_net + &b.management_fee + &b.performance_fee + &b.oet_allocation;
     assert_eq!(total, amount);
@@ -277,7 +275,7 @@ fn principal_shrinks_last_when_amount_falls_short() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -309,7 +307,7 @@ fn principal_reduced_to_zero_when_amount_exactly_covers_coupon_and_fees() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -334,7 +332,7 @@ fn fractional_amount_principal_truncated_to_whole_base_unit() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -353,7 +351,7 @@ fn zero_fee_schedule_routes_all_interest_to_coupon() {
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -374,7 +372,7 @@ fn zero_tenor_accrues_no_interest_or_fees() {
         ORIGINATION,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -393,7 +391,7 @@ fn as_of_before_origination_is_rejected() {
         ORIGINATION - 1,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     );
     assert!(err.is_err(), "as_of before origination must be a 400");
 }
@@ -434,7 +432,7 @@ fn second_repayment_nets_out_amounts_already_recorded() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -471,7 +469,7 @@ fn already_recorded_amount_exceeding_the_target_clamps_to_zero() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -497,7 +495,7 @@ fn equity_absorbs_the_remainder_after_principal() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -530,7 +528,7 @@ fn equity_is_zero_when_amount_exactly_covers_every_other_bucket() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -557,7 +555,7 @@ fn amount_exceeding_outstanding_offtaker_is_rejected() {
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     );
     assert!(
         err.is_err(),
@@ -586,15 +584,17 @@ fn offtaker_ceiling_accounts_for_amounts_already_received() {
             1200,
         )
     };
-    assert!(compute_waterfall(
+    let over = compute_waterfall(
         &s,
         &dec("100001"),
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed
-    )
-    .is_err());
+        Some(MAX_FEE_BPS),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("exceeds the loan's outstanding offtaker balance"))
+    );
     // Exactly the remaining headroom is fine.
     assert!(compute_waterfall(
         &s,
@@ -602,7 +602,7 @@ fn offtaker_ceiling_accounts_for_amounts_already_received() {
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed
+        Some(MAX_FEE_BPS)
     )
     .is_ok());
 }
@@ -637,7 +637,7 @@ fn already_over_received_loan_rejects_every_further_amount_including_zero() {
             ONE_YEAR_LATER,
             &fees(0, 0, 0),
             &[],
-            PricingBasis::Fixed
+            Some(MAX_FEE_BPS)
         )
         .is_err(),
         "even a zero-amount request against an already over-received loan must be rejected"
@@ -648,44 +648,20 @@ fn already_over_received_loan_rejects_every_further_amount_including_zero() {
         ONE_YEAR_LATER,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed
+        Some(MAX_FEE_BPS)
     )
     .is_err());
 }
 
-// ── Pricing basis: quotational (QP) settlements (issue #963) ──────────────────────
+// ── Quotational settlements (issue #2123) ────────────────────────────────────────
 
-#[test]
-fn pricing_basis_derives_from_valuation_mode() {
-    // A metal concentrate settles on a quotational-period average; everything else is a
-    // fixed reference price.
-    assert_eq!(
-        PricingBasis::from_valuation_mode(ValuationMode::MetalConcentrate),
-        PricingBasis::Quotational
-    );
-    assert_eq!(
-        PricingBasis::from_valuation_mode(ValuationMode::StandardGoods),
-        PricingBasis::Fixed
-    );
-}
-
-/// The issue's repro (fixture PIPE-GPC-001): a gold-pyrite concentrate whose final
-/// settlement, repriced on the quotational-period average, exceeds the genesis
-/// `original_offtaker_price`. A `Fixed` loan rejects it (the bug); a `Quotational` loan
-/// accepts it, flags `offtaker_overpaid`, and cascades the overage to the equity residual.
-#[test]
-fn quotational_accepts_a_qp_repriced_final_settlement() {
-    // original_offtaker_price 13,372,557.24 (NSR at the origination reference price); P1+P2
-    // already received = 6,081,752.77 + 6,194,113.55 = 12,275,866.32, leaving 1,096,690.92.
-    // Gold rose over the QP, so the final settlement is 1,764,807.37 — above the remaining
-    // contracted headroom. Senior fully repaid + zero fees + as_of == origination isolates
-    // the offtaker leg, so the whole settlement cascades to the equity residual.
-    let s = LoanSnapshot {
-        original_offtaker_price: dec("13372557.24"),
+fn qp_snapshot() -> LoanSnapshot {
+    LoanSnapshot {
+        original_offtaker_price: dec("13372557"),
         ..snapshot_with_repayment(
             "1000000",
             RepaymentSnapshot {
-                offtaker_received: dec("12275866.32"),
+                offtaker_received: dec("12275866"),
                 senior_principal_repaid: dec("1000000"),
                 senior_interest: dec("0"),
                 equity_distributed: dec("0"),
@@ -695,89 +671,133 @@ fn quotational_accepts_a_qp_repriced_final_settlement() {
             },
             1200,
         )
-    };
-    let amount = dec("1764807.37");
-
-    // Fixed still rejects this exact settlement — the pre-#963 behaviour.
-    assert!(
-        compute_waterfall(
-            &s,
-            &amount,
-            ORIGINATION,
-            &fees(0, 0, 0),
-            &[],
-            PricingBasis::Fixed
-        )
-        .is_err(),
-        "a fixed-price loan still rejects an over-ceiling amount"
-    );
-
-    // Quotational accepts it, flags the overage, and routes it to equity.
-    let b = compute_waterfall(
-        &s,
-        &amount,
-        ORIGINATION,
-        &fees(0, 0, 0),
-        &genesis(&s),
-        PricingBasis::Quotational,
-    )
-    .expect("quotational settlement above the genesis price must be accepted");
-    assert!(
-        b.offtaker_overpaid,
-        "settlement exceeds the contracted price"
-    );
-    assert!(b.offtaker_fully_received);
-    assert_eq!(b.senior_principal_returned, dec("0")); // already fully repaid
-    assert_eq!(b.equity_distributed, dec("1764807")); // overage → equity (truncated)
-
-    // The flag round-trips through the response DTO.
-    assert!(build_response(1, &b).offtaker_overpaid);
-    assert_eq!(build_response(99_000_001, &b).chain_id, 99_000_001);
+    }
 }
 
-/// A quotational payment that stays within the contracted price behaves exactly like a
-/// fixed one and leaves `offtaker_overpaid` false.
 #[test]
-fn quotational_within_contract_price_is_not_flagged() {
-    let s = LoanSnapshot {
-        original_offtaker_price: dec("13372557.24"),
-        ..snapshot_with_repayment(
-            "1000000",
-            RepaymentSnapshot {
-                offtaker_received: dec("12275866.32"),
-                senior_principal_repaid: dec("1000000"),
-                senior_interest: dec("0"),
-                equity_distributed: dec("0"),
-                mgmt_fee: dec("0"),
-                perf_fee: dec("0"),
-                oet_alloc: dec("0"),
-            },
-            1200,
-        )
-    };
-    // Exactly the remaining headroom (1,096,690.92) — within the contracted price.
-    let amount = dec("1096690.92");
-    let b = compute_waterfall(
+fn qp_repriced_settlement_above_offtaker_price_is_rejected() {
+    let s = qp_snapshot();
+    let over = compute_waterfall(
         &s,
-        &amount,
+        &dec("1764807"),
         ORIGINATION,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Quotational,
+        Some(MAX_FEE_BPS),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("exceeds the loan's outstanding offtaker balance"))
+    );
+
+    let b = compute_waterfall(
+        &s,
+        &dec("1096691"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
-    assert!(!b.offtaker_overpaid);
-    assert!(b.offtaker_fully_received); // exactly reaches the contracted price
-                                        // The same amount is equally fine under Fixed.
-    assert!(compute_waterfall(
+    assert!(b.offtaker_fully_received);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("1096691"));
+}
+
+#[test]
+fn fractional_amount_is_rounded_down_before_the_offtaker_ceiling() {
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1000000"),
+        ..snapshot("1000000", "0", 1200)
+    };
+    let b = compute_waterfall(
         &s,
-        &amount,
+        &dec("1000000.9"),
         ORIGINATION,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed
+        Some(MAX_FEE_BPS),
     )
-    .is_ok());
+    .unwrap();
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert!(b.offtaker_fully_received);
+
+    let short = compute_waterfall(
+        &s,
+        &dec("999999.9"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap();
+    assert!(!short.offtaker_fully_received);
+
+    assert!(compute_waterfall(
+        &s,
+        &dec("1000001"),
+        ORIGINATION,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS)
+    )
+    .is_err());
+}
+
+fn default_snapshot(offtaker_price: &str) -> LoanSnapshot {
+    LoanSnapshot {
+        original_offtaker_price: dec(offtaker_price),
+        status: "Default".to_owned(),
+        ..snapshot("1000000", "0", 1200)
+    }
+}
+
+#[test]
+fn default_loan_rejects_amount_above_offtaker_price() {
+    let s = default_snapshot("500000");
+    let over = compute_waterfall(
+        &s,
+        &dec("600000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("outstanding offtaker balance"))
+    );
+}
+
+#[test]
+fn default_loan_accepts_amount_equal_to_outstanding_offtaker() {
+    let s = default_snapshot("500000");
+    let b = compute_waterfall(
+        &s,
+        &dec("500000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap();
+    assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert!(b.offtaker_fully_received);
+}
+
+#[test]
+fn default_loan_offtaker_ceiling_wins_over_headroom_rejection() {
+    let s = default_snapshot("500000");
+    let over = compute_waterfall(
+        &s,
+        &dec("5000000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        Some(MAX_FEE_BPS),
+    );
+    assert!(
+        matches!(&over, Err(ApiError::BadRequest(m)) if m.contains("outstanding offtaker balance"))
+    );
 }
 
 // ── Senior principal ceiling ─────────────────────────────────────────────────────
@@ -800,7 +820,7 @@ fn principal_ceiling_holds_even_against_a_wildly_oversized_amount() {
         ORIGINATION,
         &fees(0, 0, 0),
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
 
@@ -825,11 +845,12 @@ fn response_maps_the_components() {
         ONE_YEAR_LATER,
         &f,
         &genesis(&s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap();
-    let resp = build_response(1, &b);
+    let resp = build_response(99_000_001, &b);
 
+    assert_eq!(resp.chain_id, 99_000_001);
     assert_eq!(resp.senior_principal_returned, "1000000");
     assert_eq!(resp.senior_coupon_net, "88000");
     assert_eq!(resp.management_fee, "10000");
@@ -838,7 +859,9 @@ fn response_maps_the_components() {
     assert_eq!(resp.equity_distributed, "0");
     assert!(resp.senior_principal_fully_repaid);
     assert!(resp.offtaker_fully_received);
-    assert!(!resp.offtaker_overpaid);
+    let json = serde_json::to_value(&resp).unwrap();
+    assert!(json.get("offtaker_overpaid").is_none());
+    assert!(json.get("offtaker_fully_received").is_some());
 }
 
 // ── OpenAPI ────────────────────────────────────────────────────────────────────
@@ -859,7 +882,7 @@ fn run(s: &LoanSnapshot, amount: &str) -> pipeline_api::routes::waterfall::Water
         ONE_YEAR_LATER,
         &fees(100, 2000, 50),
         &genesis(s),
-        PricingBasis::Fixed,
+        Some(MAX_FEE_BPS),
     )
     .unwrap()
 }
@@ -965,7 +988,7 @@ fn fully_drawn_loan_with_principal_left_is_not_fully_repaid() {
 
 fn assert_within_fee_cap(b: &pipeline_api::routes::waterfall::WaterfallBreakdown) {
     let cap = (&b.senior_coupon_net + &b.management_fee + &b.performance_fee)
-        * BigDecimal::from(ASSUMED_MAX_FEE_BPS)
+        * BigDecimal::from(MAX_FEE_BPS)
         / BigDecimal::from(10_000);
     let fees = &b.management_fee + &b.performance_fee + &b.oet_allocation;
     assert!(fees <= cap.with_scale_round(0, bigdecimal::RoundingMode::Down));
@@ -982,14 +1005,16 @@ fn standard_schedule_is_untouched_by_the_fee_cap() {
 }
 
 #[test]
-fn heavy_waiver_scales_fees_to_the_cap_and_frees_the_rest_to_equity() {
+fn heavy_waiver_shifts_capped_fees_to_the_coupon() {
     let mut s = snapshot("1000000", "0", 1200);
     s.interest_adjustment = dec("-100000");
     let b = run(&s, "5000000");
-    assert_eq!(b.senior_coupon_net, dec("8000"));
-    assert_eq!(b.management_fee, dec("6666"));
-    assert_eq!(b.performance_fee, dec("1333"));
+    assert_eq!(b.senior_coupon_net, dec("10000"));
+    assert_eq!(b.management_fee, dec("8334"));
+    assert_eq!(b.performance_fee, dec("1666"));
     assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("3980000"));
     assert_within_fee_cap(&b);
     let total = &b.senior_principal_returned
         + &b.senior_coupon_net
@@ -1029,7 +1054,9 @@ fn interest_adjustment_is_cumulative_against_recorded_interest() {
     );
     s.interest_adjustment = dec("-20000");
     let b = run(&s, "5000000");
-    assert_eq!(b.senior_coupon_net, dec("22000"));
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("8929"));
+    assert_eq!(b.performance_fee, dec("16071"));
 }
 
 #[test]
@@ -1041,4 +1068,224 @@ fn stellar_raw_scale_interest_adjustment_is_not_normalised() {
     assert_eq!(b.performance_fee, dec("180000"));
     assert_eq!(b.senior_coupon_net, dec("720000"));
     assert_eq!(b.oet_allocation, dec("50000"));
+}
+
+fn run_with(
+    s: &LoanSnapshot,
+    amount: &str,
+    as_of: i64,
+) -> pipeline_api::routes::waterfall::WaterfallBreakdown {
+    compute_waterfall(
+        s,
+        &dec(amount),
+        as_of,
+        &fees(300, 2000, 0),
+        &genesis(s),
+        Some(MAX_FEE_BPS),
+    )
+    .unwrap()
+}
+
+fn recorded(senior_interest: &str, mgmt: &str, perf: &str) -> RepaymentSnapshot {
+    RepaymentSnapshot {
+        offtaker_received: dec("0"),
+        senior_principal_repaid: dec("0"),
+        senior_interest: dec(senior_interest),
+        equity_distributed: dec("0"),
+        mgmt_fee: dec(mgmt),
+        perf_fee: dec(perf),
+        oet_alloc: dec("0"),
+    }
+}
+
+#[test]
+fn fee_cap_issue_2124_example_pays_all_headroom_as_interest() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "50000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_eq!(&b.management_fee + &b.performance_fee, dec("25000"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_issue_2124_full_repayment_leaks_nothing_to_principal_or_equity() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "1050000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert!(b.senior_principal_fully_repaid);
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_shortfall_pays_the_whole_amount_as_interest() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "30000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("15000"));
+    assert_eq!(b.management_fee, dec("13236"));
+    assert_eq!(b.performance_fee, dec("1764"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_next_call_after_a_leaked_payment_still_proposes_interest() {
+    let s = snapshot_with_repayment("1000000", recorded("16000", "14117", "1882"), 500);
+    let b = run_with(&s, "100000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("9001"));
+    assert_eq!(b.management_fee, dec("7942"));
+    assert_eq!(b.performance_fee, dec("1058"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("81999"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_second_year_pays_the_new_headroom_as_interest() {
+    let s = snapshot_with_repayment("1000000", recorded("25000", "22059", "2941"), 500);
+    let b = run_with(&s, "50000", ORIGINATION + 2 * CONTRACT_YEAR);
+    assert_eq!(b.senior_coupon_net, dec("25000"));
+    assert_eq!(b.management_fee, dec("22059"));
+    assert_eq!(b.performance_fee, dec("2941"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_rounding_leftover_goes_to_the_coupon_not_principal() {
+    let s = snapshot("1000000", "0", 500);
+    let b = run_with(&s, "30001", ONE_YEAR_LATER);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(
+        &b.senior_coupon_net + &b.management_fee + &b.performance_fee,
+        dec("30001")
+    );
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_third_year_headroom_scaling_leaves_no_dust_for_principal() {
+    let s = snapshot_with_repayment("1000000", recorded("50000", "44118", "5882"), 500);
+    let b = run_with(&s, "50000", ORIGINATION + 3 * CONTRACT_YEAR);
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(
+        &b.senior_coupon_net + &b.management_fee + &b.performance_fee,
+        dec("50000")
+    );
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn fee_cap_binds_at_stellar_raw_scale() {
+    let mut s = snapshot("10000000000000", "0", 500);
+    s.original_offtaker_price = dec("100000000000000");
+    let b = run_with(&s, "500000000000", ONE_YEAR_LATER);
+    assert_eq!(b.senior_coupon_net, dec("250000000000"));
+    assert_eq!(b.management_fee, dec("220588235295"));
+    assert_eq!(b.performance_fee, dec("29411764705"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_within_fee_cap(&b);
+}
+
+fn fit(c: &str, m: &str, p: &str, bps: u32) -> (BigDecimal, BigDecimal, BigDecimal) {
+    let out = fit_interest_to_fee_cap(dec(c), dec(m), dec(p), bps);
+    let total = dec(c) + dec(m) + dec(p);
+    assert_eq!(&out.0 + &out.1 + &out.2, total);
+    assert!(out.1 <= dec(m));
+    assert!(out.2 <= dec(p));
+    let cap = (&total * BigDecimal::from(bps) / BigDecimal::from(10_000))
+        .with_scale_round(0, bigdecimal::RoundingMode::Down);
+    assert!(&out.1 + &out.2 <= cap || bps >= 10_000);
+    out
+}
+
+fn triple(c: &str, m: &str, p: &str) -> (BigDecimal, BigDecimal, BigDecimal) {
+    (dec(c), dec(m), dec(p))
+}
+
+#[test]
+fn fit_to_fee_cap_at_5000_bps() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 5000),
+        triple("25000", "22059", "2941")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_at_2000_bps() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 2000),
+        triple("40000", "8824", "1176")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_at_0_bps_moves_all_fees_to_the_coupon() {
+    assert_eq!(fit("16000", "30000", "4000", 0), triple("50000", "0", "0"));
+}
+
+#[test]
+fn fit_to_fee_cap_at_10000_bps_is_unchanged() {
+    assert_eq!(
+        fit("16000", "30000", "4000", 10000),
+        triple("16000", "30000", "4000")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_not_binding_is_unchanged() {
+    assert_eq!(
+        fit("88000", "10000", "22000", 5000),
+        triple("88000", "10000", "22000")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_odd_total_floors_the_cap() {
+    assert_eq!(
+        fit("16001", "30000", "4000", 5000),
+        triple("25001", "22059", "2941")
+    );
+}
+
+#[test]
+fn fit_to_fee_cap_zero_fees_is_unchanged() {
+    assert_eq!(fit("500", "0", "0", 5000), triple("500", "0", "0"));
+}
+
+#[test]
+fn missing_max_fee_bps_is_service_unavailable() {
+    let s = snapshot("1000000", "0", 1200);
+    let r = compute_waterfall(
+        &s,
+        &dec("5000000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        None,
+    );
+    assert!(matches!(r, Err(ApiError::ServiceUnavailable(_))));
+}
+
+#[test]
+fn default_loan_does_not_need_max_fee_bps() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.status = "Default".to_owned();
+    let b = compute_waterfall(
+        &s,
+        &dec("500000"),
+        ONE_YEAR_LATER,
+        &fees(0, 0, 0),
+        &genesis(&s),
+        None,
+    )
+    .unwrap();
+    assert!(b.senior_principal_returned > dec("0"));
 }

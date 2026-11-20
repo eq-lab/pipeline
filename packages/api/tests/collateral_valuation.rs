@@ -370,17 +370,17 @@ fn standard_goods_anchor() -> CollateralValuationRow {
         submitted_loan_id: 1,
         commodity: "Coffee".to_owned(),
         valuation_mode: ValuationMode::StandardGoods,
-        asset: "KC".to_owned(),
+        asset: "XAU".to_owned(),
         price_provider: "ICE".to_owned(),
         haircut_pct: "0.20".parse().unwrap(),
-        quantity_dmt: "1000".parse().unwrap(),
+        quantity_dmt: "0.0311035".parse().unwrap(),
         created_at: Utc::now(),
         updated_at: Utc::now(),
     }
 }
 
-fn kc_prices() -> HashMap<String, BigDecimal> {
-    HashMap::from([("KC".to_owned(), "1000".parse().unwrap())])
+fn xau_prices() -> HashMap<String, BigDecimal> {
+    HashMap::from([("XAU".to_owned(), "1000".parse().unwrap())])
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn no_snapshot_reports_loan_snapshot_missing() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         None,
         false,
     )
@@ -405,7 +405,7 @@ fn zero_outstanding_with_snapshot_does_not_report_loan_snapshot_missing() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         None,
         true,
     )
@@ -422,11 +422,100 @@ fn positive_outstanding_computes_ccr_without_missing_inputs() {
         &standard_goods_anchor(),
         None,
         None,
-        &kc_prices(),
+        &xau_prices(),
         Some(&senior),
         true,
     )
     .unwrap();
     assert_eq!(resp.ccr.unwrap().ccr_bps, 16_000);
     assert!(resp.missing_inputs.is_empty());
+}
+
+#[test]
+fn unbounded_exponent_grade_is_rejected() {
+    let mut r = valid_assay();
+    r.assays[0].grade_g_per_t = "1e1000".to_owned();
+    let err = validate_assay(&r).unwrap_err();
+    assert!(err.contains("grade_g_per_t"), "unexpected error: {err}");
+}
+
+#[test]
+fn blank_names_are_rejected_in_every_list() {
+    let mut a = valid_assay();
+    a.assays[0].metal = "  ".to_owned();
+    assert!(validate_assay(&a).unwrap_err().contains("assays"));
+    let mut a = valid_assay();
+    a.deleterious[0].element = String::new();
+    assert!(validate_assay(&a).unwrap_err().contains("deleterious"));
+    let mut o = valid_offtake();
+    o.payable_terms[0].metal = " ".to_owned();
+    assert!(validate_offtake(&o).unwrap_err().contains("payable_terms"));
+    let mut o = valid_offtake();
+    o.refining_charges[0].metal = String::new();
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("refining_charges"));
+    let mut o = valid_offtake();
+    o.penalty_schedule[0].element = "\t".to_owned();
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("penalty_schedule"));
+}
+
+#[test]
+fn duplicate_assay_names_differing_by_case_are_rejected() {
+    let mut a = valid_assay();
+    a.assays.push(AssayMetalInput {
+        metal: "Gold".to_owned(),
+        grade_g_per_t: "10".to_owned(),
+    });
+    assert!(validate_assay(&a).unwrap_err().contains("duplicate assays"));
+    let mut a = valid_assay();
+    a.deleterious.push(DeleteriousInput {
+        element: "Arsenic ".to_owned(),
+        level: "1".to_owned(),
+        unit: "Pct".to_owned(),
+    });
+    assert!(validate_assay(&a)
+        .unwrap_err()
+        .contains("duplicate deleterious"));
+}
+
+#[test]
+fn duplicate_offtake_names_differing_by_case_are_rejected() {
+    let mut o = valid_offtake();
+    o.payable_terms.push(PayableTermInput {
+        metal: "GOLD".to_owned(),
+        payable_pct: "0.5".to_owned(),
+        min_deduction_g_per_t: "0".to_owned(),
+    });
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("duplicate payable_terms"));
+    let mut o = valid_offtake();
+    o.refining_charges.push(RefiningChargeInput {
+        metal: "gold".to_owned(),
+        rc_per_oz: "1".to_owned(),
+    });
+    assert!(validate_offtake(&o)
+        .unwrap_err()
+        .contains("duplicate refining_charges"));
+}
+
+#[test]
+fn repeated_penalty_elements_are_allowed() {
+    let mut o = valid_offtake();
+    let tier = o.penalty_schedule[0].clone();
+    o.penalty_schedule.push(tier);
+    assert!(validate_offtake(&o).is_ok());
+}
+
+#[test]
+fn unsupported_asset_reports_quote_unit_missing() {
+    let mut anchor = standard_goods_anchor();
+    anchor.asset = "KC".to_owned();
+    let prices = HashMap::from([("KC".to_owned(), "1000".parse().unwrap())]);
+    let resp = build_response(&anchor, None, None, &prices, None, true).unwrap();
+    assert!(resp.collateral_value.is_none());
+    assert_eq!(resp.missing_inputs, vec!["quote_unit".to_owned()]);
 }

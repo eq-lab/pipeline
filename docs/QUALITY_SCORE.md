@@ -42,6 +42,7 @@ MVP quality bars. All targets must be met before mainnet launch.
 - **Passes:** 29
 - **Failures:** 0
 - **Blocked:** 5 (558 Stories 6/7/8/9/10/11 wallet-connection — no extensions; terms gate intercepts before connector/new-tab behavior; environment limitation, verified via Story 17)
+  - **Update 2026-11-18 (#1971):** the connect path these stories share is now testable through the e2e harness ([`docs/e2e.md`](./e2e.md)): on a local stack the modal lists an **E2E test wallet** row first on both tabs, and clicking it closes the modal, connects through the real wagmi connector (EVM) or StellarWalletsKit module (Soroban), shows the address on the account page and signs the link challenge (`personal_sign` / SEP-53). Seen working in the #1971 browser pass ([release run](./e2e/release-run.md)). Still blocked: the third-party connectors themselves (MetaMask, Coinbase, WalletConnect QR, Freighter) and the website fallbacks (Trust, Albedo) need the real extensions or a manual check.
 - **Bugs filed:** none
 - **Figma frames compared:** `2858-57637` (Connect Wallet modal, 1728×916)
 - **Score: 9/10**
@@ -50,7 +51,7 @@ MVP quality bars. All targets must be met before mainnet launch.
   - Functional behavior solid: EVM tab = MetaMask/Coinbase/WalletConnect/Trust (no Phantom, no Show More); Soroban = 5 + Show More → 6 (adds Rabet) → resets on tab switch; dismiss via Escape and × but NOT outside/right-pane click (per #563 fullscreen design); full-viewport on desktop (dialog 1440×727, parent position:fixed, border-radius 0) and mobile (single column, right pane display:none + aria-hidden); terms gate intercepts on wallet click.
   - Intentional deviations (not bugs): Figma labels tabs All/Ethereum/Stellar and lists Phantom; epic body redefined to EVM/Soroban with no Phantom. Photo asset is a different aerial-container-ship crop than the Figma export — acceptable, same design intent.
   - Only benign console warnings (Lit dev-mode, Reown font preload). No errors.
-  - **Outcome:** all testable stories pass; no new defects. Wallet-connection stories (6–11) remain BLOCKED by the environment, not by app defects. The three remaining open epic sub-issues are still open Issues (the manager owns closing them), so this pass does not close `qa` #557 — returned to `blocked`. Held 1 point only for the connection stories not exercisable end-to-end locally and the still-open (though verified-fixed) sub-issues; the modal itself is green functionally and visually.
+  - **Outcome:** all testable stories pass; no new defects. Wallet-connection stories (6–11) remain BLOCKED by the environment, not by app defects (the shared connect path is testable through the e2e harness since #1971; see the update under **Blocked**). The three remaining open epic sub-issues are still open Issues (the manager owns closing them), so this pass does not close `qa` #557 — returned to `blocked`. Held 1 point only for the connection stories not exercisable end-to-end locally and the still-open (though verified-fixed) sub-issues; the modal itself is green functionally and visually.
 
 ### 2026-06-16 — Epic #531 (Stake/unstake page) — FINAL QA pass (re-run) via `qa` issue #532 (epic closed)
 
@@ -64,7 +65,7 @@ MVP quality bars. All targets must be met before mainnet launch.
 - **Figma frames compared:** 1498-101158 (desktop Stake/approved, 1728×916), section-by-section at matched viewport
 - **Score: 9/10**
   - Confirms the prior 2026-06-16 first pass — no regressions, no new defects. #533 (disconnected banner, tab-agnostic, Connect→terms gate, post-connect StepsCard), #534/#535 (distinct vector PLUSD/sPLUSD icons), #540 (single combined conversion card 480×386 containing tabs→input→output→rate→fee, with a separate steps card below), #541 (rate "1 PLUSD = 0.9596 sPLUSD" / "1 sPLUSD = 1.0421 PLUSD", Stake preview 10→9.60), #542 (Stake "~0.00042 ETH", Unstake "~0.00038 ETH", default ~0.00023 ETH, disconnected "—") all verified.
-  - **#541 Story 4 BLOCKED (not a defect):** sPLUSD balance reads 0.00 even under the "Connected, ready to unstake" fixture — mock seeds balance at placeholder `0x5555…0005` while `splusdToken` (`useEvmToken({ token: ENV.STAKED_PLUSD_ADDRESS })`) reads the real Hoodi ENV address via RPC, so `amountBig` parses to `0n` and the preview stays 0.00. Same caveat as #310/#322. The unstake preview path is identical to the verified Stake-tab Story 3 (10→9.60), and the unstake rate row (1.0421) proves the conversion math.
+  - **#541 Story 4 BLOCKED (not a defect):** sPLUSD balance reads 0.00 even under the "Connected, ready to unstake" fixture — mock seeds balance at placeholder `0x5555…0005` while `splusdToken` (`useEvmToken({ token: ENV.STAKED_PLUSD_ADDRESS })`) reads the real Hoodi ENV address via RPC, so `amountBig` parses to `0n` and the preview stays 0.00. Same caveat as #310/#322. The unstake preview path is identical to the verified Stake-tab Story 3 (10→9.60), and the unstake rate row (1.0421) proves the conversion math. **Update 2026-11-18 (#1971):** testable through the e2e harness — the EVM test wallet holds real sPLUSD on the local stack after a stake (the #1971 pass staked 600 PLUSD from the app and read 599.999973 sPLUSD on chain); the unstake preview itself was not walked there.
   - **Figma:** Frame 1498-101158 matches structurally and in order (TopBar, hero, single conversion card, separate steps card) with no absences. Accepted deviations (not filed): network fee "~$1.20" (Figma USD) vs "~0.00042 ETH" (app, no USD price source per #506/#542); steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app convention).
   - Zero error-level console messages across all states.
   - **Outcome:** green; all sibling sub-issues closed; one env-only block with no bug. `qa` #532 closed, then epic #531 closed per ISSUE_PROTOCOL §2/§5.3. Held 1 point only for the single story not exercisable end-to-end locally (env/fixture, not a code gap).
@@ -76,7 +77,7 @@ MVP quality bars. All targets must be met before mainnet launch.
 - **Stories executed:** 29 total — 558 (17), 563 (8), 564 (4)
 - **Passes:** 22 (558: 11 PASS + 1 partial-pass; 563: 8 PASS; 564: 2 PASS)
 - **Failures:** 2 (564 S1 wordmark, 564 S3 headline)
-- **Blocked:** 5 (558 Stories 6/7/8/9/10 — real wallet connector dispatch not reproducible without installed wallet extensions; terms-gate intercept verified instead via Story 17)
+- **Blocked:** 5 (558 Stories 6/7/8/9/10 — real wallet connector dispatch not reproducible without installed wallet extensions; terms-gate intercept verified instead via Story 17; the shared connect path is testable through the e2e harness since #1971, see the 2026-06-17 re-run above)
 - **Bugs filed:** #579 (high), #580 (medium, `trivial`) — both sub-issues of #556
 - **Figma frames compared:** `2858-57637` (Connect Wallet modal, 1728×916, two 864px panes)
 - **Score: 7/10**

@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 use serde_json::{json, Value};
+use shared::chains::ChainKind;
 use shared::security_registry::*;
 
 fn bd(s: &str) -> BigDecimal {
@@ -23,7 +24,14 @@ fn ev(id: i64, name: &str, ledger: i64, params: Value) -> SecurityEventRow {
 }
 
 fn fold(events: &[SecurityEventRow]) -> LoanProjection {
-    fold_loan(1, events, &HashMap::new(), &HashMap::new(), None)
+    fold_loan(
+        1,
+        events,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+        &STELLAR_SECURITY_PARAMS,
+    )
 }
 
 fn registered(id: i64, ledger: i64, record: &str, protection: &str) -> SecurityEventRow {
@@ -309,6 +317,7 @@ fn valuation_row_renders_plain_integers() {
                 stale: false,
                 flagged: true,
             }],
+            default_breach_at: None,
         },
     };
     let money = Snapshot {
@@ -336,11 +345,14 @@ fn valuation_row_renders_plain_integers() {
 
 #[test]
 fn event_name_lists_are_complete_and_disjoint() {
-    assert_eq!(SECURITY_LOAN_EVENT_NAMES.len(), 18);
+    assert_eq!(SECURITY_LOAN_EVENT_NAMES.len(), 21);
     assert_eq!(SECURITY_CONTRACT_EVENT_NAMES.len(), 4);
     for n in SECURITY_LOAN_EVENT_NAMES {
         assert!(!SECURITY_CONTRACT_EVENT_NAMES.contains(&n));
         assert!(is_security_registry_event(n));
+    }
+    for n in SECURITY_EVM_ONLY_EVENT_NAMES {
+        assert!(SECURITY_LOAN_EVENT_NAMES.contains(&n), "{n}");
     }
     for n in SECURITY_RECORD_EVENT_NAMES
         .iter()
@@ -358,12 +370,26 @@ fn attested_event_for_an_unknown_record_is_skipped_silently() {
         11,
         json!({"loan_id": "1", "record_id": "5", "attested_by": "GATT"}),
     )];
-    let (p, skipped) = fold_loan_report(1, &events, &HashMap::new(), &HashMap::new(), None);
+    let (p, skipped) = fold_loan_report(
+        1,
+        &events,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+        &STELLAR_SECURITY_PARAMS,
+    );
     assert_eq!(skipped, 0);
     assert!(p.records.is_empty());
 
     let bad = vec![ev(2, "SecurityRecordAttested", 11, json!({"loan_id": "1"}))];
-    let (_, skipped) = fold_loan_report(1, &bad, &HashMap::new(), &HashMap::new(), None);
+    let (_, skipped) = fold_loan_report(
+        1,
+        &bad,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+        &STELLAR_SECURITY_PARAMS,
+    );
     assert_eq!(skipped, 1);
 }
 
@@ -411,7 +437,299 @@ fn seeded_approval_tie_break_handles_exponent_scale_times() {
     ]
     .into_iter()
     .collect();
-    let p = fold_loan(1, &[], &HashMap::new(), &snaps, None);
+    let p = fold_loan(
+        1,
+        &[],
+        &HashMap::new(),
+        &snaps,
+        None,
+        &STELLAR_SECURITY_PARAMS,
+    );
     assert_eq!(p.lots.len(), 1);
     assert_eq!(p.lots[0].latest_inspection_id, Some(1));
+}
+
+fn fold_evm(events: &[SecurityEventRow], loan: Option<&Snapshot<LoanView>>) -> LoanProjection {
+    fold_loan(
+        1,
+        events,
+        &HashMap::new(),
+        &HashMap::new(),
+        loan,
+        &EVM_SECURITY_PARAMS,
+    )
+}
+
+fn terms_params(extras: bool) -> Value {
+    let mut p = json!({
+        "loan_id": "1", "advance_ratio_bps": 7000, "margin_call_ratio_bps": 8500,
+        "default_rate": 200, "tolerance_bps": 100, "grade_tolerance_bps": 50,
+        "cure_period": "86400", "price_stale_after": "172800", "grace_period": "0",
+        "attestation_interval": "0", "inspection_interval": "0", "margin_call_at": "0",
+        "payment_term": "Sight"
+    });
+    if extras {
+        p["default_ratio_bps"] = json!(9500);
+        p["originator_fee_rate"] = json!(25);
+        p["default_breach_at"] = json!("0");
+    }
+    p
+}
+
+fn loan_snapshot(terms_ledger: i64, default_breach_at: Option<&str>) -> Snapshot<LoanView> {
+    Snapshot {
+        as_of_ledger: terms_ledger,
+        view: LoanView {
+            terms: Some(TermsView {
+                advance_ratio_bps: 7000,
+                margin_call_ratio_bps: 8500,
+                cure_period: "1".into(),
+                price_stale_after: "1".into(),
+                payment_term: "Sight".into(),
+                grace_period: "0".into(),
+                default_rate: 200,
+                attestation_interval: "0".into(),
+                inspection_interval: "0".into(),
+                tolerance_bps: 100,
+                grade_tolerance_bps: 50,
+                margin_call_at: "0".into(),
+                default_ratio_bps: Some(9500),
+                originator_fee_rate: Some(25),
+                default_breach_at: default_breach_at.map(str::to_owned),
+            }),
+            terms_ledger,
+            consents: vec![],
+            consents_ledger: terms_ledger,
+        },
+    }
+}
+
+#[test]
+fn the_chain_parameters_carry_decimals_release_debt_and_breach() {
+    assert_eq!(STELLAR_SECURITY_PARAMS.decimals, 7);
+    assert_eq!(EVM_SECURITY_PARAMS.decimals, 6);
+    assert_eq!(
+        STELLAR_SECURITY_PARAMS.release_debt,
+        ReleaseDebt::OutstandingPlusAccrued
+    );
+    assert_eq!(EVM_SECURITY_PARAMS.release_debt, ReleaseDebt::FacilityDebt);
+    assert_eq!(
+        [
+            STELLAR_SECURITY_PARAMS.has_default_breach,
+            EVM_SECURITY_PARAMS.has_default_breach
+        ],
+        [false, true]
+    );
+    for p in [STELLAR_SECURITY_PARAMS, EVM_SECURITY_PARAMS] {
+        assert_eq!(p.par_value_per_unit, 10u64.pow(p.decimals).to_string());
+    }
+    assert_eq!(
+        security_params(ChainKind::Stellar),
+        &STELLAR_SECURITY_PARAMS
+    );
+    assert_eq!(security_params(ChainKind::Evm), &EVM_SECURITY_PARAMS);
+}
+
+#[test]
+fn the_par_mark_follows_the_chain_parameter() {
+    assert_eq!(STELLAR_SECURITY_PARAMS.par_value_per_unit, "10000000");
+    assert_eq!(EVM_SECURITY_PARAMS.par_value_per_unit, "1000000");
+    let events = [registered(1, 10, "5", "CashCover")];
+    assert_eq!(
+        fold(&events).records[0].mark_value_per_unit,
+        Some(bd("10000000"))
+    );
+    assert_eq!(
+        fold_evm(&events, None).records[0].mark_value_per_unit,
+        Some(bd("1000000"))
+    );
+}
+
+#[test]
+fn terms_set_without_the_extras_leaves_them_none_and_with_them_parses() {
+    let plain = fold_evm(&[ev(1, "SecurityTermsSet", 10, terms_params(false))], None);
+    let t = plain.terms.unwrap();
+    assert_eq!(t.default_ratio_bps, None);
+    assert_eq!(t.originator_fee_rate, None);
+    assert_eq!(t.default_breach_at, None);
+
+    let full = fold_evm(&[ev(1, "SecurityTermsSet", 10, terms_params(true))], None);
+    let t = full.terms.unwrap();
+    assert_eq!(t.default_ratio_bps, Some(9500));
+    assert_eq!(t.originator_fee_rate, Some(25));
+    assert_eq!(t.default_breach_at, Some(bd("0")));
+}
+
+#[test]
+fn default_breach_after_the_terms_snapshot_sets_default_breach_at() {
+    let events = [
+        ev(
+            1,
+            "SecurityDefaultBreach",
+            20,
+            json!({"loan_id": "1", "ltv_bps": 9600, "default_ratio_bps": 9500}),
+        ),
+        ev(
+            2,
+            "SecurityDefaultBreachPriceStale",
+            21,
+            json!({"loan_id": "1", "ltv_bps": 9600, "default_ratio_bps": 9500}),
+        ),
+    ];
+    let snap = loan_snapshot(10, Some("0"));
+    let (p, skipped) = fold_loan_report(
+        1,
+        &events,
+        &HashMap::new(),
+        &HashMap::new(),
+        Some(&snap),
+        &EVM_SECURITY_PARAMS,
+    );
+    assert_eq!(skipped, 0);
+    assert_eq!(
+        p.terms.unwrap().default_breach_at,
+        Some(BigDecimal::from(1_790_000_020_i64))
+    );
+    assert_eq!(p.margin_events.len(), 2);
+    assert_eq!(p.margin_events[0].kind, "default_breach");
+    assert_eq!(p.margin_events[0].default_ratio_bps, Some(9500));
+    assert_eq!(p.margin_events[0].margin_call_ratio_bps, None);
+    assert_eq!(p.margin_events[1].kind, "default_breach_price_stale");
+    assert_eq!(p.margin_events[1].default_ratio_bps, Some(9500));
+}
+
+#[test]
+fn default_breach_at_or_below_the_terms_snapshot_does_not_overwrite() {
+    let snap = loan_snapshot(20, Some("123"));
+    for ledger in [19, 20] {
+        let events = [ev(
+            1,
+            "SecurityDefaultBreach",
+            ledger,
+            json!({"loan_id": "1", "ltv_bps": 9600, "default_ratio_bps": 9500}),
+        )];
+        let p = fold_evm(&events, Some(&snap));
+        assert_eq!(
+            p.terms.unwrap().default_breach_at,
+            Some(bd("123")),
+            "{ledger}"
+        );
+        assert_eq!(p.margin_events.len(), 1);
+    }
+}
+
+#[test]
+fn default_breach_cleared_resets_default_breach_at_and_price_stale_leaves_terms() {
+    let snap = loan_snapshot(10, Some("555"));
+    let stale = fold_evm(
+        &[ev(
+            1,
+            "SecurityDefaultBreachPriceStale",
+            20,
+            json!({"loan_id": "1", "ltv_bps": 9600, "default_ratio_bps": 9500}),
+        )],
+        Some(&snap),
+    );
+    assert_eq!(stale.terms.unwrap().default_breach_at, Some(bd("555")));
+
+    let cleared = fold_evm(
+        &[ev(
+            2,
+            "SecurityDefaultBreachCleared",
+            21,
+            json!({"loan_id": "1", "ltv_bps": 9000}),
+        )],
+        Some(&snap),
+    );
+    assert_eq!(cleared.terms.unwrap().default_breach_at, Some(bd("0")));
+    assert_eq!(cleared.margin_events[0].kind, "default_breach_cleared");
+    assert_eq!(cleared.margin_events[0].ltv_bps, 9000);
+}
+
+#[test]
+fn default_breach_events_with_missing_params_are_skipped() {
+    let events = [
+        ev(
+            1,
+            "SecurityDefaultBreach",
+            20,
+            json!({"loan_id": "1", "ltv_bps": 9600}),
+        ),
+        ev(
+            2,
+            "SecurityDefaultBreachPriceStale",
+            21,
+            json!({"loan_id": "1"}),
+        ),
+        ev(
+            3,
+            "SecurityDefaultBreachCleared",
+            22,
+            json!({"loan_id": "1"}),
+        ),
+    ];
+    let (p, skipped) = fold_loan_report(
+        1,
+        &events,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+        &EVM_SECURITY_PARAMS,
+    );
+    assert_eq!(skipped, 3);
+    assert!(p.margin_events.is_empty());
+}
+
+#[test]
+fn views_serialised_before_the_evm_fields_still_deserialize() {
+    let terms: TermsView = serde_json::from_value(json!({
+        "advance_ratio_bps": 1, "margin_call_ratio_bps": 2, "cure_period": "3",
+        "price_stale_after": "4", "payment_term": "Sight", "grace_period": "5",
+        "default_rate": 6, "attestation_interval": "7", "inspection_interval": "8",
+        "tolerance_bps": 9, "grade_tolerance_bps": 10, "margin_call_at": "0"
+    }))
+    .unwrap();
+    assert_eq!(terms.default_ratio_bps, None);
+    assert_eq!(terms.originator_fee_rate, None);
+    assert_eq!(terms.default_breach_at, None);
+
+    let detail: CoverageDetailView = serde_json::from_value(json!({
+        "value": "1", "stale_value": "0", "flagged_value": "0", "debt": "0",
+        "coverage_bps": 0, "ltv_bps": 0, "margin_call_at": "0", "cure_by": "0",
+        "price_stale": false, "records": []
+    }))
+    .unwrap();
+    assert_eq!(detail.default_breach_at, None);
+}
+
+#[test]
+fn valuation_row_maps_default_breach_at() {
+    let detail = |default_breach_at: Option<&str>| Snapshot {
+        as_of_ledger: 1,
+        view: CoverageDetailView {
+            value: "1".into(),
+            stale_value: "0".into(),
+            flagged_value: "0".into(),
+            debt: "1".into(),
+            cure_by: "0".into(),
+            margin_call_at: "0".into(),
+            default_breach_at: default_breach_at.map(str::to_owned),
+            ..CoverageDetailView::default()
+        },
+    };
+    let money = Snapshot {
+        as_of_ledger: 2,
+        view: LoanMoneyView {
+            disbursed: "1".into(),
+            repaid: "0".into(),
+            written_down: "0".into(),
+            outstanding: "1".into(),
+            accrued_interest: "0".into(),
+            carved_out: false,
+        },
+    };
+    let with = valuation_row(3, &detail(Some("1790000000")), &money, "CLR", 1).unwrap();
+    assert_eq!(with.default_breach_at, Some(bd("1790000000")));
+    let without = valuation_row(3, &detail(None), &money, "CLR", 1).unwrap();
+    assert_eq!(without.default_breach_at, None);
 }

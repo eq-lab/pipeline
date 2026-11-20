@@ -21,6 +21,7 @@ import { useLoanBook } from "@/api/useLoanBook";
 vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
 import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./loans.index";
+import { lastLoanBookSearch, parseLoanBookSearch } from "./-loanBookSearch";
 const mockServed = vi.mocked(useServedTargetChains);
 const BOTH_CHAINS = {
   options: [
@@ -115,7 +116,8 @@ function withLtvKeys(
   };
 }
 
-function renderRoute() {
+function renderRoute(search: { tab?: string; chain?: number } = {}) {
+  vi.spyOn(Route, "useSearch").mockReturnValue(search as never);
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
@@ -189,6 +191,49 @@ describe("Loans list route (ready)", () => {
       "all",
     );
     expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
+  });
+
+  it("restores tab and chain from the URL and writes changes back with replace", async () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(560048);
+    expect(screen.getByTestId("loans-tab-Watchlist")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId("loans-chain-filter"),
+      "all",
+    );
+    expect(mockNavigate).toHaveBeenLastCalledWith({
+      to: "/loans",
+      search: { tab: "Watchlist", chain: undefined },
+      replace: true,
+    });
+    expect(lastLoanBookSearch()).toEqual({
+      tab: "Watchlist",
+      chain: undefined,
+    });
+  });
+
+  it("remembers the restored filter for the detail page's back link", () => {
+    renderRoute({ tab: "Watchlist", chain: 560048 });
+    expect(lastLoanBookSearch()).toEqual({ tab: "Watchlist", chain: 560048 });
+  });
+
+  it("drops unknown tab and non-positive or non-integer chain values in validateSearch", () => {
+    expect(parseLoanBookSearch({ tab: "Watchlist", chain: "560048" })).toEqual({
+      tab: "Watchlist",
+      chain: 560048,
+    });
+    expect(parseLoanBookSearch({ tab: "Bogus", chain: "abc" })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: 1.5 })).toEqual({
+      tab: undefined,
+      chain: undefined,
+    });
+    expect(parseLoanBookSearch({ chain: -1 }).chain).toBeUndefined();
   });
 
   it("offers only served chains in the filter, with All chains always present (#1667)", () => {
@@ -337,7 +382,7 @@ describe("Loans list route (ready)", () => {
     expect(screen.queryByTestId("loans-footnote")).not.toBeInTheDocument();
   });
 
-  it("shows the LTV column with per-row values, flags and a blank EVM cell", () => {
+  it("shows the LTV column with per-row values, flags and an EVM cell", () => {
     ready(
       withLtvKeys([
         {
@@ -380,7 +425,7 @@ describe("Loans list route (ready)", () => {
     expect(within(rows[1]!).queryByText("Margin call")).toBeNull();
     expect(within(rows[2]!).getByTestId("loans-ltv")).toHaveTextContent("—");
     expect(within(rows[2]!).getByText("Margin call")).toBeInTheDocument();
-    expect(within(rows[3]!).queryByTestId("loans-ltv")).toBeNull();
+    expect(within(rows[3]!).getByTestId("loans-ltv")).toHaveTextContent("—");
     expect(screen.getByTestId("loans-footnote")).toHaveTextContent(
       "LTV = amount owed",
     );

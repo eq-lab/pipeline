@@ -1,15 +1,23 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/env", () => ({
   ENV: { EVM_CHAIN_ID: 560048, STELLAR_CHAIN_ID: 99_000_001 },
 }));
 
+import { ENV } from "@/lib/env";
+
 import {
   chainAmountDecimals,
+  drawChainReason,
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
+  loanActionChainReason,
+  riskCouncilChainReason,
+  riskCouncilTargetId,
+  sameChainAddress,
   servedTargetChains,
+  stellarOnlyActionReason,
   targetChainLabel,
 } from "./targetChains";
 
@@ -90,5 +98,99 @@ describe("servedTargetChains (#1667)", () => {
       defaultChainId: null,
       isLoading: false,
     });
+  });
+});
+
+describe("riskCouncilChainReason (#1943)", () => {
+  it("never blocks Stellar", () => {
+    expect(riskCouncilChainReason(99_000_001)).toBeNull();
+    expect(riskCouncilChainReason(null)).toBeNull();
+    expect(riskCouncilChainReason(undefined)).toBeNull();
+  });
+
+  it("opens the configured EVM chain for every Risk Council function and row", () => {
+    expect(riskCouncilChainReason(560048)).toBeNull();
+  });
+
+  it("keeps the Stellar-only copy for any other EVM chain id", () => {
+    expect(riskCouncilChainReason(1)).toBe(stellarOnlyActionReason(1));
+    expect(riskCouncilChainReason(1)).toContain("Stellar only");
+  });
+});
+
+describe("drawChainReason (#1573)", () => {
+  it("never blocks Stellar, a missing id or the configured EVM chain", () => {
+    expect(drawChainReason(99_000_001)).toBeNull();
+    expect(drawChainReason(null)).toBeNull();
+    expect(drawChainReason(undefined)).toBeNull();
+    expect(drawChainReason(560048)).toBeNull();
+  });
+
+  it("keeps the Stellar-only Approve copy for any other chain id", () => {
+    expect(drawChainReason(1234)).toBe(
+      "Approve & draw runs on Stellar only — drawing on Chain 1234 from the Trustee app is not supported yet. Reject or request changes instead.",
+    );
+    expect(drawChainReason(1)).toContain("drawing on Chain 1");
+  });
+});
+
+describe("loanActionChainReason (#1574)", () => {
+  it("never blocks Stellar or a missing chain id", () => {
+    expect(loanActionChainReason(99_000_001)).toBeNull();
+    expect(loanActionChainReason(null)).toBeNull();
+    expect(loanActionChainReason(undefined)).toBeNull();
+  });
+
+  it("opens the configured EVM chain", () => {
+    expect(loanActionChainReason(560048)).toBeNull();
+  });
+
+  it("keeps the Stellar-only copy for any other chain id", () => {
+    expect(loanActionChainReason(1234)).toBe(stellarOnlyActionReason(1234));
+    expect(loanActionChainReason(1234)).toMatch(/Stellar only/);
+  });
+});
+
+describe("riskCouncilTargetId (#1943)", () => {
+  const env = ENV as Record<string, unknown>;
+
+  beforeEach(() => {
+    Object.assign(env, {
+      STELLAR_LOAN_REGISTRY_ID: "CLOAN",
+      STELLAR_YIELD_MINTER_ID: "CMINT",
+      STELLAR_SECURITY_REGISTRY_ID: "CSEC",
+      EVM_LOAN_REGISTRY_ADDRESS: "0xloan",
+      EVM_MINTER_ADDRESS: "0xmint",
+      EVM_SECURITY_REGISTRY_ADDRESS: "0xsec",
+    });
+  });
+
+  it("resolves the Stellar ids", () => {
+    expect(riskCouncilTargetId(99_000_001, "loan_registry")).toBe("CLOAN");
+    expect(riskCouncilTargetId(99_000_001, "minter")).toBe("CMINT");
+    expect(riskCouncilTargetId(99_000_001, "security_registry")).toBe("CSEC");
+  });
+
+  it("resolves the EVM addresses", () => {
+    expect(riskCouncilTargetId(560048, "loan_registry")).toBe("0xloan");
+    expect(riskCouncilTargetId(560048, "minter")).toBe("0xmint");
+    expect(riskCouncilTargetId(560048, "security_registry")).toBe("0xsec");
+  });
+
+  it("is empty for an unknown kind", () => {
+    expect(riskCouncilTargetId(99_000_001, "other")).toBe("");
+    expect(riskCouncilTargetId(560048, "other")).toBe("");
+  });
+});
+
+describe("sameChainAddress (#1942)", () => {
+  it("is exact on Stellar", () => {
+    expect(sameChainAddress(99_000_001, "GABC", "GABC")).toBe(true);
+    expect(sameChainAddress(99_000_001, "GABC", "gabc")).toBe(false);
+  });
+
+  it("ignores case on EVM", () => {
+    expect(sameChainAddress(560048, "0xAbC1", "0xabc1")).toBe(true);
+    expect(sameChainAddress(560048, "0xAbC1", "0xabc2")).toBe(false);
   });
 });

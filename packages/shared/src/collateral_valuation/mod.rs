@@ -43,13 +43,17 @@ fn grams_per_troy_oz() -> BigDecimal {
 /// its collateral cannot be priced, so the loan reads "unpriced" rather than being
 /// silently mispriced against another metal's feed.
 pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
-    match metal.to_ascii_lowercase().as_str() {
+    match metal.trim().to_ascii_lowercase().as_str() {
         "gold" => Some("XAU"),
         "silver" => Some("XAG"),
         "platinum" => Some("XPT"),
         "palladium" => Some("XPD"),
         _ => None,
     }
+}
+
+pub fn same_name(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
 }
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
@@ -244,7 +248,8 @@ pub struct CollateralComputation {
 ///
 /// Returns `Ok(None)` when a required input for the mode is missing (concentrate
 /// needs assay + offtake + a price for every payable metal; standard goods needs the
-/// headline asset's price only), so callers can surface "unpriced" without an error.
+/// headline asset's price and a known quote unit for that asset, into which the
+/// anchor's tonnes are converted), so callers can surface "unpriced" without an error.
 /// `Err` only for malformed stored numbers (a data-integrity problem).
 ///
 /// `prices` is the latest USD price keyed by price-feed asset symbol (e.g.
@@ -284,9 +289,12 @@ pub fn compute_collateral<S: std::hash::BuildHasher>(
             let Some(price) = prices.get(&anchor.asset) else {
                 return Ok(None);
             };
+            let Some(quantity) = quote_quantity(&anchor.asset, &anchor.quantity_dmt) else {
+                return Ok(None);
+            };
             let collateral_value = StandardGoodsInputs {
                 reference_price: price.clone(),
-                quantity: anchor.quantity_dmt.clone(),
+                quantity,
                 haircut: anchor.haircut_pct.clone(),
             }
             .collateral_value();
@@ -295,6 +303,15 @@ pub fn compute_collateral<S: std::hash::BuildHasher>(
                 concentrate: None,
             }))
         }
+    }
+}
+
+pub fn quote_quantity(asset: &str, quantity_dmt: &BigDecimal) -> Option<BigDecimal> {
+    const TROY_OZ_ASSETS: [&str; 4] = ["XAU", "XAG", "XPT", "XPD"];
+    if TROY_OZ_ASSETS.iter().any(|a| a.eq_ignore_ascii_case(asset)) {
+        Some(quantity_dmt * BigDecimal::from(1_000_000) / grams_per_troy_oz())
+    } else {
+        None
     }
 }
 
@@ -320,8 +337,9 @@ pub fn nsr_per_dmt<S: std::hash::BuildHasher>(
 
 /// Parse a stored JSON decimal string, tagging the field on failure.
 fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
-    BigDecimal::from_str(value)
-        .map_err(|e| anyhow::anyhow!("collateral valuation field `{field}` = `{value}`: {e}"))
+    crate::security_marks::bounded_dec_str(value).ok_or_else(|| {
+        anyhow::anyhow!("collateral valuation field `{field}` = `{value}` is not a bounded decimal")
+    })
 }
 
 /// Join offtake payable terms with assay grades, refining charges, and each metal's own
@@ -336,7 +354,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
     prices: &HashMap<String, BigDecimal, S>,
 ) -> anyhow::Result<Option<Vec<PayableMetal>>> {
     let mut metals = Vec::with_capacity(offtake.payable_terms.0.len());
-    for term in &offtake.payable_terms.0 {
+    for (i, term) in offtake.payable_terms.0.iter().enumerate() {
+        if offtake.payable_terms.0[..i]
+            .iter()
+            .any(|p| same_name(&p.metal, &term.metal))
+        {
+            continue;
+        }
         let Some(reference_price) = asset_for_metal(&term.metal).and_then(|a| prices.get(a)) else {
             return Ok(None);
         };
@@ -344,13 +368,13 @@ fn assemble_metals<S: std::hash::BuildHasher>(
             .assays
             .0
             .iter()
-            .find(|m| m.metal == term.metal)
+            .find(|m| same_name(&m.metal, &term.metal))
             .map_or("0", |m| m.grade_g_per_t.as_str());
         let rc = offtake
             .refining_charges
             .0
             .iter()
-            .find(|r| r.metal == term.metal)
+            .find(|r| same_name(&r.metal, &term.metal))
             .map_or("0", |r| r.rc_per_oz.as_str());
         metals.push(PayableMetal {
             grade_g_per_t: dec("grade_g_per_t", grade)?,
@@ -393,7 +417,7 @@ fn assemble_penalties(
                 .deleterious
                 .0
                 .iter()
-                .find(|d| d.element == tier.element)
+                .find(|d| same_name(&d.element, &tier.element))
             {
                 Some(d) => to_pct(dec("deleterious.level", &d.level)?, &d.unit),
                 None => BigDecimal::zero(),

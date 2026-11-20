@@ -96,8 +96,11 @@ async fn main() -> anyhow::Result<()> {
     // must fail fast rather than block the request for the default ~36s of retries;
     // the submitter can retry.
     let loan_metadata_fetcher = Arc::new(HttpLoanMetadataFetcher::new(
-        MetadataFetcher::new(reqwest::Client::new(), ipfs_gateway_url_from_env())
-            .with_backoffs(vec![]),
+        MetadataFetcher::new(
+            shared::http_client::http_client(),
+            ipfs_gateway_url_from_env(),
+        )
+        .with_backoffs(vec![]),
     ));
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
@@ -136,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
     let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
     let pocket_addresses = chains_config.pocket_addresses;
     let security_registry_addresses = chains_config.security_registry_addresses;
+    let security_record_nft_addresses = chains_config.security_record_nft_addresses;
     let plusd_addresses = chains_config.plusd_addresses;
     let security_marks = shared::security_marks::MarkSettings::from_env()?;
     tracing::info!(
@@ -175,6 +179,7 @@ async fn main() -> anyhow::Result<()> {
         withdrawal_queue_addresses,
         pocket_addresses,
         security_registry_addresses,
+        security_record_nft_addresses,
         plusd_addresses,
         security_marks,
         crystal_enabled,

@@ -20,7 +20,7 @@ const INSPECTOR_A: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 const INSPECTOR_B: &str = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const INSPECTOR_C: &str = "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
 
-const SECURITY_NAMES: [&str; 21] = [
+const SECURITY_NAMES: [&str; 24] = [
     "SecurityRecordRegistered",
     "SecurityRecordPerfected",
     "SecurityRecordHandedOver",
@@ -42,6 +42,9 @@ const SECURITY_NAMES: [&str; 21] = [
     "SecurityInspectorsSet",
     "SecurityRegistryPaused",
     "SecurityRegistryUnpaused",
+    "SecurityDefaultBreach",
+    "SecurityDefaultBreachPriceStale",
+    "SecurityDefaultBreachCleared",
 ];
 
 const LEGACY_NAMES: [&str; 11] = [
@@ -64,6 +67,10 @@ fn hash(byte: &str) -> String {
 
 fn st(event: &str, params: impl Into<Value>) -> (String, Value) {
     format_action(event, &params.into(), ChainKind::Stellar)
+}
+
+fn evm(event: &str, params: impl Into<Value>) -> (String, Value) {
+    format_action(event, &params.into(), ChainKind::Evm)
 }
 
 fn row(
@@ -300,6 +307,167 @@ fn terms_set_renders_percents_and_raw_durations() {
     );
 }
 
+fn evm_terms_params() -> Value {
+    json!({
+        "loan_id": "7",
+        "advance_ratio_bps": 8000, "margin_call_ratio_bps": 8500, "default_rate": 150_000,
+        "tolerance_bps": 100, "grade_tolerance_bps": 50,
+        "cure_period": "1209600", "price_stale_after": "604800", "grace_period": "259200",
+        "attestation_interval": "2592000", "inspection_interval": "7776000",
+        "margin_call_at": "0", "payment_term": "Net30",
+        "default_ratio_bps": 9000, "originator_fee_rate": 10_000,
+    })
+}
+
+#[test]
+fn evm_terms_set_renders_the_default_ratio_and_originator_fee() {
+    let (a, d) = evm("SecurityTermsSet", evm_terms_params());
+    assert_eq!(
+        a,
+        "Security terms set — advance ratio 80.00%, margin call ratio 85.00%, cure period 14d, default ratio 90.00%"
+    );
+    assert_eq!(d["default_ratio_pct"], "90.00");
+    assert_eq!(d["originator_fee_rate_pct"], "1.00");
+    assert_eq!(d["default_rate_pct"], "15.00");
+    assert_eq!(d["advance_ratio_pct"], "80.00");
+}
+
+#[test]
+fn evm_terms_set_without_the_extras_renders_like_stellar() {
+    let mut params = evm_terms_params();
+    let obj = params.as_object_mut().unwrap();
+    obj.remove("default_ratio_bps");
+    obj.remove("originator_fee_rate");
+    let (a, d) = evm("SecurityTermsSet", params.clone());
+    let (sa, sd) = st("SecurityTermsSet", params);
+    assert_eq!((a, d), (sa, sd));
+}
+
+#[test]
+fn a_stellar_terms_set_has_no_new_detail_keys() {
+    let (_, d) = st(
+        "SecurityTermsSet",
+        json!({
+            "loan_id": "7",
+            "advance_ratio_bps": 8000, "margin_call_ratio_bps": 8500, "default_rate": 150_000,
+            "tolerance_bps": 100, "grade_tolerance_bps": 50,
+            "cure_period": "1209600", "price_stale_after": "604800", "grace_period": "259200",
+            "attestation_interval": "2592000", "inspection_interval": "7776000",
+            "margin_call_at": "0", "payment_term": "Net30",
+        }),
+    );
+    let obj = d.as_object().unwrap();
+    assert!(!obj.contains_key("default_ratio_pct"));
+    assert!(!obj.contains_key("originator_fee_rate_pct"));
+    assert_eq!(obj.len(), 11);
+}
+
+#[test]
+fn default_breach_rows_render_percents() {
+    let (a, d) = evm(
+        "SecurityDefaultBreach",
+        json!({ "loan_id": "7", "ltv_bps": 9500, "default_ratio_bps": 9000 }),
+    );
+    assert_eq!(a, "Default breach — LTV 95.00% above 90.00% default ratio");
+    assert_eq!(
+        d,
+        json!({ "ltv_pct": "95.00", "default_ratio_pct": "90.00" })
+    );
+    let (a, d) = evm(
+        "SecurityDefaultBreachPriceStale",
+        json!({ "loan_id": "7", "ltv_bps": 9500, "default_ratio_bps": 9000 }),
+    );
+    assert_eq!(
+        a,
+        "Price stale — LTV 95.00% above 90.00% default ratio, no default breach until revalued"
+    );
+    assert_eq!(
+        d,
+        json!({ "ltv_pct": "95.00", "default_ratio_pct": "90.00" })
+    );
+    let (a, d) = evm(
+        "SecurityDefaultBreachCleared",
+        json!({ "loan_id": "7", "ltv_bps": 8000 }),
+    );
+    assert_eq!(a, "Default breach cleared — LTV 80.00%");
+    assert_eq!(d, json!({ "ltv_pct": "80.00" }));
+}
+
+#[test]
+fn default_breach_rows_render_an_unbounded_ltv() {
+    let (a, d) = evm(
+        "SecurityDefaultBreach",
+        json!({ "loan_id": "7", "ltv_bps": 4_294_967_295_u32, "default_ratio_bps": 9000 }),
+    );
+    assert_eq!(
+        a,
+        "Default breach — LTV unbounded above 90.00% default ratio"
+    );
+    assert_eq!(d, json!({ "ltv_pct": null, "default_ratio_pct": "90.00" }));
+    let (a, d) = evm(
+        "SecurityDefaultBreachPriceStale",
+        json!({ "loan_id": "7", "ltv_bps": 4_294_967_295_u32, "default_ratio_bps": 9000 }),
+    );
+    assert!(a.starts_with("Price stale — LTV unbounded above 90.00% default ratio"));
+    assert_eq!(d["ltv_pct"], Value::Null);
+    let (a, d) = evm(
+        "SecurityDefaultBreachCleared",
+        json!({ "loan_id": "7", "ltv_bps": 4_294_967_295_u32 }),
+    );
+    assert_eq!(a, "Default breach cleared — LTV unbounded");
+    assert_eq!(d, json!({ "ltv_pct": null }));
+}
+
+#[test]
+fn default_breach_rows_with_a_missing_param_fall_back_to_the_bare_title() {
+    let (a, d) = evm("SecurityDefaultBreach", json!({ "ltv_bps": 9500 }));
+    assert_eq!(a, "Default breach");
+    assert_eq!(d["default_ratio_pct"], Value::Null);
+    let (a, _) = evm(
+        "SecurityDefaultBreach",
+        json!({ "default_ratio_bps": 9000 }),
+    );
+    assert_eq!(a, "Default breach");
+    let (a, _) = evm(
+        "SecurityDefaultBreachPriceStale",
+        json!({ "ltv_bps": 9500 }),
+    );
+    assert_eq!(a, "Price stale");
+    let (a, d) = evm("SecurityDefaultBreachCleared", json!({}));
+    assert_eq!(a, "Default breach cleared");
+    assert_eq!(d, json!({ "ltv_pct": null }));
+}
+
+#[test]
+fn default_breach_rows_get_a_loan_scope_in_the_feed() {
+    let names = [
+        "SecurityDefaultBreach",
+        "SecurityDefaultBreachPriceStale",
+        "SecurityDefaultBreachCleared",
+    ];
+    let rows = names
+        .iter()
+        .zip(1..)
+        .map(|(name, id)| {
+            row(
+                id,
+                EVM.chain_id,
+                100 + id,
+                name,
+                Some("7"),
+                json!({ "loan_id": "7", "ltv_bps": 9500, "default_ratio_bps": 9000 }),
+            )
+        })
+        .collect();
+    let resp = build_response(rows, &[EVM]);
+    for name in names {
+        let item = find(&resp.items, name);
+        assert_eq!(item.scope.label, "Loan #7");
+        assert_eq!(item.scope.loan_id.as_deref(), Some("7"));
+        assert_eq!(item.reference, "");
+    }
+}
+
 #[test]
 fn revalued_renders_the_chain_scaled_price() {
     let (a, d) = st(
@@ -532,6 +700,9 @@ fn missing_fields_degrade_to_bare_labels() {
         ("SecurityInspectorsSet", "Inspector panel set"),
         ("SecurityRegistryPaused", "SecurityRegistry paused"),
         ("SecurityRegistryUnpaused", "SecurityRegistry unpaused"),
+        ("SecurityDefaultBreach", "Default breach"),
+        ("SecurityDefaultBreachPriceStale", "Price stale"),
+        ("SecurityDefaultBreachCleared", "Default breach cleared"),
     ];
     assert_eq!(bare.len(), SECURITY_NAMES.len());
     for (name, label) in bare {

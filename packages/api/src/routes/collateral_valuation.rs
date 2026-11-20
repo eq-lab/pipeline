@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, to_pct, ConcentrateValuation,
+    asset_for_metal, ccr_bps, compute_collateral, same_name, to_pct, ConcentrateValuation,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -462,7 +462,7 @@ async fn submit_assay(
         .assays
         .iter()
         .map(|m| AssayMetalJson {
-            metal: m.metal.clone(),
+            metal: m.metal.trim().to_owned(),
             grade_g_per_t: m.grade_g_per_t.clone(),
         })
         .collect();
@@ -470,7 +470,7 @@ async fn submit_assay(
         .deleterious
         .iter()
         .map(|d| DeleteriousJson {
-            element: d.element.clone(),
+            element: d.element.trim().to_owned(),
             level: d.level.clone(),
             unit: d.unit.clone(),
         })
@@ -558,7 +558,7 @@ async fn submit_offtake(
         .payable_terms
         .iter()
         .map(|t| PayableTermJson {
-            metal: t.metal.clone(),
+            metal: t.metal.trim().to_owned(),
             payable_pct: t.payable_pct.clone(),
             min_deduction_g_per_t: t.min_deduction_g_per_t.clone(),
         })
@@ -567,7 +567,7 @@ async fn submit_offtake(
         .refining_charges
         .iter()
         .map(|r| RefiningChargeJson {
-            metal: r.metal.clone(),
+            metal: r.metal.trim().to_owned(),
             rc_per_oz: r.rc_per_oz.clone(),
         })
         .collect();
@@ -575,7 +575,7 @@ async fn submit_offtake(
         .penalty_schedule
         .iter()
         .map(|p| PenaltyTierJson {
-            element: p.element.clone(),
+            element: p.element.trim().to_owned(),
             threshold: p.threshold.clone(),
             step: p.step.clone(),
             unit: p.unit.clone(),
@@ -613,7 +613,8 @@ fn unix_to_datetime(unix_secs: u64) -> Result<DateTime<Utc>, ApiError> {
 }
 
 fn parse_dec(label: &str, s: &str) -> Result<BigDecimal, String> {
-    BigDecimal::from_str(s).map_err(|_| format!("`{label}` is not a valid decimal: {s}"))
+    shared::security_marks::bounded_dec_str(s)
+        .ok_or_else(|| format!("`{label}` is not a valid bounded decimal: {s}"))
 }
 
 /// Pure validation for [`SubmitAssayRequest`] — no I/O, unit-tested directly.
@@ -629,6 +630,12 @@ pub fn validate_assay(req: &SubmitAssayRequest) -> Result<(), String> {
     if req.assays.is_empty() {
         return Err("`assays` must not be empty".to_owned());
     }
+    check_names("assays", req.assays.iter().map(|m| m.metal.as_str()), true)?;
+    check_names(
+        "deleterious",
+        req.deleterious.iter().map(|d| d.element.as_str()),
+        true,
+    )?;
     for m in &req.assays {
         let grade = parse_dec("grade_g_per_t", &m.grade_g_per_t)?;
         if grade < 0 {
@@ -669,11 +676,47 @@ pub fn validate_assay(req: &SubmitAssayRequest) -> Result<(), String> {
     Ok(())
 }
 
+fn check_names<'a>(
+    field: &str,
+    names: impl Iterator<Item = &'a str>,
+    unique: bool,
+) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for name in names {
+        let key = name.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            return Err(format!("`{field}` names must not be empty"));
+        }
+        if unique && !seen.insert(key) {
+            return Err(format!(
+                "duplicate {field} `{}` (names are matched case-insensitively)",
+                name.trim()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Pure validation for [`SubmitOfftakeRequest`] — no I/O, unit-tested directly.
 pub fn validate_offtake(req: &SubmitOfftakeRequest) -> Result<(), String> {
     if req.payable_terms.is_empty() {
         return Err("`payable_terms` must not be empty".to_owned());
     }
+    check_names(
+        "payable_terms",
+        req.payable_terms.iter().map(|t| t.metal.as_str()),
+        true,
+    )?;
+    check_names(
+        "refining_charges",
+        req.refining_charges.iter().map(|r| r.metal.as_str()),
+        true,
+    )?;
+    check_names(
+        "penalty_schedule",
+        req.penalty_schedule.iter().map(|p| p.element.as_str()),
+        false,
+    )?;
     for t in &req.payable_terms {
         let payable_pct = parse_dec("payable_pct", &t.payable_pct)?;
         #[allow(clippy::manual_range_contains)]
@@ -841,6 +884,9 @@ pub fn build_response(
     // loan-book list uses). `None` when a required input for the mode is missing.
     let computation =
         compute_collateral(anchor, assay, offtake, prices).map_err(ApiError::Internal)?;
+    if !is_concentrate && headline_price.is_some() && computation.is_none() {
+        missing.push("quote_unit".to_owned());
+    }
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation
         .as_ref()
@@ -900,13 +946,19 @@ fn build_metals(
         .payable_terms
         .0
         .iter()
-        .map(|term| MetalInput {
+        .enumerate()
+        .filter(|(i, term)| {
+            !offtake.payable_terms.0[..*i]
+                .iter()
+                .any(|p| same_name(&p.metal, &term.metal))
+        })
+        .map(|(_, term)| MetalInput {
             metal: term.metal.clone(),
             grade_g_per_t: assay
                 .assays
                 .0
                 .iter()
-                .find(|m| m.metal == term.metal)
+                .find(|m| same_name(&m.metal, &term.metal))
                 .map_or_else(|| "0".to_owned(), |m| m.grade_g_per_t.clone()),
             payable_pct: term.payable_pct.clone(),
             min_deduction_g_per_t: term.min_deduction_g_per_t.clone(),
@@ -919,7 +971,7 @@ fn build_metals(
                 .refining_charges
                 .0
                 .iter()
-                .find(|r| r.metal == term.metal)
+                .find(|r| same_name(&r.metal, &term.metal))
                 .map_or_else(|| "0".to_owned(), |r| r.rc_per_oz.clone()),
         })
         .collect()
@@ -949,7 +1001,12 @@ fn build_penalties(
         .map(|tier| PenaltyInput {
             element: tier.element.clone(),
             level_pct: assay
-                .and_then(|a| a.deleterious.0.iter().find(|d| d.element == tier.element))
+                .and_then(|a| {
+                    a.deleterious
+                        .0
+                        .iter()
+                        .find(|d| same_name(&d.element, &tier.element))
+                })
                 .map_or_else(|| "0".to_owned(), |d| pct_display(&d.level, &d.unit)),
             threshold_pct: pct_display(&tier.threshold, &tier.unit),
             step_pct: pct_display(&tier.step, &tier.unit),

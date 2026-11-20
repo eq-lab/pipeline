@@ -593,6 +593,17 @@ function Deposit() {
               />
             )}
 
+            {isDeposit &&
+              !flow.exceedsBalance &&
+              flow.minDeposit !== undefined &&
+              amountBig > 0n &&
+              amountBig < flow.minDeposit && (
+                <InlineError
+                  message={`Minimum deposit is ${flow.minChipLabel.replace(" (Min)", "")}`}
+                  className="self-end"
+                />
+              )}
+
             {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
             {isConnectionPending ? null : !flow.isConnected ? (
               <Card
@@ -621,7 +632,7 @@ function Deposit() {
             ) : isStellar &&
               isDeposit &&
               usdcTrustline?.needsTrustline &&
-              flow.hasBalance === false ? (
+              flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="usdc-trustline-banner"
@@ -654,7 +665,7 @@ function Deposit() {
                   {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
                 </Button>
               </Card>
-            ) : isDeposit && flow.hasBalance === false ? (
+            ) : isDeposit && flow.isBelowMinimum ? (
               <Card
                 variant="yellow"
                 data-testid="low-balance-banner"

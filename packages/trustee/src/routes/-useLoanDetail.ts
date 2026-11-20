@@ -14,9 +14,9 @@ import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
 import { findLoanEntry } from "@/lib/loanRoute";
-import { stellarOnlyActionReason, targetChainLabel } from "@/lib/targetChains";
+import { loanActionChainReason, targetChainLabel } from "@/lib/targetChains";
 import { toUserError } from "@/utils/userError";
-import { useDeal } from "@/api/useDealToken";
+import { useLoanDeal } from "@/api/useDealToken";
 import { debtTokenRegistered, type DealReadState } from "@/lib/dealToken";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -31,6 +31,14 @@ import {
   type SummaryTile,
 } from "./-loanDetailStatic";
 import { buildSecurityCard, type SecurityCardView } from "./-loanSecurity";
+import {
+  buildSecurityRecords,
+  type SecurityRecordsView,
+} from "./-loanSecurityRecords";
+import {
+  buildSecurityActions,
+  type SecurityActionsView,
+} from "./-securityActions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -106,6 +114,8 @@ export interface UseLoanDetailResult {
   currentStage: CurrentStage | null;
   otherActions: OtherActions;
   security: SecurityCardView;
+  securityRecords: SecurityRecordsView;
+  securityActions: SecurityActionsView;
   /** Rollover card (Matured only); `null` otherwise. */
   rollover: RolloverCard | null;
   /** Formatted maturity date (e.g. `"15 Jun 2026"`), for the Matured rollover-card title; `null` when absent. */
@@ -216,7 +226,7 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
     },
     {
       label: "Disbursing",
-      sub: "drawned, not yet funded",
+      sub: "drawn, not yet funded",
       index: 2,
       state: isDisbursing ? "active" : hasStatus ? "done" : "pending",
     },
@@ -369,6 +379,7 @@ export function buildSummaryTiles(
   variant: LoanDetailVariant,
 ): SummaryTile[] {
   const facility = formatCompactUsd(entry?.principal);
+  const senior = formatCompactUsd(entry?.original_senior_tranche);
   const repaid = formatCompactUsd(entry?.repaid_to_date);
   const disbursedAmount =
     entry == null
@@ -381,22 +392,19 @@ export function buildSummaryTiles(
     variant === "matured"
       ? {
           label: "Facility / senior",
-          value: tileValuePair(facility, disbursedAmount),
+          value: tileValuePair(facility, senior),
           sub: "—",
           subTone: "muted",
         }
       : {
           label: "Facility / disbursed",
-          value: tileValuePair(
-            facility,
-            formatCompactUsd(entry?.original_senior_tranche),
-          ),
+          value: tileValuePair(facility, disbursedAmount),
           sub:
             entry == null
               ? "—"
               : entry.disbursed
                 ? "funded"
-                : "drawned, not yet funded",
+                : "drawn, not yet funded",
           subTone: entry?.disbursed ? "positive" : "attention",
         };
 
@@ -514,7 +522,10 @@ export function useLoanDetail(
   const loanBook = useLoanBook();
   const security = useLoanSecurity(chainId, loanId);
   const financials = useLoanFinancials(chainId, loanId);
-  const deal = useDeal(chainId, /^\d+$/.test(loanId) ? Number(loanId) : null);
+  const deal = useLoanDeal(
+    chainId,
+    /^\d+$/.test(loanId) ? Number(loanId) : null,
+  );
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
@@ -556,11 +567,11 @@ export function useLoanDetail(
     currentStage,
     otherActions,
     security: buildSecurityCard(security),
+    securityRecords: buildSecurityRecords(security),
+    securityActions: buildSecurityActions(security),
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
     documents: buildDocuments(entry),
-    onChainBlockedReason: entry
-      ? stellarOnlyActionReason(entry.chain_id)
-      : null,
+    onChainBlockedReason: entry ? loanActionChainReason(entry.chain_id) : null,
   };
 }

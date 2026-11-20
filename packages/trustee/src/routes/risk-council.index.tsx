@@ -9,7 +9,12 @@ import {
   type LoanIndexRow,
   type ScheduledRow,
 } from "./-risk-council-hub";
-import { INK_MUTED, LINE_COLOR, Muted } from "./-RiskCouncilParts";
+import {
+  INK_MUTED,
+  LINE_COLOR,
+  Muted,
+  PendingOwnerLink,
+} from "./-RiskCouncilParts";
 
 const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/risk-council")!;
 
@@ -17,13 +22,6 @@ const HEADER_CELL_CLASS =
   "px-[14px] pb-[12px] text-left font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] font-normal text-[color:var(--color-pipeline-ink-muted)] whitespace-nowrap";
 const BODY_CELL_CLASS =
   "px-[14px] py-[16px] align-top font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[color:var(--color-pipeline-ink)]";
-
-const ROUTE_PATHS = {
-  escalate: "/risk-council/escalate/$id",
-  reterm: "/risk-council/reterm/$id",
-  writedown: "/risk-council/writedown/$id",
-  security: "/risk-council/security/$id",
-} as const satisfies Record<Exclude<HubRoute, "inspectors">, string>;
 
 function ActionLink({
   route,
@@ -44,27 +42,27 @@ function ActionLink({
     );
   }
   return (
-    <Link
-      to={ROUTE_PATHS[route]}
-      params={{ id: loanId }}
-      search={{ chain }}
-      className="text-[#000080] underline"
-    >
+    <PendingOwnerLink owner={route} loanId={loanId} chainId={chain}>
       {children}
-    </Link>
+    </PendingOwnerLink>
   );
 }
 
 function ScheduledTable({
   rows,
-  noRole,
   chain,
 }: {
   rows: ScheduledRow[];
-  noRole: boolean;
   chain: number;
 }) {
-  const headers = ["Loan", "Action", "Arguments", "Executable from", "State"];
+  const headers = [
+    "Loan",
+    "Action",
+    "Arguments",
+    "Scheduled by",
+    "Executable from",
+    "State",
+  ];
   return (
     <section className="flex flex-col gap-[8px]">
       <h2 className="font-[family-name:var(--font-display)] text-[26px] leading-[35.84px] text-[#262524]">
@@ -86,16 +84,6 @@ function ScheduledTable({
             </tr>
           </thead>
           <tbody>
-            {noRole && (
-              <tr data-testid="risk-council-scheduled-no-role">
-                {headers.map((h) => (
-                  <td key={h} className={BODY_CELL_CLASS}>
-                    —
-                  </td>
-                ))}
-                <td className={BODY_CELL_CLASS} />
-              </tr>
-            )}
             {rows.map((row) => (
               <tr
                 key={row.key}
@@ -105,6 +93,7 @@ function ScheduledTable({
                 <td className={BODY_CELL_CLASS}>{row.loanLabel}</td>
                 <td className={BODY_CELL_CLASS}>{row.action}</td>
                 <td className={BODY_CELL_CLASS}>{row.args}</td>
+                <td className={BODY_CELL_CLASS}>{row.scheduledBy}</td>
                 <td className={BODY_CELL_CLASS}>{row.executableFrom}</td>
                 <td className={BODY_CELL_CLASS}>{row.state}</td>
                 <td className={BODY_CELL_CLASS}>
@@ -122,7 +111,7 @@ function ScheduledTable({
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && !noRole && (
+        {rows.length === 0 && (
           <p
             data-testid="risk-council-scheduled-empty"
             className="px-[14px] pb-[16px] font-[family-name:var(--font-body)] text-[15px]"
@@ -207,6 +196,18 @@ function LoansTable({
   );
 }
 
+function InspectorsLink() {
+  return (
+    <Link
+      to="/risk-council/inspectors"
+      data-testid="risk-council-inspectors-link"
+      className="self-start text-[#000080] underline"
+    >
+      Inspector panel
+    </Link>
+  );
+}
+
 function RiskCouncilIndex() {
   const view = useRiskCouncilHub();
 
@@ -216,7 +217,10 @@ function RiskCouncilIndex() {
         {navItem.heading}
       </h1>
       {view.blockedReason ? (
-        <Muted testId="risk-council-blocked">{view.blockedReason}</Muted>
+        <>
+          <Muted testId="risk-council-blocked">{view.blockedReason}</Muted>
+          {view.showInspectorsLink && <InspectorsLink />}
+        </>
       ) : (
         <>
           <p
@@ -228,18 +232,8 @@ function RiskCouncilIndex() {
           {view.roleLine && (
             <Muted testId="risk-council-role">{view.roleLine}</Muted>
           )}
-          <Link
-            to="/risk-council/inspectors"
-            data-testid="risk-council-inspectors-link"
-            className="self-start text-[#000080] underline"
-          >
-            Inspector panel
-          </Link>
-          <ScheduledTable
-            rows={view.rows}
-            noRole={view.noRole}
-            chain={view.chainId}
-          />
+          <InspectorsLink />
+          <ScheduledTable rows={view.rows} chain={view.chainId} />
           <LoansTable loans={view.loans} chain={view.chainId} />
         </>
       )}

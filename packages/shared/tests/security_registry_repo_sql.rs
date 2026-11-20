@@ -19,7 +19,7 @@ fn event_reads_are_scoped_to_chain_and_contract_and_ordered() {
         &[
             "FROM contract_logs",
             "chain_id = $1",
-            "AND contract_address = $2",
+            "AND contract_address = ANY($2)",
             "event_name = ANY($3)",
             "params->>'loan_id' = $4",
             "ORDER BY block_number, log_index",
@@ -29,14 +29,14 @@ fn event_reads_are_scoped_to_chain_and_contract_and_ordered() {
         LIST_CONTRACT_EVENTS_SQL,
         &[
             "chain_id = $1",
-            "AND contract_address = $2",
+            "AND contract_address = ANY($2)",
             "event_name = ANY($3)",
             "ORDER BY block_number, log_index",
         ],
     );
     assert_has(
         MAX_LOG_ID_SQL,
-        &["chain_id = $1 AND contract_address = $2", "MAX(id)"],
+        &["chain_id = $1 AND contract_address = ANY($2)", "MAX(id)"],
     );
 }
 
@@ -166,10 +166,10 @@ fn deletes_are_scoped_by_chain_contract_and_loan() {
 #[test]
 fn inserts_name_their_table_and_bind_every_column() {
     for (sql, table, binds) in [
-        (INSERT_TERMS_SQL, "security_terms", 17),
+        (INSERT_TERMS_SQL, "security_terms", 20),
         (INSERT_RECORD_SQL, "security_records", 32),
         (INSERT_DOC_SQL, "security_record_docs", 9),
-        (INSERT_MARGIN_EVENT_SQL, "security_margin_call_events", 11),
+        (INSERT_MARGIN_EVENT_SQL, "security_margin_call_events", 12),
         (INSERT_INSPECTION_SQL, "security_inspections", 30),
         (INSERT_LOT_SQL, "security_lots", 8),
         (INSERT_CONSENT_SQL, "security_extension_consents", 8),
@@ -348,7 +348,7 @@ fn the_log_watermarks_are_scoped_to_the_chain_loan_and_contract_list() {
         &[
             "FROM contract_logs",
             "chain_id = $1",
-            "MAX(id) FILTER (WHERE contract_address = $2)",
+            "MAX(id) FILTER (WHERE contract_address = ANY($2))",
             "contract_address = ANY($4)",
             "params @> jsonb_build_object('loan_id', $3::text)",
         ],
@@ -449,5 +449,102 @@ fn offtake_metals_join_the_loans_payable_terms() {
             "term ->> 'metal' IS NOT NULL",
             "SELECT DISTINCT r.commodity",
         ],
+    );
+}
+
+#[test]
+fn every_worker_side_contract_logs_read_takes_the_log_contract_list() {
+    for (name, sql) in [
+        ("LIST_LOAN_EVENTS_SQL", LIST_LOAN_EVENTS_SQL),
+        ("LIST_CONTRACT_EVENTS_SQL", LIST_CONTRACT_EVENTS_SQL),
+        ("MAX_LOG_ID_SQL", MAX_LOG_ID_SQL),
+        ("LIST_DIRTY_LOANS_SQL", LIST_DIRTY_LOANS_SQL),
+        ("LIST_ALL_LOANS_SQL", LIST_ALL_LOANS_SQL),
+        (
+            "LIST_RECORD_EVENT_LEDGERS_SQL",
+            LIST_RECORD_EVENT_LEDGERS_SQL,
+        ),
+        ("LIST_INSPECTION_IDS_SQL", LIST_INSPECTION_IDS_SQL),
+        ("LIST_KNOWN_LOANS_SQL", LIST_KNOWN_LOANS_SQL),
+        (
+            "LIST_LOANS_WITH_TERMS_EVENT_SQL",
+            LIST_LOANS_WITH_TERMS_EVENT_SQL,
+        ),
+        ("LIST_RECORD_LOANS_SQL", LIST_RECORD_LOANS_SQL),
+    ] {
+        let f = flat(sql);
+        let scans = f.matches("FROM contract_logs").count();
+        let any = f.matches("contract_address = ANY(").count();
+        let loan_drawn = f
+            .matches("contract_address = $3 AND event_name = 'LoanDrawn'")
+            .count();
+        assert!(scans >= 1, "{name}");
+        assert_eq!(any + loan_drawn, scans, "{name}: {f}");
+    }
+}
+
+#[test]
+fn projection_table_reads_stay_scoped_to_the_registry() {
+    for sql in [
+        LIST_DIRTY_LOANS_SQL,
+        LIST_ALL_LOANS_SQL,
+        LIST_KNOWN_LOANS_SQL,
+        LIST_RECORD_LOANS_SQL,
+    ] {
+        let f = flat(sql);
+        assert!(f.contains("FROM security_view_snapshots"), "{f}");
+        assert!(
+            f.contains(
+                "FROM security_view_snapshots WHERE chain_id = $1 AND contract_address = $2"
+            ),
+            "{f}"
+        );
+    }
+    for (sql, snapshots_param) in [
+        (LIST_DIRTY_LOANS_SQL, "ANY($6)"),
+        (LIST_ALL_LOANS_SQL, "ANY($4)"),
+        (LIST_KNOWN_LOANS_SQL, "ANY($5)"),
+        (LIST_RECORD_LOANS_SQL, "ANY($3)"),
+    ] {
+        assert!(flat(sql).contains(snapshots_param), "{snapshots_param}");
+    }
+}
+
+#[test]
+fn the_loan_drawn_arm_stays_on_the_configured_loan_registry() {
+    assert_has(
+        LIST_KNOWN_LOANS_SQL,
+        &["contract_address = $3 AND event_name = 'LoanDrawn'"],
+    );
+}
+
+#[test]
+fn the_evm_columns_are_inserted_and_read_back() {
+    assert_has(
+        INSERT_TERMS_SQL,
+        &["default_ratio_bps, originator_fee_rate, default_breach_at"],
+    );
+    assert_has(
+        GET_TERMS_SQL,
+        &[
+            "default_ratio_bps, originator_fee_rate",
+            "default_breach_at",
+        ],
+    );
+    assert_has(INSERT_MARGIN_EVENT_SQL, &["tx_hash, default_ratio_bps"]);
+    assert_has(
+        LIST_MARGIN_EVENTS_FOR_LOAN_SQL,
+        &["tx_hash, default_ratio_bps"],
+    );
+    assert_has(
+        UPSERT_VALUATION_SQL,
+        &[
+            "source_log_id, default_breach_at, fetched_at",
+            "default_breach_at = EXCLUDED.default_breach_at",
+        ],
+    );
+    assert_has(
+        GET_VALUATION_SQL,
+        &["source_log_id, default_breach_at, fetched_at"],
     );
 }

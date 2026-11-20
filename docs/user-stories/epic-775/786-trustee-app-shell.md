@@ -29,8 +29,9 @@ colors, radii) is verified separately by the QA agent's Figma comparison.
 - A fixed navy sidebar renders on the left with the Pipeline wordmark at the top.
 - Six nav items are listed in order: Overview, Origination, Loans, Cash Management, Risk
   Council, Audit Log.
-- Each nav item shows an icon glyph and a label; no numeric count badges are shown (see
-  `docs/exec-plans/tech-debt-tracker.md` TD-36 — no backend count source yet).
+- Each nav item shows an icon glyph and a label; Origination, Loans and Cash Management show
+  the served attention counts (see `1350-trustee-sidebar-badges.md`), and the other items show
+  no badge.
 - A divider line separates Overview from Origination/Loans/Cash Management, and another
   separates that group from Risk Council/Audit Log.
 

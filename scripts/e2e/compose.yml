@@ -1,0 +1,54 @@
+# Infrastructure of the local e2e stack (compose project pipeline-e2e); see docs/e2e.md "Local stack".
+name: pipeline-e2e
+
+x-tag: &tag
+  pipeline-e2e.tag: ${E2E_TAG:?E2E_TAG}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    labels: *tag
+    environment:
+      POSTGRES_USER: pipeline
+      POSTGRES_PASSWORD: pipeline
+      POSTGRES_DB: pipeline_e2e
+    ports: ["127.0.0.1:${E2E_PORT_POSTGRES}:5432"]
+    volumes: [postgres:/var/lib/postgresql/data]
+
+  minio:
+    # minio/minio is no longer pullable; the bitnami build runs as uid 1001, so data and mc's HOME live where it can write.
+    image: bitnamilegacy/minio:2025.4.22
+    labels: *tag
+    entrypoint: [minio]
+    command: server /bitnami/minio/data
+    environment:
+      MINIO_ROOT_USER: ${E2E_SPACES_KEY}
+      MINIO_ROOT_PASSWORD: ${E2E_SPACES_SECRET}
+      HOME: /tmp
+    ports: ["127.0.0.1:${E2E_PORT_MINIO}:9000"]
+    volumes: [minio:/bitnami/minio/data]
+
+  stellar:
+    # shortcut: unpinned quickstart, so protocol upgrades arrive unannounced; pin a digest once a stack run is green.
+    image: stellar/quickstart:latest
+    labels: *tag
+    command: --local --enable-soroban-rpc
+    ports: ["127.0.0.1:${E2E_PORT_STELLAR}:8000"]
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.9.0
+    labels: *tag
+    entrypoint: [anvil]
+    # --silent: the startup banner lists the private keys of the run's mnemonic, and logs/ are artifacts.
+    command: [--host, 0.0.0.0, --chain-id, "31337", --mnemonic, "${E2E_EVM_MNEMONIC:-}", --silent]
+    ports: ["127.0.0.1:${E2E_PORT_EVM}:8545"]
+
+volumes:
+  postgres:
+    labels: *tag
+  minio:
+    labels: *tag
+
+networks:
+  default:
+    labels: *tag

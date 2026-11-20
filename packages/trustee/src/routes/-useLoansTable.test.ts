@@ -106,12 +106,12 @@ describe("mapEntryToRow", () => {
 });
 
 describe("mapLtvCell", () => {
-  it("is blank for an EVM row even when the keys are present", () => {
+  it("renders the LTV cell for an EVM row", () => {
     expect(
       mapLtvCell(
         makeEntry({ chain_id: 560048, ltv_bps: 8000, margin_call_open: true }),
       ),
-    ).toBeNull();
+    ).toEqual({ text: "80%", marginCallOpen: true, priceStale: false });
   });
 
   it("renders — for a Stellar row with absent or null keys", () => {
@@ -279,7 +279,10 @@ describe("buildLoansView showLtvColumn", () => {
     expect(view([makeEntry({ margin_call_open: true })])).toBe(true);
   });
 
-  it("ignores EVM rows", () => {
-    expect(view([makeEntry({ chain_id: 560048, ltv_bps: 7000 })])).toBe(false);
+  it("counts EVM rows", () => {
+    expect(view([makeEntry({ chain_id: 560048, ltv_bps: 7000 })])).toBe(true);
+    expect(
+      view([makeEntry({ chain_id: 560048, margin_call_open: true })]),
+    ).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use shared::events::ContractLog;
 
 use crate::indexer::parsers::extract_log_meta;
+use crate::indexer::security_registry_parsers::warn_if_security_registry_topic;
 
 mod cr {
     use alloy::sol;
@@ -304,6 +305,7 @@ pub fn parse_collateral_registry_log(log: &Log) -> Option<ContractLog> {
         .or_else(|| parse_cr_liquidated(log))
         .or_else(|| parse_cr_margin_call(log));
     if parsed.is_none() {
+        warn_if_security_registry_topic(log);
         if let Some((_, name)) = log
             .topic0()
             .and_then(|t0| CR_TOPICS.iter().find(|(t, _)| t == t0))

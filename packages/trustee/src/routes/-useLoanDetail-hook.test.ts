@@ -6,19 +6,19 @@ import type { LoanBookEntry } from "@/api/useLoanBook";
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
 vi.mock("@/api/useLoanFinancials", () => ({ useLoanFinancials: vi.fn() }));
-vi.mock("@/api/useDealToken", () => ({ useDeal: vi.fn() }));
+vi.mock("@/api/useDealToken", () => ({ useLoanDeal: vi.fn() }));
 
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
-import { useDeal } from "@/api/useDealToken";
+import { useLoanDeal } from "@/api/useDealToken";
 import { useLoanDetail } from "./-useLoanDetail";
 import { securityResult } from "./-riskCouncilFixtures";
 
 const mockUseLoanBook = vi.mocked(useLoanBook);
 const mockUseLoanSecurity = vi.mocked(useLoanSecurity);
 const mockUseLoanFinancials = vi.mocked(useLoanFinancials);
-const mockUseDeal = vi.mocked(useDeal);
+const mockUseLoanDeal = vi.mocked(useLoanDeal);
 
 function entry(overrides: Partial<LoanBookEntry>): LoanBookEntry {
   return {
@@ -65,7 +65,7 @@ beforeEach(() => {
       ],
     },
   });
-  mockUseDeal.mockReturnValue({
+  mockUseLoanDeal.mockReturnValue({
     data: undefined,
     isPending: false,
     isError: false,
@@ -82,13 +82,29 @@ describe("useLoanDetail (#1537)", () => {
     expect(result.current.hero.title).toBe("Hoodi Co · Lithium");
   });
 
-  it("reports the Stellar-only gate for a non-Stellar loan and nothing for a Stellar one", () => {
+  it("opens the on-chain actions on Stellar and on the configured EVM chain", () => {
     const evm = renderHook(() => useLoanDetail(560048, "4"));
-    expect(evm.result.current.onChainBlockedReason).toContain("lives on Hoodi");
+    expect(evm.result.current.hero.title).toBe("Hoodi Co · Lithium");
+    expect(evm.result.current.onChainBlockedReason).toBeNull();
 
     const stellar = renderHook(() => useLoanDetail(99_000_001, "4"));
     expect(stellar.result.current.hero.title).toBe("Stellar Co · Lithium");
     expect(stellar.result.current.onChainBlockedReason).toBeNull();
+  });
+
+  it("reports the Stellar-only gate for an unknown chain", () => {
+    mockUseLoanBook.mockReturnValue({
+      ...IDLE,
+      data: {
+        loans: [
+          entry({ chain_id: 1234, loan_id: "4", originator: "Other Co" }),
+        ],
+      },
+    } as never);
+    const other = renderHook(() => useLoanDetail(1234, "4"));
+    expect(other.result.current.onChainBlockedReason).toContain(
+      "lives on Chain 1234",
+    );
   });
 
   it("reports no gate while the row is unknown", () => {
@@ -107,5 +123,54 @@ describe("useLoanDetail (#1537)", () => {
     );
     const evm = renderHook(() => useLoanDetail(560048, "4"));
     expect(evm.result.current.security.state).toBe("hidden");
+  });
+
+  it("builds the records view from the served records and hides it when not configured", () => {
+    mockUseLoanSecurity.mockReturnValue(
+      securityResult({
+        data: {
+          terms: { advance_ratio_bps: 8000 },
+          records: [{ record_id: "7" }],
+        },
+      }),
+    );
+    const ready = renderHook(() => useLoanDetail(99_000_001, "4"));
+    expect(ready.result.current.securityRecords.state).toBe("ready");
+
+    mockUseLoanSecurity.mockReturnValue(
+      securityResult({ data: undefined, notConfigured: true }),
+    );
+    const evm = renderHook(() => useLoanDetail(560048, "4"));
+    expect(evm.result.current.securityRecords.state).toBe("hidden");
+  });
+
+  it("shows the EVM debt address in the Debt token row, and a dash when unregistered or unreadable", () => {
+    const row = () =>
+      renderHook(() =>
+        useLoanDetail(560048, "4"),
+      ).result.current.registry.rows.find((r) => r.label === "Debt token");
+    mockUseLoanDeal.mockReturnValue({
+      data: { debt: "0x00000000000000000000000000000000000000D1" },
+      isPending: false,
+      isError: false,
+    } as never);
+    expect(row()?.value).toBe("0x00000000000000000000000000000000000000D1");
+    mockUseLoanDeal.mockReturnValue({
+      data: null,
+      isPending: false,
+      isError: false,
+    } as never);
+    expect(row()?.value).toBe("—");
+    mockUseLoanDeal.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+    } as never);
+    expect(row()?.value).toBe("—");
+  });
+
+  it("asks useLoanDeal with the row's chain and loan id", () => {
+    renderHook(() => useLoanDetail(560048, "4"));
+    expect(mockUseLoanDeal).toHaveBeenCalledWith(560048, 4);
   });
 });

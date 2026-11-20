@@ -8,7 +8,7 @@
 
 ## Overview
 
-Drawing a Stellar loan does not create its debt token. The Trustee registers it with one more signature, `DealTokenFactory.register_deal(loan_id)`, sent through the AccessManager. The Trustee console offers "Register debt token" under the "Approved & drawn" banner right after Approve, and on the loan detail for any Stellar loan that has none. The loan detail's "Registry state & derived" card shows the registered address in a "Debt token" row. Stellar only; EVM `registerDeal` is #1892. Spec: `docs/frontend/trustee-flows.md#register-debt-token-1766` and `docs/product-specs/loans-data.md`.
+Drawing a Stellar loan does not create its debt token. The Trustee registers it with one more signature, `DealTokenFactory.register_deal(loan_id)`, sent through the AccessManager. The Trustee console offers "Register debt token" under the "Approved & drawn" banner right after Approve, and on the loan detail for any Stellar loan that has none. The loan detail's "Registry state & derived" card shows the registered address in a "Debt token" row. Stellar here; the EVM `registerDeal` arm is #1892 ([1892-trustee-evm-register-deal.md](./1892-trustee-evm-register-deal.md)). Spec: `docs/frontend/trustee-flows.md#register-debt-token-1766` and `docs/product-specs/loans-data.md`.
 
 All checks use the real API and Stellar testnet on staging, no localStorage mocks. Open DevTools Network before starting.
 
@@ -109,7 +109,8 @@ All checks use the real API and Stellar testnet on staging, no localStorage mock
 
 **Then:**
 
-- The "Debt token" card says the on-chain actions run on Stellar only and shows no button
+- An EVM loan on the configured EVM chain is covered by #1892 (see its story doc); the blocked case is a loan on a chain that is neither Stellar nor the configured EVM chain
+- On such a chain the "Debt token" card says the on-chain actions run on Stellar only and shows no button
 - The Registry card's "Debt token" row shows "—"
 
 **Given** an environment without `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`

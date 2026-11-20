@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { useState } from "react";
 import { riskCouncilReasonHash } from "@pipeline/wallet-connect";
+import { chainAmountDecimals, riskCouncilTargetId } from "@/lib/targetChains";
 import { dateInputToUnixUtc, formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { percentToBps } from "@/utils/rateUnits";
@@ -9,6 +10,7 @@ import type { RiskCouncilCall } from "@/api/useRiskCouncil";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 import {
   amendEligibility,
   formatLoanLabel,
@@ -24,10 +26,16 @@ import {
 export const AMEND_NO_ROLE =
   "Changing loan economics belongs to the Risk Council.";
 
-export function parseSignedUsdDelta(input: string): string | null {
+export function parseSignedUsdDelta(
+  input: string,
+  chainId: number,
+): string | null {
   const trimmed = input.trim();
   const negative = trimmed.startsWith("-");
-  const base = usdInputToSacBaseUnits(negative ? trimmed.slice(1) : trimmed);
+  const base = usdInputToSacBaseUnits(
+    negative ? trimmed.slice(1) : trimmed,
+    chainAmountDecimals(chainId),
+  );
   if (base == null) return null;
   return negative ? `-${base}` : base;
 }
@@ -47,8 +55,9 @@ export function buildAdjustCall(
   loanId: number | null,
   deltaUsd: string,
   reasonHash: string | null,
+  chainId: number,
 ): RiskCouncilCall | null {
-  const delta = parseSignedUsdDelta(deltaUsd);
+  const delta = parseSignedUsdDelta(deltaUsd, chainId);
   if (loanId === null || delta === null || reasonHash === null) return null;
   return { fn: "adjust_interest", loanId, delta, reasonHash };
 }
@@ -91,6 +100,9 @@ export interface RiskCouncilRetermView {
   eligibilityNote: string | null;
   amend: AmendFormView;
   adjust: AdjustFormView;
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGate: string | null;
 }
 
 function useReasonHash(reason: string): string | null {
@@ -112,7 +124,12 @@ export function useRiskCouncilReterm(
   const bps = percentToBps(ratePercent);
   const eligible = amendEligibility(base.chainStatus);
   const amendCall = buildAmendCall(base.loanId, ratePercent, maturityDate);
-  const adjustCall = buildAdjustCall(base.loanId, deltaUsd, reasonHash);
+  const adjustCall = buildAdjustCall(
+    base.loanId,
+    deltaUsd,
+    reasonHash,
+    chainId,
+  );
 
   const amend = useRiskCouncilActionView({
     chainId,
@@ -139,6 +156,11 @@ export function useRiskCouncilReterm(
     enabled: eligible,
   });
 
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
   const entry = base.entry;
   const chain = base.chainState?.chain;
   const money = base.chainState?.money;
@@ -174,11 +196,15 @@ export function useRiskCouncilReterm(
       deltaUsd,
       setDeltaUsd,
       deltaInvalid:
-        deltaUsd.trim() !== "" && parseSignedUsdDelta(deltaUsd) === null,
+        deltaUsd.trim() !== "" &&
+        parseSignedUsdDelta(deltaUsd, chainId) === null,
       reason,
       setReason,
       reasonHash,
       action: adjust,
     },
+    pending,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
+    pendingGate: notAvailableNote(base.chainStatus),
   };
 }

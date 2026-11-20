@@ -31,8 +31,10 @@ Each loan is valued in one of two modes, selected in the loan's valuation record
 This mode covers refined metal, grain, refined product, and exchange-deliverable material. Collateral value is the reference price times the current quantity, with the commodity haircut applied.
 
 ```
-collateral_value = reference_price * quantity * (1 - haircut)
+collateral_value = reference_price * quantity_in_quote_unit * (1 - haircut)
 ```
+
+`reference_price` is US$ per the asset's quote unit. `quantity` is the anchor's dry metric tonnes, converted into that unit first. `XAU`, `XAG`, `XPT` and `XPD` are quoted per troy ounce, so 1 t = 1,000,000 / 31.1035 troy oz (the same constant as the concentrate waterfall). A standard-goods asset with no known quote unit reads *unpriced*, never valued against a guessed unit (`/valuations` reports `missing_inputs: ["quote_unit"]`). Example: 2 t of refined gold at US$4,000/oz with a 10% haircut is 2 * 32,150.72 oz * 4,000 * 0.9 = about US$231.5M.
 
 ### Metal concentrate
 
@@ -95,14 +97,14 @@ The relayer keeps one valuation record per active loan in its Postgres store, th
 | commodity | onboarding | For example gold_pyrite_concentrate |
 | quantity_dmt | trustee feed | Current dry metric tonnes, original minus delivered |
 | moisture_pct | assay | Wet-to-dry conversion and transportable-moisture-limit monitoring |
-| assays | assay | Payable metal grades in g/t (gold, silver) |
-| deleterious | assay | Penalty elements and levels (arsenic, antimony, mercury, and others) |
+| assays | assay | Payable metal grades in g/t (gold, silver). Metal names match case- and whitespace-insensitively, are stored trimmed, and must be unique within the list. |
+| deleterious | assay | Penalty elements and levels (arsenic, antimony, mercury, and others). Element names match case- and whitespace-insensitively, are stored trimmed, and must be unique within the list. |
 | assay_certificate_uri | assay | IPFS pointer or hash of the Certificate of Analysis |
 | assay_status | assay | Provisional, Final, or UmpirePending |
-| payable_terms | offtake | Per metal payable percentage and minimum deduction |
+| payable_terms | offtake | Per metal payable percentage and minimum deduction. Metal names match case- and whitespace-insensitively, are stored trimmed, and must be unique within the list. |
 | treatment_charge_per_dmt | offtake | Treatment charge in US$ per dry tonne |
-| refining_charges | offtake | Refining charge per payable ounce, per metal |
-| penalty_schedule | offtake | Per element threshold, step, rate, and flat or escalating basis. Threshold and step carry a `unit` (`Pct` or `Ppm`, default `Pct`) and are normalised to percent for the waterfall, the same as the assay `deleterious` level — so a ppm-authored schedule is compared like-for-like against a ppm assay and never silently scores zero |
+| refining_charges | offtake | Refining charge per payable ounce, per metal. Metal names match case- and whitespace-insensitively, are stored trimmed, and must be unique within the list. |
+| penalty_schedule | offtake | Per element threshold, step, rate, and flat or escalating basis. Threshold and step carry a `unit` (`Pct` or `Ppm`, default `Pct`) and are normalised to percent for the waterfall, the same as the assay `deleterious` level — so a ppm-authored schedule is compared like-for-like against a ppm assay and never silently scores zero. Element names match case- and whitespace-insensitively against the assay; one element may have several tiers |
 | realisation_costs | offtake and logistics | Freight, insurance, superintendence, marketing |
 | quotational_period | offtake | For example 2 MAMA |
 | pricing_reference | offtake | For example LBMA Gold PM averaged over the quotational period |
@@ -115,7 +117,7 @@ The relayer keeps one valuation record per active loan in its Postgres store, th
 
 Access to the record follows the same authority as the on-chain loan. The Team and Trustee enter and approve the human inputs (quantity, offtake terms, assay values) through the Operations Console. The relayer price-feed service writes the computed fields automatically. The commercial inputs are append-only and audit-logged, with no silent edit or hard delete, because document fraud is a primary loss driver in commodity finance. The exact record shape is defined in the relayer exec plan.
 
-The Stellar SecurityRegistry state of a loan (terms, LTV, coverage, records, inspections) is served by `GET /v1/loan-book/{loan_id}/security`, see [loan-security-state.md](./loan-security-state.md). This CCR flow is unchanged (#1786).
+The Trustee console shows the Stellar SecurityRegistry state on the loan detail (LTV = amount owed / security value, no haircut; terms, margin call, records and inspections; #1906, #1767), served by `GET /v1/loan-book/{loan_id}/security`, see [loan-security-state.md](./loan-security-state.md). It no longer shows this record's CCR or `haircut_pct`; retiring the CCR parts of this spec is #1786 Phase 2.
 
 ## How it feeds CCR
 

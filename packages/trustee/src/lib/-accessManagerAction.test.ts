@@ -3,6 +3,11 @@ import { describe, it, expect } from "vitest";
 import {
   accessAction,
   amErrorCode,
+  evmCouncilErrorCopy,
+  evmErrorName,
+  EVM_SECURITY_ERROR_COPY,
+  LOAN_REGISTRY_PAUSED_COPY,
+  otherWalletCopy,
   riskCouncilErrorCopy,
   riskCouncilRoleLine,
   RISK_COUNCIL_AM_ERROR_COPY,
@@ -70,5 +75,118 @@ describe("AM error copy", () => {
       /already scheduled/,
     );
     expect(riskCouncilErrorCopy("execute", "Error(Contract, #99)")).toBeNull();
+  });
+
+  it("explains an already scheduled operation that may be outside the indexed window", () => {
+    expect(RISK_COUNCIL_AM_ERROR_COPY["schedule:9"]).toBe(
+      "This operation is already scheduled. It may have been scheduled outside the indexed window; the scheduling wallet can execute it once it is ready.",
+    );
+  });
+
+  it("names the scheduling wallet when another wallet tries to execute", () => {
+    expect(otherWalletCopy("GSCHEDULERADDRESS1234567890ABCD")).toBe(
+      "Only the scheduling wallet (GSCHED…ABCD) can execute this.",
+    );
+  });
+});
+
+describe("EVM council error copy (#1942)", () => {
+  it("finds the custom-error name in a viem message", () => {
+    expect(
+      evmErrorName(
+        'The contract function "execute" reverted with the following reason:\nAccessManagerNotReady(bytes32 operationId)',
+      ),
+    ).toBe("AccessManagerNotReady");
+    expect(evmErrorName("execution reverted: EnforcedPause()")).toBe(
+      "EnforcedPause",
+    );
+    expect(evmErrorName("insufficient funds")).toBeNull();
+  });
+
+  it("matches LoanRegistry and Minter error names", () => {
+    expect(
+      evmErrorName(
+        "reverted: LoanRegistryWrongCurrentStatus(uint8 currentStatus)",
+      ),
+    ).toBe("LoanRegistryWrongCurrentStatus");
+    expect(
+      evmErrorName("reverted: MinterInsufficientBankCash(uint256,uint256)"),
+    ).toBe("MinterInsufficientBankCash");
+  });
+
+  it("maps each name to the shared copy", () => {
+    expect(evmCouncilErrorCopy("AccessManagerNotReady(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:7"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerNotScheduled(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:6"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerExpired(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["execute:8"],
+    );
+    expect(evmCouncilErrorCopy("AccessManagerAlreadyScheduled(bytes32)")).toBe(
+      RISK_COUNCIL_AM_ERROR_COPY["schedule:9"],
+    );
+    expect(evmCouncilErrorCopy("SecurityRegistryNoTerms()")).toContain(
+      "no security terms",
+    );
+    expect(evmCouncilErrorCopy("SecurityRegistryNotFlagged()")).toContain(
+      "no flag",
+    );
+    expect(
+      evmCouncilErrorCopy("SecurityRegistryWrongRecordStatus()"),
+    ).toContain("status");
+    expect(evmCouncilErrorCopy("SecurityRegistryInvalidRatio()")).toBe(
+      "The ratios must be in order: advance ≤ margin call ≤ default.",
+    );
+    expect(evmCouncilErrorCopy("EnforcedPause()")).toBe(
+      EVM_SECURITY_ERROR_COPY.EnforcedPause,
+    );
+  });
+
+  it("maps the AccessManager names for every target kind", () => {
+    for (const kind of [
+      "loan_registry",
+      "minter",
+      "security_registry",
+    ] as const) {
+      expect(evmCouncilErrorCopy("AccessManagerNotReady(bytes32)", kind)).toBe(
+        RISK_COUNCIL_AM_ERROR_COPY["execute:7"],
+      );
+    }
+  });
+
+  it("keys the EnforcedPause copy by target kind", () => {
+    expect(evmCouncilErrorCopy("EnforcedPause()", "security_registry")).toBe(
+      EVM_SECURITY_ERROR_COPY.EnforcedPause,
+    );
+    expect(evmCouncilErrorCopy("EnforcedPause()", "loan_registry")).toBe(
+      LOAN_REGISTRY_PAUSED_COPY,
+    );
+    expect(evmCouncilErrorCopy("EnforcedPause()", "minter")).toBe(
+      LOAN_REGISTRY_PAUSED_COPY,
+    );
+    expect(LOAN_REGISTRY_PAUSED_COPY).toMatch(/LoanRegistry is paused/);
+    expect(evmCouncilErrorCopy("EnforcedPause()", "other")).toBeNull();
+    expect(
+      evmCouncilErrorCopy("SecurityRegistryNoTerms()", "loan_registry"),
+    ).toBeNull();
+  });
+
+  it("falls through for LoanRegistry and Minter errors", () => {
+    expect(
+      evmCouncilErrorCopy(
+        "LoanRegistryWrongCurrentStatus(uint8)",
+        "loan_registry",
+      ),
+    ).toBeNull();
+    expect(evmCouncilErrorCopy("MinterAlreadyReversed()", "minter")).toBeNull();
+  });
+
+  it("returns null for an unmapped name", () => {
+    expect(
+      evmCouncilErrorCopy("AccessManagerUnauthorizedCall(a,b,c)"),
+    ).toBeNull();
+    expect(evmCouncilErrorCopy("plain failure")).toBeNull();
   });
 });

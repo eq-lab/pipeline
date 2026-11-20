@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useReviewSubmission } from "@/api/useReviewSubmission";
 import { useDrawLoan, type DrawLoanStage } from "@/api/useDrawLoan";
-import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
+import { drawChainReason } from "@/lib/targetChains";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import { drawLoanBlockedReason, readyDrawLoanArgs } from "@/lib/drawLoanArgs";
 import { toUserError, type UserFacingError } from "@/utils/userError";
@@ -29,8 +29,8 @@ export interface UseOriginationReviewResult {
    */
   approve: () => void;
   /**
-   * Why Approve is unavailable for this submission (#1536: the on-chain draw
-   * runs on Stellar only), or `null` when it can proceed.
+   * Why Approve is unavailable for this submission (#1536/#1573: the on-chain
+   * draw runs on Stellar and the configured EVM chain), or `null` when it can proceed.
    */
   approveBlockedReason: string | null;
   /**
@@ -182,11 +182,8 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   const approveBlockedReason =
     !submission || reviewOnly
       ? null
-      : !isStellarTarget(submission.target_chain_id)
-        ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
-            submission.target_chain_id,
-          )} from the Trustee app is not supported yet. Reject or request changes instead.`
-        : drawLoanBlockedReason(submission.draw_loan);
+      : (drawChainReason(submission.target_chain_id) ??
+        drawLoanBlockedReason(submission.draw_loan));
 
   // Fires the review call and, on success, closes the approve dialog (issue
   // #838) — the footer then flips to the Approved banner via the existing
@@ -215,7 +212,10 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     if (!args) return;
     void (async () => {
       try {
-        await drawLoanMutation.mutateAsync({ args });
+        await drawLoanMutation.mutateAsync({
+          args,
+          chainId: submission.target_chain_id,
+        });
       } catch {
         // Mint failed / wallet rejected — stay InReview, no review call.
         return;

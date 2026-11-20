@@ -12,7 +12,7 @@ use pipeline_api::routes::attention_counts::{
     self, authorize, build_response, cash_management_counts, loan_counts, origination_counts,
     AttentionCountsDoc, ChainAttentionCounts,
 };
-use pipeline_api::routes::common::ChainScope;
+use pipeline_api::routes::common::{stellar_minter, ChainScope};
 use pipeline_api::routes::ramp::{filter_pending_ramp_events, RampEvent};
 use pipeline_api::{config::TransferAddressSets, AppState};
 use serde_json::json;
@@ -67,6 +67,7 @@ fn make_test_state() -> AppState {
         pocket_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
@@ -186,6 +187,7 @@ fn loan(id: BigDecimal, status: &str, maturity: i64) -> LoanSnapshotRow {
             original_equity_tranche: BigDecimal::from(0_i64),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: 0,
+            senior_interest_rate_ppm: None,
             origination_date: 0,
             original_maturity_date: maturity,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -193,6 +195,7 @@ fn loan(id: BigDecimal, status: &str, maturity: i64) -> LoanSnapshotRow {
             status: status.to_owned(),
             current_maturity_timestamp: maturity,
             current_rate: 0,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: BigDecimal::from(0_i64),
@@ -599,6 +602,44 @@ fn the_union_sums_chains_and_adds_bank_deposits_once() {
 }
 
 #[test]
+fn an_evm_chain_with_margin_calls_sums_with_the_stellar_chain() {
+    let stellar = chain_entry(
+        STELLAR.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(2),
+        0,
+    );
+    let evm = chain_entry(
+        EVM.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(3),
+        0,
+    );
+    let resp = build_response(vec![stellar, evm]);
+    assert_eq!(resp.loans.margin_call_open, Some(5));
+    assert_eq!(resp.chains[1].loans.margin_call_open, Some(3));
+}
+
+#[test]
+fn an_evm_chain_with_margin_calls_alone_is_not_null() {
+    let stellar = chain_entry(
+        STELLAR.chain_id,
+        cash_management_counts(None, None, 0),
+        None,
+        0,
+    );
+    let evm = chain_entry(
+        EVM.chain_id,
+        cash_management_counts(None, None, 0),
+        Some(3),
+        0,
+    );
+    let resp = build_response(vec![stellar, evm]);
+    assert_eq!(resp.loans.margin_call_open, Some(3));
+    assert_eq!(resp.chains[0].loans.margin_call_open, None);
+}
+
+#[test]
 fn a_nullable_field_is_null_only_when_every_chain_is_null() {
     let a = chain_entry(1, cash_management_counts(None, None, 0), None, 0);
     let b = chain_entry(2, cash_management_counts(None, None, 0), None, 0);
@@ -744,4 +785,21 @@ fn the_response_schemas_are_registered() {
             "missing {name}"
         );
     }
+}
+
+#[test]
+fn an_evm_chain_with_the_minter_key_set_reads_no_stellar_minter() {
+    let minters = HashMap::from([
+        (
+            EVM.chain_id,
+            "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+        ),
+        (STELLAR.chain_id, "CMINTER".to_owned()),
+    ]);
+    assert_eq!(stellar_minter(EVM.kind, &minters, EVM.chain_id), None);
+    assert_eq!(
+        stellar_minter(STELLAR.kind, &minters, STELLAR.chain_id).map(String::as_str),
+        Some("CMINTER")
+    );
+    assert_eq!(stellar_minter(STELLAR.kind, &minters, 5), None);
 }

@@ -520,9 +520,33 @@ export function ConnectWalletModal({
   }, []);
 
   // EVM per-wallet connect hook
-  const { connectWallet: connectEvmWallet } = useEvmConnectors();
+  const { connectWallet: connectEvmWallet, e2eWalletId: e2eEvmWalletId } =
+    useEvmConnectors();
+  const evmWallets = e2eEvmWalletId
+    ? [
+        {
+          id: e2eEvmWalletId,
+          label: "E2E test wallet",
+          websiteUrl: "about:blank",
+          icon: null,
+        },
+        ...EVM_WALLETS,
+      ]
+    : EVM_WALLETS;
   // Soroban per-wallet connect hook
-  const { connectWallet: connectSorobanWallet } = useStellarConnectors();
+  const { connectWallet: connectSorobanWallet, e2eWalletId } =
+    useStellarConnectors();
+  const sorobanWallets = e2eWalletId
+    ? [
+        {
+          id: e2eWalletId,
+          label: "E2E test wallet",
+          websiteUrl: "about:blank",
+          icon: null,
+        },
+        ...SOROBAN_WALLETS,
+      ]
+    : SOROBAN_WALLETS;
 
   useEffect(() => {
     if (open) {
@@ -567,7 +591,7 @@ export function ConnectWalletModal({
   }, [open]);
 
   // Wallet list for the active tab
-  const walletEntries = activeTab === "evm" ? EVM_WALLETS : SOROBAN_WALLETS;
+  const walletEntries = activeTab === "evm" ? evmWallets : sorobanWallets;
   const needsShowMore = walletEntries.length > SHOW_MORE_THRESHOLD;
   const visibleWallets =
     needsShowMore && !showMore

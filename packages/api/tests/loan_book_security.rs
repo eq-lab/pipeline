@@ -13,7 +13,9 @@ use pipeline_api::security_state::{
 use serde_json::{json, Value};
 use shared::contract_logs_repo::LoanSnapshotRow;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
-use shared::security_registry::{TermsRow, ValuationRow};
+use shared::security_registry::{
+    SecurityChainParams, TermsRow, ValuationRow, EVM_SECURITY_PARAMS, STELLAR_SECURITY_PARAMS,
+};
 use shared::security_registry_repo::{LoanBookSecurityRow, LoanSecurityRows};
 use utoipa::OpenApi;
 
@@ -111,6 +113,9 @@ fn terms(margin_call_at: BigDecimal) -> TermsRow {
         margin_call_at,
         set_ledger: Some(123),
         complete: true,
+        default_ratio_bps: None,
+        originator_fee_rate: None,
+        default_breach_at: None,
     }
 }
 
@@ -133,10 +138,20 @@ fn valuation(ltv_bps: i64, price_stale: bool) -> ValuationRow {
         accrued_interest: dec(1_000_000_000),
         money_ledger: 501,
         source_log_id: 40,
+        default_breach_at: None,
     }
 }
 
 fn security_json(terms: &TermsRow, valuation: &ValuationRow) -> Value {
+    security_json_on(STELLAR, &STELLAR_SECURITY_PARAMS, terms, valuation)
+}
+
+fn security_json_on(
+    chain_id: i64,
+    params: &SecurityChainParams,
+    terms: &TermsRow,
+    valuation: &ValuationRow,
+) -> Value {
     let rows = LoanSecurityRows {
         terms: Some(terms.clone()),
         valuation: Some((
@@ -146,7 +161,8 @@ fn security_json(terms: &TermsRow, valuation: &ValuationRow) -> Value {
         ..LoanSecurityRows::default()
     };
     serde_json::to_value(build_security_response(
-        STELLAR,
+        chain_id,
+        params,
         REGISTRY,
         "7",
         &rows,
@@ -165,6 +181,44 @@ fn the_list_fields_equal_the_security_endpoint_values() {
         (dec(0), 9_999_999_999, true),
     ] {
         let sec = security_json(&terms(mc.clone()), &valuation(ltv, stale));
+        let f = loan_book_security_fields(&row(Some(mc), Some(ltv), Some(stale)));
+        assert_eq!(json!(f.ltv_bps), sec["valuation"]["ltv_bps"]);
+        assert_eq!(json!(f.margin_call_open), sec["margin_call"]["open"]);
+        assert_eq!(json!(f.price_stale), sec["valuation"]["price_stale"]);
+    }
+}
+
+#[test]
+fn the_evm_list_fields_equal_the_security_endpoint_values() {
+    for (mc, ltv, stale) in [
+        (dec(0), 6400_i64, false),
+        (dec(1_762_000_000), 9100, true),
+        (dec(0), 4_294_967_295, false),
+    ] {
+        let sec = security_json_on(
+            EVM,
+            &EVM_SECURITY_PARAMS,
+            &terms(mc.clone()),
+            &valuation(ltv, stale),
+        );
+        let f = loan_book_security_fields(&row(Some(mc), Some(ltv), Some(stale)));
+        assert_eq!(json!(f.ltv_bps), sec["valuation"]["ltv_bps"]);
+        assert_eq!(json!(f.margin_call_open), sec["margin_call"]["open"]);
+        assert_eq!(json!(f.price_stale), sec["valuation"]["price_stale"]);
+    }
+}
+
+#[test]
+fn the_f92d719_evm_list_fields_equal_the_security_endpoint_values() {
+    for (mc, ltv, stale) in [(dec(0), 6400_i64, false), (dec(1_762_000_000), 9100, true)] {
+        let t = TermsRow {
+            default_ratio_bps: None,
+            originator_fee_rate: None,
+            default_breach_at: None,
+            ..terms(mc.clone())
+        };
+        let sec = security_json_on(EVM, &EVM_SECURITY_PARAMS, &t, &valuation(ltv, stale));
+        assert!(sec["default_breach"].is_null());
         let f = loan_book_security_fields(&row(Some(mc), Some(ltv), Some(stale)));
         assert_eq!(json!(f.ltv_bps), sec["valuation"]["ltv_bps"]);
         assert_eq!(json!(f.margin_call_open), sec["margin_call"]["open"]);
@@ -195,6 +249,7 @@ fn make_loan(chain_id: i64, loan_id: i64) -> LoanSnapshotRow {
             original_equity_tranche: dec(20_000_000_000),
             original_offtaker_price: zero(),
             senior_interest_rate_bps: 1200,
+            senior_interest_rate_ppm: None,
             origination_date: 0,
             original_maturity_date: 180 * DAY,
             next_economics_epochs_id: dec(1),
@@ -202,6 +257,7 @@ fn make_loan(chain_id: i64, loan_id: i64) -> LoanSnapshotRow {
             status: "Performing".to_owned(),
             current_maturity_timestamp: 180 * DAY,
             current_rate: 1200,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: dec(80_000_000_000),
@@ -291,11 +347,48 @@ fn overlapping_loan_ids_on_two_chains_each_get_their_own_values() {
 }
 
 #[test]
+fn attach_security_fills_an_evm_entry() {
+    let mut resp = book(&[make_loan(EVM, 1)]);
+    let mut by_loan: HashMap<LoanRef, LoanBookSecurityFields> = HashMap::new();
+    by_loan.insert(loan_ref(EVM, &dec(1)), fields(7200, true, true));
+    attach_security(&mut resp, &by_loan);
+    let json = serde_json::to_value(&resp).unwrap();
+    let hit = entry(&json, EVM, "1");
+    assert_eq!(hit["ltv_bps"], 7200);
+    assert_eq!(hit["margin_call_open"], true);
+    assert_eq!(hit["price_stale"], true);
+}
+
+#[test]
+fn a_closed_loan_never_reports_an_open_margin_call() {
+    let mut resp = book(&[make_loan(STELLAR, 1)]);
+    resp.loans[0].status = "Closed".to_owned();
+    let mut by_loan: HashMap<LoanRef, LoanBookSecurityFields> = HashMap::new();
+    by_loan.insert(loan_ref(STELLAR, &dec(1)), fields(0, true, false));
+    attach_security(&mut resp, &by_loan);
+    assert_eq!(resp.loans[0].margin_call_open, Some(false));
+}
+
+#[test]
+fn an_evm_and_a_stellar_entry_with_the_same_loan_id_get_their_own_values() {
+    let mut resp = book(&[make_loan(STELLAR, 1), make_loan(EVM, 1)]);
+    let mut by_loan: HashMap<LoanRef, LoanBookSecurityFields> = HashMap::new();
+    by_loan.insert(loan_ref(STELLAR, &dec(1)), fields(6400, false, false));
+    by_loan.insert(loan_ref(EVM, &dec(1)), fields(9100, true, true));
+    attach_security(&mut resp, &by_loan);
+    let json = serde_json::to_value(&resp).unwrap();
+    assert_eq!(entry(&json, STELLAR, "1")["ltv_bps"], 6400);
+    assert_eq!(entry(&json, STELLAR, "1")["margin_call_open"], false);
+    assert_eq!(entry(&json, EVM, "1")["ltv_bps"], 9100);
+    assert_eq!(entry(&json, EVM, "1")["margin_call_open"], true);
+}
+
+#[test]
 fn an_unattached_entry_serializes_the_keys_as_null() {
     let resp = book(&[make_loan(EVM, 1)]);
     let text = serde_json::to_string(&resp).unwrap();
     assert!(text.contains(
-        "\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null}"
+        "\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]}"
     ));
 }
 

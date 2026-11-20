@@ -2,6 +2,7 @@
 import type { TopConcentration } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
+import { riskCouncilTargetId } from "@/lib/targetChains";
 import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -12,6 +13,7 @@ import {
   type LtvTone,
 } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 import {
   chainStateRows,
   notAvailableNote,
@@ -29,6 +31,12 @@ export const SET_DEFAULT_STATUSES: ReadonlySet<string> = new Set([
 
 export const DEFAULT_EFFECTS =
   "The loan moves to Default. On the first default its outstanding principal moves out of the staking vault into a pocket for this loan; the sPLUSD share price falls by the amount moved.";
+
+export const ESCALATE_IN_DEFAULT = "This loan is in Default.";
+
+export function declareConfirmText(id: string): string {
+  return `Declare default on Loan #${id}? The pocket opens on the first default.`;
+}
 
 export const DEFAULT_NO_ROLE =
   "Declaring a default belongs to the Risk Council.";
@@ -129,6 +137,9 @@ export interface RiskCouncilEscalateView {
   eligibility: Eligibility;
   effects: string;
   action: ActionView;
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGate: string | null;
 }
 
 export function useRiskCouncilEscalate(
@@ -141,6 +152,11 @@ export function useRiskCouncilEscalate(
   const security = useLoanSecurity(chainId, loanId);
 
   const eligibility = escalateEligibility(base.chainStatus);
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
   const action = useRiskCouncilActionView({
     chainId,
     call:
@@ -201,5 +217,13 @@ export function useRiskCouncilEscalate(
     eligibility,
     effects: DEFAULT_EFFECTS,
     action,
+    pending,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
+    pendingGate:
+      eligibility.kind === "default"
+        ? ESCALATE_IN_DEFAULT
+        : eligibility.kind === "unavailable"
+          ? eligibility.note
+          : null,
   };
 }

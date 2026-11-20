@@ -11,20 +11,26 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use shared::{
-    contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo, pocket_repo::PocketRepo,
-    security_registry_repo::SecurityRegistryRepo,
+    access_manager_repo::AccessManagerRepo, contract_logs_repo::ContractLogsRepo, db::EventRepo,
+    log_mapper::LogMapper, metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo,
+    pocket_repo::PocketRepo, security_registry_repo::SecurityRegistryRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
 use crate::indexer::{
     chain_poller::ChainEventPoller,
+    cursor::{self, PolledRange},
     index_loop,
     loan_mapper::LoanEventMapper,
     loan_metadata::{
         HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
     },
+    loan_registry_settings::{
+        run_loan_registry_settings_loop, PgMaxFeeBpsSink, StellarMaxFeeBpsSource,
+    },
     stellar::{
+        access_manager_parsers::{dispatch_access_manager, TargetIds},
+        access_manager_sync::run_access_manager_sync_loop,
         collateral_registry_parsers::dispatch_collateral_registry,
         deal_token_factory_parsers::{route_deal_token_events, DealTokenSet},
         loan_registry_parsers::stellar_log_to_loan_event,
@@ -35,6 +41,7 @@ use crate::indexer::{
         plusd_seed::{run_plusd_seed_loop, PlusdSeedCtx},
         pocket_parsers::dispatch_pocket,
         pocket_seed::run_pocket_seed_loop,
+        retention::retention_gap,
         rpc::{EventFilter, StellarRpc},
         security_registry_parsers::dispatch_security_registry,
         security_registry_sync::run_security_registry_sync_loop,
@@ -94,6 +101,7 @@ pub struct StellarEventPoller {
     deal_token_factory_id: Option<String>,
     pocket_id: Option<String>,
     security_registry_id: Option<String>,
+    access_manager_id: Option<String>,
     plusd_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
@@ -121,6 +129,7 @@ impl StellarEventPoller {
         deal_token_factory_id: Option<String>,
         pocket_id: Option<String>,
         security_registry_id: Option<String>,
+        access_manager_id: Option<String>,
         plusd_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
@@ -141,6 +150,7 @@ impl StellarEventPoller {
             deal_token_factory_id,
             pocket_id,
             security_registry_id,
+            access_manager_id,
             plusd_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
@@ -150,13 +160,32 @@ impl StellarEventPoller {
     }
 }
 
+impl StellarEventPoller {
+    async fn explain_get_events_error(&self, cursor: u64, err: anyhow::Error) -> anyhow::Error {
+        let Ok(health) = self.rpc.get_health().await else {
+            return err;
+        };
+        let Some(gap) = retention_gap(self.chain_id, cursor, health.oldest_ledger) else {
+            return err;
+        };
+        tracing::error!(
+            chain_id = gap.chain_id,
+            cursor = gap.cursor,
+            oldest_ledger = gap.oldest_ledger,
+            missing_ledgers = gap.missing_ledgers,
+            "stellar indexer cursor is below RPC retention; indexing halted until an operator resets the cursor"
+        );
+        err.context(gap)
+    }
+}
+
 #[async_trait]
 impl ChainEventPoller for StellarEventPoller {
     async fn get_latest_block(&self) -> Result<u64> {
         self.rpc.get_latest_ledger().await
     }
 
-    async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
+    async fn poll(&self, from: u64, to: u64) -> Result<PolledRange> {
         let mut contract_ids = vec![
             self.deposit_manager_id.clone(),
             self.withdrawal_queue_id.clone(),
@@ -186,10 +215,17 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(plusd_id) = &self.plusd_id {
             contract_ids.push(plusd_id.clone());
         }
+        if let Some(am_id) = &self.access_manager_id {
+            contract_ids.push(am_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
-        let (raw_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+        let (raw_events, latest_core) = match self.rpc.get_events(from, to, &filter).await {
+            Ok(r) => r,
+            Err(e) => return Err(self.explain_get_events_error(from, e).await),
+        };
+        let mut latest_seen = vec![latest_core];
 
         let mut mappers: Vec<Box<dyn LogMapper>> = Vec::new();
         for raw in raw_events {
@@ -198,6 +234,8 @@ impl ChainEventPoller for StellarEventPoller {
                 dispatch_collateral_registry(&raw)
             } else if self.security_registry_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_security_registry(&raw)
+            } else if self.access_manager_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_access_manager(&raw)
             } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_pocket(&raw)
             } else if self.plusd_id.as_deref() == Some(raw.contract_id.as_str()) {
@@ -284,7 +322,8 @@ impl ChainEventPoller for StellarEventPoller {
                 let filter = EventFilter {
                     contract_ids: token_ids,
                 };
-                let (token_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+                let (token_events, latest_tokens) = self.rpc.get_events(from, to, &filter).await?;
+                latest_seen.push(latest_tokens);
                 let logs = {
                     let set = self.deal_tokens.lock().expect("deal_tokens lock poisoned");
                     route_deal_token_events(&token_events, &set)
@@ -299,7 +338,12 @@ impl ChainEventPoller for StellarEventPoller {
             }
         }
 
-        Ok(mappers)
+        let covered = cursor::covered_to(to, latest_seen);
+        mappers.retain(|m| m.block_number() <= covered);
+        Ok(PolledRange {
+            mappers,
+            covered_to: covered,
+        })
     }
 
     async fn get_block_timestamp(
@@ -352,12 +396,23 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         let reader = Arc::new(StellarLoanRegistryReader::new(rpc.clone()));
         let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
 
-        let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
-            MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
-        ));
+        let fetcher: Arc<dyn LoanMetadataFetcher> =
+            Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(
+                shared::http_client::http_client(),
+                settings.ipfs_gateway_url.clone(),
+            )));
         let immutable_resolver: Arc<dyn ImmutableDataResolver<StellarAddress, u32>> =
             reader.clone();
         let mutable_resolver: Arc<dyn MutableDataResolver<StellarAddress, u32>> = reader.clone();
+
+        crate::indexer::rate_ppm_backfill::run_rate_ppm_backfill(
+            chain_id,
+            &StellarAddress(lr_id.clone()),
+            &contract_logs_repo,
+            &pool,
+            immutable_resolver.as_ref(),
+        )
+        .await;
 
         Some(LoanMapperDeps {
             contract_logs_repo,
@@ -398,6 +453,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
             security_registry_id = %security_id,
             chain_id,
             "Stellar SecurityRegistry indexer enabled"
+        );
+    }
+
+    if let Some(am_id) = &settings.access_manager_id {
+        tracing::info!(
+            access_manager_id = %am_id,
+            chain_id,
+            "Stellar AccessManager indexer enabled"
         );
     }
 
@@ -480,6 +543,44 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         })
     });
 
+    let _settings_guard = match settings.loan_registry_id.as_deref() {
+        Some(registry_id) => match stellar_strkey::Contract::from_string(registry_id) {
+            Ok(contract) => {
+                let rpc = rpc.clone();
+                let pool = pool.clone();
+                let registry = format!("{contract}");
+                Some(spawn_supervised(
+                    "loan-registry-settings",
+                    chain_id,
+                    move || {
+                        let rpc = rpc.clone();
+                        let pool = pool.clone();
+                        let registry = registry.clone();
+                        async move {
+                            let source = StellarMaxFeeBpsSource {
+                                rpc,
+                                registry_id: registry.clone(),
+                            };
+                            run_loan_registry_settings_loop(
+                                &source,
+                                &PgMaxFeeBpsSink(pool),
+                                chain_id,
+                                registry,
+                            )
+                            .await;
+                            Ok(())
+                        }
+                    },
+                ))
+            }
+            Err(e) => {
+                tracing::error!(chain_id, error = %e, "max_fee_bps sync disabled: invalid LOAN_REGISTRY_ADDRESS");
+                None
+            }
+        },
+        None => None,
+    };
+
     let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
         let rpc = rpc.clone();
         let pool = pool.clone();
@@ -493,6 +594,26 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
                 chain_id,
                 security_id.clone(),
                 loan_registry_id.clone(),
+            )
+        })
+    });
+
+    let _access_manager_guard = settings.access_manager_id.as_ref().map(|am_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let am_id = am_id.clone();
+        let ids = TargetIds {
+            loan_registry: settings.loan_registry_id.clone(),
+            minter: settings.minter_id.clone(),
+            security_registry: settings.security_registry_id.clone(),
+        };
+        spawn_supervised("access-manager-sync", chain_id, move || {
+            run_access_manager_sync_loop(
+                rpc.clone(),
+                AccessManagerRepo::new(pool.clone()),
+                chain_id,
+                am_id.clone(),
+                ids.clone(),
             )
         })
     });
@@ -511,6 +632,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.deal_token_factory_id.clone(),
         settings.pocket_id.clone(),
         settings.security_registry_id.clone(),
+        settings.access_manager_id.clone(),
         settings.plusd_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),

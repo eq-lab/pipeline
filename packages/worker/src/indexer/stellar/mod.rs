@@ -10,6 +10,8 @@
 /// - `mappers` — `StellarLogMapper` implementing `LogMapper`.
 /// - `poller` — `StellarEventPoller` implementing `ChainEventPoller`, plus
 ///   `run_stellar_indexer_job`.
+pub mod access_manager_parsers;
+pub mod access_manager_sync;
 pub mod collateral_registry_parsers;
 pub mod deal_token_factory_parsers;
 pub mod loan_registry_parsers;
@@ -22,6 +24,7 @@ pub mod plusd_seed;
 pub mod pocket_parsers;
 pub mod pocket_seed;
 pub mod poller;
+pub mod retention;
 pub mod rpc;
 pub mod security_registry_parsers;
 pub mod security_registry_sync;

@@ -3,6 +3,7 @@
 // about macro output we do not write. See TD-115.
 #![allow(clippy::double_must_use)]
 
+pub mod access_manager_repo;
 pub mod account_repo;
 pub mod auth_user_repo;
 pub mod bank_account;
@@ -19,6 +20,7 @@ pub mod elliptic;
 pub mod email;
 pub mod events;
 pub mod evm;
+pub mod http_client;
 pub mod json_numeric;
 pub mod kyb_document_repo;
 pub mod kyc_repo;
@@ -29,6 +31,7 @@ pub mod loan_economics;
 pub mod loan_event_params;
 pub mod loan_fee_schedule_repo;
 pub mod loan_metadata;
+pub mod loan_registry_settings_repo;
 pub mod loan_snapshot;
 pub mod loan_status;
 pub mod log_mapper;

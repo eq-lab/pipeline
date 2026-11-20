@@ -12,7 +12,8 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::config::TransferAddressSets;
 use pipeline_api::routes::capital_allocation::{
-    compute_capital_allocation, CapitalAllocationResponse, ChainCapitalInputs, MinterCashTotals,
+    capital_allocation_minter, compute_capital_allocation, CapitalAllocationResponse,
+    ChainCapitalInputs, MinterCashTotals,
 };
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 use shared::loan_capital_transfers_repo::LoanCapitalTransfersRow;
@@ -66,6 +67,7 @@ fn make_loan(
             original_equity_tranche: usdc(equity_k * 1_000),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: 1200,
+            senior_interest_rate_ppm: None,
             origination_date: start_day * DAY,
             original_maturity_date: end_day * DAY,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -73,6 +75,7 @@ fn make_loan(
             status: "Performing".to_owned(),
             current_maturity_timestamp: 0,
             current_rate: 1200,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: BigDecimal::from(0_i64),
@@ -968,4 +971,31 @@ fn an_incomplete_fold_leaves_the_legacy_output_untouched() {
         flag_on_fold_incomplete.buckets.trust_account
     );
     assert_eq!(legacy.total, flag_on_fold_incomplete.total);
+}
+
+#[test]
+fn capital_allocation_minter_ignores_an_evm_chain_with_the_minter_key_set() {
+    use shared::chains::ChainKind;
+    use std::collections::HashMap;
+    let minters = HashMap::from([
+        (
+            1_i64,
+            "0x621BaAb0ced6b11f88019582183b081A118755f4".to_owned(),
+        ),
+        (2_i64, "CMINTER".to_owned()),
+    ]);
+    let from_minter = HashSet::from([1_i64, 2]);
+    assert_eq!(
+        capital_allocation_minter(ChainKind::Evm, &minters, &from_minter, 1),
+        None
+    );
+    assert_eq!(
+        capital_allocation_minter(ChainKind::Stellar, &minters, &from_minter, 2)
+            .map(String::as_str),
+        Some("CMINTER")
+    );
+    assert_eq!(
+        capital_allocation_minter(ChainKind::Stellar, &minters, &HashSet::new(), 2),
+        None
+    );
 }

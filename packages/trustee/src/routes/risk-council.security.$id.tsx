@@ -4,7 +4,11 @@ import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
 } from "@pipeline/wallet-connect";
-import { InlineError } from "@pipeline/ui";
+import { Button, InlineError } from "@pipeline/ui";
+import {
+  DETAIL_SECONDARY_BUTTON_CLASS,
+  detailSecondaryButtonStyle,
+} from "@/components/detail/detailTokens";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   NO_FLAGGED_RECORDS,
@@ -13,8 +17,9 @@ import {
   OUTCOME_EFFECTS,
   PAYMENT_TERM_LABELS,
   RELEASE_WARNING,
-  TERMS_FIELDS,
+  TERMS_SHAPE_LOADING,
   useResolveFlagForm,
+  pendingConfirmText,
   useRiskCouncilSecurity,
   type FlaggedRecordRow,
   type ReleaseFormView,
@@ -33,6 +38,7 @@ import {
   MAIN_CLASS,
   Muted,
   PageGate,
+  PendingOperationsCard,
   Row,
 } from "./-RiskCouncilParts";
 
@@ -77,9 +83,42 @@ function CurrentTermsCard({ view }: { view: RiskCouncilSecurityView }) {
 }
 
 function SetTermsCard({ form }: { form: SetTermsFormView }) {
+  if (form.shape.loading) {
+    return (
+      <Card testId="risk-council-security-set-terms" title="Set terms">
+        <Muted testId="risk-council-security-terms-shape-loading">
+          {TERMS_SHAPE_LOADING}
+        </Muted>
+      </Card>
+    );
+  }
+  if (form.shape.error) {
+    return (
+      <Card testId="risk-council-security-set-terms" title="Set terms">
+        <div
+          data-testid="risk-council-security-terms-shape-error"
+          className="flex flex-col gap-[12px]"
+        >
+          <InlineError
+            message={form.shape.error.message}
+            details={form.shape.error.details}
+          />
+          <Button
+            variant="secondary"
+            size="m"
+            onClick={form.shape.retry}
+            className={`w-fit ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+            style={detailSecondaryButtonStyle()}
+          >
+            Retry
+          </Button>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card testId="risk-council-security-set-terms" title="Set terms">
-      {TERMS_FIELDS.map(({ key, label, placeholder }) => {
+      {form.termsFields.map(({ key, label, placeholder }) => {
         const state = form.echoes[key];
         return (
           <Field key={key} label={label}>
@@ -142,6 +181,11 @@ function SetTermsCard({ form }: { form: SetTermsFormView }) {
         >
           {form.ratioOrderError}
         </span>
+      )}
+      {form.pendingNotice && (
+        <Muted testId="risk-council-security-terms-pending-notice">
+          {form.pendingNotice}
+        </Muted>
       )}
       <ActionControls prefix="risk-council-security-terms" view={form.action} />
     </Card>
@@ -355,6 +399,15 @@ function RiskCouncilSecurity() {
           <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
             <CurrentTermsCard view={view} />
             <div className="flex w-full flex-1 flex-col gap-[20px]">
+              <PendingOperationsCard
+                testId="risk-council-security-pending"
+                items={view.pending}
+                chainId={view.chainId}
+                owner="security"
+                executeGate={view.executeGate}
+                expectedTarget={view.expectedTarget}
+                confirmTextFor={pendingConfirmText}
+              />
               <SetTermsCard form={view.setTerms} />
               <FlaggedCard view={view} />
               <ReleaseCard form={view.release} />

@@ -21,10 +21,11 @@ use super::{
         parse_loan_closed, parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over,
         parse_loan_status_updated, parse_loan_written_down, parse_minter_event,
         parse_payment_recorded, parse_payment_unrecorded, parse_request_claimed,
-        parse_staking_deposit, parse_staking_withdraw, parse_undisbursed,
+        parse_share_transfer, parse_staking_deposit, parse_staking_withdraw, parse_undisbursed,
         parse_withdrawal_requested,
     },
     poller::EvmEventPollerBuilder,
+    security_registry_parsers::dispatch_security_registry,
 };
 
 /// EVM contract addresses for a single chain.
@@ -35,6 +36,7 @@ pub struct EvmContractAddresses {
     pub loan_registry_contracts: Vec<Address>,
     pub yield_minter_contracts: Vec<Address>,
     pub collateral_registry_contracts: Vec<Address>,
+    pub security_registry: Option<(Address, Address)>,
 }
 
 /// Shared DB repositories used by EVM event handlers.
@@ -77,12 +79,25 @@ pub fn register_evm_handlers(
     let cr_repo = repos.repo.clone();
     let minter_addrs = contracts.yield_minter_contracts.clone();
     let cr_addrs = contracts.collateral_registry_contracts.clone();
+    let splusd_addrs = contracts.splusd_contracts.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
     let immutable_resolver = loan_deps.immutable_resolver;
     let mutable_resolver = loan_deps.mutable_resolver;
 
+    let builder = match contracts.security_registry {
+        Some((registry, nft)) => {
+            let security_repo = repos.repo.clone();
+            builder.add_event_handler(vec![registry, nft], move |log| {
+                dispatch_security_registry(log, registry, nft).map(|ev| {
+                    Box::new(ContractLogMapper::new(ev, chain_id, security_repo.clone()))
+                        as Box<dyn shared::log_mapper::LogMapper>
+                })
+            })
+        }
+        None => builder,
+    };
     let builder = builder
         .add_event_handler(contracts.dm_contracts, move |log| {
             parse_deposit_requested(log)
@@ -105,8 +120,12 @@ pub fn register_evm_handlers(
             // is parsed, so the burn yields one `StakingWithdrawal` row. Do not add a
             // `SharesBurned` parser here (the Stellar arm needs one only because it has no
             // `withdraw` event for the burn).
+            if !is_emitted_by(log, &splusd_addrs) {
+                return None;
+            }
             parse_staking_deposit(log)
                 .or_else(|| parse_staking_withdraw(log))
+                .or_else(|| parse_share_transfer(log, &splusd_addrs))
                 .map(|ev| {
                     Box::new(
                         ContractLogMapper::new(ev, chain_id, splusd_repo.clone())

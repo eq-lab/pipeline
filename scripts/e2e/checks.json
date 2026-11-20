@@ -1,0 +1,6 @@
+{
+  "stellar.known-bugs.lps-openapi-query": { "issue": 1990 },
+  "stellar.loan-book.ltv-range": { "issue": 765 },
+  "evm.lp.voucher-deadline": { "issue": 1798 },
+  "evm.loan-book.ltv-range": { "issue": 765 }
+}

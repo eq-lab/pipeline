@@ -17,6 +17,7 @@ import {
   shouldConfirmNetworkSwitch,
   type NetworkLink,
 } from "@/lib/networkSwitcher";
+import { useNavBadgeCounts } from "@/components/useNavBadgeCounts";
 import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
 import {
   OverviewIcon,
@@ -51,13 +52,20 @@ const NAV_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
 // last item of the middle group, so the second divider moved to follow it.
 const DIVIDER_AFTER_PATHS = new Set(["/", "/lp-counterparties"]);
 
-function NavBadge({ count }: { count: number | undefined }) {
+function NavBadge({
+  count,
+  active,
+}: {
+  count: number | undefined;
+  active: boolean;
+}) {
   if (count === undefined) return null;
   return (
     <span
-      className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-[4px] px-[7.5px] text-center font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-on-dark)]"
-      style={{ backgroundColor: BADGE_BG_COLOR }}
+      className={`ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-[4px] px-[7.5px] text-center font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] ${active ? "bg-[color:var(--color-pipeline-brand)] text-[color:var(--color-pipeline-on-dark)]" : "text-[color:var(--color-pipeline-on-dark)]"}`}
+      style={active ? undefined : { backgroundColor: BADGE_BG_COLOR }}
       data-testid="trustee-nav-badge"
+      data-active={active ? "true" : undefined}
     >
       {count}
     </span>
@@ -68,7 +76,13 @@ function NavBadge({ count }: { count: number | undefined }) {
 const NAV_ITEM_BASE_CLASSNAME =
   "flex h-14 w-full shrink-0 items-center gap-[14px] rounded-[4px] px-4";
 
-function NavItem({ item }: { item: TrusteeNavItem }) {
+function NavItem({
+  item,
+  badgeCount,
+}: {
+  item: TrusteeNavItem;
+  badgeCount: number | undefined;
+}) {
   const Icon = NAV_ICONS[item.path];
   return (
     <Link
@@ -84,16 +98,20 @@ function NavItem({ item }: { item: TrusteeNavItem }) {
         className: "text-[color:var(--color-pipeline-on-dark)]",
       }}
     >
-      <span
-        className="flex size-5 shrink-0 items-center justify-center"
-        aria-hidden="true"
-      >
-        {Icon ? <Icon /> : null}
-      </span>
-      <span className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] whitespace-nowrap">
-        {item.navLabel}
-      </span>
-      <NavBadge count={item.badgeCount} />
+      {({ isActive }) => (
+        <>
+          <span
+            className="flex size-5 shrink-0 items-center justify-center"
+            aria-hidden="true"
+          >
+            {Icon ? <Icon /> : null}
+          </span>
+          <span className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] whitespace-nowrap">
+            {item.navLabel}
+          </span>
+          <NavBadge count={badgeCount} active={isActive} />
+        </>
+      )}
     </Link>
   );
 }
@@ -310,6 +328,7 @@ function AccountChip() {
 }
 
 export function TrusteeSidebar() {
+  const badgeCounts = useNavBadgeCounts();
   return (
     <aside
       className="sticky top-0 flex h-screen w-[320px] shrink-0 flex-col overflow-y-auto bg-[color:var(--color-pipeline-brand)] px-4 py-6"
@@ -332,7 +351,7 @@ export function TrusteeSidebar() {
       >
         {TRUSTEE_NAV_ITEMS.map((item) => (
           <Fragment key={item.path}>
-            <NavItem item={item} />
+            <NavItem item={item} badgeCount={badgeCounts[item.path]} />
             {DIVIDER_AFTER_PATHS.has(item.path) ? <Divider /> : null}
           </Fragment>
         ))}

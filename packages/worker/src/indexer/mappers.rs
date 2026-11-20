@@ -104,8 +104,7 @@ pub fn is_staking_event_name(event_name: &str) -> bool {
 
 /// Every event that moves a holder's share balance and therefore needs running
 /// position fields computed pre-insert: the staking mint/burn pair plus
-/// peer-to-peer `ShareTransfer` (Stellar only — the EVM indexer does not decode
-/// ERC-20 transfers on the vault).
+/// peer-to-peer `ShareTransfer`.
 pub fn is_position_event_name(event_name: &str) -> bool {
     is_staking_event_name(event_name) || event_name == "ShareTransfer"
 }
@@ -349,65 +348,29 @@ pub fn carry_over_transfer(
     }
 }
 
-/// Compute both sides of a `ShareTransfer` and write them into `params`.
-///
-/// `contract_logs` permits one row per on-chain event, but a transfer moves two
-/// holders' balances — so the row carries a `_from` / `_to` pair of fields
-/// rather than the single `shares_balance` a staking row writes. The
-/// `position_events` view fans these back out to one row per holder for readers.
-///
-/// `realized_pnl` is written as `0` (rather than omitted) so the field is
-/// present on every position-bearing row and `PositionRepo`'s `SUM` over
-/// `realized_pnl` stays well-defined.
-async fn compute_transfer_position_fields(
-    conn: &mut PgConnection,
-    chain_id: i64,
-    vault_address: &str,
-    params: &mut Value,
-) -> anyhow::Result<()> {
-    let from = params
-        .get("from")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_lowercase();
-    let to = params
-        .get("to")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_lowercase();
-
+pub fn transfer_sides(params: &Value) -> Option<(String, String, BigDecimal)> {
+    let side = |key: &str| {
+        params
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_lowercase()
+    };
+    let from = side("from");
+    let to = side("to");
     let amount = params
         .get("amount")
         .and_then(|v| v.as_str())
         .and_then(|s| BigDecimal::from_str(s).ok())
         .unwrap_or_else(|| BigDecimal::from(0i64));
 
-    // A zero-amount transfer moves nothing; skip it so it doesn't become a
-    // no-op link in the running-balance chain.
     if amount == 0i64 || from.is_empty() || to.is_empty() {
-        return Ok(());
+        return None;
     }
+    Some((from, to, amount))
+}
 
-    let self_transfer = from == to;
-    let prev_from = fetch_prev_position(&mut *conn, chain_id, vault_address, &from).await?;
-    let prev_to = if self_transfer {
-        prev_from.clone()
-    } else {
-        fetch_prev_position(&mut *conn, chain_id, vault_address, &to).await?
-    };
-
-    if !self_transfer && prev_from.0 < amount {
-        tracing::warn!(
-            vault = vault_address,
-            from = %from,
-            prev_shares = %prev_from.0,
-            transferred = %amount,
-            "share transfer exceeds sender balance — clamping to zero"
-        );
-    }
-
-    let next = carry_over_transfer(prev_from, prev_to, &amount, self_transfer);
-
+pub fn write_transfer_position(params: &mut Value, next: &TransferPosition) {
     if let Some(obj) = params.as_object_mut() {
         obj.insert(
             "shares_balance_from".to_owned(),
@@ -427,8 +390,66 @@ async fn compute_transfer_position_fields(
         );
         obj.insert("realized_pnl".to_owned(), Value::String("0".to_owned()));
     }
+}
 
+/// Compute both sides of a `ShareTransfer` and write them into `params`.
+///
+/// `contract_logs` permits one row per on-chain event, but a transfer moves two
+/// holders' balances — so the row carries a `_from` / `_to` pair of fields
+/// rather than the single `shares_balance` a staking row writes. The
+/// `position_events` view fans these back out to one row per holder for readers.
+///
+/// `realized_pnl` is written as `0` (rather than omitted) so the field is
+/// present on every position-bearing row and `PositionRepo`'s `SUM` over
+/// `realized_pnl` stays well-defined.
+async fn compute_transfer_position_fields(
+    conn: &mut PgConnection,
+    chain_id: i64,
+    vault_address: &str,
+    params: &mut Value,
+) -> anyhow::Result<()> {
+    let Some((from, to, amount)) = transfer_sides(params) else {
+        return Ok(());
+    };
+
+    let prev_from = fetch_prev_position(&mut *conn, chain_id, vault_address, &from).await?;
+    let prev_to = if from == to {
+        prev_from.clone()
+    } else {
+        fetch_prev_position(&mut *conn, chain_id, vault_address, &to).await?
+    };
+
+    apply_transfer(
+        params,
+        vault_address,
+        (&from, &to, &amount),
+        prev_from,
+        prev_to,
+    );
     Ok(())
+}
+
+pub fn apply_transfer(
+    params: &mut Value,
+    vault_address: &str,
+    (from, to, amount): (&str, &str, &BigDecimal),
+    prev_from: (BigDecimal, BigDecimal),
+    prev_to: (BigDecimal, BigDecimal),
+) -> TransferPosition {
+    let self_transfer = from == to;
+    if !self_transfer && prev_from.0 < *amount {
+        tracing::warn!(
+            vault = vault_address,
+            from = %from,
+            prev_shares = %prev_from.0,
+            transferred = %amount,
+            "share transfer exceeds sender balance — clamping to zero"
+        );
+    }
+
+    let next = carry_over_transfer(prev_from, prev_to, amount, self_transfer);
+    write_transfer_position(params, &next);
+    next
 }
 
 /// Compute a running USDC balance for `wallet` (the Withdrawal Queue Wallet)

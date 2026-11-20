@@ -4,8 +4,10 @@ import type {
   RiskCouncilCall,
   RiskCouncilClosureReason,
 } from "@/api/useRiskCouncil";
+import { chainAmountDecimals, riskCouncilTargetId } from "@/lib/targetChains";
 import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
 import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 import {
   chainStateRows,
   formatLoanLabel,
@@ -59,8 +61,12 @@ export function writeDownPrefill(
 export function buildWriteDownCall(
   loanId: number | null,
   amountInput: string,
+  chainId: number,
 ): RiskCouncilCall | null {
-  const amount = usdInputToSacBaseUnits(amountInput);
+  const amount = usdInputToSacBaseUnits(
+    amountInput,
+    chainAmountDecimals(chainId),
+  );
   if (loanId === null || amount === null) return null;
   return { fn: "write_down", loanId, amount };
 }
@@ -88,6 +94,9 @@ export interface RiskCouncilWritedownView {
   writeDown: WriteDownView;
   close: CloseView;
   cure: { effects: string; action: ActionView };
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGateFor: (item: PendingOpItem) => string | null;
 }
 
 export function useRiskCouncilWritedown(
@@ -98,13 +107,19 @@ export function useRiskCouncilWritedown(
   const [amountEdit, setAmountEdit] = useState<string | null>(null);
   const [reason, setReason] = useState<RiskCouncilClosureReason>("Default");
 
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
   const inDefault = base.chainStatus === "Default";
+  const notInDefault = base.chainStatus != null && !inDefault;
   const outstanding = base.chainState?.money.outstanding;
   const amountInput = amountEdit ?? writeDownPrefill(outstanding, chainId);
 
   const writeDown = useRiskCouncilActionView({
     chainId,
-    call: buildWriteDownCall(base.loanId, amountInput),
+    call: buildWriteDownCall(base.loanId, amountInput, chainId),
     fn: "write_down",
     noRoleCopy: RESOLUTION_NO_ROLE,
     labels: {
@@ -154,7 +169,7 @@ export function useRiskCouncilWritedown(
       "pocket",
       "closure",
     ]),
-    notInDefault: base.chainStatus != null && !inDefault,
+    notInDefault,
     writeDown: {
       amountInput,
       setAmountInput: setAmountEdit,
@@ -162,5 +177,13 @@ export function useRiskCouncilWritedown(
     },
     close: { reason, setReason, action: close },
     cure: { effects: CURE_EFFECTS, action: cure },
+    pending,
+    expectedTarget: riskCouncilTargetId(chainId, "loan_registry"),
+    pendingGateFor: (item) =>
+      notInDefault
+        ? NOT_IN_DEFAULT
+        : item.fn === "close_defaulted" && outstanding != null
+          ? closeExecuteGate(outstanding)
+          : null,
   };
 }

@@ -5,6 +5,10 @@ import type { LoanSecurityResponse } from "@/api/useLoanSecurity";
 import {
   buildSecurityCard,
   ltvRowText,
+  ABOVE_RATIO_NO_CALL_NOTE,
+  CURABLE_NOTE,
+  CURE_ENDED_NOTE,
+  PRICE_STALE_NOTE,
   REFRESH_FAILED_NOTE,
   formatLtvBps,
   formatLtvLine,
@@ -88,7 +92,7 @@ describe("formatMarginCall", () => {
         cure_by: cure,
         cure_overdue: true,
       }),
-    ).toBe("Open since 1 Jun 2026 · cure by 10 Jun 2026 (overdue)");
+    ).toBe("Open since 1 Jun 2026 · cure by 10 Jun 2026 · cure period ended");
   });
 
   it("says None when closed and dashes otherwise", () => {
@@ -150,6 +154,7 @@ describe("buildSecurityCard", () => {
     expect(card.rows).toEqual([
       { label: "Advance ratio", value: "80%" },
       { label: "Margin-call ratio", value: "85%" },
+      { label: "Cure period", value: "—" },
       { label: "Security value", value: "$2,106,000" },
       { label: "Amount owed", value: "$1,710,000" },
       { label: "Margin call", value: "None" },
@@ -296,5 +301,98 @@ describe("rounding and refresh failure", () => {
         securityResult({ data: undefined, error: new Error("502") }),
       ).state,
     ).toBe("error");
+  });
+});
+
+describe("Cure period row and margin-call notes", () => {
+  const card = (data: LoanSecurityResponse) =>
+    buildSecurityCard(securityResult({ data }));
+  const cure = (c: ReturnType<typeof card>) =>
+    c.rows.find((r) => r.label === "Cure period")?.value;
+
+  it("formats the served cure period", () => {
+    expect(cure(card({ terms: { ...TERMS, cure_period: "604800" } }))).toBe(
+      "7 d",
+    );
+    expect(cure(card({ terms: { ...TERMS, cure_period: "129600" } }))).toBe(
+      "36 h",
+    );
+    expect(cure(card({ terms: TERMS }))).toBe("—");
+  });
+
+  it("adds each note only for its exact served flag, in order", () => {
+    const all = card({
+      terms: TERMS,
+      valuation: null,
+      margin_call: {
+        open: true,
+        cure_overdue: true,
+        open_call_curable: true,
+        ltv_above_ratio_no_onchain_call: true,
+      },
+      prices: { price_stale: true },
+    });
+    expect(all.notes).toEqual([
+      "No valuation yet.",
+      CURE_ENDED_NOTE,
+      CURABLE_NOTE,
+      ABOVE_RATIO_NO_CALL_NOTE,
+      PRICE_STALE_NOTE,
+    ]);
+  });
+
+  it("omits the notes for null, false or missing flags", () => {
+    expect(
+      card({
+        terms: TERMS,
+        valuation: { ltv_bps: 5000 },
+        margin_call: {
+          open: false,
+          cure_overdue: true,
+          open_call_curable: true,
+          ltv_above_ratio_no_onchain_call: null,
+        },
+      }).notes,
+    ).toEqual([]);
+    expect(
+      card({ terms: TERMS, valuation: { ltv_bps: 5000, price_stale: true } })
+        .notes,
+    ).toEqual([PRICE_STALE_NOTE]);
+  });
+
+  it("does not throw on a partial response without margin_call", () => {
+    expect(() => card({ terms: TERMS })).not.toThrow();
+  });
+});
+
+describe("buildSecurityCard on an EVM /security payload (#1942)", () => {
+  it("builds a ready card from 6 dp strings", () => {
+    const card = buildSecurityCard(
+      securityResult({
+        data: {
+          paused: false,
+          terms: {
+            advance_ratio_bps: 7000,
+            margin_call_ratio_bps: 8000,
+            default_ratio_bps: 9000,
+            originator_fee_rate: 10000,
+          },
+          valuation: {
+            value: "2106000.000000",
+            debt: "1710000.000000",
+            ltv_bps: 8123,
+            price_stale: false,
+          },
+          margin_call: { open: true },
+        },
+      }),
+    );
+    expect(card.state).toBe("ready");
+    expect(
+      ltvRowText(card, {
+        valuation: { ltv_bps: 8123 },
+        margin_call: { open: true },
+      }),
+    ).toContain("81.3%");
   });
 });

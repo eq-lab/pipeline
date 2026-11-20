@@ -1,15 +1,4 @@
-/**
- * Query-wiring + value→display mapping for the Overview page's "Needs
- * Attention" section. Per `docs/FRONTEND.md` Code structure rule 2, the
- * `.tsx` component is JSX/styling only; this hook owns the unfiltered
- * `useLoanSubmissions()` + `useLoanBook()` calls (#1046) and maps each into a
- * display-ready row (mirrors `-useOriginationTable.ts`'s `state` discriminant
- * shape).
- *
- * spec: docs/frontend/trustee-flows.md#needs-attention-section (field
- * mapping incl. the #1046 ChangesRequested inclusion and unfiltered-fetch
- * rationale, scope, empty/loading/error handling).
- */
+// spec: docs/frontend/trustee-flows.md#needs-attention-section
 import {
   normalizeOriginationSubmissionStatus,
   useLoanSubmissions,
@@ -23,23 +12,13 @@ import { targetChainLabel } from "@/lib/targetChains";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** One formatted, display-ready Needs Attention row (Origination group). */
 export interface NeedsAttentionRow {
   id: number;
   title: string;
   subtitle: string;
-  /**
-   * The source `SubmissionView`, threaded through so the Review button can
-   * navigate to `/origination/$id` with it as router state (issue #821)
-   * without a second lookup by `id`.
-   */
   submission: SubmissionView;
 }
 
-/**
- * One Loans-group Needs Attention row (issue #867) — a live loan that is
- * **Watchlist** or **Matured**, linking to `/loans/$id`.
- */
 export interface LoanNeedsAttentionRow {
   key: string;
   loanId: string;
@@ -53,39 +32,21 @@ export type NeedsAttentionState = "loading" | "error" | "empty" | "ready";
 export interface UseNeedsAttentionResult {
   state: NeedsAttentionState;
   errorMessage: string | null;
-  /** Origination group — in-review + changes-requested submissions (#1046). */
   rows: NeedsAttentionRow[];
-  /** Loans group — Watchlist + Matured loans (issue #867). */
   loanRows: LoanNeedsAttentionRow[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** `"—"` for anything not a non-empty string — never fabricates a value. */
 function safeString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/**
- * Renders the corridor with the Figma's arrow glyph in place of the stored
- * hyphen separator (same transform as `-useOriginationTable.ts`'s corridor
- * column). Returns `undefined` (not "—") when the source is missing, so the
- * caller can drop the segment from the joined subtitle cleanly.
- */
 function formatCorridor(corridor: unknown): string | undefined {
   const raw = safeString(corridor);
   return raw?.replace(/\s*-\s*/g, " → ");
 }
 
-/**
- * Maps one in-flight (`InReview` / `ChangesRequested`) `SubmissionView` to a
- * Needs Attention row. The title suffix is status-derived (#1046): "new
- * request" for `InReview`, "changes requested" for `ChangesRequested` (any
- * other status falls back to "new request", but the hook never passes one).
- * `loan_data` is treated as loosely-typed (its wire type is
- * `serde_json::Value`) — every nested field access is guarded so a
- * missing/malformed submission never throws.
- */
 export function mapSubmissionToNeedsAttentionRow(
   submission: SubmissionView,
 ): NeedsAttentionRow {
@@ -115,18 +76,18 @@ export function mapSubmissionToNeedsAttentionRow(
   };
 }
 
-/**
- * The Loans-group Needs Attention label for a served display status, or `null`
- * when the loan doesn't need attention. `WatchList` → Watchlist; the
- * past-maturity status (`Past Due`, and legacy `Matured`) → Matured (issue #867).
- */
-export function loanAttentionLabel(status: string): string | null {
-  if (status === "WatchList" || status === "Watchlist") return "Watchlist";
-  if (status === "Past Due" || status === "Matured") return "Matured";
-  return null;
+export function loanAttentionLabel(
+  status: string,
+  marginCallOpen: boolean | null | undefined = null,
+): string | null {
+  if (status === "Closed" || status === "Default") return null;
+  let label: string | null = null;
+  if (status === "WatchList" || status === "Watchlist") label = "Watchlist";
+  if (status === "Past Due" || status === "Matured") label = "Matured";
+  if (marginCallOpen !== true) return label;
+  return label ? `${label} · margin call open` : "Margin call open";
 }
 
-/** Maps a needs-attention loan-book row to a Loans-group row (link → `/loans/$id`). */
 export function mapLoanToNeedsAttentionRow(
   entry: LoanBookEntry,
   label: string,
@@ -142,17 +103,6 @@ export function mapLoanToNeedsAttentionRow(
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Wires the Needs Attention section's two groups:
- *   - **Origination** — unfiltered `useLoanSubmissions()`, kept to normalized
- *     `InReview` + `ChangesRequested` client-side (#1046; see the module doc
- *     for why the server-side single-status filter doesn't fit here).
- *   - **Loans** — `useLoanBook()` filtered to Watchlist + Matured (issue #867).
- *
- * Supplementary block: the view renders nothing while loading/error or when both
- * groups are empty. Both queries are read unconditionally (hook rules) before the
- * state is derived.
- */
 export function useNeedsAttention(): UseNeedsAttentionResult {
   const submissions = useLoanSubmissions();
   const loanBook = useLoanBook();
@@ -178,7 +128,7 @@ export function useNeedsAttention(): UseNeedsAttentionResult {
     .map(mapSubmissionToNeedsAttentionRow);
 
   const loanRows = (loanBook.data?.loans ?? []).flatMap((entry) => {
-    const label = loanAttentionLabel(entry.status);
+    const label = loanAttentionLabel(entry.status, entry.margin_call_open);
     return label ? [mapLoanToNeedsAttentionRow(entry, label)] : [];
   });
 

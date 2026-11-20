@@ -76,6 +76,7 @@ fn make_loan(
             original_equity_tranche: usdc(equity_k * 1_000),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: rate_bps,
+            senior_interest_rate_ppm: None,
             origination_date: start_day * DAY,
             original_maturity_date: end_day * DAY,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -84,6 +85,7 @@ fn make_loan(
             // Rollover-aware maturity defaults to the original maturity (no rollover).
             current_maturity_timestamp: end_day * DAY,
             current_rate: rate_bps,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: usdc(senior_k * 1_000),
@@ -408,7 +410,7 @@ fn collateral_and_ltv_computed_from_map() {
     // ltv = principal / collateral = 100k / 125k = 0.8000.
     assert_eq!(r.loans[0].ltv.as_deref(), Some("0.8000"));
     assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
-    // coverage = total_collateral / Σ senior = 125k / 80k = 1.5625 → "1.56".
+    // coverage = collateral / Σ outstanding senior = 125k / 80k = 1.5625 → "1.56".
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.56"));
 }
 
@@ -446,7 +448,7 @@ fn missing_price_is_null_and_summary_sums_only_priced() {
     assert_eq!(b.ltv, None);
 
     // total_collateral counts only the priced loan (A); coverage denominator is
-    // Σ senior over ALL active loans (A 80k + B 40k = 120k): 125k / 120k → "1.04".
+    // Σ outstanding senior over ALL active loans (A 80k + B 40k = 120k): 125k / 120k → "1.04".
     assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.04"));
 }
@@ -463,6 +465,55 @@ fn zero_collateral_yields_value_zero_and_null_ltv() {
     assert_eq!(r.summary.total_collateral.as_deref(), Some("0.000000"));
     // coverage = 0 / 80k = "0.00".
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("0.00"));
+}
+
+#[test]
+fn coverage_is_over_outstanding_senior_not_the_original_tranche() {
+    // Day 0: loan A only, senior 80k with 30k repaid → outstanding 50k. Collateral 125k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(30_000);
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    // 125k / 50k = 2.50, not 125k / 80k = 1.56.
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("2.50"));
+}
+
+#[test]
+fn coverage_leaves_out_the_collateral_of_a_loan_with_nothing_outstanding() {
+    // Day 60: A (80k outstanding, collateral 125k) and B (not disbursed, collateral 75k).
+    let mut loans = fixture_loans();
+    loans[1].snapshot.disbursed = BigDecimal::from(0_i64);
+    let collateral = collateral_map(&[(1, usdc(125_000)), (2, usdc(75_000))]);
+    let r = at_with(60, &loans, &[], &collateral);
+    // total_collateral still counts both loans.
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("200000.000000"));
+    assert_eq!(r.summary.deployed_senior, "80000.000000");
+    // coverage = 125k / 80k = 1.5625 → "1.56"; B's 75k covers no debt.
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.56"));
+}
+
+#[test]
+fn coverage_null_when_only_loans_with_nothing_outstanding_are_priced() {
+    // Day 60: A outstanding 80k but unpriced; B not disbursed, collateral 75k.
+    let mut loans = fixture_loans();
+    loans[1].snapshot.disbursed = BigDecimal::from(0_i64);
+    let collateral = collateral_map(&[(2, usdc(75_000))]);
+    let r = at_with(60, &loans, &[], &collateral);
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("75000.000000"));
+    assert_eq!(r.summary.senior_debt_coverage, None);
+}
+
+#[test]
+fn coverage_null_when_nothing_is_outstanding() {
+    // Day 0: loan A fully repaid, collateral 125k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(80_000);
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(80_000);
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
+    assert_eq!(r.summary.senior_debt_coverage, None);
 }
 
 // ── Trustee "Loans" page metrics (deployed senior, at-risk, top concentration) ──
@@ -1089,7 +1140,7 @@ fn single_chain_output_is_byte_identical() {
         &watchlist,
     );
     let actual = serde_json::to_string(&r).unwrap();
-    let expected = "{\"summary\":{\"total_deployed\":\"230000.000000\",\"total_collateral\":\"165000.000000\",\"senior_debt_coverage\":\"0.89\",\"avg_yield\":\"0.131622\",\"avg_duration_days\":157,\"deployed_senior\":\"185000.000000\",\"weighted_rate\":\"0.131622\",\"weighted_tenor_days\":157,\"at_risk_wl_and_default_senior\":\"55000.000000\",\"at_risk_wl_and_default_pct\":\"0.2973\",\"top_concentration\":{\"commodity\":\"Alumina\",\"share\":\"0.4324\"}},\"loans\":[{\"chain_id\":1,\"loan_id\":\"1\",\"originator\":\"Open Mineral\",\"borrower\":\"borrower-1\",\"commodity\":\"Copper Concentrate\",\"principal\":\"100000.000000\",\"senior_outstanding\":\"80000.000000\",\"original_senior_tranche\":\"80000.000000\",\"maturity\":15552000,\"next_payment_timestamp\":15552000,\"days_overdue\":null,\"spot_price\":\"8500.50\",\"spot_change_7d\":\"0.0123\",\"collateral\":\"125000.000000\",\"ltv\":\"0.8000\",\"ccr_bps\":15625,\"duration_days\":180,\"rate\":\"0.120000\",\"protection\":\"LC at sight\",\"status\":\"Performing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null},{\"chain_id\":1,\"loan_id\":\"2\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-2\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Performing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null},{\"chain_id\":1,\"loan_id\":\"3\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-3\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Disbursing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":false,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null},{\"chain_id\":1,\"loan_id\":\"4\",\"originator\":\"WatchCo\",\"borrower\":\"borrower-4\",\"commodity\":\"Cocoa\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"25000.000000\",\"original_senior_tranche\":\"25000.000000\",\"maturity\":25920000,\"next_payment_timestamp\":25920000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"40000.000000\",\"ltv\":\"0.7500\",\"ccr_bps\":16000,\"duration_days\":300,\"rate\":\"0.110000\",\"protection\":\"LC at sight\",\"status\":\"WatchList\",\"onchain_status\":\"WatchList\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":50,\"watchlist_entered_at\":864000,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null},{\"chain_id\":1,\"loan_id\":\"9\",\"originator\":\"ClosedCo\",\"borrower\":\"borrower-9\",\"commodity\":\"Zinc\",\"principal\":\"60000.000000\",\"senior_outstanding\":\"60000.000000\",\"original_senior_tranche\":\"60000.000000\",\"maturity\":8640000,\"next_payment_timestamp\":8640000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":100,\"rate\":\"0.090000\",\"protection\":null,\"status\":\"Closed\",\"onchain_status\":\"Closed\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null},{\"chain_id\":1,\"loan_id\":\"10\",\"originator\":\"DefaultCo\",\"borrower\":\"borrower-10\",\"commodity\":\"Coffee\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"30000.000000\",\"original_senior_tranche\":\"30000.000000\",\"maturity\":17280000,\"next_payment_timestamp\":17280000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"20000.000000\",\"ltv\":\"1.5000\",\"ccr_bps\":6667,\"duration_days\":200,\"rate\":\"0.100000\",\"protection\":null,\"status\":\"Default\",\"onchain_status\":\"Default\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null}]}";
+    let expected = "{\"summary\":{\"total_deployed\":\"230000.000000\",\"total_collateral\":\"165000.000000\",\"senior_debt_coverage\":\"0.89\",\"avg_yield\":\"0.131622\",\"avg_duration_days\":157,\"deployed_senior\":\"185000.000000\",\"weighted_rate\":\"0.131622\",\"weighted_tenor_days\":157,\"at_risk_wl_and_default_senior\":\"55000.000000\",\"at_risk_wl_and_default_pct\":\"0.2973\",\"top_concentration\":{\"commodity\":\"Alumina\",\"share\":\"0.4324\"}},\"loans\":[{\"chain_id\":1,\"loan_id\":\"1\",\"originator\":\"Open Mineral\",\"borrower\":\"borrower-1\",\"commodity\":\"Copper Concentrate\",\"principal\":\"100000.000000\",\"senior_outstanding\":\"80000.000000\",\"original_senior_tranche\":\"80000.000000\",\"maturity\":15552000,\"next_payment_timestamp\":15552000,\"days_overdue\":null,\"spot_price\":\"8500.50\",\"spot_change_7d\":\"0.0123\",\"collateral\":\"125000.000000\",\"ltv\":\"0.8000\",\"ccr_bps\":15625,\"duration_days\":180,\"rate\":\"0.120000\",\"protection\":\"LC at sight\",\"status\":\"Performing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]},{\"chain_id\":1,\"loan_id\":\"2\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-2\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Performing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]},{\"chain_id\":1,\"loan_id\":\"3\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-3\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Disbursing\",\"onchain_status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":false,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]},{\"chain_id\":1,\"loan_id\":\"4\",\"originator\":\"WatchCo\",\"borrower\":\"borrower-4\",\"commodity\":\"Cocoa\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"25000.000000\",\"original_senior_tranche\":\"25000.000000\",\"maturity\":25920000,\"next_payment_timestamp\":25920000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"40000.000000\",\"ltv\":\"0.7500\",\"ccr_bps\":16000,\"duration_days\":300,\"rate\":\"0.110000\",\"protection\":\"LC at sight\",\"status\":\"WatchList\",\"onchain_status\":\"WatchList\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":50,\"watchlist_entered_at\":864000,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]},{\"chain_id\":1,\"loan_id\":\"9\",\"originator\":\"ClosedCo\",\"borrower\":\"borrower-9\",\"commodity\":\"Zinc\",\"principal\":\"60000.000000\",\"senior_outstanding\":\"60000.000000\",\"original_senior_tranche\":\"60000.000000\",\"maturity\":8640000,\"next_payment_timestamp\":8640000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":100,\"rate\":\"0.090000\",\"protection\":null,\"status\":\"Closed\",\"onchain_status\":\"Closed\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]},{\"chain_id\":1,\"loan_id\":\"10\",\"originator\":\"DefaultCo\",\"borrower\":\"borrower-10\",\"commodity\":\"Coffee\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"30000.000000\",\"original_senior_tranche\":\"30000.000000\",\"maturity\":17280000,\"next_payment_timestamp\":17280000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"20000.000000\",\"ltv\":\"1.5000\",\"ccr_bps\":6667,\"duration_days\":200,\"rate\":\"0.100000\",\"protection\":null,\"status\":\"Default\",\"onchain_status\":\"Default\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null,\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]}]}";
     assert_eq!(actual, expected);
 }
 

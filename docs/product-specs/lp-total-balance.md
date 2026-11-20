@@ -4,7 +4,7 @@
 
 `GET /v1/positions/history` serves the data behind the LP home Total Balance card and graph. Besides the sPLUSD share balance and cost basis, each bucket carries the sPLUSD position valued in PLUSD, the PLUSD the LP has escrowed in pending wire-outs (Stellar), the PLUSD the wallet holds, and their sum. The frontend does not compute these. The last item of the dense series is the current composite, because the grid ends at `truncate(now)`.
 
-The request surface is unchanged: `wallet`, `days`, `interval`, `chain_id` (required) and the `MAX_SAMPLES` cap. Every new field is additive and optional. `GET /v1/pnl` is unchanged; the "earning" delta on the card keeps binding to `total_pnl`.
+The request surface is unchanged: `wallet`, `days`, `interval`, `chain_id` (required) and the `MAX_SAMPLES` cap. Every new field is additive and optional. `GET /v1/pnl` is unchanged; the card's earning caption binds to `total_unrealized_pnl` and the Earnings card to `total_pnl`.
 
 ## Behavior
 
@@ -17,7 +17,7 @@ The request surface is unchanged: `wallet`, `days`, `interval`, `chain_id` (requ
 | `plusd_balance` | PLUSD held in the wallet at bucket close, folded from its indexed PLUSD movements | Chains with `CHAIN_<id>_<EVM\|STELLAR>_API_PLUSD_ADDRESS` set, and only when the fold is sound (see PLUSD fold). Stellar: only for a wallet with a seed, and from the PLUSD bound on |
 | `total_balance` | `splusd_value + wire_out_escrow? + plusd_balance?`: the terms that are present | Whenever `splusd_value` is present, except Stellar buckets before the PLUSD bound (see PLUSD fold) |
 
-Without `plusd_balance`, `total_balance` is the sum of the already-rounded terms, so the parts add up exactly. With both `plusd_balance` and `wire_out_escrow`, the PLUSD and escrow are summed in raw asset units and the total is rounded down once, so a wire-out request never moves the total by a rounding step (the displayed parts can differ from it by one 6-dp step). The card labels the total as including PLUSD when `plusd_balance` is present. Without it the total is the #1313 value, unchanged.
+Without `plusd_balance`, `total_balance` is the sum of the already-rounded terms, so the parts add up exactly. With both `plusd_balance` and `wire_out_escrow`, the PLUSD and escrow are summed in raw asset units and the total is rounded down once, so a wire-out request never moves the total by a rounding step (the displayed parts can differ from it by one 6-dp step). The card labels the total as including PLUSD (`Total Balance · incl. PLUSD`) when `plusd_balance` is present. Without it the total is the #1313 value, unchanged.
 
 **Not in the total.** PLUSD in the withdrawal queue, unclaimed deposit requests, and the LP's pending bank deposits (`pending_bank_deposits` on `GET /v1/lps/me`, #1285). Q3 and #1285 may add them later.
 

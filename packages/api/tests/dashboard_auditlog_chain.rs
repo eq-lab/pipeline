@@ -60,6 +60,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: HashMap::new(),
+        security_record_nft_addresses: HashMap::new(),
         plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
@@ -191,6 +192,7 @@ fn make_loan(
             original_equity_tranche: usdc(equity_usdc),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: rate_bps,
+            senior_interest_rate_ppm: None,
             origination_date: start_day * DAY,
             original_maturity_date: end_day * DAY,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -198,6 +200,7 @@ fn make_loan(
             status: "Performing".to_owned(),
             current_maturity_timestamp: 0,
             current_rate: rate_bps,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: usdc(senior_usdc),
@@ -1225,6 +1228,14 @@ fn deal_token_factory_events_render_on_both_arms() {
     );
     assert_eq!(a, "Deal tokens registered");
     assert_eq!(d["cargo"], "0xC");
+
+    let (a, d) = act(
+        "DealRegistered",
+        json!({ "loan_id": "7", "debt": "0xD", "cargo": null }),
+        ChainKind::Evm,
+    );
+    assert_eq!(a, "Deal tokens registered");
+    assert_eq!(d, json!({ "debt": "0xD", "cargo": null }));
 
     for params in [
         json!({ "loan_id": "7", "debt": "CD", "cargo": null }),

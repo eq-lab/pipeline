@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { AddressChip } from "@/components/detail/AddressChip";
+import { BankAccountRows } from "@/components/detail/BankAccountRows";
 import { BandButton } from "@/components/detail/BandButton";
 import {
   CheckIcon,
@@ -197,6 +198,28 @@ function LpCounterpartyDetailContent({
 
           <DetailCard
             className="gap-[8px] p-[26px]"
+            ariaLabel="Settlement bank account"
+            testId="lp-bank-account"
+          >
+            <CardTitle>Settlement bank account</CardTitle>
+            {lp.settlement_bank_account_details ? (
+              <BankAccountRows
+                details={lp.settlement_bank_account_details}
+                testIdPrefix="lp-bank-account"
+              />
+            ) : (
+              <p
+                data-testid="lp-bank-account-empty"
+                className={`py-[8px] ${BODY_CLASS}`}
+                style={{ color: INK_MUTED }}
+              >
+                No settlement bank account on file.
+              </p>
+            )}
+          </DetailCard>
+
+          <DetailCard
+            className="gap-[8px] p-[26px]"
             ariaLabelledBy="lp-documents-heading"
           >
             <div className="flex flex-wrap items-center justify-between gap-[12px]">
@@ -379,6 +402,7 @@ function LpCounterpartyDetailContent({
             <LpReviewDialog
               action={detail.action}
               legalName={lp.legal_name}
+              bankAccount={lp.settlement_bank_account_details ?? null}
               reason={detail.reason}
               onReasonChange={detail.setReason}
               onCancel={detail.close}

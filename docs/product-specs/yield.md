@@ -45,7 +45,7 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | Component | Formula |
 |---|---|
 | `senior_principal_returned` | `min(amount, outstanding_senior_principal)` |
-| `senior_gross_interest` | `Σ segments floor(Δt × senior_rate × outstanding / 365.25 d)` (each constant segment floored to a whole unit, at the floored bps rate, so it never exceeds the on-chain cap), plus `interest_adjustment`, floored at 0 |
+| `senior_gross_interest` | `Σ epochs floor(Δt × senior_rate × outstanding / 365.25 d)` at the full 1e6 rate, floored once per contract epoch (an epoch opens on disburse, undisburse, record, unrecord, write-down, rollover and amend, not on default), so it equals the on-chain `_accruedInterest`; plus `interest_adjustment`, floored at 0 |
 | `management_fee` | `mgmt_rate × ∫ outstanding dt / 365.25 d` |
 | `securitisation_agent_fee` | `0` (inactive in MVP) |
 | `performance_fee` | `(senior_gross_interest − management_fee) × perf_rate` |
@@ -53,12 +53,12 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | `oet_allocation` | `oet_rate × ∫ outstanding dt / 365.25 d` |
 | `originator_residual` | `amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation` |
 
-Accrual is simple interest on outstanding senior, year `31_557_600 s` (365.25 d), from the **first disbursement**, through Default, with **no maturity cap**, as `LoanRegistry._accruedInterest` (resolves #967). The suggested `senior_interest + mgmt + perf` is clamped to the contract headroom `max(0, gross + interest_adjustment − recorded(senior_interest + mgmt + perf))` (net coupon first, then fees). In Default fees, OET and equity are 0 and only principal then interest are split (a larger `amount` is a `400`); a future `as_of` is a `400`; indexed events that cannot reproduce the snapshot's outstanding senior are a `422` (re-index required). Priority order: senior principal → management fee → senior coupon → performance fee →
+The fee carve-outs are capped at the registry's live `max_fee_bps` (read on-chain per chain by the worker), and the suggestion is a `503` until that value has been read (#1547). Accrual is simple interest on outstanding senior, year `31_557_600 s` (365.25 d), from the **first disbursement**, through Default, with **no maturity cap**, as `LoanRegistry._accruedInterest` (resolves #967). The suggested `senior_interest + mgmt + perf` is clamped to the contract headroom `max(0, gross + interest_adjustment − recorded(senior_interest + mgmt + perf))` (net coupon first, then fees). The contract fee cap `mgmt_fee + perf_fee + oet_alloc ≤ floor((senior_interest + mgmt_fee + perf_fee) × max_fee_bps / 10_000)` is met by moving any fee excess above the cap to the net coupon. The suggested interest total is never reduced for the cap, and OET only uses the room left under it (#2124). A rounding leftover of the proportional split goes to the coupon, never to principal while headroom remains. When fee rates exceed the cap every period, the capped excess is a permanent shortfall: the unpaid fee targets are never caught up and the vault coupon receives that interest (TD-196). In Default fees, OET and equity are 0 and only principal then interest are split (a larger `amount` is a `400`); a future `as_of` is a `400`; indexed events that cannot reproduce the snapshot's outstanding senior are a `422` (re-index required). Priority order: senior principal → management fee → senior coupon → performance fee →
 OET allocation → originator residual (junior yield). The originator residual is settled
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.
 
-**Offtaker-price ceiling (pricing basis).** The waterfall rejects a payment above the contracted offtaker price only for fixed-price loans; for a quotational loan (concentrate on a QP average) a settlement above it is accepted and reported via an `offtaker_overpaid` flag (overage → Equity residual), derived from the collateral `valuation_mode`. See issue #963.
+**Offtaker-price ceiling.** The waterfall rejects (`400`) any amount that would take cumulative `offtaker_received` above `original_offtaker_price`, on every loan and in every status. This matches `OfftakerExceedsPrice` in both LoanRegistries (EVM `_validateRepayment`, Stellar `validate_repayment`); a quotational-period settlement above the genesis price cannot be recorded through `recordPayment`. Issue #2123 supersedes the #963 quotational exception.
 
 ### Repayment on-chain delivery
 

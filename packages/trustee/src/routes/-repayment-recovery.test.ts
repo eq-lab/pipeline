@@ -8,6 +8,7 @@ import {
   candidateRows,
   correctedRepaymentInput,
   defaultSelection,
+  evmRecoveryErrorCopy,
   formatChainAmount,
   formatDelayHours,
   formatReadyAt,
@@ -315,5 +316,48 @@ describe("correctedRepaymentInput", () => {
       buildRepaymentInput(SUSPECT.offtaker_received, waterfall),
     );
     expect(correctedRepaymentInput(SUSPECT, undefined)).toBeNull();
+  });
+});
+
+describe("evmRecoveryErrorCopy", () => {
+  it("maps AccessManager and Minter names to the recovery copy", () => {
+    expect(evmRecoveryErrorCopy("AccessManagerNotScheduled(bytes32)")).toMatch(
+      /Schedule it first/,
+    );
+    expect(evmRecoveryErrorCopy("AccessManagerNotReady(bytes32)")).toMatch(
+      /not ready/,
+    );
+    expect(evmRecoveryErrorCopy("AccessManagerAlreadyScheduled(bytes32)")).toBe(
+      "A reversal is already scheduled for this repayment.",
+    );
+  });
+
+  it("shares the expired copy between AccessManagerExpired and MinterInsufficientBankCash", () => {
+    const expired = evmRecoveryErrorCopy("AccessManagerExpired(bytes32)");
+    expect(expired).toMatch(/expired/);
+    expect(expired).toMatch(/bank cash/);
+    expect(
+      evmRecoveryErrorCopy("MinterInsufficientBankCash(uint256,uint256)"),
+    ).toBe(expired);
+  });
+
+  it("shares the already-reversed copy between the registry and the Minter errors", () => {
+    expect(evmRecoveryErrorCopy("LoanRegistryRepaymentAlreadyReversed()")).toBe(
+      "This repayment is already reversed.",
+    );
+    expect(evmRecoveryErrorCopy("MinterAlreadyReversed()")).toBe(
+      "This repayment is already reversed.",
+    );
+  });
+
+  it("maps EnforcedPause to the LoanRegistry paused copy", () => {
+    expect(evmRecoveryErrorCopy("execution reverted: EnforcedPause()")).toMatch(
+      /LoanRegistry is paused/,
+    );
+  });
+
+  it("returns null for an unmapped name", () => {
+    expect(evmRecoveryErrorCopy("MinterRefHashSeen()")).toBeNull();
+    expect(evmRecoveryErrorCopy("boom")).toBeNull();
   });
 });

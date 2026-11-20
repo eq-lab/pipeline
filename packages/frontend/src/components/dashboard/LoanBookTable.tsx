@@ -11,7 +11,7 @@ export interface LoanBookRow {
   /** Commodity label — borrower identity is not shown on the LP-facing dashboard (issue #1058). */
   commodity: string;
   principal: string;
-  collateral: string;
+  /** Registry LTV, Operations Console format (#2077). */
   ltv: string;
   /** Duration in compact form, e.g. `"120d"`. */
   duration: string;
@@ -25,7 +25,6 @@ export interface LoanBookRow {
  */
 export interface LoanBookHeaderAggregates {
   principal?: string;
-  collateral?: string;
   ltv?: string;
 }
 
@@ -103,8 +102,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
           {/* Commodity — flexible, fills remaining width */}
           <col />
           <col style={{ width: "112px" }} />
-          <col style={{ width: "112px" }} />
-          <col style={{ width: "112px" }} />
+          <col style={{ width: "176px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "128px" }} />
@@ -122,18 +120,6 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
                 >
                   {" · "}
                   {agg.principal}
-                </span>
-              )}
-            </th>
-            <th className={headerCellClasses}>
-              Collateral
-              {agg.collateral != null && (
-                <span
-                  data-testid="loan-book-header-collateral-aggregate"
-                  aria-hidden="false"
-                >
-                  {" · "}
-                  {agg.collateral}
                 </span>
               )}
             </th>
@@ -167,9 +153,6 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
               </td>
               <td className={bodyCellClasses}>
                 <span className={bodyCellInnerClasses}>{row.principal}</span>
-              </td>
-              <td className={bodyCellClasses}>
-                <span className={bodyCellInnerClasses}>{row.collateral}</span>
               </td>
               <td className={bodyCellClasses}>
                 <span className={bodyCellInnerClasses}>{row.ltv}</span>

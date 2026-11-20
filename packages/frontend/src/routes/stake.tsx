@@ -19,7 +19,8 @@ import { useChainNotice } from "@/components/useChainNotice";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
 import { toUserError } from "@/utils/userError";
-import { useChainServed } from "@/api";
+import { useChainServed, useStats, formatApy } from "@/api";
+import { useActiveChain } from "@/wallet/useActiveChain";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 
 /** Active tab of the stake page; also the `?tab=` search-param value. */
@@ -32,6 +33,8 @@ function Stake() {
   // ── Chain view ────────────────────────────────────────────────────────
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
+  const { chainId } = useActiveChain();
+  const { data: statsData } = useStats({ chainId });
   const isStellar = kind === "stellar";
 
   // ── Toast ─────────────────────────────────────────────────────────────
@@ -261,8 +264,10 @@ function Stake() {
         ) : (
           <>
             {/* Section header */}
-            {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
-            <StakeHeader data-testid="stake-header" title="Earn 8.42% p.a." />
+            <StakeHeader
+              data-testid="stake-header"
+              title={`Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`}
+            />
 
             {/* Combined conversion card: tab switcher + input + output/rates */}
             <Card

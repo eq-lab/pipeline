@@ -1,3 +1,4 @@
+use crate::evm_http::evm_rpc_client;
 use alloy::primitives::{Address, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
@@ -59,15 +60,11 @@ sol! {
 
         function immutableLoanData(uint256 loanId) external view returns (ImmutableLoanData memory);
         function mutableLoanData(uint256 loanId) external view returns (MutableLoanData memory);
+        function maxFeeBps() external view returns (uint32);
     }
 }
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
-
-/// `LoanRegistryUpgradeable.sol:17,653,235,610` — ppm (`ONE = 1_000_000`) to bps.
-fn ppm_to_bps(raw: u32) -> u32 {
-    raw / 100
-}
 
 /// Pure decode, unit-tested in `packages/worker/tests/loan_registry_reader.rs`.
 pub fn decode_immutable_loan_data(result: &[u8]) -> Result<ImmutableLoanDataView> {
@@ -80,7 +77,7 @@ pub fn decode_immutable_loan_data(result: &[u8]) -> Result<ImmutableLoanDataView
         original_senior_tranche: d.originalSeniorTranche,
         original_equity_tranche: d.originalEquityTranche,
         original_offtaker_price: d.originalOfftakerPrice,
-        senior_interest_rate_bps: ppm_to_bps(d.seniorInterestRate),
+        senior_interest_rate_ppm: d.seniorInterestRate,
         origination_date: d.originationDate,
         original_maturity_date: d.originalMaturityDate,
     })
@@ -96,7 +93,7 @@ pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
         next_repayment_id: d.nextRepaymentId,
         status: d.status as u8,
         current_maturity_timestamp: d.currentMaturityTimestamp,
-        current_rate: ppm_to_bps(d.currentRate),
+        current_rate_ppm: d.currentRate,
         closure_reason: d.closureReason as u8,
         carved_out: d.carvedOut,
         disbursed: d.disbursed,
@@ -105,6 +102,12 @@ pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
         interest_adjustment: d.interestAdjustment,
         metadata_uri: d.metadataURI,
     })
+}
+
+pub fn decode_max_fee_bps(result: &[u8]) -> Result<u32> {
+    let decoded = ILoanRegistry::maxFeeBpsCall::abi_decode_returns(result, true)
+        .context("decode maxFeeBps return")?;
+    Ok(decoded._0)
 }
 
 /// Reads on-chain LoanRegistry data via eth_call. Implements two resolver traits:
@@ -121,12 +124,28 @@ pub struct LoanRegistryReader {
 
 impl LoanRegistryReader {
     pub fn new(rpc_url: &str) -> Result<Self> {
-        let provider: HttpProvider = ProviderBuilder::new().on_http(
+        let provider: HttpProvider = ProviderBuilder::new().on_client(evm_rpc_client(
             rpc_url
                 .parse()
                 .with_context(|| format!("LoanRegistryReader: invalid RPC URL {rpc_url}"))?,
-        );
+        ));
         Ok(Self { provider })
+    }
+
+    pub async fn max_fee_bps(&self, contract: &Address) -> Result<u32> {
+        let call_data = ILoanRegistry::maxFeeBpsCall {}.abi_encode();
+
+        let result = self
+            .provider
+            .call(
+                &alloy::rpc::types::TransactionRequest::default()
+                    .to(*contract)
+                    .input(call_data.into()),
+            )
+            .await
+            .with_context(|| format!("eth_call maxFeeBps() on {contract} failed"))?;
+
+        decode_max_fee_bps(&result)
     }
 }
 

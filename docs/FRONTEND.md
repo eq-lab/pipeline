@@ -26,6 +26,8 @@ Rule: components must not inline raw hex codes. All color, radius, and typograph
 
 The integration point is `packages/frontend/src/index.css`, which imports `@pipeline/ui/styles/theme.css` and adds an `@source` directive so Tailwind v4 scans `packages/ui/src` for utility class names. `packages/frontend/src/routes/index.tsx` carries a token-styled smoke probe that exercises color, typography, and radius tokens until the real WelcomeScreen lands (component issues #42–#49).
 
+Storybook `Foundation/Tokens` (`packages/ui/src/foundation/Tokens.stories.tsx`) is the visual review surface for these tokens: stories `Colors`, `TypeRamp` and `Radii` list every `--color-pipeline-*`, `--text-pipeline-*` (size / line-height) and `--radius-pipeline-*` token, parsed from the `@theme` block of `theme.css` so new tokens appear automatically. Swatches paint `var(--token)`, so they show what the browser resolves; `var()` aliases also print the resolved colour. Font weights, tracking and font families are out of scope (see `Foundation/Typography`).
+
 ## Component workshop
 
 Storybook lives in `packages/ui/.storybook/` and is launched with:
@@ -208,15 +210,15 @@ the image just to change API, chain, contract, or WalletConnect settings.
 
 Supported runtime keys:
 
-| Key                             | Default when unset                           |
-| ------------------------------- | -------------------------------------------- |
-| `VITE_API_BASE_URL`             | `http://localhost:8080`                      |
-| `VITE_EVM_CHAIN_ID`             | `560048` (selects the chain-registry entry)  |
-| `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  |
-| `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` |
-| `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` |
-| `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` |
-| `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 |
+| Key                             | Default when unset                           | Stage (Hoodi v5)                             |
+| ------------------------------- | -------------------------------------------- | -------------------------------------------- |
+| `VITE_API_BASE_URL`             | `http://localhost:8080`                      | set per environment                          |
+| `VITE_EVM_CHAIN_ID`             | `560048` (selects the chain-registry entry)  | `560048`                                     |
+| `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  | `https://ethereum-hoodi-rpc.publicnode.com`  |
+| `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` | `0x7A8B7628Cd2DdE7E065F1BB441A0A8AcA993c1a9` |
+| `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` | `0x369033D21a4A62f837D4eeF9F65407Ae00357e75` |
+| `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` | `0x87CD1002bdB9401423cb50A860314FC8f11440Cd` |
+| `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 | set per environment                          |
 
 Local container verification:
 
@@ -245,17 +247,29 @@ static Vite output served on container port 80, SPA fallback to `index.html`). I
 surface is intentionally smaller — only the Relayer API base URL is needed at scaffold time (#777);
 it grows as Trustee flow sub-issues of epic #775 land.
 
-| Key                              | Default when unset      |
-| -------------------------------- | ----------------------- |
-| `VITE_API_BASE_URL`              | `http://localhost:8080` |
-| `VITE_EVM_LOAN_REGISTRY_ADDRESS` | empty (unconfigured)    |
-| `VITE_EVM_MINTER_ADDRESS`        | empty (unconfigured)    |
-| `VITE_EVM_USDC_ADDRESS`          | empty (unconfigured)    |
-| `VITE_EVM_USDC_CUSTODY_ADDRESS`  | empty (unconfigured)    |
+| Key                                    | Default when unset                          | Stage (Hoodi v5)                                    |
+| -------------------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| `VITE_API_BASE_URL`                    | `http://localhost:8080`                     | set per environment                                 |
+| `VITE_EVM_CHAIN_ID`                    | `560048`                                    | `560048`                                            |
+| `VITE_EVM_RPC_URL`                     | `https://ethereum-hoodi-rpc.publicnode.com` | `https://ethereum-hoodi-rpc.publicnode.com`         |
+| `VITE_EVM_LOAN_REGISTRY_ADDRESS`       | empty (unconfigured)                        | `0xdF08fdf0f47272a8Ced33A5f913f6C9D179B0231`        |
+| `VITE_EVM_MINTER_ADDRESS`              | empty (unconfigured)                        | `0x621BaAb0ced6b11f88019582183b081A118755f4`        |
+| `VITE_EVM_USDC_ADDRESS`                | empty (unconfigured)                        | set per deploy                                      |
+| `VITE_EVM_USDC_CUSTODY_ADDRESS`        | empty (unconfigured)                        | set per deploy                                      |
+| `VITE_EVM_ACCESS_MANAGER_ADDRESS`      | empty (unconfigured)                        | `0x3dF345BF5fd3ecB1F8E031B450Ceb2BF7B645992`        |
+| `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS`  | empty (unconfigured)                        | `0xCf54e4d3ffcfFC663058b6966D9B8578d988eCDC`        |
+| `VITE_EVM_SECURITY_REGISTRY_ADDRESS`   | empty (unconfigured)                        | `0xB51E7f13420D106946376A67Fe5921C63B09BE15`        |
+| `VITE_EVM_SECURITY_RECORD_NFT_ADDRESS` | empty (unconfigured)                        | `0xf64302337Ad1F5A66b5f023F8ffd26074a68bA09`        |
+| `VITE_EVM_START_BLOCK`                 | `0`                                         | `3808700` (worker's `CHAIN_560048_EVM_START_BLOCK`) |
+| `VITE_EVM_CAPITAL_WALLET_ADDRESS`      | empty                                       | set per deploy                                      |
+
+The Stage column lists the `hoodi-v5.json` values. Stage today sets `VITE_EVM_CHAIN_ID`, `VITE_EVM_RPC_URL`, `VITE_EVM_LOAN_REGISTRY_ADDRESS`, `VITE_EVM_MINTER_ADDRESS`, `VITE_EVM_ACCESS_MANAGER_ADDRESS` and `VITE_EVM_DEAL_TOKEN_FACTORY_ADDRESS` on the Trustee (argocd `pipeline/test.yaml`, eq-lab/argocd#516 and #517), so EVM draw, the lifecycle writes, Disburse (#1574) and Register debt token (#1892) are configured; the SecurityRegistry, RecordNft and start-block rows are set once the backend reads the deployed Hoodi SecurityRegistry (`f92d719`, 12-field `Terms`; dual-ABI support, #2070). The Risk Council delay is whatever the deployment sets (0 on Hoodi, so EVM Risk Council actions execute immediately through `AccessManager.execute`; Stellar keeps 24 h), see [trustee-flows.md](frontend/trustee-flows.md). Production keeps them empty until the mainnet deployment (#1436).
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
 Empty means unconfigured; EVM flows that need them short-circuit with a "not configured" error.
+The Risk Council security page and inspector panel on EVM (#1942) also need the AccessManager, SecurityRegistry and RecordNft addresses; the registry and RecordNft must equal the backend's `CHAIN_<id>_EVM_INDEXER_SECURITY_REGISTRY_ADDRESS` / `_SECURITY_RECORD_NFT_ADDRESS`.
+The Risk Council hub, escalate, reterm and writedown pages and the repayment-recovery dialog on EVM (#1943) use the LoanRegistry, Minter and AccessManager addresses. The recovery list scans `eth_getLogs` from `VITE_EVM_START_BLOCK` in 50 000-block calls, so set it to the LoanRegistry deploy block (the worker's `CHAIN_<id>_EVM_START_BLOCK`); the default `0` scans from genesis (TD-190).
 
 `VITE_EVM_USDC_ADDRESS` is the USDC ERC-20 and `VITE_EVM_USDC_CUSTODY_ADDRESS` is the deposit custody account
 (`CHAIN_<id>_EVM_API_CUSTODY_ADDRESSES`). Empty means the Capital Wallet on-chain read shows `—` on an EVM session.

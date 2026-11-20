@@ -1,6 +1,7 @@
 // spec: docs/product-specs/minter-cash-book.md#api-contract
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "./client";
+import type { SettlementBankAccountDetails } from "./useLp";
 
 export type CashBookWireInStatus =
   | "Direct"
@@ -41,6 +42,7 @@ export interface CashBookWireOut {
   value_date?: string;
   ref_hash?: string;
   cancelled_at?: string;
+  bank_account?: SettlementBankAccountDetails | null;
 }
 
 export interface CashBookRamp {

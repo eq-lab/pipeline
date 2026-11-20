@@ -49,7 +49,12 @@ import { FundingDetailsModal } from "@/components/FundingDetailsModal";
 import { useFundingDetails } from "@/components/useFundingDetails";
 import type { FundingRequest } from "@/components/useFundingDetails";
 import { usePnl, usePositionsHistory } from "@/api";
-import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
+import {
+  DEFAULT_PERIOD_ID,
+  buildSeries,
+  formatMoney,
+  latestTotalBalance,
+} from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
 import { deriveHomeState } from "@/components/homeState";
 import { useChainServed } from "@/api";
@@ -177,15 +182,24 @@ function Home() {
     { signed: true, suffix: "unrealized" },
   );
 
-  const portfolioSeries = buildSeries(
-    positionsHistory.data?.history,
-    splusdDecimals,
-  );
+  const portfolioSeries = buildSeries(positionsHistory.data?.history);
 
-  const sharesStats = positionsHistory.data?.shares_balance;
+  const latestTotal = latestTotalBalance(positionsHistory.data?.history);
+  const totalBalanceFormatted =
+    latestTotal !== null
+      ? latestTotal.totalBalance === undefined ||
+        !Number.isFinite(Number(latestTotal.totalBalance))
+        ? "—"
+        : formatMoney(Number(latestTotal.totalBalance))
+      : plusdIsZero && splusdIsZero
+        ? "$0.00"
+        : "—";
+  const totalIncludesPlusd = latestTotal?.includesPlusd ?? false;
+
+  const totalBalanceMax = positionsHistory.data?.total_balance?.max;
   const portfolioAxisMax =
-    sharesStats?.max != null && splusdDecimals !== undefined
-      ? Number(sharesStats.max) / 10 ** splusdDecimals
+    totalBalanceMax != null && Number.isFinite(Number(totalBalanceMax))
+      ? Number(totalBalanceMax)
       : null;
   const portfolioAxis = computeAxisTicks(portfolioAxisMax);
 
@@ -258,6 +272,7 @@ function Home() {
     series: portfolioSeries,
     yAxis: portfolioAxis,
     yAxisDomainMax: portfolioAxisMax,
+    includesPlusd: totalIncludesPlusd,
     "data-testid": "home-portfolio-placeholder",
   };
   const compactWalletActions = {
@@ -295,7 +310,8 @@ function Home() {
                 <PortfolioPlaceholderCard
                   className="min-h-[256px] md:min-h-[274px]"
                   mobileHomeState={mobileHomeState}
-                  balanceLabel={splusdBalanceFormatted}
+                  balanceLabel={totalBalanceFormatted}
+                  includesPlusd={totalIncludesPlusd}
                   unrealizedPnlLabel={unrealizedPnlFormatted}
                   activePeriodId={portfolioPeriodId}
                   onActivePeriodChange={setPortfolioPeriodId}
@@ -430,7 +446,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="get-plusd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -482,7 +498,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="get-plusd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -504,7 +520,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="stake-or-add-usd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       onAddFunds={onAddFunds}
                       {...portfolioChartProps}
                     />
@@ -534,7 +550,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       variant="get-plusd"
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -557,7 +573,7 @@ function Home() {
                   hero={
                     <PortfolioPlaceholderCard
                       mobileHomeState={mobileHomeState}
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       unrealizedPnlLabel={unrealizedPnlFormatted}
                       {...portfolioChartProps}
                     />
@@ -595,7 +611,7 @@ function Home() {
                     <PortfolioPlaceholderCard
                       variant={isConnected ? "get-plusd" : "connect-wallet"}
                       onConnectWallet={openConnectModal}
-                      balanceLabel={splusdBalanceFormatted}
+                      balanceLabel={totalBalanceFormatted}
                       {...portfolioChartProps}
                     />
                   }
@@ -618,7 +634,7 @@ function Home() {
                     isConnected ? (
                       <PortfolioPlaceholderCard
                         mobileHomeState={mobileHomeState}
-                        balanceLabel={splusdBalanceFormatted}
+                        balanceLabel={totalBalanceFormatted}
                         unrealizedPnlLabel={unrealizedPnlFormatted}
                         {...portfolioChartProps}
                       />

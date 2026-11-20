@@ -1,14 +1,26 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
-import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
+import {
+  Address,
+  BASE_FEE,
+  Contract,
+  StrKey,
+  TransactionBuilder,
+  nativeToScVal,
+  rpc as SorobanRpc,
+  xdr,
+  type Transaction,
+} from "@stellar/stellar-sdk";
 import {
   readOperationSchedule,
   relay,
   type OperationSchedule,
+  type RelayStage,
   type RelayParams,
   type RelayResult,
 } from "./accessManager";
 import { hexToBytes32ScVal } from "./minter";
 import { sha256Hex } from "./hash";
+import { operationArgsXdr } from "./scheduledOperation";
 import { scMap, u32, u64 } from "./scval";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
@@ -30,11 +42,13 @@ export const FLAG_OUTCOMES: readonly FlagOutcome[] = [
 export interface SecurityTermsInput {
   advanceRatioBps: number;
   marginCallRatioBps: number;
+  defaultRatioBps?: number;
   curePeriod: number | string;
   priceStaleAfter: number | string;
   paymentTerm: SecurityPaymentTerm;
   gracePeriod: number | string;
   defaultRate: number;
+  originatorFeeRate?: number;
   attestationInterval: number | string;
   inspectionInterval: number | string;
   toleranceBps: number;
@@ -50,12 +64,28 @@ export type SecurityRegistryCall =
       reasonHash: string;
     }
   | { fn: "release_with_consent"; recordId: number; consentHash: string }
-  | { fn: "set_inspectors"; inspectors: string[] };
+  | { fn: "set_inspectors"; inspectors: string[] }
+  | {
+      fn: "revalue";
+      recordId: number;
+      valuePerUnit: string;
+      benchmark: string;
+      reportHash: string;
+    }
+  | {
+      fn: "record_extension_consent";
+      loanId: number;
+      newMaturity: number | string;
+      consentHash: string;
+    };
 
 const U32_MAX = 0xffffffff;
 const U64_MAX = 2n ** 64n - 1n;
 const HEX32 = /^[0-9a-f]{64}$/;
 const DECIMAL = /^[0-9]+$/;
+const DECIMAL_7DP = /^(\d+)(?:\.(\d{1,7}))?$/;
+const BENCHMARK = /^[A-Za-z0-9_]{1,32}$/;
+const I128_MAX = 2n ** 127n - 1n;
 
 function fail(what: string, value: unknown): never {
   throw new Error(`encodeSecurityRegistryArgs: invalid ${what} ${value}`);
@@ -79,11 +109,30 @@ function hashArg(value: string, what: string): xdr.ScVal {
   return hexToBytes32ScVal(value);
 }
 
+export function isSecurityBenchmark(value: string): boolean {
+  return BENCHMARK.test(value);
+}
+
+export function decimal7ToI128(text: string): bigint {
+  const match = DECIMAL_7DP.exec(text.trim());
+  if (!match) fail("value per unit", text);
+  const [, whole = "0", fraction = ""] = match;
+  const raw = BigInt(whole) * 10n ** 7n + BigInt(fraction.padEnd(7, "0"));
+  if (raw > I128_MAX) fail("value per unit", text);
+  return raw;
+}
+
 function variant(name: string): xdr.ScVal {
   return xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(name)]);
 }
 
 function encodeTerms(terms: SecurityTermsInput): xdr.ScVal {
+  if (terms.defaultRatioBps !== undefined) {
+    fail("defaultRatioBps (EVM only)", terms.defaultRatioBps);
+  }
+  if (terms.originatorFeeRate !== undefined) {
+    fail("originatorFeeRate (EVM only)", terms.originatorFeeRate);
+  }
   if (terms.marginCallRatioBps < terms.advanceRatioBps) {
     fail(
       "marginCallRatioBps (below advanceRatioBps)",
@@ -157,9 +206,28 @@ export function encodeSecurityRegistryArgs(
         ),
       ];
     }
+    case "revalue": {
+      if (!BENCHMARK.test(call.benchmark)) fail("benchmark", call.benchmark);
+      return [
+        u32Arg(call.recordId, "recordId"),
+        nativeToScVal(decimal7ToI128(call.valuePerUnit), { type: "i128" }),
+        xdr.ScVal.scvSymbol(call.benchmark),
+        hashArg(call.reportHash, "reportHash"),
+      ];
+    }
+    case "record_extension_consent":
+      return [
+        u32Arg(call.loanId, "loanId"),
+        u64Arg(call.newMaturity, "newMaturity"),
+        hashArg(call.consentHash, "consentHash"),
+      ];
     default:
       throw new Error("encodeSecurityRegistryArgs: unknown function");
   }
+}
+
+export function securityRegistryArgsXdr(call: SecurityRegistryCall): string {
+  return operationArgsXdr(encodeSecurityRegistryArgs(call));
 }
 
 export interface SecurityRegistryRelayParams extends Omit<
@@ -229,4 +297,87 @@ export async function readSecurityInspectors({
     throw new Error("readSecurityInspectors: unexpected result");
   }
   return data.map(String);
+}
+
+export interface BuildCheckCoverageEnvelopeParams {
+  registryId: string;
+  loanId: number;
+  caller: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+export interface CheckCoverageParams extends BuildCheckCoverageEnvelopeParams {
+  signTransaction: (
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  onStageChange?: (stage: RelayStage) => void;
+}
+
+export async function buildCheckCoverageEnvelope({
+  registryId,
+  loanId,
+  caller,
+  rpcUrl,
+  networkPassphrase,
+}: BuildCheckCoverageEnvelopeParams): Promise<string> {
+  if (!registryId) {
+    throw new Error("buildCheckCoverageEnvelope: registryId must not be empty");
+  }
+  if (!caller) {
+    throw new Error("buildCheckCoverageEnvelope: caller must not be empty");
+  }
+  const args = [u32Arg(loanId, "loanId")];
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const sourceAccount = await server.getAccount(caller);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(new Contract(registryId).call("check_coverage", ...args))
+    .setTimeout(30)
+    .build();
+  const simResult = await server.simulateTransaction(tx);
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`checkCoverage simulation error: ${simResult.error}`);
+  }
+  return SorobanRpc.assembleTransaction(tx, simResult).build().toXDR();
+}
+
+export async function checkCoverage({
+  signTransaction,
+  onStageChange,
+  ...params
+}: CheckCoverageParams): Promise<RelayResult> {
+  onStageChange?.("awaiting-signature");
+  const assembledXdr = await buildCheckCoverageEnvelope(params);
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase: params.networkPassphrase,
+    address: params.caller,
+  });
+  onStageChange?.("submitting");
+  const server = new SorobanRpc.Server(params.rpcUrl, {
+    allowHttp: params.rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(
+    signedTxXdr,
+    params.networkPassphrase,
+  );
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `checkCoverage: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+  onStageChange?.("confirming");
+  const finalResult = await server.pollTransaction(sendResult.hash);
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `checkCoverage: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+  return { hash: sendResult.hash };
 }

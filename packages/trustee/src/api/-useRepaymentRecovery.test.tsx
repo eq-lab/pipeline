@@ -2,6 +2,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import {
+  _resetRiskCouncilOpsForTests,
+  useExecutedOperations,
+} from "@/lib/riskCouncilOps";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useExecuteReverseRepay,
@@ -11,6 +15,13 @@ import {
 } from "./useRepaymentRecovery";
 
 const mocks = vi.hoisted(() => ({
+  scheduleEvmReverseRepay: vi.fn(),
+  executeEvmReverseRepay: vi.fn(),
+  readEvmCanCall: vi.fn(),
+  readEvmRecoveryRepayments: vi.fn(),
+  readEvmReverseRepaySchedule: vi.fn(),
+  evmReverseRepayRefHash: vi.fn(),
+  evmWallet: { address: "0xRC" as string | null, isConnected: true },
   scheduleReverseRepay: vi.fn(),
   executeReverseRepay: vi.fn(),
   readCanCall: vi.fn(),
@@ -25,6 +36,18 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@pipeline/wallet-connect", () => ({
+  evmRepaySelector: () => "0xrepay",
+  evmReverseRepaySelector: () => "0xreverse",
+  evmReverseRepayRefHash: mocks.evmReverseRepayRefHash,
+  scheduleEvmReverseRepay: mocks.scheduleEvmReverseRepay,
+  executeEvmReverseRepay: mocks.executeEvmReverseRepay,
+  readEvmCanCall: mocks.readEvmCanCall,
+  readEvmRecoveryRepayments: mocks.readEvmRecoveryRepayments,
+  readEvmReverseRepaySchedule: mocks.readEvmReverseRepaySchedule,
+  useEvmWallet: () => ({
+    address: mocks.evmWallet.address,
+    isConnected: mocks.evmWallet.isConnected,
+  }),
   scheduleReverseRepay: mocks.scheduleReverseRepay,
   executeReverseRepay: mocks.executeReverseRepay,
   readCanCall: mocks.readCanCall,
@@ -49,12 +72,22 @@ const envMock = vi.hoisted(() => ({
   STELLAR_LOAN_REGISTRY_ID: "CREGISTRY",
   STELLAR_LOAN_REGISTRY_EXECUTOR_ID: "CAM",
   STELLAR_YIELD_MINTER_ID: "CMINTER",
+  EVM_ACCESS_MANAGER_ADDRESS: "0xAM",
+  EVM_MINTER_ADDRESS: "0xMINTER",
+  EVM_LOAN_REGISTRY_ADDRESS: "0xREGISTRY",
+  EVM_START_BLOCK: 4_000_000,
 }));
 vi.mock("@/lib/env", () => ({ ENV: envMock }));
 
 const STELLAR = 99_000_001;
 const EVM = 560_048;
 const REF = "cd".repeat(32);
+interface RefetchOptions {
+  refetchOnWindowFocus?: boolean;
+  refetchInterval?: unknown;
+  staleTime?: number;
+}
+
 let queryClient: QueryClient;
 
 function makeWrapper() {
@@ -75,11 +108,20 @@ function keys(spy: { mock: { calls: unknown[][] } }) {
 }
 
 beforeEach(() => {
+  _resetRiskCouncilOpsForTests();
   Object.values(mocks).forEach((m) => {
     if (typeof m === "function") (m as ReturnType<typeof vi.fn>).mockReset();
   });
   mocks.wallet.address = "GRC";
   mocks.wallet.isConnected = true;
+  mocks.evmWallet.address = "0xRC";
+  mocks.evmWallet.isConnected = true;
+  mocks.evmReverseRepayRefHash.mockResolvedValue(`0x${REF}`);
+  mocks.scheduleEvmReverseRepay.mockResolvedValue({ hash: "evm-sched" });
+  mocks.executeEvmReverseRepay.mockResolvedValue({ hash: "evm-exec" });
+  envMock.EVM_ACCESS_MANAGER_ADDRESS = "0xAM";
+  envMock.EVM_MINTER_ADDRESS = "0xMINTER";
+  envMock.EVM_LOAN_REGISTRY_ADDRESS = "0xREGISTRY";
   mocks.reverseRepayRefHash.mockResolvedValue(REF);
   mocks.scheduleReverseRepay.mockResolvedValue({ hash: "sched" });
   mocks.executeReverseRepay.mockResolvedValue({ hash: "exec" });
@@ -107,13 +149,21 @@ describe("useReverseRepay mutations", () => {
       wrapper: makeWrapper(),
     });
     await act(async () => {
-      await schedule.result.current.mutateAsync({ loanId: 7, repaymentId: 1 });
+      await schedule.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
     });
     const execute = renderHook(() => useExecuteReverseRepay(), {
       wrapper: makeWrapper(),
     });
     await act(async () => {
-      await execute.result.current.mutateAsync({ loanId: 7, repaymentId: 1 });
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
     });
     expect(mocks.reverseRepayRefHash).toHaveBeenCalledWith({
       minterId: "CMINTER",
@@ -137,13 +187,78 @@ describe("useReverseRepay mutations", () => {
     expect(mocks.executeReverseRepay).toHaveBeenCalledTimes(1);
   });
 
+  it("reads the schedule before executing and marks the operation executed", async () => {
+    fakeRelayTimers();
+    mocks.readReverseRepaySchedule.mockResolvedValue({
+      operationId: "OPR",
+      readyAt: 55,
+    });
+    const order: string[] = [];
+    mocks.readReverseRepaySchedule.mockImplementation(async () => {
+      order.push("read");
+      return { operationId: "OPR", readyAt: 55 };
+    });
+    mocks.executeReverseRepay.mockImplementation(async () => {
+      order.push("execute");
+      return { hash: "exec" };
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
+    });
+    expect(order).toEqual(["read", "execute"]);
+    expect(executed.result.current.get("OPR")).toMatchObject({
+      hash: "exec",
+      readyAt: 55,
+    });
+  });
+
+  it("does not mark anything when the schedule is gone or unreadable", async () => {
+    fakeRelayTimers();
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    mocks.readReverseRepaySchedule.mockResolvedValue({
+      operationId: "OPR",
+      readyAt: 0,
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
+    });
+    mocks.readReverseRepaySchedule.mockRejectedValue(new Error("rpc"));
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.size).toBe(0);
+  });
+
   it("rejects before any RPC call when not configured or not connected", async () => {
     envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "";
     const a = renderHook(() => useExecuteReverseRepay(), {
       wrapper: makeWrapper(),
     });
     await expect(
-      a.result.current.mutateAsync({ loanId: 7, repaymentId: 1 }),
+      a.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      }),
     ).rejects.toThrow(/not configured for this environment/);
 
     envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "CAM";
@@ -152,7 +267,11 @@ describe("useReverseRepay mutations", () => {
       wrapper: makeWrapper(),
     });
     await expect(
-      b.result.current.mutateAsync({ loanId: 7, repaymentId: 1 }),
+      b.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      }),
     ).rejects.toThrow(/wallet not connected/);
     expect(mocks.executeReverseRepay).not.toHaveBeenCalled();
   });
@@ -164,7 +283,11 @@ describe("useReverseRepay mutations", () => {
     });
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     await act(async () => {
-      await result.current.mutateAsync({ loanId: 7, repaymentId: 1 });
+      await result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
     });
     const expected = [
       "repayment-recovery",
@@ -197,7 +320,11 @@ describe("useReverseRepay mutations", () => {
       wrapper: makeWrapper(),
     });
     await act(async () => {
-      await result.current.mutateAsync({ loanId: 7, repaymentId: 1 });
+      await result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: STELLAR,
+      });
     });
     expect(result.current.stage).toBe("confirming");
   });
@@ -228,18 +355,92 @@ describe("useRecoveryCandidates", () => {
     expect(result.current.data!.latestReversed).toBe(true);
   });
 
-  it("stays disabled for an EVM chain and for out-of-range statuses", () => {
-    const evm = renderHook(
-      () => useRecoveryCandidates(EVM, "7", "Performing"),
+  it("stays disabled for an unknown EVM chain id and for out-of-range statuses", () => {
+    const unknown = renderHook(
+      () => useRecoveryCandidates(EVM + 1, "7", "Performing"),
       { wrapper: makeWrapper() },
     );
     const closed = renderHook(
       () => useRecoveryCandidates(STELLAR, "7", "Closed"),
       { wrapper: makeWrapper() },
     );
-    expect(evm.result.current.fetchStatus).toBe("idle");
+    expect(unknown.result.current.fetchStatus).toBe("idle");
     expect(closed.result.current.fetchStatus).toBe("idle");
     expect(mocks.readNextRepaymentId).not.toHaveBeenCalled();
+    expect(mocks.readEvmRecoveryRepayments).not.toHaveBeenCalled();
+  });
+
+  it("reads the EVM repayments from the start block and reports whether the latest is reversed", async () => {
+    mocks.readEvmRecoveryRepayments.mockResolvedValue([
+      { repaymentId: 0, reversed: false },
+      { repaymentId: 1, reversed: true },
+    ]);
+    const { result } = renderHook(
+      () => useRecoveryCandidates(EVM, "7", "Default"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data!.latestReversed).toBe(true);
+    expect(result.current.data!.rows).toHaveLength(2);
+    expect(mocks.readEvmRecoveryRepayments).toHaveBeenCalledWith({
+      registry: "0xREGISTRY",
+      minter: "0xMINTER",
+      loanId: 7,
+      fromBlock: 4_000_000n,
+      chainId: EVM,
+    });
+    expect(mocks.readNextRepaymentId).not.toHaveBeenCalled();
+  });
+
+  it("does not refetch the EVM scan on window focus, and keeps the Stellar behaviour", async () => {
+    mocks.readEvmRecoveryRepayments.mockResolvedValue([]);
+    const evm = renderHook(() => useRecoveryCandidates(EVM, "7", "Default"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(evm.result.current.data).toBeDefined());
+    const evmOptions = queryClient.getQueryCache().find({
+      queryKey: ["repayment-recovery", EVM, "7"],
+    })!.options as RefetchOptions;
+    expect(evmOptions.refetchOnWindowFocus).toBe(false);
+    expect(evmOptions.refetchInterval).toBeUndefined();
+    expect(evmOptions.staleTime).toBe(60_000);
+
+    const stellar = renderHook(
+      () => useRecoveryCandidates(STELLAR, "7", "Default"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(stellar.result.current.data).toBeDefined());
+    const stellarOptions = queryClient.getQueryCache().find({
+      queryKey: ["repayment-recovery", STELLAR, "7"],
+    })!.options as RefetchOptions;
+    expect(stellarOptions.refetchOnWindowFocus).toBe(true);
+    expect(stellarOptions.staleTime).toBe(15_000);
+  });
+
+  it("is not latestReversed when the newest EVM repayment is live", async () => {
+    mocks.readEvmRecoveryRepayments.mockResolvedValue([
+      { repaymentId: 0, reversed: true },
+      { repaymentId: 1, reversed: false },
+    ]);
+    const { result } = renderHook(
+      () => useRecoveryCandidates(EVM, "7", "Performing"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data!.latestReversed).toBe(false);
+  });
+
+  it("surfaces the not-configured copy when the EVM Minter is empty", async () => {
+    envMock.EVM_MINTER_ADDRESS = "";
+    const { result } = renderHook(
+      () => useRecoveryCandidates(EVM, "7", "Performing"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error!.message).toMatch(
+      /not configured for this environment/,
+    );
+    expect(mocks.readEvmRecoveryRepayments).not.toHaveBeenCalled();
   });
 });
 
@@ -250,9 +451,12 @@ describe("useReverseRepayAccess", () => {
         ? { immediate: true, delay: 0 }
         : { immediate: false, delay: 0 },
     );
-    const { result } = renderHook(() => useReverseRepayAccess(7, 1, true), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useReverseRepayAccess(STELLAR, 7, 1, true),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data).toEqual({
       canReverse: { immediate: true, delay: 0 },
@@ -268,9 +472,12 @@ describe("useReverseRepayAccess", () => {
       operationId: "ab",
       readyAt: 1_800_000_000,
     });
-    const { result } = renderHook(() => useReverseRepayAccess(7, 1, true), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useReverseRepayAccess(STELLAR, 7, 1, true),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data!.schedule).toEqual({
       operationId: "ab",
@@ -283,14 +490,212 @@ describe("useReverseRepayAccess", () => {
 
   it("stays disabled without a wallet or a selected repayment", () => {
     mocks.wallet.address = null;
-    const a = renderHook(() => useReverseRepayAccess(7, 1, true), {
+    const a = renderHook(() => useReverseRepayAccess(STELLAR, 7, 1, true), {
       wrapper: makeWrapper(),
     });
-    const b = renderHook(() => useReverseRepayAccess(7, null, true), {
+    const b = renderHook(() => useReverseRepayAccess(STELLAR, 7, null, true), {
       wrapper: makeWrapper(),
     });
     expect(a.result.current.fetchStatus).toBe("idle");
     expect(b.result.current.fetchStatus).toBe("idle");
     expect(mocks.readCanCall).not.toHaveBeenCalled();
+  });
+});
+
+describe("useReverseRepayAccess on EVM", () => {
+  it("reads canCall for both selectors on the Minter and skips the schedule when immediate", async () => {
+    mocks.readEvmCanCall.mockImplementation(
+      async ({ selector }: { selector: string }) =>
+        selector === "0xreverse"
+          ? { immediate: true, delay: 0 }
+          : { immediate: false, delay: 0 },
+    );
+    const { result } = renderHook(
+      () => useReverseRepayAccess(EVM, 7, 1, true),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data).toEqual({
+      canReverse: { immediate: true, delay: 0 },
+      canRepay: { immediate: false, delay: 0 },
+      schedule: null,
+    });
+    expect(mocks.readEvmCanCall).toHaveBeenCalledWith({
+      accessManager: "0xAM",
+      caller: "0xRC",
+      target: "0xMINTER",
+      selector: "0xreverse",
+    });
+    expect(mocks.readEvmCanCall).toHaveBeenCalledWith({
+      accessManager: "0xAM",
+      caller: "0xRC",
+      target: "0xMINTER",
+      selector: "0xrepay",
+    });
+    expect(mocks.readEvmReverseRepaySchedule).not.toHaveBeenCalled();
+    expect(mocks.readCanCall).not.toHaveBeenCalled();
+  });
+
+  it("reads the schedule with the EVM refHash when delayed", async () => {
+    mocks.readEvmCanCall.mockResolvedValue({ immediate: false, delay: 86400 });
+    mocks.readEvmReverseRepaySchedule.mockResolvedValue({
+      operationId: "ab",
+      readyAt: 1_800_000_000,
+    });
+    const { result } = renderHook(
+      () => useReverseRepayAccess(EVM, 7, 1, true),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(mocks.evmReverseRepayRefHash).toHaveBeenCalledWith({
+      minter: "0xMINTER",
+      loanId: 7,
+      repaymentId: 1,
+    });
+    expect(mocks.readEvmReverseRepaySchedule).toHaveBeenCalledWith({
+      accessManager: "0xAM",
+      minter: "0xMINTER",
+      caller: "0xRC",
+      loanId: 7,
+      repaymentId: 1,
+      refHash: `0x${REF}`,
+    });
+  });
+
+  it("stays disabled for an unknown EVM chain id and without an EVM wallet", () => {
+    const unknown = renderHook(
+      () => useReverseRepayAccess(EVM + 1, 7, 1, true),
+      { wrapper: makeWrapper() },
+    );
+    mocks.evmWallet.address = null;
+    const noWallet = renderHook(() => useReverseRepayAccess(EVM, 7, 1, true), {
+      wrapper: makeWrapper(),
+    });
+    expect(unknown.result.current.fetchStatus).toBe("idle");
+    expect(noWallet.result.current.fetchStatus).toBe("idle");
+    expect(mocks.readEvmCanCall).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the not-configured copy when the AccessManager is empty", async () => {
+    envMock.EVM_ACCESS_MANAGER_ADDRESS = "";
+    const { result } = renderHook(
+      () => useReverseRepayAccess(EVM, 7, 1, true),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error!.message).toMatch(/not configured/);
+  });
+});
+
+describe("useReverseRepay mutations on EVM", () => {
+  it("schedules and executes through the EVM relay with the derived refHash", async () => {
+    fakeRelayTimers();
+    const schedule = renderHook(() => useScheduleReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await schedule.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: EVM,
+      });
+    });
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: EVM,
+      });
+    });
+    const expected = {
+      accessManager: "0xAM",
+      minter: "0xMINTER",
+      caller: "0xRC",
+      loanId: 7,
+      repaymentId: 1,
+      refHash: `0x${REF}`,
+      chainId: EVM,
+    };
+    expect(mocks.scheduleEvmReverseRepay).toHaveBeenCalledWith(
+      expect.objectContaining(expected),
+    );
+    expect(mocks.executeEvmReverseRepay).toHaveBeenCalledWith(
+      expect.objectContaining(expected),
+    );
+    expect(mocks.scheduleReverseRepay).not.toHaveBeenCalled();
+    expect(mocks.executeReverseRepay).not.toHaveBeenCalled();
+  });
+
+  it("reads the schedule before executing and marks the operation executed with the chain id", async () => {
+    fakeRelayTimers();
+    const order: string[] = [];
+    mocks.readEvmReverseRepaySchedule.mockImplementation(async () => {
+      order.push("read");
+      return { operationId: "opr", readyAt: 55 };
+    });
+    mocks.executeEvmReverseRepay.mockImplementation(async () => {
+      order.push("execute");
+      return { hash: "evm-exec" };
+    });
+    const executed = renderHook(() => useExecutedOperations(EVM));
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: EVM,
+      });
+    });
+    expect(order).toEqual(["read", "execute"]);
+    expect(executed.result.current.get("opr")).toMatchObject({
+      hash: "evm-exec",
+      readyAt: 55,
+    });
+  });
+
+  it("rejects before any RPC call when not configured or not connected", async () => {
+    envMock.EVM_MINTER_ADDRESS = "";
+    const a = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      a.result.current.mutateAsync({ loanId: 7, repaymentId: 1, chainId: EVM }),
+    ).rejects.toThrow(/not configured for this environment/);
+
+    envMock.EVM_MINTER_ADDRESS = "0xMINTER";
+    mocks.evmWallet.isConnected = false;
+    const b = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      b.result.current.mutateAsync({ loanId: 7, repaymentId: 1, chainId: EVM }),
+    ).rejects.toThrow(/EVM wallet not connected/);
+    expect(mocks.executeEvmReverseRepay).not.toHaveBeenCalled();
+  });
+
+  it("exposes the stage reported by the EVM relay", async () => {
+    fakeRelayTimers();
+    mocks.executeEvmReverseRepay.mockImplementation(
+      async ({ onStageChange }: { onStageChange: (s: string) => void }) => {
+        onStageChange("awaiting-signature");
+        return { hash: "evm-exec" };
+      },
+    );
+    const { result } = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: EVM,
+      });
+    });
+    expect(result.current.stage).toBe("awaiting-signature");
   });
 });

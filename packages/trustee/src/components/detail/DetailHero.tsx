@@ -5,6 +5,7 @@ import { INK_MUTED, type StatusBand } from "./detailTokens";
 
 export function DetailHero({
   backTo,
+  backSearch,
   backLabel,
   title,
   status,
@@ -13,6 +14,7 @@ export function DetailHero({
   metaTestId,
 }: {
   backTo: "/loans" | "/lp-counterparties";
+  backSearch?: Record<string, unknown>;
   backLabel: string;
   title: string;
   status: { label: string; band: StatusBand } | null;
@@ -24,6 +26,7 @@ export function DetailHero({
     <div className="flex flex-col gap-[8px]">
       <Link
         to={backTo}
+        search={backSearch}
         className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
       >
         {backLabel}

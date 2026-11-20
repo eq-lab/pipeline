@@ -57,7 +57,7 @@ impl ImmutableDataResolver<Address, U256> for MockImmutableResolver {
             original_senior_tranche: U256::from(100_000_u64),
             original_equity_tranche: U256::from(20_000_u64),
             original_offtaker_price: U256::from(120_000_u64),
-            senior_interest_rate_bps: 1200_u32,
+            senior_interest_rate_ppm: 120_000,
             origination_date: 1_000_000_u64,
             original_maturity_date: 2_000_000_u64,
         })
@@ -82,7 +82,7 @@ fn mock_mutable_view(block_number: u64) -> MutableLoanDataView {
         next_repayment_id: alloy::primitives::U256::from(0_u64),
         status: 1, // Performing
         current_maturity_timestamp: block_number * 12,
-        current_rate: 1200,
+        current_rate_ppm: 120_000,
         closure_reason: 0, // None
         carved_out: false,
         disbursed: U256::from(100_000_u64),
@@ -185,7 +185,7 @@ impl ImmutableDataResolver<StellarAddress, u32> for MockStellarImmutableResolver
             original_senior_tranche: U256::from(400_000_u64),
             original_equity_tranche: U256::from(100_000_u64),
             original_offtaker_price: U256::from(500_000_u64),
-            senior_interest_rate_bps: 800_u32,
+            senior_interest_rate_ppm: 80_000,
             origination_date: 1_700_000_000_u64,
             original_maturity_date: 1_800_000_000_u64,
         })
@@ -207,7 +207,7 @@ impl MutableDataResolver<StellarAddress, u32> for MockStellarMutableResolver {
             next_repayment_id: U256::from(0_u64),
             status: 1, // Performing
             current_maturity_timestamp: 1_800_000_000_u64,
-            current_rate: 800,
+            current_rate_ppm: 80_000,
             closure_reason: 0, // None
             carved_out: false,
             disbursed: U256::from(400_000_u64),
@@ -346,6 +346,7 @@ fn make_prior_snapshot() -> LoanSnapshot {
         original_equity_tranche: BigDecimal::from_str("1000000").unwrap(),
         original_offtaker_price: BigDecimal::from_str("5000000").unwrap(),
         senior_interest_rate_bps: 950_u32,
+        senior_interest_rate_ppm: Some(95_050),
         origination_date: 1_700_000_000_i64,
         original_maturity_date: 1_800_000_000_i64,
         next_economics_epochs_id: BigDecimal::from(2),
@@ -353,6 +354,7 @@ fn make_prior_snapshot() -> LoanSnapshot {
         status: "Performing".to_owned(),
         current_maturity_timestamp: 1_800_001_000_i64,
         current_rate: 950_u32,
+        current_rate_ppm: None,
         closure_reason: "None".to_owned(),
         carved_out: false,
         disbursed: BigDecimal::from(4_000_000),
@@ -518,7 +520,7 @@ fn compose_drawn_snapshot_full_row() {
         original_senior_tranche: U256::from(8_000_000_u64),
         original_equity_tranche: U256::from(2_000_000_u64),
         original_offtaker_price: U256::from(9_500_000_u64),
-        senior_interest_rate_bps: 850_u32,
+        senior_interest_rate_ppm: 85_050,
         origination_date: 1_680_000_000_u64,
         original_maturity_date: 1_780_000_000_u64,
     };
@@ -528,7 +530,7 @@ fn compose_drawn_snapshot_full_row() {
         next_repayment_id: U256::from(5_u64),
         status: 2, // WatchList
         current_maturity_timestamp: 1_780_500_000_u64,
-        current_rate: 850,
+        current_rate_ppm: 85_099,
         closure_reason: 0, // None
         carved_out: true,
         disbursed: U256::from(8_000_000_u64),
@@ -599,6 +601,8 @@ fn compose_drawn_snapshot_full_row() {
         BigDecimal::from(9_500_000_u64)
     );
     assert_eq!(snap.senior_interest_rate_bps, 850_u32);
+    assert_eq!(snap.senior_interest_rate_ppm, Some(85_050));
+    assert_eq!(snap.current_rate_ppm, Some(85_099));
     assert_eq!(snap.origination_date, 1_680_000_000_i64);
     assert_eq!(snap.original_maturity_date, 1_780_000_000_i64);
 
@@ -645,7 +649,7 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
         next_repayment_id: U256::from(3_u64),
         status: 1, // Performing
         current_maturity_timestamp: 1_800_000_500_u64,
-        current_rate: 975,
+        current_rate_ppm: 97_599,
         closure_reason: 0, // None
         carved_out: false,
         disbursed: U256::from(4_000_000_u64),
@@ -680,6 +684,11 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     assert_eq!(snap.original_senior_tranche, prior.original_senior_tranche);
     assert_eq!(snap.current_maturity_timestamp, 1_800_000_500_i64);
     assert_eq!(snap.current_rate, 975);
+    assert_eq!(snap.current_rate_ppm, Some(97_599));
+    assert_eq!(
+        snap.senior_interest_rate_ppm,
+        prior.senior_interest_rate_ppm
+    );
     assert_eq!(snap.status, "Performing");
     assert_eq!(snap.closure_reason, "None");
     assert!(!snap.carved_out);
@@ -710,7 +719,7 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
         next_repayment_id: U256::from(4_u64),
         status: 1,
         current_maturity_timestamp: 1_800_002_000_u64,
-        current_rate: 950,
+        current_rate_ppm: 95_000,
         closure_reason: 0,
         carved_out: false,
         disbursed: U256::from(4_000_000_u64),
@@ -804,7 +813,7 @@ fn compose_lifecycle_snapshot_status_strings_mapping() {
             next_repayment_id: U256::from(0_u64),
             status: ordinal,
             current_maturity_timestamp: 0_u64,
-            current_rate: 0,
+            current_rate_ppm: 0,
             closure_reason: 0,
             carved_out: false,
             disbursed: U256::ZERO,
@@ -858,7 +867,7 @@ fn compose_lifecycle_snapshot_closure_reason_mapping() {
             next_repayment_id: U256::from(0_u64),
             status: 1,
             current_maturity_timestamp: 0_u64,
-            current_rate: 0,
+            current_rate_ppm: 0,
             closure_reason: ordinal,
             carved_out: false,
             disbursed: U256::ZERO,
@@ -911,6 +920,7 @@ fn loan_snapshot_serde_round_trip() {
         original_equity_tranche: BigDecimal::from_str("2469135690246913569").unwrap(),
         original_offtaker_price: BigDecimal::from_str("11111111111111111111").unwrap(),
         senior_interest_rate_bps: 1125_u32,
+        senior_interest_rate_ppm: None,
         origination_date: 1_700_000_001_i64,
         original_maturity_date: 1_800_000_001_i64,
         next_economics_epochs_id: BigDecimal::from_str("7").unwrap(),
@@ -918,6 +928,7 @@ fn loan_snapshot_serde_round_trip() {
         status: "WatchList".to_owned(),
         current_maturity_timestamp: 1_800_500_000_i64,
         current_rate: 1125_u32,
+        current_rate_ppm: None,
         closure_reason: "None".to_owned(),
         carved_out: true,
         disbursed: BigDecimal::from_str("9876543210987654321").unwrap(),
@@ -1390,4 +1401,29 @@ fn senior_principal_repaid_override_replaces_accumulated_sum() {
         U256::from(300u64),
         "the other six fields are untouched by the override"
     );
+}
+
+#[test]
+fn compose_lifecycle_snapshot_keeps_missing_genesis_ppm_none() {
+    let mut prior = make_prior_snapshot();
+    prior.senior_interest_rate_ppm = None;
+    let mutable = MutableLoanDataView {
+        next_economics_epochs_id: U256::from(5_u64),
+        next_repayment_id: U256::from(3_u64),
+        status: 1,
+        current_maturity_timestamp: 1_800_000_500_u64,
+        current_rate_ppm: 112_599,
+        closure_reason: 0,
+        carved_out: false,
+        disbursed: U256::from(4_000_000_u64),
+        repaid: U256::from(500_000_u64),
+        written_down: U256::from(0_u64),
+        interest_adjustment: I256::ZERO,
+        metadata_uri: "ipfs://Qm_test".to_owned(),
+    };
+    let snap =
+        compose_lifecycle_snapshot(prior, mutable, &mock_repayment_data_view(1_000_000), None);
+    assert_eq!(snap.senior_interest_rate_ppm, None);
+    assert_eq!(snap.current_rate_ppm, Some(112_599));
+    assert_eq!(snap.current_rate, 1_125);
 }

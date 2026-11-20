@@ -7,7 +7,7 @@ Figma desktop: [node 3283:14275](https://www.figma.com/design/A43rjYYjSwdTmiwwf5
 Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72288&m=dev)
 
 **Data sources (real data only — no localStorage mocks):**
-- PLUSD outstanding (LIABILITY): Horizon `GET /assets?asset_code=PLUSD&asset_issuer={VITE_STELLAR_PLUSD_ISSUER_ID}` → `balances.authorized`
+- PLUSD outstanding (LIABILITY): Horizon `GET /assets?asset_code=PLUSD&asset_issuer={VITE_STELLAR_PLUSD_ISSUER_ID}` → all `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`
 - Cash — stablecoins (USDC) (ASSET): Soroban `usdc_SAC.balance(VITE_STELLAR_USDC_CUSTODY_ID)` via `TokenClient`
 - Deployed / Junior rows: `GET /v1/financial-position` REST API
 - USYC and Off-chain USD: always `—` (no source in v1)

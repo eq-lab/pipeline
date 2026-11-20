@@ -3,7 +3,7 @@
  *
  * - `useStellarPlusdTotalSupply()` — total PLUSD in circulation (LIABILITY).
  *   Source: Horizon REST `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
- *   → `_embedded.records[0].balances.authorized` (human-decimal string).
+ *   → `balances` + `contracts_amount` + `claimable_balances_amount` + `liquidity_pools_amount`.
  *   Rationale: a SAC exposes no Soroban `total_supply` view for a classic asset;
  *   Horizon `/assets` is the only reliable source for issued supply.
  *
@@ -68,7 +68,9 @@ function isSentinel(raw: bigint): boolean {
 
 /**
  * Fetches `GET {url}` (a Horizon /assets URL) and returns
- * `_embedded.records[0].balances.authorized` as a human-decimal string.
+ * the asset's total supply as a 7-decimal string: all `balances` plus
+ * `contracts_amount` (e.g. the sPLUSD vault), `claimable_balances_amount`
+ * and `liquidity_pools_amount`.
  */
 async function fetchHorizonAssetSupply(
   url: string,
@@ -81,15 +83,28 @@ async function fetchHorizonAssetSupply(
     );
   }
   const data = (await resp.json()) as {
-    _embedded?: { records?: { balances?: { authorized?: string } }[] };
+    _embedded?: {
+      records?: (Record<string, unknown> & {
+        balances?: Record<string, string>;
+      })[];
+    };
   };
-  const authorized = data._embedded?.records?.[0]?.balances?.authorized;
-  if (!authorized) {
+  const rec = data._embedded?.records?.[0];
+  if (!rec?.balances?.authorized) {
     throw new Error(
       `${label} asset not found or balances.authorized missing in Horizon response`,
     );
   }
-  return authorized;
+  const total = [
+    ...Object.values(rec.balances),
+    rec.contracts_amount,
+    rec.claimable_balances_amount,
+    rec.liquidity_pools_amount,
+  ]
+    .filter((p): p is string => typeof p === "string")
+    .reduce((sum, p) => sum + BigInt(p.replace(".", "")), 0n);
+  const digits = total.toString().padStart(8, "0");
+  return `${digits.slice(0, -7)}.${digits.slice(-7)}`;
 }
 
 // ── useStellarPlusdTotalSupply ────────────────────────────────────────────────
@@ -97,7 +112,7 @@ async function fetchHorizonAssetSupply(
 /**
  * Reads the total PLUSD supply in circulation from Horizon.
  *
- * `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → `balances.authorized`.
+ * `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → balances + contracts + claimable + pool amounts.
  * Returns a human-decimal string (e.g. `"10000711.9961018"`).
  * No wallet connection required.
  *

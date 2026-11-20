@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use crate::collateral_valuation::{asset_for_metal, nsr_per_dmt, to_pct};
 use crate::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
 use crate::price_provider::is_known_provider;
-use crate::security_state::{format_7dp_i128, UNIT};
+use crate::security_state::{format_dp_i128, unit};
 
 pub const COMMODITIES_KEY: &str = "SECURITY_MARK_COMMODITIES";
 pub const MAX_AGE_KEY: &str = "SECURITY_MARK_MAX_AGE_SECS";
@@ -151,7 +151,7 @@ fn non_blank(v: Option<&str>) -> Option<&str> {
     v.map(str::trim).filter(|s| !s.is_empty())
 }
 
-fn valid_asset(s: &str) -> bool {
+pub fn valid_asset(s: &str) -> bool {
     (1..=MAX_ASSET_BYTES).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
@@ -370,13 +370,13 @@ fn pow10(exp: i64) -> BigInt {
     BigInt::from(10u8).pow(u32::try_from(exp).unwrap_or(0))
 }
 
-pub fn standard_vpu_raw(price: &BigDecimal, (num, den): (u64, u64)) -> Option<i128> {
+pub fn standard_vpu_raw(price: &BigDecimal, (num, den): (u64, u64), decimals: u32) -> Option<i128> {
     let price = bounded_dec(price)?;
     let (int, scale) = price.as_bigint_and_exponent();
     if den == 0 {
         return None;
     }
-    let numer = int * BigInt::from(num) * pow10(7);
+    let numer = int * BigInt::from(num) * pow10(i64::from(decimals));
     let denom = BigInt::from(den) * pow10(scale);
     if numer.sign() == Sign::Minus {
         return Some(0);
@@ -462,6 +462,7 @@ pub fn concentrate_vpu_raw<S: std::hash::BuildHasher>(
     assay: &AssayRow,
     offtake: &OfftakeTermsRow,
     prices: &HashMap<String, BigDecimal, S>,
+    decimals: u32,
 ) -> Result<i128, SuggestionStatus> {
     validate_concentrate_inputs(assay, offtake)?;
     let terms = &offtake.payable_terms.0;
@@ -482,7 +483,7 @@ pub fn concentrate_vpu_raw<S: std::hash::BuildHasher>(
         .map_err(|_| SuggestionStatus::Unreadable)?
         .ok_or(SuggestionStatus::NoPrice)?;
     let nsr = nsr.max(BigDecimal::zero());
-    let scaled = (nsr * BigDecimal::from(UNIT)).with_scale_round(0, RoundingMode::Down);
+    let scaled = (nsr * BigDecimal::from(unit(decimals))).with_scale_round(0, RoundingMode::Down);
     i128::try_from(scaled.as_bigint_and_exponent().0).map_err(|_| SuggestionStatus::Unreadable)
 }
 
@@ -508,6 +509,7 @@ pub struct SuggestCtx<'a> {
     pub chain_id: i64,
     pub security_registry: &'a str,
     pub record_id: u32,
+    pub decimals: u32,
     pub map: &'a CommodityMap,
     pub prices: &'a PriceMap,
     pub concentrate: Option<(&'a AssayRow, &'a OfftakeTermsRow)>,
@@ -546,7 +548,10 @@ fn report_text(f: &ReportFields<'_>) -> String {
             "quote_unit={}",
             f.mapping.quote_unit.map_or("-", QuoteUnit::as_str)
         ),
-        format!("value_per_unit={}", format_7dp_i128(f.value_per_unit)),
+        format!(
+            "value_per_unit={}",
+            format_dp_i128(f.value_per_unit, f.ctx.decimals)
+        ),
         format!("benchmark={}", f.mapping.benchmark),
     ];
     if let Some(inputs) = &f.inputs {
@@ -596,7 +601,7 @@ fn compute_standard(
     let factor = quote_factor(record_unit, quote).ok_or(SuggestionStatus::UnsupportedUnit)?;
     let (head_price, head_at) = priced(ctx, &mapping.asset, &mapping.price_provider)?;
     let value_per_unit =
-        standard_vpu_raw(&head_price, factor).ok_or(SuggestionStatus::Unreadable)?;
+        standard_vpu_raw(&head_price, factor, ctx.decimals).ok_or(SuggestionStatus::Unreadable)?;
     Ok(Computed {
         value_per_unit,
         head_price,
@@ -633,7 +638,7 @@ fn compute_concentrate(
             Err(other) => return Err(other),
         }
     }
-    let value_per_unit = concentrate_vpu_raw(assay, offtake, &by_asset)?;
+    let value_per_unit = concentrate_vpu_raw(assay, offtake, &by_asset, ctx.decimals)?;
     Ok(Computed {
         value_per_unit,
         head_price,

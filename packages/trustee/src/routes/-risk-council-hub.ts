@@ -1,43 +1,43 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
+import { useMemo } from "react";
 import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
-import {
-  useRiskCouncilAccess,
-  useRiskCouncilHubLookups,
-  type CouncilCall,
-} from "@/api/useRiskCouncil";
+import { useRiskCouncilAccess } from "@/api/useRiskCouncil";
 import { useSessionState } from "@/auth/sessionStore";
 import {
   accessAction,
   formatReadyAt,
-  NO_LONGER_SCHEDULED,
   riskCouncilRoleLine,
 } from "@/lib/accessManagerAction";
+import { useChainWallet } from "@/lib/chainWallet";
 import { ENV } from "@/lib/env";
-import { useScheduledOps } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
-import { formatMaturityDate } from "@/utils/formatDate";
-import { formatChainAmount } from "./-repayment-recovery";
 import {
-  formatLoanLabel,
-  formatSignedChainAmount,
-} from "./-risk-council-shared";
+  useExecutedOperations,
+  useScheduledOps,
+  useServedOperationIds,
+} from "@/lib/riskCouncilOps";
+import { riskCouncilChainReason } from "@/lib/targetChains";
+import { formatLoanLabel } from "./-risk-council-shared";
 import { DEFAULT_NO_ROLE } from "./-risk-council-escalate";
+import {
+  callerText,
+  mergePendingOps,
+  pendingActionLabel,
+  pendingArgRows,
+  pendingOwner,
+  PENDING_STATE_LABELS,
+  usePruneExecuted,
+  type PendingOpItem,
+  type PendingOwner,
+} from "./-risk-council-pending";
 
 export const HUB_INTRO =
   "The Risk Council acts through the access manager. Declaring a default executes at once; every other Risk Council action waits 24 hours, and the Guardian or the Admin can cancel it during the wait.";
 export const HUB_EMPTY = "No scheduled operations found.";
 export const HUB_FOOTNOTE =
-  "Lists operations scheduled from this console in this session, and declared defaults or cures pending for any loan. Security terms, flag resolutions, consent releases and the inspector panel appear only when scheduled from this console in this session. Other scheduled operations need an indexer and are not listed yet.";
-export const INSPECTORS_ROW_LABEL = "All loans";
-export const HUB_NO_ROLE =
-  "Risk Council actions belong to the Risk Council. Pending operations are visible to the scheduling wallet only.";
+  "Inspector panel changes are not tied to a loan and are not listed here; open the Inspector panel to check one.";
+export const HUB_NO_ROLE = "Risk Council actions belong to the Risk Council.";
 
-export type HubRoute =
-  | "escalate"
-  | "reterm"
-  | "writedown"
-  | "security"
-  | "inspectors";
+export type HubRoute = PendingOwner | "inspectors";
 
 export interface HubLink {
   label: string;
@@ -49,6 +49,7 @@ export interface ScheduledRow {
   loanLabel: string;
   action: string;
   args: string;
+  scheduledBy: string;
   executableFrom: string;
   state: string;
   link: { route: HubRoute; loanId: string | null } | null;
@@ -64,61 +65,22 @@ export interface LoanIndexRow {
 export interface RiskCouncilHubView {
   chainId: number;
   blockedReason: string | null;
+  showInspectorsLink: boolean;
   intro: string;
   roleLine: string | null;
-  noRole: boolean;
   rows: ScheduledRow[];
   loans: LoanIndexRow[];
   loading: boolean;
 }
 
-const ACTION_LABELS: Record<CouncilCall["fn"], string> = {
-  set_default: "Declare default",
-  cure: "Cure",
-  amend_economics: "Amend economics",
-  adjust_interest: "Adjust interest",
-  write_down: "Write down",
-  close_defaulted: "Close defaulted loan",
-  set_terms: "Set security terms",
-  resolve_flag: "Resolve flag",
-  release_with_consent: "Release with consent",
-  set_inspectors: "Set inspector panel",
-};
-
-const ACTION_ROUTES: Record<CouncilCall["fn"], HubRoute> = {
-  set_default: "escalate",
-  cure: "writedown",
-  amend_economics: "reterm",
-  adjust_interest: "reterm",
-  write_down: "writedown",
-  close_defaulted: "writedown",
-  set_terms: "security",
-  resolve_flag: "security",
-  release_with_consent: "security",
-  set_inspectors: "inspectors",
-};
-
-export function formatCallArgs(call: CouncilCall, chainId: number): string {
-  switch (call.fn) {
-    case "amend_economics":
-      return `${call.rateBps} bps · maturity ${formatMaturityDate(call.maturity)}`;
-    case "adjust_interest":
-      return `${formatSignedChainAmount(call.delta, chainId)} · reason hash ${call.reasonHash.slice(0, 10)}…`;
-    case "write_down":
-      return formatChainAmount(call.amount, chainId);
-    case "close_defaulted":
-      return call.reason;
-    case "set_terms":
-      return `advance ${bpsToPercent(call.terms.advanceRatioBps)}% · margin call ${bpsToPercent(call.terms.marginCallRatioBps)}%`;
-    case "resolve_flag":
-      return `${call.outcome} · record #${call.recordId}`;
-    case "release_with_consent":
-      return `record #${call.recordId} · consent hash ${call.consentHash.slice(0, 10)}…`;
-    case "set_inspectors":
-      return `${call.inspectors.length} ${call.inspectors.length === 1 ? "inspector" : "inspectors"}`;
-    default:
-      return "—";
-  }
+export function formatPendingArgs(
+  item: PendingOpItem,
+  chainId: number,
+): string {
+  const rows = pendingArgRows(item, chainId);
+  return rows.length === 0
+    ? "—"
+    : rows.map((row) => `${row.label}: ${row.value}`).join(" · ");
 }
 
 const SECURITY_LINK: HubLink = { label: "Security", route: "security" };
@@ -142,18 +104,6 @@ export function loanLinks(status: string): HubLink[] {
   return security;
 }
 
-function bpsToPercent(bps: number): string {
-  return String(bps / 100);
-}
-
-export function callLoanId(
-  call: CouncilCall,
-  pageLocal: { loanId?: number } | undefined,
-): number | null {
-  if ("loanId" in call) return call.loanId;
-  return pageLocal?.loanId ?? null;
-}
-
 function loanLabelFor(
   loans: ReadonlyArray<LoanBookEntry>,
   loanId: number,
@@ -167,21 +117,26 @@ function loanLabelFor(
 export function useRiskCouncilHub(): RiskCouncilHubView {
   const session = useSessionState();
   const chainId = session.chainId ?? ENV.STELLAR_CHAIN_ID;
-  const blockedReason = stellarOnlyActionReason(chainId);
+  const blockedReason = riskCouncilChainReason(chainId);
   const loanBook = useLoanBook(chainId);
-  const loans = blockedReason ? [] : (loanBook.data?.loans ?? []);
+  const loans = useMemo(
+    () => (blockedReason ? [] : (loanBook.data?.loans ?? [])),
+    [blockedReason, loanBook.data],
+  );
   const access = useRiskCouncilAccess(chainId, null, "set_default");
-  const ops = useScheduledOps(chainId);
+  const sessionOps = useScheduledOps(chainId);
+  const executed = useExecutedOperations(chainId);
+  const everServed = useServedOperationIds(chainId);
+  const { address } = useChainWallet(chainId);
+
+  const servedOps = useMemo(
+    () => loans.flatMap((loan) => loan.pending_operations ?? []),
+    [loans],
+  );
+  usePruneExecuted(chainId, servedOps, loanBook.dataUpdatedAt ?? 0);
 
   const canCall = access.data?.canCall;
   const noRole = canCall != null && !canCall.immediate && canCall.delay === 0;
-  const lookups = useRiskCouncilHubLookups(
-    chainId,
-    loans,
-    ops,
-    canCall != null && !noRole,
-  );
-
   const action = accessAction(canCall, access.data?.schedule ?? undefined);
   const roleLine =
     blockedReason != null || canCall == null
@@ -195,41 +150,51 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
             DEFAULT_NO_ROLE,
           );
 
-  const rows: ScheduledRow[] = [];
-  for (const lookup of lookups.lookups) {
-    if (lookup == null) continue;
-    const { call, readyAt, pageLocal } = lookup;
-    const pending = readyAt > 0;
-    if (!pending && (pageLocal == null || pageLocal.executedHere)) continue;
-    const loanId = callLoanId(call, pageLocal);
-    rows.push({
-      key: `${call.fn}:${JSON.stringify(call)}`,
-      loanLabel:
-        call.fn === "set_inspectors"
-          ? INSPECTORS_ROW_LABEL
-          : loanId === null
-            ? "—"
-            : loanLabelFor(loans, loanId),
-      action: ACTION_LABELS[call.fn],
-      args: formatCallArgs(call, chainId),
-      executableFrom: pending ? formatReadyAt(readyAt) : "—",
-      state: pending ? "Scheduled" : NO_LONGER_SCHEDULED,
+  const nowSec = Date.now() / 1000;
+  const items: PendingOpItem[] = loans
+    .flatMap((loan) => {
+      const loanId = Number(loan.loan_id);
+      return Number.isInteger(loanId)
+        ? mergePendingOps({
+            served: loan.pending_operations ?? [],
+            session: sessionOps,
+            executed,
+            everServed,
+            chainId,
+            loanId,
+            nowSec,
+          })
+        : [];
+    })
+    .filter((item) => item.executed === null)
+    .sort(
+      (a, b) =>
+        a.readyAt - b.readyAt || a.operationId.localeCompare(b.operationId),
+    );
+
+  const rows: ScheduledRow[] = items.map((item) => {
+    const owner = pendingOwner(item.fn);
+    return {
+      key: item.key,
+      loanLabel: item.loanId === null ? "—" : loanLabelFor(loans, item.loanId),
+      action: pendingActionLabel(item),
+      args: formatPendingArgs(item, chainId),
+      scheduledBy: callerText(item, address, chainId),
+      executableFrom: formatReadyAt(item.readyAt),
+      state: PENDING_STATE_LABELS[item.state],
       link:
-        call.fn !== "set_inspectors" && loanId === null
+        owner === null || item.loanId === null
           ? null
-          : {
-              route: ACTION_ROUTES[call.fn],
-              loanId: loanId === null ? null : String(loanId),
-            },
-    });
-  }
+          : { route: owner, loanId: String(item.loanId) },
+    };
+  });
 
   return {
     chainId,
     blockedReason,
+    showInspectorsLink: blockedReason === null,
     intro: HUB_INTRO,
     roleLine,
-    noRole,
     rows,
     loans: loans.map((loan) => ({
       loanId: loan.loan_id,
@@ -237,6 +202,6 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
       status: loan.onchain_status,
       links: loanLinks(loan.onchain_status),
     })),
-    loading: lookups.isLoading,
+    loading: loanBook.isLoading,
   };
 }
