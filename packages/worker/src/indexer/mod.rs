@@ -5,6 +5,7 @@ pub mod asset_transfers;
 pub mod chain_poller;
 pub mod collateral_registry_parsers;
 pub mod config;
+pub mod cursor;
 pub mod deal_token_parsers;
 pub mod deal_tokens;
 pub mod evm_parsers;
@@ -135,9 +136,11 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
     let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
-    let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
-        MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
-    ));
+    let fetcher: Arc<dyn LoanMetadataFetcher> =
+        Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(
+            shared::http_client::http_client(),
+            settings.ipfs_gateway_url.clone(),
+        )));
     let reader = Arc::new(
         LoanRegistryReader::new(&settings.eth_rpc_url)
             .expect("LoanRegistryReader: valid eth_rpc_url"),
@@ -389,7 +392,17 @@ async fn index_once<P: ChainEventPoller>(
 
     let end = (cursor + block_range - 1).min(latest - confirmations_delay);
 
-    let mut mappers = poller.poll(cursor, end).await?;
+    let mut batch = poller.poll(cursor, end).await?;
+    let Some(commit) = cursor::commit_end(cursor, end, batch.covered_to) else {
+        tracing::debug!(
+            cursor,
+            covered_to = batch.covered_to,
+            "RPC has not ingested the cursor ledger yet"
+        );
+        return Ok(());
+    };
+    batch.mappers.retain(|m| m.block_number() <= commit);
+    let mut mappers = batch.mappers;
 
     let mut tx = repo.pool.begin().await?;
     let mut timestamp_cache: HashMap<u64, u64> = HashMap::new();
@@ -404,12 +417,13 @@ async fn index_once<P: ChainEventPoller>(
         }
     }
 
-    repo.set_cursor(&mut tx, chain_id, end + 1).await?;
+    repo.set_cursor(&mut tx, chain_id, commit + 1).await?;
     tx.commit().await?;
 
     tracing::info!(
         from = cursor,
-        to = end,
+        to = commit,
+        requested_to = end,
         count = mappers.len(),
         "indexed block range"
     );

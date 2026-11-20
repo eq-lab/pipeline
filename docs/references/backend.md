@@ -386,6 +386,25 @@ leg counts on both sides; for minter-era repayments it is structurally about 0. 
 `shared::contract_logs_repo::list_repayment_mints` and `shared::minted_yield` for reuse by the
 dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`); a Stellar chain with `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` also counts carved-out interest at release, net of reversal (#1789).
 
+#### Stellar indexer cursor and RPC retention
+
+**Cursor rule (#1739).** `ChainEventPoller::poll` returns the mappers and `covered_to`, the highest ledger the source has actually ingested. `index_once` commits `min(requested end, covered_to) + 1` and drops mappers above that ledger; when `covered_to` is below the cursor nothing is committed and the next poll retries. The Stellar poller sets `covered_to = min(to, every getEvents latestLedger)` over every 25-id request chunk, every page and both phases (core contracts, then deal tokens), so a load-balanced RPC whose `getEvents` node is one ledger behind its `getLatestLedger` node can no longer make the cursor step over the missing ledger. A `getEvents` response without `latestLedger` is an error. EVM still reports `covered_to = to` (TD-195). The `indexed block range` log line carries `to` (committed) and `requested_to`.
+
+**Retention gap.** When `getEvents` fails, the Stellar poller calls `getHealth`. If the cursor is below `oldestLedger`, it logs one `error!` per poll with `chain_id`, `cursor`, `oldest_ledger` and `missing_ledgers` (message `stellar indexer cursor is below RPC retention; indexing halted until an operator resets the cursor`) and returns `CursorBelowRetention`. A `CHAIN_<id>_STELLAR_START_BLOCK` that is already past retention takes the same path. The indexer never moves the cursor by itself, and every other `getEvents` failure stays a plain retry.
+
+**Operator runbook.**
+
+1. Stop the worker.
+2. Either point `CHAIN_<id>_STELLAR_RPC_URL` at an RPC whose retention covers the cursor (an archival RPC) and restart, or accept the gap: call `getHealth` right before the change and read a fresh `oldestLedger` (the `oldest_ledger` in the error log is already pruned by restart time, since retention moves forward about one ledger every 5 s), then run `UPDATE log_collector_state SET last_indexed_block = <fresh oldestLedger + 1000> WHERE chain_id = <id>` (a margin of 1000 ledgers, about 83 minutes) and restart.
+3. Record the chain, the lost ledger range `[cursor, new_cursor - 1]`, the date and the reason in the ops log. There is no table for accepted gaps.
+4. Downstream effects: the PLUSD balance seed and the Pocket seed cover balances at the seed ledger, so balances stay right; per-event history inside the gap (loan, deposit, transfer and AccessManager events) is lost and is not backfilled.
+
+#### HTTP client timeouts
+
+`shared::http_client::http_client()` is the one outbound reqwest client: 30 s per request, 5 s to connect. It backs the Stellar RPC client (indexer, price poller, relayer whitelist), the IPFS `MetadataFetcher` clients (worker and API), the Crystal, Elliptic, Sumsub and MetalpriceAPI clients, and, through `worker::evm_http::evm_rpc_client`, every worker alloy HTTP provider (indexer poller, LoanRegistry reader, SecurityRegistry views, EVM price poller, EVM relayer). SendGrid (10 s) and the captcha client (5 s) keep their own. BitGo is the deliberate exception: `POST /txrequests` has no idempotency key, so a timeout after acceptance could trigger a duplicate payout on retry (TD-194).
+
+A timed-out relayer send is safe to retry: the EVM relayer takes its nonce from `eth_getTransactionCount(pending)` and the Stellar relayer reads a fresh account sequence each attempt, both check the on-chain allow state before submitting, and a rejected resubmit is logged and retried on the next cycle. A hung IPFS gateway costs the mapper's three-retry backoff (about 156 s) instead of blocking the indexer forever.
+
 #### Stellar deal-token-factory indexing
 
 Enabled by `CHAIN_<id>_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (#1482); unset ships dark — no factory polling, no seed query, no token polling. Rows land in `contract_logs` only; amounts and ids are decimal strings, and the shapes match the EVM arm; `DealRegistered.cargo` is `null` for a DEBT-only deal on either chain.

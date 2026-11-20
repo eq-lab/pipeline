@@ -20,6 +20,7 @@ pub mod elliptic;
 pub mod email;
 pub mod events;
 pub mod evm;
+pub mod http_client;
 pub mod json_numeric;
 pub mod kyb_document_repo;
 pub mod kyc_repo;

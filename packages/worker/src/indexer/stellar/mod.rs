@@ -24,6 +24,7 @@ pub mod plusd_seed;
 pub mod pocket_parsers;
 pub mod pocket_seed;
 pub mod poller;
+pub mod retention;
 pub mod rpc;
 pub mod security_registry_parsers;
 pub mod security_registry_sync;

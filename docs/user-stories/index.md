@@ -466,5 +466,6 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#2127 Trustee loan detail: Facility / disbursed and Facility / senior tiles show the wrong second value](https://github.com/eq-lab/pipeline/issues/2127) | [2127-trustee-facility-tiles.md](./epic-2129/2127-trustee-facility-tiles.md) | Initial |
+| [#1739 Stellar indexer: stalls past RPC retention, can skip a ledger behind a load-balanced RPC, no HTTP timeouts](https://github.com/eq-lab/pipeline/issues/1739) | [1739-stellar-indexer-cursor.md](./epic-2129/1739-stellar-indexer-cursor.md) | Initial |
 | [#2128 LP Dashboard: Active Loans counts Closed/Default, Liquid Cover shows 0.0x on null liquid figures](https://github.com/eq-lab/pipeline/issues/2128) | [2128-lp-dashboard-active-loans.md](./epic-2129/2128-lp-dashboard-active-loans.md) | Initial |
 | [#2123 Waterfall: reject quotational offtaker overpayment like both contracts (OfftakerExceedsPrice)](https://github.com/eq-lab/pipeline/issues/2123) | [2123-waterfall-quotational-overpay.md](./epic-2129/2123-waterfall-quotational-overpay.md) | Initial |

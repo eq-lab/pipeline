@@ -96,8 +96,11 @@ async fn main() -> anyhow::Result<()> {
     // must fail fast rather than block the request for the default ~36s of retries;
     // the submitter can retry.
     let loan_metadata_fetcher = Arc::new(HttpLoanMetadataFetcher::new(
-        MetadataFetcher::new(reqwest::Client::new(), ipfs_gateway_url_from_env())
-            .with_backoffs(vec![]),
+        MetadataFetcher::new(
+            shared::http_client::http_client(),
+            ipfs_gateway_url_from_env(),
+        )
+        .with_backoffs(vec![]),
     ));
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
