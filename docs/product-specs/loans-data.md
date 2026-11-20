@@ -135,6 +135,8 @@ ceiling(loanId) = Σ over epochs e of
       * ( min(block.timestamp, e.maturityDate) - e.effectiveFrom ) / (365 days * 10_000)
 ```
 
+On-chain rates are `u32` fixed-point with `ONE = 1_000_000` (bps × 100), and the indexer and API carry them unfloored as ppm (`senior_interest_rate_ppm`, `current_rate_ppm`; the bps fields are floored mirrors) (#2126).
+
 A loan past maturity without a rollover cannot accrue beyond its contracted term. A
 rollover appends an epoch that re-opens accrual under the new rate from the prior maturity. **Historical:** this ceiling describes the retired YieldMinter. The current LoanRegistry cap (`_accruedInterest`) has no maturity cap and accrues on outstanding senior over 365.25 d; the waterfall follows it (#967, #1630).
 

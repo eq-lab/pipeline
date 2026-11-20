@@ -553,6 +553,16 @@ Runs on every EVM and Stellar chain with a LoanRegistry configured (#1547); no n
 
 **Rollback.** `DROP TABLE loan_registry_settings` and `DELETE FROM _sqlx_migrations WHERE version = 20261119000002`.
 
+#### LoanRegistry rate ppm backfill
+
+Issue #2126. The readers keep the contract's raw ppm rate (`ONE = 1_000_000`) in `ImmutableLoanDataView.senior_interest_rate_ppm` and `MutableLoanDataView.current_rate_ppm` (the EVM `ppm_to_bps` and the Stellar `/ 100` are gone). The `contract_logs.params.snapshot` JSON gains two optional keys, `senior_interest_rate_ppm` and `current_rate_ppm`; the legacy `senior_interest_rate_bps` and `current_rate` stay as floored mirrors (`ppm / 100`) so a rolled-back API binary still deserializes rows. The API reads `LoanSnapshot::genesis_rate_ppm()` / `current_rate_ppm()`, which fall back to `bps × 100` for rows without the keys.
+
+**Backfill.** `indexer/rate_ppm_backfill.rs` runs once at worker start per chain, before the poller starts (EVM `run_indexer_job`, Stellar inside the `loan_registry_id` branch of `run_stellar_indexer_job`), for the configured LoanRegistry only. It lists the loans that have lifecycle snapshot rows without `senior_interest_rate_ppm`, reads `immutableLoanData` / `immutable_loan_data` for each (immutable, so a current-state read is correct on both chains), and writes both keys onto the loan's rows in one transaction. `current_rate_ppm` of a row is the rate in force at that row: the genesis rate, replaced by the stored raw `new_rate` of every `EconomicsAmended` / `LoanRolledOver` row up to and including it.
+
+**Guard.** A loan is backfilled only if every row's stored `senior_interest_rate_bps` equals `genesis_ppm / 100`; a mismatch, an RPC error or a decode error logs `warn`, skips the loan and retries on the next start. The pass is idempotent: rows that already carry the keys are not rewritten, and a restart finds nothing to do. Rows of pre-rework LoanRegistry addresses are not touched and keep the `bps × 100` fallback. The pass logs `info` with `loans_done`, `rows_done` and `loans_skipped` per chain.
+
+**Verify.** `SELECT count(*) FROM contract_logs WHERE params ? 'snapshot' AND params->'snapshot'->>'senior_interest_rate_ppm' IS NULL` drops to the pre-rework rows only. The waterfall's interest headroom (gross interest plus adjustment, minus recorded senior interest and fees) equals `loanMoney(loanId).accruedInterest` (EVM) or `accrued_interest(loan_id)` (Stellar) at the same timestamp, since the contract value is net of recorded interest. "Missing" means the key is absent or JSON `null`; new rows omit the key instead of writing `null`.
+
 #### EVM DealTokenFactory (#1485)
 
 `PipelineDealTokenFactory` mints a DEBT `DealToken` per loan on current factories (contracts #51 and later, including Hoodi v5), plus a CARGO token on legacy factories only (`registerDeal`, CREATE2, salt = `loanId`). The indexer records the factory's deal events and every DealToken `Transfer`. It is enabled by the optional `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS`; unset or blank ships dark (no handler, no extra `eth_getLogs` addresses, no seed query). A malformed value fails startup naming `DEAL_TOKEN_FACTORY_ADDRESS`.

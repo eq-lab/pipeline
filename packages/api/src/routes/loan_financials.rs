@@ -28,7 +28,7 @@ use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{EconomicsEventRow, LoanSnapshotRow};
-use shared::loan_economics::build_epochs;
+use shared::loan_economics::{build_epochs, ppm_to_bps_floor};
 use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
@@ -106,7 +106,7 @@ pub struct LoanFinancialsResponse {
 pub struct EpochView {
     /// 1-based epoch ordinal (1 = the original draw window).
     pub number: u32,
-    /// Current APY in basis points (`1_120` = 11.2%) — the epoch's rate.
+    /// Current APY in whole basis points (`1_120` = 11.2%), floored from the ppm rate.
     pub current_apy_bps: u32,
     /// ISO-8601 UTC epoch start date.
     pub start_date: String,
@@ -283,7 +283,7 @@ fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
     let epochs = build_epochs(
         s.origination_date,
         s.original_maturity_date,
-        s.senior_interest_rate_bps,
+        s.genesis_rate_ppm(),
         events,
     );
     // `build_epochs` always seeds at least epoch 1 — never empty.
@@ -292,7 +292,7 @@ fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
 
     EpochView {
         number,
-        current_apy_bps: current.rate_bps,
+        current_apy_bps: ppm_to_bps_floor(current.rate_ppm),
         start_date: iso_utc_from_unix(current.start),
         maturity_date: iso_utc_from_unix(s.current_maturity_timestamp),
     }

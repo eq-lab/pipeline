@@ -5,6 +5,7 @@ use pipeline_api::error::ApiError;
 use pipeline_api::routes::waterfall::{
     compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, WaterfallBreakdown,
 };
+use shared::book_weighting::LoanAccrual;
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -54,6 +55,7 @@ fn snapshot_with_repayment(
         original_equity_tranche: dec("0"),
         original_offtaker_price: dec("100000000000000000"),
         senior_interest_rate_bps: rate_bps,
+        senior_interest_rate_ppm: None,
         origination_date: ORIGINATION,
         original_maturity_date: ONE_YEAR_LATER,
         next_economics_epochs_id: dec("1"),
@@ -61,6 +63,7 @@ fn snapshot_with_repayment(
         status: "Performing".to_owned(),
         current_maturity_timestamp: ONE_YEAR_LATER,
         current_rate: rate_bps,
+        current_rate_ppm: None,
         closure_reason: String::new(),
         carved_out: false,
         disbursed: dec(senior_tranche),
@@ -70,6 +73,17 @@ fn snapshot_with_repayment(
         metadata_uri_onchain: String::new(),
         repayment,
     }
+}
+
+fn with_ppm(mut s: LoanSnapshot, genesis_ppm: u32) -> LoanSnapshot {
+    s.senior_interest_rate_ppm = Some(genesis_ppm);
+    s.senior_interest_rate_bps = genesis_ppm / 100;
+    s
+}
+
+fn gross_accrual(genesis_ppm: u32, events: &[LoanRateEventRow], until: i64) -> BigDecimal {
+    let refs: Vec<&LoanRateEventRow> = events.iter().collect();
+    LoanAccrual::from_ppm(genesis_ppm, &refs).accrued_floored_per_epoch(until)
 }
 
 fn fees(mgmt: i32, perf: i32, oet: i32) -> FeeScheduleRow {
@@ -194,8 +208,8 @@ fn rate_amendment_switches_the_rate_at_the_event() {
     ];
     let as_of = ORIGINATION + 90 * DAY;
     let b = run(&s, as_of, &fees(0, 0, 0), &events);
-    assert_eq!(b.senior_coupon_net, dec("28644763859"));
-    assert!(b.senior_coupon_net <= contract_cap(120_000, &events, as_of));
+    assert_eq!(b.senior_coupon_net, dec("28650924024"));
+    assert_eq!(b.senior_coupon_net, contract_cap(120_000, &events, as_of));
 }
 
 #[test]
@@ -248,20 +262,20 @@ fn fees_are_simple_interest_on_the_same_outstanding_integral() {
 }
 
 #[test]
-fn suggested_interest_never_exceeds_the_contract_cap_across_scenarios() {
+fn gross_accrual_equals_the_contract_cap_across_scenarios() {
     struct Scenario {
-        genesis_bps: u32,
+        genesis_ppm: u32,
         events: Vec<LoanRateEventRow>,
         as_of: i64,
     }
     let scenarios = [
         Scenario {
-            genesis_bps: 1750,
+            genesis_ppm: 175_000,
             events: vec![disbursed(ORIGINATION, "5200000000000")],
             as_of: ORIGINATION + 180 * DAY,
         },
         Scenario {
-            genesis_bps: 1333,
+            genesis_ppm: 133_333,
             events: vec![
                 disbursed(ORIGINATION + 7, "1234567890123"),
                 disbursed(ORIGINATION + 11 * DAY + 13, "2345678901234"),
@@ -293,7 +307,7 @@ fn suggested_interest_never_exceeds_the_contract_cap_across_scenarios() {
             as_of: ORIGINATION + 365 * DAY + 77,
         },
         Scenario {
-            genesis_bps: 999,
+            genesis_ppm: 99_901,
             events: vec![
                 disbursed(ORIGINATION, "777777777777"),
                 ev(
@@ -313,16 +327,13 @@ fn suggested_interest_never_exceeds_the_contract_cap_across_scenarios() {
         },
     ];
     for sc in scenarios {
-        let s = snapshot("5200000000000", "0", sc.genesis_bps);
-        let cap = contract_cap(i128::from(sc.genesis_bps) * 100, &sc.events, sc.as_of);
-        for f in [fees(0, 0, 0), fees(100, 2000, 50)] {
-            let b = run(&s, sc.as_of, &f, &sc.events);
-            assert!(
-                suggested_interest(&b) <= cap,
-                "{} > {cap}",
-                suggested_interest(&b)
-            );
-        }
+        let s = with_ppm(snapshot("5200000000000", "0", 1200), sc.genesis_ppm);
+        let cap = contract_cap(i128::from(sc.genesis_ppm), &sc.events, sc.as_of);
+        assert_eq!(gross_accrual(sc.genesis_ppm, &sc.events, sc.as_of), cap);
+        let b = run(&s, sc.as_of, &fees(0, 0, 0), &sc.events);
+        assert_eq!(suggested_interest(&b), cap);
+        let b = run(&s, sc.as_of, &fees(100, 2000, 50), &sc.events);
+        assert!(suggested_interest(&b) <= cap);
     }
 }
 
@@ -401,18 +412,59 @@ fn closed_loan_has_no_headroom() {
 }
 
 #[test]
-fn non_whole_bps_genesis_rate_floors_below_the_ppm_cap() {
+fn non_whole_bps_genesis_rate_matches_the_ppm_cap() {
+    let s = with_ppm(snapshot(T, "0", 1125), 112_550);
+    let events = [disbursed(ORIGINATION, T)];
+    let as_of = ORIGINATION + 200 * DAY + 17;
+    let b = run(&s, as_of, &fees(0, 0, 0), &events);
+    assert_eq!(
+        suggested_interest(&b),
+        contract_cap(112_550, &events, as_of)
+    );
+    assert!(b.senior_coupon_net > dec("0"));
+}
+
+#[test]
+fn issue_2126_example_accrues_the_full_ppm_rate() {
+    let s = with_ppm(snapshot(T, "0", 725), 72_550);
+    let events = [disbursed(ORIGINATION, T)];
+    let b = run(&s, ONE_YEAR_LATER, &fees(0, 0, 0), &events);
+    assert_eq!(b.senior_coupon_net, dec("72550000000"));
+    assert_eq!(
+        contract_cap(72_550, &events, ONE_YEAR_LATER),
+        dec("72550000000")
+    );
+}
+
+#[test]
+fn snapshot_without_ppm_falls_back_to_bps_times_one_hundred() {
     let s = snapshot(T, "0", 1125);
     let events = [disbursed(ORIGINATION, T)];
     let as_of = ORIGINATION + 200 * DAY + 17;
     let b = run(&s, as_of, &fees(0, 0, 0), &events);
-    let cap = contract_cap(112_550, &events, as_of);
-    assert!(
-        b.senior_coupon_net < cap,
-        "{} !< {cap}",
-        b.senior_coupon_net
+    assert_eq!(
+        suggested_interest(&b),
+        contract_cap(112_500, &events, as_of)
     );
-    assert!(b.senior_coupon_net > dec("0"));
+}
+
+#[test]
+fn default_does_not_split_the_contract_epoch() {
+    let out = "1234567891";
+    let events = [
+        disbursed(ORIGINATION, out),
+        ev("LoanDefaulted", ORIGINATION + 100 * DAY, Some(out), None),
+    ];
+    let as_of = ORIGINATION + 200 * DAY + 17;
+    let one_epoch = gross_accrual(72_550, &events, as_of);
+    assert_eq!(one_epoch, contract_cap(72_550, &events, as_of));
+    let floor_each = |secs: i64| {
+        1_234_567_891_i128 * 72_550 * i128::from(secs) / (i128::from(CONTRACT_YEAR) * 1_000_000)
+    };
+    let split = floor_each(100 * DAY) + floor_each(100 * DAY + 17);
+    assert_eq!(one_epoch, BigDecimal::from(floor_each(200 * DAY + 17)));
+    assert_eq!(one_epoch, dec("49044757"));
+    assert_eq!(BigDecimal::from(split), dec("49044756"));
 }
 
 fn default_snapshot(repaid: &str) -> LoanSnapshot {

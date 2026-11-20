@@ -76,6 +76,7 @@ fn make_loan(
             original_equity_tranche: usdc(equity_k * 1_000),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: rate_bps,
+            senior_interest_rate_ppm: None,
             origination_date: start_day * DAY,
             original_maturity_date: end_day * DAY,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -84,6 +85,7 @@ fn make_loan(
             // Rollover-aware maturity defaults to the original maturity (no rollover).
             current_maturity_timestamp: end_day * DAY,
             current_rate: rate_bps,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: usdc(senior_k * 1_000),

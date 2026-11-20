@@ -7,12 +7,12 @@ use pipeline_api::routes::dashboard::net_apy;
 use pipeline_api::routes::loan_book::compute_loan_book;
 use pipeline_api::routes::portfolio::compute_series;
 use shared::book_weighting::{
-    accrued_over_intervals, current_rate_bps, current_tenor_days, normalise_rate_events,
-    outstanding_at, rate_bps_at, LoanAccrual, CONTRACT_YEAR_SECS,
+    accrued_over_intervals, current_tenor_days, normalise_rate_events, outstanding_at, rate_ppm_at,
+    LoanAccrual, CONTRACT_YEAR_SECS,
 };
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::{LoanRateEventRow, LoanSnapshotRow};
-use shared::loan_economics::economics_rate_to_bps;
+use shared::loan_economics::ppm_to_bps_floor;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
@@ -42,6 +42,7 @@ struct L {
     repaid: i64,
     rate_bps: u32,
     current_rate: u32,
+    current_rate_ppm: Option<u32>,
     start_day: i64,
     end_day: i64,
     current_end_day: i64,
@@ -57,6 +58,7 @@ impl L {
             repaid,
             rate_bps,
             current_rate: rate_bps,
+            current_rate_ppm: None,
             start_day: 0,
             end_day: 100,
             current_end_day: 100,
@@ -85,6 +87,7 @@ impl L {
                 original_equity_tranche: usdc(self.equity),
                 original_offtaker_price: BigDecimal::from(0_i64),
                 senior_interest_rate_bps: self.rate_bps,
+                senior_interest_rate_ppm: None,
                 origination_date: self.start_day * DAY,
                 original_maturity_date: self.end_day * DAY,
                 next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -92,6 +95,7 @@ impl L {
                 status: "Performing".to_owned(),
                 current_maturity_timestamp: self.current_end_day * DAY,
                 current_rate: self.current_rate,
+                current_rate_ppm: self.current_rate_ppm,
                 closure_reason: "None".to_owned(),
                 carved_out: false,
                 disbursed: usdc(self.disbursed),
@@ -211,7 +215,7 @@ fn pre_rework_zero_current_rate_falls_back_to_genesis() {
         current_rate: 0,
         ..L::new(1, 1000, 1000, 0, 1200)
     };
-    assert_eq!(current_rate_bps(&legacy.row().snapshot), 1200);
+    assert_eq!(legacy.row().snapshot.current_rate_ppm(), 120_000);
     let s = book(&[legacy.row()]).summary;
     assert_eq!(s.avg_yield.as_deref(), Some("0.120000"));
     assert_eq!(book(&[legacy.row()]).loans[0].rate, "0.120000");
@@ -224,6 +228,20 @@ fn per_loan_rate_is_current_rate() {
         ..L::new(1, 1000, 1000, 0, 1000)
     };
     assert_eq!(book(&[amended.row()]).loans[0].rate, "0.150000");
+}
+
+#[test]
+fn avg_yield_weights_the_full_ppm_rate() {
+    let a = L {
+        current_rate_ppm: Some(72_550),
+        ..L::new(1, 1000, 1000, 0, 725)
+    };
+    let b = L {
+        current_rate_ppm: Some(100_000),
+        ..L::new(2, 1000, 1000, 0, 1000)
+    };
+    let s = book(&[a.row(), b.row()]).summary;
+    assert_eq!(s.avg_yield.as_deref(), Some("0.086275"));
 }
 
 #[test]
@@ -424,14 +442,31 @@ fn series_accrued_is_zero_without_outstanding_events() {
 }
 
 #[test]
-fn rate_event_ppm_to_bps_floors_like_the_snapshot() {
+fn current_rate_ppm_prefers_ppm_then_legacy_bps_then_genesis() {
+    let with_ppm = L {
+        current_rate_ppm: Some(72_550),
+        ..L::new(1, 1000, 1000, 0, 1000)
+    };
+    assert_eq!(with_ppm.row().snapshot.current_rate_ppm(), 72_550);
+    assert_eq!(book(&[with_ppm.row()]).loans[0].rate, "0.072550");
+    let legacy_bps = L::new(1, 1000, 1000, 0, 1000);
+    assert_eq!(legacy_bps.row().snapshot.current_rate_ppm(), 100_000);
+    let genesis_only = L {
+        current_rate: 0,
+        ..L::new(1, 1000, 1000, 0, 1125)
+    };
+    assert_eq!(genesis_only.row().snapshot.current_rate_ppm(), 112_500);
+}
+
+#[test]
+fn rate_event_ppm_is_kept_untruncated() {
     let (loans, mut events) = series_fixture();
     events.push(rate_event(1, "EconomicsAmended", 5, 112_550));
     events.push(rate_event(2, "EconomicsAmended", 5, 112_550));
-    assert_apy(apy_at(&loans, &events, 10), 0.1125);
-    assert_eq!(economics_rate_to_bps(112_550), 1125);
-    assert_eq!(economics_rate_to_bps(112_599), 1125);
-    assert_eq!(economics_rate_to_bps(112_550) as i64, 112_550 / 100);
+    assert_apy(apy_at(&loans, &events, 10), 0.11255);
+    assert_eq!(ppm_to_bps_floor(112_550), 1125);
+    assert_eq!(ppm_to_bps_floor(112_599), 1125);
+    assert_eq!(ppm_to_bps_floor(112_550) as i64, 112_550 / 100);
 }
 
 // ── helper functions ─────────────────────────────────────────────────────────
@@ -445,11 +480,11 @@ fn helper_latest_event_at_or_before_t_wins_and_ties_keep_input_order() {
     assert_eq!(outstanding_at(&refs, 4 * DAY), BigDecimal::from(0_i64));
     assert_eq!(outstanding_at(&refs, 5 * DAY), usdc(40));
     assert_eq!(outstanding_at(&refs, 100 * DAY), usdc(10));
-    assert_eq!(rate_bps_at(1234, &refs, 100 * DAY), 1234);
+    assert_eq!(rate_ppm_at(123_400, &refs, 100 * DAY), 123_400);
 }
 
 fn naive_accrued(
-    initial_bps: u32,
+    initial_ppm: u32,
     refs: &[&LoanRateEventRow],
     intervals: &[(i64, i64)],
 ) -> BigDecimal {
@@ -466,12 +501,12 @@ fn naive_accrued(
         let mut start = from;
         for end in cuts {
             total += outstanding_at(refs, start)
-                * BigDecimal::from(i64::from(rate_bps_at(initial_bps, refs, start)))
+                * BigDecimal::from(i64::from(rate_ppm_at(initial_ppm, refs, start)))
                 * BigDecimal::from(end - start);
             start = end;
         }
     }
-    total / (BigDecimal::from(10_000_i64) * BigDecimal::from(CONTRACT_YEAR_SECS))
+    total / (BigDecimal::from(1_000_000_i64) * BigDecimal::from(CONTRACT_YEAR_SECS))
 }
 
 #[test]
@@ -487,7 +522,7 @@ fn accrual_fast_path_equals_per_interval_result_on_multi_event_fixture() {
         outstanding_event(1, "PaymentRecorded", 20, 10),
     ];
     let refs: Vec<&LoanRateEventRow> = events.iter().collect();
-    let acc = LoanAccrual::new(1000, &refs);
+    let acc = LoanAccrual::from_ppm(100_000, &refs);
     let interval_sets: [Vec<(i64, i64)>; 5] = [
         vec![(0, 3 * DAY)],
         vec![(2 * DAY, 9 * DAY), (10 * DAY, 14 * DAY)],
@@ -496,10 +531,10 @@ fn accrual_fast_path_equals_per_interval_result_on_multi_event_fixture() {
         vec![(0, 100 * DAY)],
     ];
     for iv in &interval_sets {
-        assert_eq!(acc.accrued(iv), naive_accrued(1000, &refs, iv));
+        assert_eq!(acc.accrued(iv), naive_accrued(100_000, &refs, iv));
         assert_eq!(
-            accrued_over_intervals(1000, &refs, iv),
-            naive_accrued(1000, &refs, iv)
+            accrued_over_intervals(100_000, &refs, iv),
+            naive_accrued(100_000, &refs, iv)
         );
     }
     for t in [
@@ -513,7 +548,7 @@ fn accrual_fast_path_equals_per_interval_result_on_multi_event_fixture() {
         99 * DAY,
     ] {
         assert_eq!(acc.outstanding_at(t), outstanding_at(&refs, t));
-        assert_eq!(acc.rate_bps_at(t), rate_bps_at(1000, &refs, t));
+        assert_eq!(acc.rate_ppm_at(t), rate_ppm_at(100_000, &refs, t));
     }
 }
 

@@ -44,6 +44,7 @@ fn loan(loan_id: i64, senior: i64, equity: i64, status: &str) -> LoanSnapshotRow
             original_equity_tranche: usdc(equity),
             original_offtaker_price: BigDecimal::from(0_i64),
             senior_interest_rate_bps: 1200,
+            senior_interest_rate_ppm: None,
             origination_date: 0,
             original_maturity_date: 100 * DAY,
             next_economics_epochs_id: BigDecimal::from(1_i64),
@@ -51,6 +52,7 @@ fn loan(loan_id: i64, senior: i64, equity: i64, status: &str) -> LoanSnapshotRow
             status: status.to_owned(),
             current_maturity_timestamp: 100 * DAY,
             current_rate: 1200,
+            current_rate_ppm: None,
             closure_reason: "None".to_owned(),
             carved_out: false,
             disbursed: usdc(senior),
@@ -595,14 +597,6 @@ fn lifecycle_scenario() -> (Vec<LifecycleRow>, Vec<LoanRateEventRow>) {
     (events, rows)
 }
 
-// Active [0,50) and [70,100); YEAR = 31_557_600; rate floor(112_550 / 100) = 1125 bps.
-// Pieces in USDC x bps x days:
-//   [0,20)   1_000_000 x 1200 x 20 = 24_000_000_000
-//   [20,30)    600_000 x 1200 x 10 =  7_200_000_000
-//   [30,50)    600_000 x 1125 x 20 = 13_500_000_000
-//   [70,90)    600_000 x 1125 x 20 = 13_500_000_000
-//   [90,100)   400_000 x 1125 x 10 =  4_500_000_000
-// Sum 62_700_000_000 x 86_400 / (10_000 x 31_557_600) = 17166.324435...
 #[test]
 fn accrual_follows_outstanding_rate_default_cure_and_close() {
     let (events, rows) = lifecycle_scenario();
@@ -611,7 +605,7 @@ fn accrual_follows_outstanding_rate_default_cure_and_close() {
     let s = compute_series(&loans, &events, &rows, t, t, DAY)
         .pop()
         .unwrap();
-    assert_eq!(s.accrued, "17166.324435");
+    assert_eq!(s.accrued, "17170.157426");
 }
 
 #[test]
@@ -619,8 +613,8 @@ fn accrual_series_last_point_and_freeze_after_close() {
     let (events, rows) = lifecycle_scenario();
     let loans = [base()];
     let series = compute_series(&loans, &events, &rows, 0, 120 * DAY, 30 * DAY);
-    assert_eq!(series.last().unwrap().accrued, "17166.324435");
-    assert_eq!(series[3].accrued, "15934.291581");
+    assert_eq!(series.last().unwrap().accrued, "17170.157426");
+    assert_eq!(series[3].accrued, "15937.577002");
 }
 
 #[test]
@@ -632,12 +626,12 @@ fn accrual_with_no_outstanding_events_is_zero() {
 }
 
 #[test]
-fn apy_uses_floor_rate_and_outstanding_after_amendment() {
+fn apy_uses_full_ppm_rate_and_outstanding_after_amendment() {
     let (events, rows) = lifecycle_scenario();
     let loans = [base()];
     let t = 80 * DAY;
     let s = compute_series(&loans, &events, &rows, t, t, DAY)
         .pop()
         .unwrap();
-    assert!((s.apy.unwrap() - 0.1125).abs() < 1e-9);
+    assert!((s.apy.unwrap() - 0.11255).abs() < 1e-9);
 }

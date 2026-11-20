@@ -17,6 +17,7 @@ pub mod mappers;
 pub mod parsers;
 pub mod plusd_transfers;
 pub mod poller;
+pub mod rate_ppm_backfill;
 pub mod security_registry_parsers;
 pub mod security_registry_sync;
 pub mod security_registry_views;
@@ -151,6 +152,15 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
     );
     let immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>> = reader.clone();
     let mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>> = reader.clone();
+
+    rate_ppm_backfill::run_rate_ppm_backfill(
+        chain_id,
+        &loan_registry_address,
+        &contract_logs_repo,
+        &pool,
+        immutable_resolver.as_ref(),
+    )
+    .await;
 
     let base_builder = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,

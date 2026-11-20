@@ -203,13 +203,13 @@ struct LoanView<'a> {
 /// (`Oᵢ(t)`, the `outstanding` of its latest outstanding-changing event, else 0) at the
 /// rate in force at `t` (`R_bps_i(t)`: genesis rate updated by `EconomicsAmended` /
 /// `LoanRolledOver`). `None` when no loans are active or `Σᵢ Oᵢ(t) = 0`.
-/// `apy = (Σᵢ Oᵢ(t) · R_bps_i(t) / Σᵢ Oᵢ(t)) / 10_000`.
+/// `apy = (Σᵢ Oᵢ(t) · R_ppm_i(t) / Σᵢ Oᵢ(t)) / 1_000_000`.
 ///
 /// **Cumulative accrued senior interest** (USDC, 6dp decimal string) — summed over all
 /// loans that have *started* by `t` (`originationᵢ <= t`), including closed loans
 /// which contribute their final accrual frozen at the close. Only active time counts:
 /// accrual runs past maturity, pauses in Default, resumes after a cure and stops at Close.
-/// `accrued = Σᵢ ∫ Oᵢ(s) · R_bps_i(s) ds / (10_000 · 31_557_600)` over the active `[from, until)`
+/// `accrued = Σᵢ ∫ Oᵢ(s) · R_ppm_i(s) ds / (1_000_000 · 31_557_600)` over the active `[from, until)`
 /// intervals clipped to `t` (`shared::book_weighting::accrued_over_intervals`).
 ///
 /// **Principal outstanding** (USDC, 6dp decimal string) — `Σᵢ Pᵢ` over active loans.
@@ -241,7 +241,7 @@ pub fn compute_series(
 
             LoanView {
                 row: loan,
-                accrual: LoanAccrual::new(loan.snapshot.senior_interest_rate_bps, rate_events),
+                accrual: LoanAccrual::from_ppm(loan.snapshot.genesis_rate_ppm(), rate_events),
                 timeline: LoanTimeline::for_loan(loan, events),
             }
         })
@@ -277,11 +277,11 @@ pub fn compute_series(
         let apy: Option<f64> = weighted_mean(active.iter().map(|lv| {
             (
                 lv.accrual.outstanding_at(t),
-                BigDecimal::from(i64::from(lv.accrual.rate_bps_at(t))),
+                BigDecimal::from(i64::from(lv.accrual.rate_ppm_at(t))),
             )
         }))
-        .and_then(|bps| {
-            (bps / BigDecimal::from(10_000_i64))
+        .and_then(|ppm| {
+            (ppm / BigDecimal::from(1_000_000_i64))
                 .with_scale_round(8, RoundingMode::HalfUp)
                 .to_f64()
         });

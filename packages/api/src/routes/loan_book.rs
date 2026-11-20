@@ -21,9 +21,7 @@ use sqlx::PgConnection;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::access_manager_repo::AccessManagerRepo;
-use shared::book_weighting::{
-    bps_to_fraction_string, current_rate_bps, current_tenor_days, weighted_mean,
-};
+use shared::book_weighting::{current_tenor_days, ppm_to_fraction_string, weighted_mean};
 use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
@@ -1777,7 +1775,7 @@ struct EntryComputation {
     entry: LoanBookEntry,
     principal: BigDecimal,
     outstanding_senior: BigDecimal,
-    rate_bps: u32,
+    rate_ppm: u32,
     duration_days: i64,
     collateral: Option<BigDecimal>,
 }
@@ -1799,8 +1797,8 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
     let key = loan_ref(loan.chain_id, &loan.loan_id);
     let principal = principal_of(loan);
     let duration_days = current_tenor_days(s);
-    let rate_bps = current_rate_bps(s);
-    let rate = bps_to_fraction_string(&BigDecimal::from(i64::from(rate_bps)));
+    let rate_ppm = s.current_rate_ppm();
+    let rate = ppm_to_fraction_string(&BigDecimal::from(i64::from(rate_ppm)));
 
     // Outstanding senior = disbursed − repaid − written_down, floored at zero. Drives the
     // "Senior outst." column, the CCR denominator, deployed_senior, and the top-concentration tile.
@@ -1897,7 +1895,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         entry,
         principal,
         outstanding_senior,
-        rate_bps,
+        rate_ppm,
         duration_days,
         collateral: collateral_raw,
     }
@@ -1987,7 +1985,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         total_deployed += &comp.principal;
         rate_pairs.push((
             comp.outstanding_senior.clone(),
-            BigDecimal::from(i64::from(comp.rate_bps)),
+            BigDecimal::from(i64::from(comp.rate_ppm)),
         ));
         tenor_pairs.push((
             comp.outstanding_senior.clone(),
@@ -2024,7 +2022,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     }
 
     // Σ(outstanding senior × current rate) / Σ outstanding senior; `null` when nothing is outstanding.
-    let avg_yield: Option<String> = weighted_mean(rate_pairs).map(|m| bps_to_fraction_string(&m));
+    let avg_yield: Option<String> = weighted_mean(rate_pairs).map(|m| ppm_to_fraction_string(&m));
 
     // Outstanding-senior-weighted current full term, rounded to the nearest day.
     let avg_duration_days: Option<i64> = weighted_mean(tenor_pairs)

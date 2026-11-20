@@ -101,8 +101,7 @@ fn immutable_loan_data_map(borrower_ref: [u8; 32]) -> ScVal {
             u128_val(2_000_000_000_000_000_000),
         ),
         ("original_offtaker_price", u128_val(500_000_000_000)),
-        // Soroban-units (fraction of ONE=1_000_000). 100_000 = 10%.
-        ("senior_interest_rate", u32_val(100_000)),
+        ("senior_interest_rate", u32_val(72_550)),
         ("origination_date", u64_val(1_700_000_000)),
         ("original_maturity_date", u64_val(1_731_600_000)),
     ])
@@ -124,9 +123,7 @@ fn decode_immutable_loan_data_happy_path() {
         view.original_facility_size,
         U256::from(10_000_000_000_000_000_000_u128)
     );
-    // Decoder converts Soroban-units → bps (1 bp = 1/10_000).
-    // 100_000 / 100 = 1_000 bps = 10%.
-    assert_eq!(view.senior_interest_rate_bps, 1_000);
+    assert_eq!(view.senior_interest_rate_ppm, 72_550);
     assert_eq!(view.origination_date, 1_700_000_000);
     assert_eq!(view.original_maturity_date, 1_731_600_000);
 }
@@ -193,7 +190,7 @@ fn mutable_loan_data_map(
 #[test]
 fn decode_mutable_loan_data_happy_path() {
     let scval = mutable_loan_data_map(
-        100_000, // Soroban-units: ONE=1_000_000 scale. 100_000 = 10%.
+        112_599,
         true,
         5_000_000_000,
         1_000_000_000,
@@ -210,8 +207,7 @@ fn decode_mutable_loan_data_happy_path() {
     assert_eq!(view.next_economics_epochs_id, U256::from(1u32));
     assert_eq!(view.next_repayment_id, U256::from(2u32));
     assert_eq!(view.metadata_uri, "ipfs://QmAbc");
-    // Decoder converts Soroban-units → bps: 100_000 / 100 = 1_000 bps = 10%.
-    assert_eq!(view.current_rate, 1_000);
+    assert_eq!(view.current_rate_ppm, 112_599);
     assert!(view.carved_out);
     assert_eq!(view.disbursed, U256::from(5_000_000_000_u128));
     assert_eq!(view.repaid, U256::from(1_000_000_000_u128));

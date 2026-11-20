@@ -210,13 +210,7 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
         "original_offtaker_price",
         "ImmutableLoanData",
     )?);
-    // Soroban contract stores the senior interest rate as a fraction of
-    // `ONE = 1_000_000` (e.g. 10% → 100_000). The shared snapshot field is
-    // basis points (1 bp = 1/10_000), and `compute_series` in the portfolio
-    // route divides by 10_000 assuming bps. Convert here so the rest of the
-    // pipeline can stay chain-agnostic.
-    let senior_interest_rate_raw = map_u32(&map, "senior_interest_rate", "ImmutableLoanData")?;
-    let senior_interest_rate_bps = senior_interest_rate_raw / 100;
+    let senior_interest_rate_ppm = map_u32(&map, "senior_interest_rate", "ImmutableLoanData")?;
     let origination_date = map_u64(&map, "origination_date", "ImmutableLoanData")?;
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
     let borrower_ref = Some(alloy::primitives::FixedBytes::<32>::from(map_bytes32(
@@ -231,7 +225,7 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
         original_senior_tranche,
         original_equity_tranche,
         original_offtaker_price,
-        senior_interest_rate_bps,
+        senior_interest_rate_ppm,
         origination_date,
         original_maturity_date,
     })
@@ -280,11 +274,7 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
 
     let metadata_uri = map_string(&map, "metadata_uri", "MutableLoanData")?;
 
-    // Soroban-units (fraction of `ONE = 1_000_000`, same scale as
-    // `senior_interest_rate` above) — see `lib.rs:30`, `lib.rs:102`,
-    // `storage.rs:269`/`:292` in `pipeline-stellar-contracts`. Divide by 100 to
-    // reach basis points.
-    let current_rate = map_u32(&map, "current_rate", "MutableLoanData")? / 100;
+    let current_rate_ppm = map_u32(&map, "current_rate", "MutableLoanData")?;
     let carved_out = map_bool(&map, "carved_out", "MutableLoanData")?;
     let disbursed = U256::from(map_u128(&map, "disbursed", "MutableLoanData")?);
     let repaid = U256::from(map_u128(&map, "repaid", "MutableLoanData")?);
@@ -298,7 +288,7 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         next_repayment_id,
         status,
         current_maturity_timestamp,
-        current_rate,
+        current_rate_ppm,
         closure_reason,
         carved_out,
         disbursed,

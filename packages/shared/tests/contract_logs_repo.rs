@@ -3,10 +3,10 @@ use shared::contract_logs_repo::{
     EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL, LATEST_STATUS_BY_LOANS_SQL,
     LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL, LIST_LATEST_LOAN_SNAPSHOTS_SQL,
     LIST_REPAYMENT_MINTS_SQL, LIST_WITHDRAWAL_QUEUE_ROWS_SQL, LIST_WITHDRAWAL_RATE_SETS_SQL,
-    LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
-    LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, LOAN_SNAPSHOT_AS_OF_SQL, LP_WIRE_IN_EVENTS_SQL,
-    LP_WIRE_OUT_EVENTS_SQL, MINTER_CASH_BOOK_EVENT_NAMES, MINTER_EVENTS_SQL,
-    MINTER_FOLD_EVENTS_SQL, WITHDRAWAL_QUEUE_TOTALS_SQL,
+    LOANS_MISSING_RATE_PPM_SQL, LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL,
+    LOAN_LIFECYCLE_EVENT_NAMES, LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, LOAN_SNAPSHOT_AS_OF_SQL,
+    LP_WIRE_IN_EVENTS_SQL, LP_WIRE_OUT_EVENTS_SQL, MINTER_CASH_BOOK_EVENT_NAMES, MINTER_EVENTS_SQL,
+    MINTER_FOLD_EVENTS_SQL, RATE_BACKFILL_ROWS_SQL, WITHDRAWAL_QUEUE_TOTALS_SQL,
 };
 
 fn normalized(sql: &str) -> String {
@@ -310,4 +310,21 @@ fn minter_fold_events_sql_bounds_by_the_latest_snapshot_and_keeps_every_ramp_ope
         assert!(sql.contains(needle), "missing `{needle}` in {sql}");
     }
     assert_eq!(sql.matches("contract_address = $2").count(), 2, "{sql}");
+}
+
+#[test]
+fn rate_ppm_backfill_treats_a_null_ppm_key_as_missing() {
+    let predicate = "params->'snapshot'->>'senior_interest_rate_ppm'";
+    let missing = normalized(LOANS_MISSING_RATE_PPM_SQL);
+    assert!(
+        missing.contains(&format!("{predicate} IS NULL")),
+        "{missing}"
+    );
+    assert!(
+        !missing.contains("? 'senior_interest_rate_ppm'"),
+        "{missing}"
+    );
+    let rows = normalized(RATE_BACKFILL_ROWS_SQL);
+    assert!(rows.contains(&format!("{predicate} IS NOT NULL")), "{rows}");
+    assert!(!rows.contains("? 'senior_interest_rate_ppm'"), "{rows}");
 }

@@ -46,6 +46,7 @@ fn snapshot(
         original_equity_tranche: BigDecimal::from(equity_tranche),
         original_offtaker_price: BigDecimal::from(offtaker_price),
         senior_interest_rate_bps: 1_200,
+        senior_interest_rate_ppm: None,
         origination_date: 0,
         original_maturity_date: 0,
         next_economics_epochs_id: BigDecimal::from(0),
@@ -53,6 +54,7 @@ fn snapshot(
         status: status.to_owned(),
         current_maturity_timestamp: 0,
         current_rate: 1_200,
+        current_rate_ppm: None,
         closure_reason: String::new(),
         carved_out: false,
         disbursed: BigDecimal::from(0),
@@ -413,4 +415,22 @@ fn onchain_status_passes_every_raw_status_through() {
         let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
         assert_eq!(resp.onchain_status, raw);
     }
+}
+
+#[test]
+fn epoch_apy_floors_the_ppm_rate_to_whole_bps() {
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    snap.senior_interest_rate_ppm = Some(72_550);
+    let resp = build_response(&row(snap.clone()), &BigDecimal::from(0), &[], true, 0);
+    assert_eq!(resp.epoch.current_apy_bps, 725);
+
+    let events = [econ_event("EconomicsAmended", 112_599, 0)];
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
+    assert_eq!(resp.epoch.current_apy_bps, 1_125);
 }
