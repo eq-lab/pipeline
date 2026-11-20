@@ -202,7 +202,7 @@ const WATERFALL_REINDEX_MESSAGE =
   "Loan data is incomplete — the indexer needs a re-sync. Contact support.";
 const WATERFALL_DEFAULT_MESSAGE =
   "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a smaller amount.";
-const WATERFALL_STATUS_MESSAGE =
+export const WATERFALL_STATUS_MESSAGE =
   "This loan can't take a repayment in its current status. Repayments are recorded only while the loan is Performing, Watchlist or Default.";
 const RESUBMIT_URI_COLLISION_PATTERN = /metadata_uri .* already used/i;
 

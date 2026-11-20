@@ -15,6 +15,7 @@ import {
   minterOp,
   pendingExecuteResult,
 } from "./-riskCouncilFixtures";
+import { ApiError } from "@/api/client";
 import type { PendingOperation } from "@/api/pendingOperations";
 import { _resetRiskCouncilOpsForTests } from "@/lib/riskCouncilOps";
 
@@ -337,6 +338,39 @@ describe("RepaymentRecoveryDialog step 2", () => {
     expect(
       screen.getByTestId("repayment-recovery-step2-blocked"),
     ).toHaveTextContent("Reverse the repayment first.");
+  });
+
+  it("shows the status-specific copy when the waterfall refuses the loan status", () => {
+    setRows(true);
+    setAccess({ immediate: true, delay: 0 }, null);
+    state.financials = { data: { offtaker_outstanding: "150000.000000" } };
+    state.waterfall = {
+      data: undefined,
+      error: new ApiError(
+        "loan status is Closed: a repayment can only be recorded while the loan is Performing, WatchList or Default",
+        400,
+      ),
+      isLoading: false,
+    };
+    renderDialog();
+    expect(
+      screen.getByTestId("repayment-recovery-step2-blocked"),
+    ).toHaveTextContent("can't take a repayment in its current status");
+  });
+
+  it("keeps the generic copy for other waterfall errors", () => {
+    setRows(true);
+    setAccess({ immediate: true, delay: 0 }, null);
+    state.financials = { data: { offtaker_outstanding: "150000.000000" } };
+    state.waterfall = {
+      data: undefined,
+      error: new ApiError("boom", 500),
+      isLoading: false,
+    };
+    renderDialog();
+    expect(
+      screen.getByTestId("repayment-recovery-step2-blocked"),
+    ).toHaveTextContent("The corrected split could not be computed.");
   });
 
   it("waits for the backend to reflect the reversal", () => {

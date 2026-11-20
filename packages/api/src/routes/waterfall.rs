@@ -235,26 +235,25 @@ async fn get_waterfall(
     // comment), and `compute_waterfall` below still rejects `as_of` truly before
     // `origination_date`.
     let registry = loan_registry_address(&state, chain_id)?;
-    let (row, latest_row) = tokio::try_join!(
-        state.contract_logs_repo.get_loan_snapshot_as_of(
-            &state.pool,
-            chain_id,
-            registry,
-            &loan_id,
-            as_of
-        ),
-        state.contract_logs_repo.get_loan_snapshot_as_of(
-            &state.pool,
-            chain_id,
-            registry,
-            &loan_id,
-            i64::MAX
-        ),
-    )?;
-    let not_indexed =
-        || ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"));
-    let row = row.ok_or_else(not_indexed)?;
-    let latest_row = latest_row.ok_or_else(not_indexed)?;
+    let latest_row = state
+        .contract_logs_repo
+        .get_loan_snapshot_as_of(&state.pool, chain_id, registry, &loan_id, i64::MAX)
+        .await?
+        .ok_or_else(|| {
+            ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"))
+        })?;
+    ensure_repayable_status(&latest_row.snapshot.status)?;
+    let row = if needs_as_of_read(latest_row.block_timestamp, as_of) {
+        state
+            .contract_logs_repo
+            .get_loan_snapshot_as_of(&state.pool, chain_id, registry, &loan_id, as_of)
+            .await?
+            .ok_or_else(|| {
+                ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"))
+            })?
+    } else {
+        latest_row.clone()
+    };
     let latest = LatestLoanState::from(&latest_row.snapshot);
 
     // Per-loan fee schedule. The loan exists (snapshot found above); a missing
@@ -329,6 +328,23 @@ impl From<&LoanSnapshot> for LatestLoanState {
     }
 }
 
+pub fn needs_as_of_read(latest_block_timestamp: i64, as_of: i64) -> bool {
+    latest_block_timestamp > as_of
+}
+
+pub fn ensure_repayable_status(status: &str) -> Result<(), ApiError> {
+    if matches!(
+        LoanStatus::parse(status),
+        Some(LoanStatus::Performing | LoanStatus::WatchList | LoanStatus::Default)
+    ) {
+        return Ok(());
+    }
+    Err(ApiError::BadRequest(format!(
+        "loan status is {status}: a repayment can only be recorded while the loan is Performing, \
+         WatchList or Default"
+    )))
+}
+
 pub fn validate_as_of_not_future(as_of: i64, now: i64) -> Result<(), ApiError> {
     if as_of > now + AS_OF_FUTURE_SKEW_SECS {
         return Err(ApiError::BadRequest(format!(
@@ -393,17 +409,8 @@ pub fn compute_waterfall(
         )));
     }
 
+    ensure_repayable_status(&latest.status)?;
     let latest_status = LoanStatus::parse(&latest.status);
-    if !matches!(
-        latest_status,
-        Some(LoanStatus::Performing | LoanStatus::WatchList | LoanStatus::Default)
-    ) {
-        return Err(ApiError::BadRequest(format!(
-            "loan status is {}: a repayment can only be recorded while the loan is Performing, \
-             WatchList or Default",
-            latest.status
-        )));
-    }
 
     let outstanding_offtaker = &s.original_offtaker_price - &latest.repayment.offtaker_received;
     if amount > &outstanding_offtaker {

@@ -11,8 +11,8 @@ use bigdecimal::BigDecimal;
 use pipeline_api::error::ApiError;
 
 use pipeline_api::routes::waterfall::{
-    build_response, compute_waterfall, fit_interest_to_fee_cap, LatestLoanState,
-    WaterfallBreakdown, WaterfallDoc,
+    build_response, compute_waterfall, ensure_repayable_status, fit_interest_to_fee_cap,
+    needs_as_of_read, LatestLoanState, WaterfallBreakdown, WaterfallDoc,
 };
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
@@ -1329,8 +1329,6 @@ fn default_loan_does_not_need_max_fee_bps() {
     assert!(b.senior_principal_returned > dec("0"));
 }
 
-// ── #2145: running counters come from the latest state, accrual from as_of ────
-
 const HALF: i64 = ORIGINATION + CONTRACT_YEAR / 2;
 
 fn backdated(
@@ -1500,5 +1498,26 @@ fn performing_and_watchlist_latest_statuses_are_accepted() {
     for status in ["Performing", "WatchList", "Default"] {
         let l = later_state(&s, |l| status.clone_into(&mut l.status));
         assert!(backdated(&s, &l, "1000", Some(MAX_FEE_BPS)).is_ok());
+    }
+}
+
+#[test]
+fn as_of_snapshot_is_read_only_when_latest_is_newer() {
+    assert!(needs_as_of_read(HALF + 1, HALF));
+    assert!(!needs_as_of_read(HALF, HALF));
+    assert!(!needs_as_of_read(HALF - 1, HALF));
+}
+
+#[test]
+fn repayable_status_gate_matches_the_compute_error_text() {
+    for ok in ["Performing", "WatchList", "Default"] {
+        assert!(ensure_repayable_status(ok).is_ok());
+    }
+    for bad in ["Approved", "Closed", "Bogus"] {
+        let msg = match ensure_repayable_status(bad) {
+            Err(ApiError::BadRequest(m)) => m,
+            other => panic!("expected 400, got {other:?}"),
+        };
+        assert!(msg.starts_with(&format!("loan status is {bad}: ")));
     }
 }

@@ -20,7 +20,12 @@ import {
   riskCouncilChainReason,
   riskCouncilTargetId,
 } from "@/lib/targetChains";
-import { toUserError, type UserFacingError } from "@/utils/userError";
+import {
+  mapWaterfallError,
+  toUserError,
+  WATERFALL_STATUS_MESSAGE,
+  type UserFacingError,
+} from "@/utils/userError";
 import {
   candidateRows,
   correctedRepaymentInput,
@@ -174,9 +179,14 @@ export function useRepaymentRecoveryDialog(
   } else if (!indexed) {
     blockedReason = "Waiting for the backend to index the reversal.";
   } else if (corrected === null) {
-    blockedReason = waterfall.error
-      ? "The corrected split could not be computed."
-      : "Computing the corrected split.";
+    const mapped = mapWaterfallError(waterfall.error);
+    if (waterfall.error === null || waterfall.error === undefined) {
+      blockedReason = "Computing the corrected split.";
+    } else if (mapped?.message === WATERFALL_STATUS_MESSAGE) {
+      blockedReason = WATERFALL_STATUS_MESSAGE;
+    } else {
+      blockedReason = "The corrected split could not be computed.";
+    }
   } else if (!canRepay) {
     blockedReason =
       "Only the Cash reporter can record the corrected repayment.";

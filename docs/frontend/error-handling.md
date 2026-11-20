@@ -314,8 +314,12 @@ problem: it reads "Loan data is incomplete — the indexer needs a re-sync. Cont
 the raw server text under details. A **400 whose message starts with `loan is in Default`** gets
 "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a
 smaller amount." with the raw text under details; fixed copy is used because the server text carries
-raw base-unit numbers. Both messages contain no numbers. Every other 4xx keeps the generic amount
-copy with `details: ""`.
+raw base-unit numbers. Both messages contain no numbers. A third **400 whose message starts with
+`loan status is `** (#2145: the loan's latest status is not Performing, WatchList or Default, which
+`recordPayment` rejects) gets "This loan can't take a repayment in its current status. Repayments are
+recorded only while the loan is Performing, Watchlist or Default." with the raw text under details;
+the Repayment Recovery dialog reuses this copy for its blocked step 2. Every other 4xx keeps the
+generic amount copy with `details: ""`.
 
 ## Out of scope (this issue)
 
