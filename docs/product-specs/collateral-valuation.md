@@ -31,8 +31,10 @@ Each loan is valued in one of two modes, selected in the loan's valuation record
 This mode covers refined metal, grain, refined product, and exchange-deliverable material. Collateral value is the reference price times the current quantity, with the commodity haircut applied.
 
 ```
-collateral_value = reference_price * quantity * (1 - haircut)
+collateral_value = reference_price * quantity_in_quote_unit * (1 - haircut)
 ```
+
+`reference_price` is US$ per the asset's quote unit. `quantity` is the anchor's dry metric tonnes, converted into that unit first. `XAU`, `XAG`, `XPT` and `XPD` are quoted per troy ounce, so 1 t = 1,000,000 / 31.1035 troy oz (the same constant as the concentrate waterfall). A standard-goods asset with no known quote unit reads *unpriced*, never valued against a guessed unit (`/valuations` reports `missing_inputs: ["quote_unit"]`). Example: 2 t of refined gold at US$4,000/oz with a 10% haircut is 2 * 32,150.72 oz * 4,000 * 0.9 = about US$231.5M.
 
 ### Metal concentrate
 

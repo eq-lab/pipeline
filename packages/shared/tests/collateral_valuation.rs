@@ -7,8 +7,8 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, nsr_per_dmt, ConcentrateInputs, PayableMetal,
-    PenaltyTier, StandardGoodsInputs,
+    asset_for_metal, ccr_bps, compute_collateral, nsr_per_dmt, quote_quantity, ConcentrateInputs,
+    PayableMetal, PenaltyTier, StandardGoodsInputs,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -344,9 +344,9 @@ fn compute_collateral_standard_goods_uses_anchor_asset() {
     anchor.valuation_mode = ValuationMode::StandardGoods;
     anchor.asset = "XAU".to_owned();
     anchor.haircut_pct = bd("0.10");
-    anchor.quantity_dmt = bd("160.75");
+    anchor.quantity_dmt = bd("0.004999887625");
 
-    // 4000 * 160.75 * 0.90 = 578_700.
+    // 4000 * 160.75 oz * 0.90 = 578_700.
     let priced = compute_collateral(&anchor, None, None, &prices(&[("XAU", "4000")]))
         .unwrap()
         .expect("headline asset priced ⇒ Some");
@@ -356,6 +356,69 @@ fn compute_collateral_standard_goods_uses_anchor_asset() {
     // No price for the anchor's asset ⇒ unpriced.
     let unpriced = compute_collateral(&anchor, None, None, &prices(&[("XAG", "50")])).unwrap();
     assert!(unpriced.is_none());
+}
+
+fn standard_goods_anchor(asset: &str, quantity_dmt: &str, haircut: &str) -> CollateralValuationRow {
+    let mut anchor = concentrate_anchor();
+    anchor.valuation_mode = ValuationMode::StandardGoods;
+    asset.clone_into(&mut anchor.asset);
+    anchor.quantity_dmt = bd(quantity_dmt);
+    anchor.haircut_pct = bd(haircut);
+    anchor
+}
+
+#[test]
+fn standard_goods_converts_tonnes_to_troy_oz() {
+    let anchor = standard_goods_anchor("XAU", "2", "0.10");
+    let out = compute_collateral(&anchor, None, None, &prices(&[("XAU", "4000")]))
+        .unwrap()
+        .expect("priced");
+    approx(&out.collateral_value, 231_485_202.63, 0.01);
+    let naive = 4000.0 * 2.0 * 0.9;
+    assert!(out.collateral_value.to_f64().unwrap() > 32_000.0 * naive);
+}
+
+#[test]
+fn standard_goods_each_precious_metal_converts() {
+    for asset in ["XAG", "XPT", "XPD"] {
+        let anchor = standard_goods_anchor(asset, "1", "0");
+        let out = compute_collateral(&anchor, None, None, &prices(&[(asset, "1")]))
+            .unwrap()
+            .expect("priced");
+        approx(&out.collateral_value, 32_150.722_6, 0.001);
+    }
+}
+
+#[test]
+fn standard_goods_unit_match_ignores_case() {
+    let anchor = standard_goods_anchor("xau", "1", "0");
+    let out = compute_collateral(&anchor, None, None, &prices(&[("xau", "1")])).unwrap();
+    assert!(out.is_some());
+}
+
+#[test]
+fn standard_goods_unknown_asset_is_unpriced() {
+    for asset in ["KC", "XCU"] {
+        let anchor = standard_goods_anchor(asset, "1", "0");
+        let out = compute_collateral(&anchor, None, None, &prices(&[(asset, "1000")])).unwrap();
+        assert!(out.is_none(), "{asset} has no known quote unit");
+    }
+}
+
+#[test]
+fn quote_quantity_converts_known_assets_only() {
+    approx(
+        &quote_quantity("XAU", &bd("1")).unwrap(),
+        32_150.722_6,
+        0.001,
+    );
+    assert_eq!(
+        quote_quantity("XAU", &bd("0.0311035"))
+            .unwrap()
+            .normalized(),
+        bd("1000")
+    );
+    assert!(quote_quantity("KC", &bd("1")).is_none());
 }
 
 // ── Penalty threshold/step units (issue #966) ──────────────────────────────────

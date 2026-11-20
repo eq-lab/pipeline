@@ -884,6 +884,9 @@ pub fn build_response(
     // loan-book list uses). `None` when a required input for the mode is missing.
     let computation =
         compute_collateral(anchor, assay, offtake, prices).map_err(ApiError::Internal)?;
+    if !is_concentrate && headline_price.is_some() && computation.is_none() {
+        missing.push("quote_unit".to_owned());
+    }
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation
         .as_ref()

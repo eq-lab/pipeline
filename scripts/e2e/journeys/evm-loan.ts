@@ -180,7 +180,7 @@ const journey: Journey = {
             origination_date: Number(now()) - 60,
             original_maturity_date: Number(now()) + 90 * 86_400,
           },
-          collateral_valuation: { valuation_mode: "StandardGoods", asset: "XAU", price_provider: "metal_price", haircut_pct: "0", quantity_dmt: "1" },
+          collateral_valuation: { valuation_mode: "StandardGoods", asset: "XAU", price_provider: "metal_price", haircut_pct: "0", quantity_dmt: "0.0000311035" },
           fee_schedule: { mgmt_fee_rate_bps: 0, perf_fee_rate_bps: 0, oet_alloc_rate_bps: 0 },
         };
         const submitted = ok(await http("POST", `/v1/loan-book/loan?${EVM_CHAIN}`, { token: originatorToken, body }), "submit loan");

@@ -248,7 +248,8 @@ pub struct CollateralComputation {
 ///
 /// Returns `Ok(None)` when a required input for the mode is missing (concentrate
 /// needs assay + offtake + a price for every payable metal; standard goods needs the
-/// headline asset's price only), so callers can surface "unpriced" without an error.
+/// headline asset's price and a known quote unit for that asset, into which the
+/// anchor's tonnes are converted), so callers can surface "unpriced" without an error.
 /// `Err` only for malformed stored numbers (a data-integrity problem).
 ///
 /// `prices` is the latest USD price keyed by price-feed asset symbol (e.g.
@@ -288,9 +289,12 @@ pub fn compute_collateral<S: std::hash::BuildHasher>(
             let Some(price) = prices.get(&anchor.asset) else {
                 return Ok(None);
             };
+            let Some(quantity) = quote_quantity(&anchor.asset, &anchor.quantity_dmt) else {
+                return Ok(None);
+            };
             let collateral_value = StandardGoodsInputs {
                 reference_price: price.clone(),
-                quantity: anchor.quantity_dmt.clone(),
+                quantity,
                 haircut: anchor.haircut_pct.clone(),
             }
             .collateral_value();
@@ -299,6 +303,15 @@ pub fn compute_collateral<S: std::hash::BuildHasher>(
                 concentrate: None,
             }))
         }
+    }
+}
+
+pub fn quote_quantity(asset: &str, quantity_dmt: &BigDecimal) -> Option<BigDecimal> {
+    const TROY_OZ_ASSETS: [&str; 4] = ["XAU", "XAG", "XPT", "XPD"];
+    if TROY_OZ_ASSETS.iter().any(|a| a.eq_ignore_ascii_case(asset)) {
+        Some(quantity_dmt * BigDecimal::from(1_000_000) / grams_per_troy_oz())
+    } else {
+        None
     }
 }
 
