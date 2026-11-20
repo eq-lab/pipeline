@@ -158,6 +158,8 @@ fi
 [ "$mcp" = true ] && add "mcp typecheck" "yarn_ws mcp typecheck"
 [ "$mcp" = true ] && add "mcp lint" "yarn_ws mcp lint"
 [ "$mcp" = true ] && add "mcp line limit" "yarn_ws mcp lines"
+[ "$mcp" = true ] && add "mcp guard" "yarn_ws mcp guard"
+[ "$mcp" = true ] && add "mcp specs" "yarn_ws mcp specs"
 
 kinds=()
 [ "$all" = true ] && kinds+=("root/unknown")
