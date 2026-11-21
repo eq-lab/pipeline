@@ -60,7 +60,7 @@ The append-only audit log is mirrored in near-real-time to a third-party log sin
 | `packages/wallet-connect` | tests, plus everything for `frontend`, `trustee` |
 | `packages/frontend` | comment lint, build (`tsc -b && vite build`), vitest |
 | `packages/trustee` | comment lint, build, vitest |
-| `packages/mcp`, `specs/` (Markdown included) | mcp typecheck, lint (ESLint and Prettier), 300-line check |
+| `packages/mcp`, `specs/` (Markdown included) | mcp typecheck, lint (ESLint and Prettier), 300-line check, hash guard of the spec tooling, spec run with the ratchet (`specs/README.md`) |
 | root config (`package.json`, `yarn.lock`, `.yarnrc.yml`, `tsconfig*`), `scripts/`, `.github/`, `.husky/`, `Dockerfile`, `docker/`, any other path | everything above |
 
 Doc lint and `yarn install --immutable` always run. With `CODING_FLOW_CHECK_STAGE=setup` the script only installs JS dependencies. `CARGO_TARGET_DIR` is respected, so worktrees can share one build directory. `integration` selects like `commit` but ignores staged files.
