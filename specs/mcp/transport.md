@@ -8,6 +8,8 @@ Every request writes exactly one audit record: token id, tool, duration, result 
 
 The scenarios are commands against the fakes: `given` configures clients (`TokenConfigured`), `when` is one HTTP request (`Call`), `then` is the response (`Responded`) followed by the audit record (`AuditRecorded`). Sources not mentioned answer normally.
 
+Fields of `AuditRecorded` match partially, so a listed field cannot show that nothing else was written. `fields` therefore lists the sorted key names of the record as the audit sink received it: it is taken from the written record, never typed by hand, so a record that also carries the token, the arguments or the result does not match.
+
 ## A configured token reaches the tool
 
 ```spec
@@ -44,7 +46,22 @@ when:
   Call: { authorization: "Bearer not-a-configured-token", tool: query, args: { sql: "SELECT 1" } }
 then:
   - Responded: { status: 401, body: "" }
-  - AuditRecorded: { tokenId: null, tool: null, outcome: unauthorized }
+  - AuditRecorded: { tokenId: null, tool: null, outcome: unauthorized, fields: [durationMs, outcome, resultBytes, tokenId, tool] }
+```
+
+## The audit record never holds the token, the arguments or the result
+
+A leaked audit log must not leak a client secret, the caller's SQL or the rows it read. The record has exactly the five fields.
+
+```spec
+given:
+  - TokenConfigured: { id: agent-a, secret: a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718 }
+  - DbReturns: { sql: "SELECT email FROM accounts WHERE email = 'leak-check@example.com'", columns: [email], rows: [["leak-check@example.com"]] }
+when:
+  Call: { authorization: "Bearer a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718", tool: query, args: { sql: "SELECT email FROM accounts WHERE email = 'leak-check@example.com'" } }
+then:
+  - Responded: { status: 200 }
+  - AuditRecorded: { tokenId: agent-a, tool: query, outcome: ok, fields: [durationMs, outcome, resultBytes, tokenId, tool] }
 ```
 
 ## A missing Authorization header gets 401
