@@ -74,6 +74,7 @@ WORKDIR /sln
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
 COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/mcp/package.json packages/mcp/package.json
 COPY packages/trustee/package.json packages/trustee/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
@@ -108,6 +109,7 @@ WORKDIR /sln
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
 COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/mcp/package.json packages/mcp/package.json
 COPY packages/trustee/package.json packages/trustee/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/wallet-connect/package.json packages/wallet-connect/package.json

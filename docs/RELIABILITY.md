@@ -54,12 +54,13 @@ The append-only audit log is mirrored in near-real-time to a third-party log sin
 
 | Changed paths | Checks |
 |---------------|--------|
-| `docs/**`, `*.md` only | doc lint |
+| `docs/**`, `*.md` only (outside `packages/mcp` and `specs/`) | doc lint |
 | `packages/api`, `worker`, `shared`, `Cargo.*`, Rust config | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo nextest run --workspace` (falls back to `cargo test --all` with a warning), migration-version check for new migrations |
 | `packages/ui` | comment lint, plus everything for `wallet-connect`, `frontend`, `trustee` |
 | `packages/wallet-connect` | tests, plus everything for `frontend`, `trustee` |
 | `packages/frontend` | comment lint, build (`tsc -b && vite build`), vitest |
 | `packages/trustee` | comment lint, build, vitest |
+| `packages/mcp`, `specs/` (Markdown included) | mcp typecheck, lint (ESLint and Prettier), 300-line check, hash guard of the spec tooling, spec run with the ratchet (`specs/README.md`) |
 | root config (`package.json`, `yarn.lock`, `.yarnrc.yml`, `tsconfig*`), `scripts/`, `.github/`, `.husky/`, `Dockerfile`, `docker/`, any other path | everything above |
 
 Doc lint and `yarn install --immutable` always run. With `CODING_FLOW_CHECK_STAGE=setup` the script only installs JS dependencies. `CARGO_TARGET_DIR` is respected, so worktrees can share one build directory. `integration` selects like `commit` but ignores staged files.
