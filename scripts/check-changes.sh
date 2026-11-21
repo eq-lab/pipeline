@@ -69,10 +69,12 @@ if [ -z "${CODING_FLOW_BASE_SHA:-}" ]; then
     changed=$(printf '%s\n%s\n' "$changed" "$(names_of HEAD)")
 fi
 
-rust=false e2e=false ui=false wallet=false frontend=false trustee=false all=false docs_only=true
+rust=false e2e=false ui=false wallet=false frontend=false trustee=false mcp=false all=false docs_only=true
 while IFS= read -r path; do
     case "$path" in
         '') continue ;;
+        # Before the docs arm: specs are Markdown, and the mcp lint runs Prettier on its .md files.
+        packages/mcp/* | specs/*) mcp=true; docs_only=false ;;
         docs/* | *.md) ;; # docs only: doc lint always runs
         packages/api/* | packages/worker/* | packages/shared/* | Cargo.toml | Cargo.lock | \
             rust-toolchain | rust-toolchain.toml | rustfmt.toml | .rustfmt.toml | clippy.toml | .cargo/*)
@@ -87,7 +89,7 @@ while IFS= read -r path; do
 done <<<"$changed"
 
 if [ "$all" = true ]; then
-    rust=true ui=true wallet=true frontend=true trustee=true
+    rust=true ui=true wallet=true frontend=true trustee=true mcp=true
 fi
 # Dependency graph: ui -> wallet-connect -> frontend, trustee.
 [ "$ui" = true ] && wallet=true
@@ -153,6 +155,11 @@ fi
 [ "$frontend" = true ] && add "frontend tests" "yarn_ws frontend test"
 [ "$wallet" = true ] && add "wallet-connect tests" "yarn_ws wallet-connect test"
 [ "$trustee" = true ] && add "trustee tests" "yarn_ws trustee test"
+[ "$mcp" = true ] && add "mcp typecheck" "yarn_ws mcp typecheck"
+[ "$mcp" = true ] && add "mcp lint" "yarn_ws mcp lint"
+[ "$mcp" = true ] && add "mcp line limit" "yarn_ws mcp lines"
+[ "$mcp" = true ] && add "mcp guard" "yarn_ws mcp guard"
+[ "$mcp" = true ] && add "mcp specs" "yarn_ws mcp specs"
 
 kinds=()
 [ "$all" = true ] && kinds+=("root/unknown")
@@ -161,6 +168,7 @@ kinds=()
 [ "$wallet" = true ] && kinds+=(wallet-connect)
 [ "$frontend" = true ] && kinds+=(frontend)
 [ "$trustee" = true ] && kinds+=(trustee)
+[ "$mcp" = true ] && kinds+=(mcp)
 [ "$docs_only" = true ] && kinds+=(docs-only)
 echo "check-changes: stage=$STAGE base=${BASE:0:10}"
 echo "changed: ${kinds[*]}"
