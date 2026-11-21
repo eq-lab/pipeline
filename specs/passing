@@ -1,3 +1,14 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/tooling/spec-classes.md#A class A spec with a matching hash is fine
+specs/tooling/spec-classes.md#A class B regression is an error, as for class A
+specs/tooling/spec-classes.md#A class B spec in specs/approved is an error
+specs/tooling/spec-classes.md#A class B spec is approved without a hash and the agent edits it freely
+specs/tooling/spec-classes.md#A deleted approved class A file is an error
+specs/tooling/spec-classes.md#A deleted class A scenario leaving its line in passing is an error
+specs/tooling/spec-classes.md#A deleted class B scenario leaves no line in passing
+specs/tooling/spec-classes.md#An approved class A spec without a hash is an error
+specs/tooling/spec-classes.md#Approving a class A spec works as before
+specs/tooling/spec-classes.md#Approving a class B spec is not needed
+specs/tooling/spec-classes.md#Editing an approved class A spec is an error
