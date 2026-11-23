@@ -18,26 +18,26 @@ export interface SpecBindings {
     given: ReadonlyArray<SpecMessage>,
     when: SpecMessage,
     now: string | null,
-  ) => SpecOutcome;
+  ) => Promise<SpecOutcome>;
   readonly runQuery: (
     given: ReadonlyArray<SpecMessage>,
     query: SpecMessage,
     now: string | null,
-  ) => ValueOutcome;
+  ) => Promise<ValueOutcome>;
   readonly runAdapterSpec: (
     adapter: string,
     response: unknown,
     when: SpecMessage,
-  ) => ValueOutcome;
+  ) => Promise<ValueOutcome>;
 }
 
-export type Check = (block: Block, root?: string) => string | null;
+export type Check = (block: Block, root?: string) => Promise<string | null>;
 
-const checkAdapter = (
+const checkAdapter = async (
   scenario: AdapterScenario,
   root: string,
   runAdapterSpec: SpecBindings["runAdapterSpec"],
-): string | null => {
+): Promise<string | null> => {
   const { response } = scenario;
   if (response._tag === "Fixture" && !fixtureExists(root, response.path)) {
     return `invalid spec: fixture ${response.path} not found`;
@@ -53,7 +53,7 @@ const checkAdapter = (
   try {
     return compareValue(
       scenario.then,
-      runAdapterSpec(scenario.adapter, value, scenario.when),
+      await runAdapterSpec(scenario.adapter, value, scenario.when),
     );
   } catch (error) {
     return thrown(`adapter ${scenario.adapter}`, error);
@@ -62,16 +62,16 @@ const checkAdapter = (
 
 export const makeCheck =
   ({ runSpec, runQuery, runAdapterSpec }: SpecBindings): Check =>
-  (block, root = process.cwd()) => {
+  async (block, root = process.cwd()) => {
     const scenario = block.scenario;
     if ("error" in scenario) return `invalid spec: ${scenario.error}`;
     if (isAdapterScenario(scenario))
-      return checkAdapter(scenario, root, runAdapterSpec);
+      return await checkAdapter(scenario, root, runAdapterSpec);
     if (isQueryScenario(scenario)) {
       try {
         return compareValue(
           scenario.then,
-          runQuery(scenario.given, scenario.query, scenario.now),
+          await runQuery(scenario.given, scenario.query, scenario.now),
         );
       } catch (error) {
         return thrown("query", error);
@@ -80,7 +80,7 @@ export const makeCheck =
     try {
       return compare(
         scenario.then,
-        runSpec(scenario.given, scenario.when, scenario.now),
+        await runSpec(scenario.given, scenario.when, scenario.now),
       );
     } catch (error) {
       return thrown("core", error);

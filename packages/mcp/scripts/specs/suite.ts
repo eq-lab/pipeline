@@ -26,7 +26,7 @@ export interface TestApi {
   readonly fail: (message: string) => never;
 }
 
-export const specSuite = (
+export const specSuite = async (
   check: Check,
   { describe, it, fail }: TestApi,
   root = process.cwd(),
@@ -39,7 +39,7 @@ export const specSuite = (
   });
 
   const passing = readPassing(root);
-  const results = runAll(root, check);
+  const results = await runAll(root, check);
   const verdicts = results.map((r) => verdict(r, passing));
   const greenDrafts: Array<string> = [];
 
