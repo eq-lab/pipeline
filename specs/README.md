@@ -24,7 +24,11 @@ then:                 # new events in order, or a rejection
 
 Commands bound today: `Call` (`specs/mcp/transport.md`). The runner sends one stateless MCP `tools/call` request (protocol 2026-07-28) to the server's web handler in process, no network: `TokenConfigured` events configure the clients, every other `given` event goes to the fakes, and the audit records are collected. `then` gets `Responded: { status, body }` followed by one `AuditRecorded` per record, with `fields` the record's sorted key names. It is not implemented (backlog) while the server, the fakes for a `given` source, or the called tool do not exist yet. Other commands are not implemented.
 
-What `Call` needs from the package: `src/http.ts` exports `app(tokens)` (the HTTP router layer), `src/audit.ts` exports the `AuditSink` service, and `src/fakes.ts` exports `fakes(given)`, a layer of fakes for the source events of `given` (sources not mentioned answer normally).
+What `Call` needs from the package: `src/http.ts` exports `app(tokens)` (the HTTP router layer), `src/audit.ts` exports the `AuditSink` service, and `src/fakes.ts` exports the fakes (see "Fakes").
+
+## Fakes
+
+`src/fakes.ts` exports `fakes(given, now)`: a layer (no requirements, no errors) that provides every source port the tools use, built from the source events of `given` (`now` is the scenario's ISO time or null; the fakes also own the clock where a tool needs it). Sources not mentioned answer normally. Without the module, a scenario whose `given` has source events is not implemented (backlog). The runner uses the same `fakes` for queries and for `Call`.
 
 The bindings return promises; the runner awaits them one scenario at a time.
 
@@ -58,7 +62,9 @@ then:
 # then: { rejected: invalid_query }
 ```
 
-Queries bound today: `ClampLimit: { limit?, max, fallback }` (`limit`). An unknown query is not implemented (backlog).
+Queries bound in the tooling: `ClampLimit: { limit?, max, fallback }` (`limit`).
+
+Every other query goes to the package: `src/queries.ts` exports `queries`, a map from the query tag (`Deployment`, `Logs`, `Health`, ...) to a handler `(input) => Effect`, where `input` is the query's fields. The runner provides `fakes(given, now)` and runs the effect: its value is the `then` value; a failure whose error has a string `reason` is `rejected: <reason>`; any other failure or defect makes the scenario red with the cause. A tool task adds its handler to `queries`, never a change to the guarded tooling. A tag missing from `queries`, or a missing module, is not implemented (backlog).
 
 ## Statuses
 
