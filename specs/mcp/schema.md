@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `schema`: tables of the database
 

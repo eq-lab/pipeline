@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `indexer_lag`: how far the worker is behind
 

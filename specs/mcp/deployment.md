@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `deployment`: what runs in the test namespace
 

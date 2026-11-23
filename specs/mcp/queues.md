@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `queues`: outboxes and their job errors
 

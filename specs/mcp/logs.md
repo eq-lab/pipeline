@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `logs`: recent log lines of a service
 

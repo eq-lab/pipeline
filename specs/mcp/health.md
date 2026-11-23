@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `health`: one probe per source
 

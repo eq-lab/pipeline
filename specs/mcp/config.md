@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `config`: runtime configuration with secrets masked
 

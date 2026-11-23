@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # `query`: read-only SQL
 
