@@ -5,7 +5,16 @@ import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
 import type { Cluster } from "./cluster.js";
 import { configView, ConfigState } from "./configview.js";
-import { Db, queues, QueuesResult, schema, SchemaResult } from "./db.js";
+import {
+  Db,
+  queues,
+  QueuesResult,
+  QueryParams,
+  QueryResult,
+  readQuery,
+  schema,
+  SchemaResult,
+} from "./db.js";
 import { deployment, DeploymentInput, DeploymentState } from "./deployment.js";
 import { ErrorsParams, ErrorsResult, readErrors } from "./error-groups.js";
 import { ToolError } from "./errors.js";
@@ -79,6 +88,15 @@ const toolkit = Toolkit.make(
   })
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false),
+  Tool.make("query", {
+    description:
+      "Run one read-only SQL statement on the test database (read-only transaction, statement timeout); returns columns, rows (at most 500) and truncated.",
+    parameters: QueryParams,
+    success: QueryResult,
+    failure: ToolError,
+  })
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false),
   Tool.make("schema", {
     description:
       "Tables of the public schema of the test database with their columns: name, type, nullable.",
@@ -108,6 +126,7 @@ const handlers = toolkit.toLayer(
       indexer_lag: () => indexerLag.pipe(Effect.provide(sources)),
       logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
       queues: () => queues.pipe(Effect.provide(sources)),
+      query: (input) => readQuery(input).pipe(Effect.provide(sources)),
       schema: () => schema.pipe(Effect.provide(sources)),
     });
   }),

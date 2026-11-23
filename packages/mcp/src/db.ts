@@ -3,7 +3,7 @@
 // the fake.
 import { Clock, Context, Effect, Schema } from "effect";
 
-import type { ToolError } from "./errors.js";
+import { ToolError } from "./errors.js";
 
 export interface Table {
   readonly name: string;
@@ -56,6 +56,16 @@ export interface SyncState {
   readonly accessManager: ReadonlyArray<LogCursor>;
 }
 
+// `query` (specs/mcp/query.md): the port returns at most `maxRows + 1` rows and
+// fails with the database's reason (`read_only_violation`, `statement_timeout`,
+// `multiple_statements`, `syntax_error`, `sql_error`) and message.
+export const maxRows = 500;
+
+export interface Rows {
+  readonly columns: ReadonlyArray<string>;
+  readonly rows: ReadonlyArray<ReadonlyArray<unknown>>;
+}
+
 // Tables sorted by name, columns by position. `maxLogId` is the max
 // `contract_logs.id` of the chain over `contracts` (and `events`, when given),
 // 0 when none.
@@ -75,8 +85,54 @@ export class Db extends Context.Service<
       ReadonlyArray<{ readonly chainId: number; readonly updatedAt: string }>,
       ToolError
     >;
+    readonly query: (sql: string) => Effect.Effect<Rows, ToolError>;
   }
 >()("@pipeline/mcp/Db") {}
+
+export const QueryParams = Schema.Struct({
+  sql: Schema.String.check(Schema.isPattern(/\S/)).annotate({
+    description: "one read-only SQL statement",
+  }),
+});
+
+export const QueryResult = Schema.Struct({
+  columns: Schema.Array(Schema.String),
+  rows: Schema.Array(Schema.Array(Schema.Unknown)),
+  truncated: Schema.Boolean,
+});
+
+const rejection: Readonly<Record<string, string>> = {
+  read_only_violation: "write_rejected",
+  syntax_error: "sql_error",
+};
+
+export const readQuery = Effect.fnUntraced(function* (
+  params: typeof QueryParams.Type,
+) {
+  const { columns, rows } = yield* (yield* Db).query(params.sql).pipe(
+    Effect.mapError(
+      (e) =>
+        new ToolError({
+          reason: rejection[e.reason] ?? e.reason,
+          message: e.message,
+        }),
+    ),
+  );
+  return {
+    columns,
+    rows: rows.slice(0, maxRows),
+    truncated: rows.length > maxRows,
+  };
+});
+
+export const dbQuery = (input: unknown) =>
+  Schema.decodeUnknownEffect(QueryParams)(input).pipe(
+    Effect.mapError(
+      (error) =>
+        new ToolError({ reason: "invalid_input", message: error.message }),
+    ),
+    Effect.flatMap(readQuery),
+  );
 
 export const SchemaResult = Schema.Struct({
   tables: Schema.Array(

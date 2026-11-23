@@ -41,6 +41,17 @@ specs/mcp/logs.md#Grep keeps only matching lines
 specs/mcp/logs.md#Lines of the service within the window, oldest first
 specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
 specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
+specs/mcp/query.md#500 rows are returned whole
+specs/mcp/query.md#A missing or empty statement is invalid input
+specs/mcp/query.md#A select returns columns and rows in database order
+specs/mcp/query.md#A statement over the timeout is cancelled
+specs/mcp/query.md#A statement that is not text is invalid input
+specs/mcp/query.md#A syntax error is reported as an SQL error
+specs/mcp/query.md#An unreachable database is reported, not hidden
+specs/mcp/query.md#DDL is rejected as a write
+specs/mcp/query.md#More than 500 rows are cut at 500 and flagged
+specs/mcp/query.md#Multi-statement text is rejected
+specs/mcp/query.md#Write SQL is rejected
 specs/mcp/queues.md#A long error is cut to 500 characters
 specs/mcp/queues.md#An unreachable database is reported, not hidden
 specs/mcp/queues.md#Counts, oldest age and errors of both outboxes
@@ -56,6 +67,7 @@ specs/mcp/transport.md#A prefix of a configured secret gets 401
 specs/mcp/transport.md#A secret sent with another scheme gets 401
 specs/mcp/transport.md#An invalid token gets 401 with no detail
 specs/mcp/transport.md#Each client is audited under its own token id
+specs/mcp/transport.md#The audit record never holds the token, the arguments or the result
 specs/mcp/transport.md#With no configured tokens every request gets 401
 specs/tooling/spec-classes.md#A class A spec with a matching hash is fine
 specs/tooling/spec-classes.md#A class B regression is an error, as for class A
