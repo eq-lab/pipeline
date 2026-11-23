@@ -7,12 +7,18 @@ import { grafanaLogs } from "./grafana.js";
 import { app } from "./http.js";
 import { k8s } from "./k8s.js";
 import { listen } from "./node.js";
+import { postgres } from "./postgres.js";
 import { ServiceMap } from "./services.js";
 
 const main = Effect.gen(function* () {
   const config = yield* mcpConfig;
   const sources = yield* Layer.build(
-    Layer.mergeAll(k8s, ServiceMap.config, grafanaLogs(config.grafana)),
+    Layer.mergeAll(
+      k8s,
+      ServiceMap.config,
+      grafanaLogs(config.grafana),
+      postgres(config.db),
+    ),
   );
   const { handler, dispose } = HttpRouter.toWebHandler(
     app(config.tokens).pipe(

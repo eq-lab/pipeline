@@ -4,6 +4,7 @@
 import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
 import type { Cluster } from "./cluster.js";
+import { Db, schema, SchemaResult } from "./db.js";
 import { deployment, DeploymentInput, DeploymentState } from "./deployment.js";
 import { ErrorsParams, ErrorsResult, readErrors } from "./error-groups.js";
 import { ToolError } from "./errors.js";
@@ -38,15 +39,24 @@ const toolkit = Toolkit.make(
   })
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false),
+  Tool.make("schema", {
+    description:
+      "Tables of the public schema of the test database with their columns: name, type, nullable.",
+    success: SchemaResult,
+    failure: ToolError,
+  })
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false),
 );
 
 const handlers = toolkit.toLayer(
   Effect.gen(function* () {
-    const sources = yield* Effect.context<Cluster | Logs | ServiceMap>();
+    const sources = yield* Effect.context<Cluster | Db | Logs | ServiceMap>();
     return toolkit.of({
       deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
       errors: (input) => readErrors(input).pipe(Effect.provide(sources)),
       logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
+      schema: () => schema.pipe(Effect.provide(sources)),
     });
   }),
 );
