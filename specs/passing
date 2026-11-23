@@ -1,6 +1,14 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/mcp/config.md#A URL with credentials is masked, a URL without is shown
+specs/mcp/config.md#A secret-like key from a ConfigMap is masked
+specs/mcp/config.md#A value from a Secret is masked
+specs/mcp/config.md#An unreachable Kubernetes API is reported, not hidden
+specs/mcp/config.md#Plain and ConfigMap values are shown
+specs/mcp/config.md#Secret references and `envFrom` of two services
+specs/mcp/config.md#Secret-like keys are masked even with a plain value
+specs/mcp/config.md#`envFrom` sources are listed by name, never read
 specs/mcp/deployment.md#An unknown service is rejected
 specs/mcp/deployment.md#An unreachable Kubernetes API is reported, not hidden
 specs/mcp/deployment.md#Events older than an hour are left out

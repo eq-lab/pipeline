@@ -4,6 +4,7 @@
 import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
 import type { Cluster } from "./cluster.js";
+import { configView, ConfigState } from "./configview.js";
 import { Db, queues, QueuesResult, schema, SchemaResult } from "./db.js";
 import { deployment, DeploymentInput, DeploymentState } from "./deployment.js";
 import { ErrorsParams, ErrorsResult, readErrors } from "./error-groups.js";
@@ -23,6 +24,14 @@ const toolkit = Toolkit.make(
       "Image, pods (phase, readiness, restarts, age) and Kubernetes events of the last hour per service of the test namespace",
     parameters: DeploymentInput,
     success: DeploymentState,
+    failure: ToolError,
+  })
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false),
+  Tool.make("config", {
+    description:
+      "Environment of each service's Deployment: literal and ConfigMap values shown, Secret-backed and secret-like values masked as *** with their Secret reference, envFrom sources listed by name",
+    success: ConfigState,
     failure: ToolError,
   })
     .annotate(Tool.Readonly, true)
@@ -78,6 +87,7 @@ const handlers = toolkit.toLayer(
     >();
     return toolkit.of({
       deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
+      config: () => configView.pipe(Effect.provide(sources)),
       errors: (input) => readErrors(input).pipe(Effect.provide(sources)),
       indexer_lag: () => indexerLag.pipe(Effect.provide(sources)),
       logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
