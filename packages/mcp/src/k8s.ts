@@ -1,5 +1,6 @@
 // Kubernetes adapter of `Cluster` (docs/design-docs/mcp-test-env.md, checklist
-// item 3): in-cluster ServiceAccount, GET (get/list) of deployments, pods, events.
+// item 3): in-cluster ServiceAccount, GET (get/list) of deployments, pods,
+// configmaps, events. Secrets are never requested.
 import { readFileSync } from "node:fs";
 import { request } from "node:https";
 import { Config, Effect, Layer, Option, Schema } from "effect";
