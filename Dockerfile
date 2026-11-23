@@ -136,3 +136,24 @@ RUN chmod +x /docker-entrypoint.d/40-write-runtime-env.sh
 COPY --from=trustee-build /sln/packages/trustee/dist/ /usr/share/nginx/html/
 
 EXPOSE 80
+
+# MCP server image — runs the TypeScript source with tsx (no build step)
+FROM node:22-slim AS mcp
+WORKDIR /sln
+
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
+COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/mcp/package.json packages/mcp/package.json
+COPY packages/trustee/package.json packages/trustee/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
+
+RUN corepack enable && yarn workspaces focus @pipeline/mcp
+
+COPY packages/mcp/ packages/mcp/
+
+WORKDIR /sln/packages/mcp
+USER node
+EXPOSE 8080
+ENTRYPOINT ["/sln/node_modules/.bin/tsx", "src/main.ts"]
