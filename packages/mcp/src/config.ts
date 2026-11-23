@@ -36,4 +36,15 @@ export const mcpConfig = Config.all({
     ),
     datasourceUid: Config.NonEmptyString("LOKI_DATASOURCE_UID"),
   }),
+  // The read-only role's connection string; `statement_timeout` of every call.
+  db: Config.all({
+    url: Config.schema(
+      Schema.Redacted(Schema.NonEmptyString),
+      "MCP_DATABASE_URL",
+    ),
+    statementTimeoutMs: Config.schema(
+      Schema.Int.check(Schema.isBetween({ minimum: 5_000, maximum: 10_000 })),
+      "MCP_STATEMENT_TIMEOUT_MS",
+    ).pipe(Config.withDefault(10_000)),
+  }),
 });

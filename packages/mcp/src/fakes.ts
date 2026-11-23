@@ -2,6 +2,7 @@
 // built from the `given` events, and the clock fixed at `now`.
 import { Clock, Effect, Layer, Option } from "effect";
 import { Cluster } from "./cluster.js";
+import { Db } from "./db.js";
 import { ToolError } from "./errors.js";
 import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
@@ -73,6 +74,21 @@ const cluster = (
   });
 };
 
+const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) =>
+  Db.of({
+    tables: down
+      ? Effect.fail(new ToolError({ reason: "db_unavailable" }))
+      : Effect.succeed(
+          of("Table")
+            .filter((t) => t.schema === "public")
+            .map((t) => ({
+              name: text(t.name),
+              columns: Array.isArray(t.columns) ? t.columns : [],
+            }))
+            .sort((a, b) => (a.name < b.name ? -1 : 1)),
+        ),
+  });
+
 const logs = (
   of: (tag: string) => ReadonlyArray<Message>,
   down: boolean,
@@ -128,6 +144,7 @@ export const fakes = (
       ),
     ),
     Layer.succeed(Cluster, cluster(of, down("k8s"))),
+    Layer.succeed(Db, db(of, down("db"))),
     Layer.succeed(
       Logs,
       logs(of, down("grafana"), now === null ? Date.now() : Date.parse(now)),
