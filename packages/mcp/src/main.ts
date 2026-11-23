@@ -5,6 +5,8 @@ import { AuditSink } from "./audit.js";
 import { mcpConfig } from "./config.js";
 import { grafanaLogs } from "./grafana.js";
 import { app } from "./http.js";
+import { RegistryLogContracts } from "./indexer-lag.js";
+import { chainRpc } from "./rpc.js";
 import { k8s } from "./k8s.js";
 import { listen } from "./node.js";
 import { postgres } from "./postgres.js";
@@ -18,6 +20,17 @@ const main = Effect.gen(function* () {
       ServiceMap.config,
       grafanaLogs(config.grafana),
       postgres(config.db),
+      chainRpc(config.chains),
+      Layer.succeed(
+        RegistryLogContracts,
+        new Map(
+          [...config.chains].flatMap(([id, c]) =>
+            c.registryLogContracts === undefined
+              ? []
+              : [[id, c.registryLogContracts] as const],
+          ),
+        ),
+      ),
     ),
   );
   const { handler, dispose } = HttpRouter.toWebHandler(
