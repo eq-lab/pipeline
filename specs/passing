@@ -11,6 +11,12 @@ specs/mcp/errors.md#An unknown service is rejected
 specs/mcp/errors.md#Error lines are grouped by normalised message
 specs/mcp/errors.md#No errors in the window is an empty result
 specs/mcp/errors.md#Unreachable Grafana is reported, not hidden
+specs/mcp/indexer-lag.md#A cursor ahead of the head is no lag
+specs/mcp/indexer-lag.md#AccessManager sync lag counts only the operation events
+specs/mcp/indexer-lag.md#An unreachable database is reported, not hidden
+specs/mcp/indexer-lag.md#Lag is the head minus the last indexed block
+specs/mcp/indexer-lag.md#One unreachable RPC does not hide the other chains
+specs/mcp/indexer-lag.md#Registry projection lag counts only the registry's log contracts
 specs/mcp/logs.md#A limit above 500 is clamped and flagged
 specs/mcp/logs.md#A line of 2048 bytes is kept whole
 specs/mcp/logs.md#A line over 2048 bytes is cut and flagged

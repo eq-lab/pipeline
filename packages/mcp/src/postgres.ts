@@ -5,7 +5,14 @@
 import { Effect, Layer, Redacted } from "effect";
 import pg from "pg";
 
-import { Db, queueErrors, type Queues, type Table } from "./db.js";
+import {
+  Db,
+  type LogCursor,
+  queueErrors,
+  type Queues,
+  type SyncState,
+  type Table,
+} from "./db.js";
 import { ToolError } from "./errors.js";
 
 export interface PostgresConfig {
@@ -114,6 +121,36 @@ const readQueues = async (client: pg.PoolClient): Promise<Queues> => {
   };
 };
 
+const indexerSql = `
+  SELECT chain_id::float8 AS "chainId", last_indexed_block::float8 AS next,
+         to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "updatedAt"
+  FROM log_collector_state`;
+
+const cursorSql = (table: string, column: string) => `
+  SELECT chain_id::float8 AS "chainId", contract_address AS contract,
+         ${column}::float8 AS cursor
+  FROM ${table}`;
+
+const maxLogIdSql = `
+  SELECT COALESCE(MAX(id), 0)::float8 AS id FROM contract_logs
+  WHERE chain_id = $1 AND contract_address = ANY($2)
+    AND ($3::text[] IS NULL OR event_name = ANY($3))`;
+
+const syncState = async (client: pg.PoolClient): Promise<SyncState> => {
+  const indexer = await client.query<SyncState["indexer"][number]>(indexerSql);
+  const registry = await client.query<LogCursor>(
+    cursorSql("security_registry_state", "projected_log_id"),
+  );
+  const accessManager = await client.query<LogCursor>(
+    cursorSql("access_manager_sync_state", "last_log_id"),
+  );
+  return {
+    indexer: indexer.rows,
+    registry: registry.rows,
+    accessManager: accessManager.rows,
+  };
+};
+
 export const postgres = (config: PostgresConfig) =>
   Layer.effect(
     Db,
@@ -136,6 +173,15 @@ export const postgres = (config: PostgresConfig) =>
             client.query<Row>(columnsSql),
           ).pipe(Effect.map(({ rows }) => toTables(rows))),
           queues: readOnly(pool, config.statementTimeoutMs, readQueues),
+          syncState: readOnly(pool, config.statementTimeoutMs, syncState),
+          maxLogId: (chainId, contracts, events) =>
+            readOnly(pool, config.statementTimeoutMs, (client) =>
+              client.query<{ id: number }>(maxLogIdSql, [
+                chainId,
+                contracts,
+                events ?? null,
+              ]),
+            ).pipe(Effect.map(({ rows }) => rows[0]?.id ?? 0)),
         }),
       ),
     ),

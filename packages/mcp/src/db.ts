@@ -40,12 +40,36 @@ export interface Queues {
   };
 }
 
-// Tables sorted by name, columns by position.
+export interface LogCursor {
+  readonly chainId: number;
+  readonly contract: string;
+  readonly cursor: number;
+}
+
+export interface SyncState {
+  readonly indexer: ReadonlyArray<{
+    readonly chainId: number;
+    readonly next: number;
+    readonly updatedAt?: string;
+  }>;
+  readonly registry: ReadonlyArray<LogCursor>;
+  readonly accessManager: ReadonlyArray<LogCursor>;
+}
+
+// Tables sorted by name, columns by position. `maxLogId` is the max
+// `contract_logs.id` of the chain over `contracts` (and `events`, when given),
+// 0 when none.
 export class Db extends Context.Service<
   Db,
   {
     readonly tables: Effect.Effect<ReadonlyArray<Table>, ToolError>;
     readonly queues: Effect.Effect<Queues, ToolError>;
+    readonly syncState: Effect.Effect<SyncState, ToolError>;
+    readonly maxLogId: (
+      chainId: number,
+      contracts: ReadonlyArray<string>,
+      events: ReadonlyArray<string> | undefined,
+    ) => Effect.Effect<number, ToolError>;
   }
 >()("@pipeline/mcp/Db") {}
 

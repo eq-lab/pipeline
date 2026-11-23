@@ -4,6 +4,7 @@ import { Clock, Effect, Layer, Option } from "effect";
 import { Cluster } from "./cluster.js";
 import { Db, type Queues, queueErrors } from "./db.js";
 import { ToolError } from "./errors.js";
+import { ChainRpc, RegistryLogContracts } from "./indexer-lag.js";
 import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
 
@@ -117,13 +118,47 @@ const queues = (of: (tag: string) => ReadonlyArray<Message>): Queues => {
   };
 };
 
-const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) =>
-  Db.of({
-    queues: down
-      ? Effect.fail(new ToolError({ reason: "db_unavailable" }))
-      : Effect.sync(() => queues(of)),
+const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) => {
+  const unavailable = Effect.fail(new ToolError({ reason: "db_unavailable" }));
+  const cursors = (tag: string, field: string) =>
+    of(tag).map((c) => ({
+      chainId: Number(c.chainId),
+      contract: text(c.contract),
+      cursor: Number(c[field]),
+    }));
+  return Db.of({
+    queues: down ? unavailable : Effect.sync(() => queues(of)),
+    syncState: down
+      ? unavailable
+      : Effect.succeed({
+          indexer: of("IndexerCursor").map((c) => ({
+            chainId: Number(c.chainId),
+            next: Number(c.lastIndexedBlock),
+            ...(typeof c.updatedAt === "string"
+              ? { updatedAt: c.updatedAt }
+              : {}),
+          })),
+          registry: cursors("SecurityRegistryCursor", "projectedLogId"),
+          accessManager: cursors("AccessManagerCursor", "lastLogId"),
+        }),
+    maxLogId: (chainId, contracts, events) =>
+      down
+        ? unavailable
+        : Effect.succeed(
+            Math.max(
+              0,
+              ...of("ContractLog")
+                .filter(
+                  (l) =>
+                    l.chainId === chainId &&
+                    contracts.includes(text(l.contract)) &&
+                    (events === undefined || events.includes(text(l.event))),
+                )
+                .map((l) => Number(l.id)),
+            ),
+          ),
     tables: down
-      ? Effect.fail(new ToolError({ reason: "db_unavailable" }))
+      ? unavailable
       : Effect.succeed(
           of("Table")
             .filter((t) => t.schema === "public")
@@ -133,6 +168,18 @@ const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) =>
             }))
             .sort((a, b) => (a.name < b.name ? -1 : 1)),
         ),
+  });
+};
+
+const chainRpc = (of: (tag: string) => ReadonlyArray<Message>) =>
+  ChainRpc.of({
+    head: (chainId) => {
+      const found = of("ChainHead").find((h) => h.chainId === chainId);
+      return found === undefined ||
+        of("ChainDown").some((d) => d.chainId === chainId)
+        ? Effect.fail(new ToolError({ reason: "unreachable" }))
+        : Effect.succeed(Number(found.head));
+    },
   });
 
 const logs = (
@@ -191,6 +238,16 @@ export const fakes = (
     ),
     Layer.succeed(Cluster, cluster(of, down("k8s"))),
     Layer.succeed(Db, db(of, down("db"))),
+    Layer.succeed(ChainRpc, chainRpc(of)),
+    Layer.succeed(
+      RegistryLogContracts,
+      new Map(
+        of("RegistryLogContracts").map((m) => [
+          Number(m.chainId),
+          Array.isArray(m.contracts) ? m.contracts.map(text) : [],
+        ]),
+      ),
+    ),
     Layer.succeed(
       Logs,
       logs(of, down("grafana"), now === null ? Date.now() : Date.parse(now)),
