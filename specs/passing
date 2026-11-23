@@ -1,6 +1,11 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/mcp/deployment.md#An unknown service is rejected
+specs/mcp/deployment.md#An unreachable Kubernetes API is reported, not hidden
+specs/mcp/deployment.md#Events older than an hour are left out
+specs/mcp/deployment.md#Image, pods and recent events of one service
+specs/mcp/deployment.md#Without a service every configured service is listed
 specs/mcp/transport.md#A missing Authorization header gets 401
 specs/mcp/transport.md#A prefix of a configured secret gets 401
 specs/mcp/transport.md#A secret sent with another scheme gets 401

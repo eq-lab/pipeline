@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-201.**
+**Next free number: TD-202.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -29,6 +29,14 @@ line, whichever section it lands in.
 - **Gap:** `resultBytes` is the length of a buffered response body; a streamed (SSE) body has no known length and is recorded as 0. The audit `outcome` is `ok` or `error` by HTTP status; a JSON-RPC error inside a `200` is `ok` until tools report their rejection reason.
 - **Impact:** Audit lines under-report size for streamed responses. Today the transport answers JSON, so nothing is streamed.
 - **Suggested fix:** count bytes while streaming the body; map tool rejection reasons to `outcome` when the tools land (children of epic #2153).
+
+### TD-201: MCP `deployment` reads only the first container and `matchLabels` selectors
+
+- **Date:** 2026-11-23
+- **Location:** `packages/mcp/src/k8s.ts` (Kubernetes adapter of `Cluster`) — Issue #2162.
+- **Gap:** `image` is the first container's image of the Deployment template; the pod list uses only `spec.selector.matchLabels` (a Deployment selecting by `matchExpressions` alone fails to decode and is reported as `cluster_unavailable`).
+- **Impact:** A service with a sidecar shows one image; a Deployment selecting by `matchExpressions` only makes every call that includes it fail. The argocd charts were not checked (no access from this task).
+- **Suggested fix:** return every container's image; build the label selector from `matchExpressions` as well.
 
 ### TD-197: Audit-log rate fields and pre-rework registry snapshots still carry floored bps
 
