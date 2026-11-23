@@ -75,7 +75,7 @@ Every file starts with the line `Status: draft` or `Status: approved`.
 - an approved scenario is green but not in `specs/passing`: run `yarn spec:ratchet` and commit the file;
 - a line of `specs/passing` names no approved scenario.
 
-Rules for agents: write no tests; do not edit files with `Status: approved` (outside `specs/flex/`) or their fixtures; do not touch `specs/approved`; do not remove lines from `specs/passing`; never run `yarn spec:approve` or `yarn spec:ratchet`. Agents add lines of class B scenarios (`specs/flex/`) themselves with `yarn workspace @pipeline/mcp spec:ratchet-flex` (class B only: it neither adds nor touches class A lines).
+Rules for agents: write no tests; do not edit files with `Status: approved` (outside `specs/flex/`) or their fixtures; do not touch `specs/approved`; do not remove lines from `specs/passing`; never run `yarn spec:approve`. After making approved scenarios green, agents run `yarn spec:ratchet` themselves and commit `specs/passing` (it only adds lines of green approved scenarios and drops lines of removed class B scenarios; it never removes a class A line). `yarn workspace @pipeline/mcp spec:ratchet-flex` does the same for `specs/flex/` only.
 
 Summary line of the check: `exec specs: approved N green, N red (backlog), N regressions; draft N green, N red`.
 
@@ -94,7 +94,7 @@ The tooling lives in `packages/mcp/scripts/` (`specs/*`, `guard/files.ts`, `tool
 | Command | Who | What |
 |---|---|---|
 | `yarn spec:approve specs/<area>/<topic>.md ...` | human, devops | marks specs approved and records their hashes in `specs/approved` |
-| `yarn spec:ratchet` | human, devops | records every green approved scenario in `specs/passing` |
+| `yarn spec:ratchet` | agent, human, devops | records every green approved scenario in `specs/passing` (adds only; removing lines is human-only) |
 | `yarn workspace @pipeline/mcp spec:ratchet-flex` | agent | the same for `specs/flex/` only |
 | `yarn workspace @pipeline/mcp guard` | check | guarded files match `packages/mcp/guarded.sha256` |
 | `yarn workspace @pipeline/mcp specs` | check | runs every spec with the ratchet |
