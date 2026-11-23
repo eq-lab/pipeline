@@ -22,6 +22,7 @@ An HTTP MCP server deployed next to the test stack, exposing a fixed set of read
 - HTTP MCP (streamable HTTP) on one endpoint.
 - One Bearer token per client, configured as `{id, secret}` pairs. The presented token is compared with every configured secret in constant time (`crypto.timingSafeEqual` over equal-length digests); no match gives `401` with no detail.
 - Audit: one log line per call with token id, tool, duration, result size and outcome. Never the token, the arguments' secrets or the result.
+- Config from env, validated at startup (a bad value exits with the failing key, never its value): `MCP_PORT`, and `MCP_TOKENS` as a JSON array `[{"id": "...", "secret": "..."}]` (at least one client, unique ids and secrets, each secret ≥ 32 characters). The endpoint is `POST /mcp`.
 
 ### Tools
 
