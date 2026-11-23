@@ -2,6 +2,7 @@
 // fields of the query, decoded like a tool call's arguments.
 import { Effect, Schema } from "effect";
 import { deployment, DeploymentInput } from "./deployment.js";
+import { errorsQuery } from "./error-groups.js";
 import { ToolError } from "./errors.js";
 import { logsQuery } from "./logs.js";
 
@@ -11,5 +12,6 @@ export const queries = {
       Effect.mapError(() => new ToolError({ reason: "invalid_query" })),
       Effect.flatMap(deployment),
     ),
+  Errors: errorsQuery,
   Logs: logsQuery,
 };

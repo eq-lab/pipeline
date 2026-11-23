@@ -14,6 +14,7 @@ export interface LogQuery {
   readonly container: string;
   readonly sinceSeconds: number;
   readonly contains: string | undefined;
+  readonly level?: string;
   readonly limit: number;
 }
 
@@ -28,7 +29,7 @@ export class Logs extends Context.Service<
   }
 >()("@pipeline/mcp/Logs") {}
 
-const maxSinceSeconds = 24 * 3600;
+export const maxSinceSeconds = 24 * 3600;
 const maxLimit = 500;
 const fallbackLimit = 100;
 const maxLineBytes = 2048;
@@ -70,8 +71,9 @@ const cut = (line: string) => {
   return bytes.subarray(0, end).toString();
 };
 
-export const readLogs = Effect.fnUntraced(function* (
-  params: typeof LogsParams.Type,
+// The container of a configured service and the requested window in seconds.
+export const target = Effect.fnUntraced(function* (
+  params: Pick<typeof LogsParams.Type, "service" | "since">,
 ) {
   const services = yield* ServiceMap;
   const container = services.get(params.service);
@@ -83,6 +85,13 @@ export const readLogs = Effect.fnUntraced(function* (
   const requested =
     Number(params.since.slice(0, -1)) *
     (unitSeconds[params.since.slice(-1)] ?? 0);
+  return { container, requested };
+});
+
+export const readLogs = Effect.fnUntraced(function* (
+  params: typeof LogsParams.Type,
+) {
+  const { container, requested } = yield* target(params);
   const limit = clampLimit(params.limit, maxLimit, fallbackLimit);
   const found = yield* (yield* Logs).lines({
     container,
