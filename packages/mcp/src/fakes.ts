@@ -4,7 +4,8 @@ import { Clock, Effect, Layer } from "effect";
 import { Cluster } from "./cluster.js";
 import { Db, type Queues, queueErrors } from "./db.js";
 import { ToolError } from "./errors.js";
-import { cluster, type Message, text } from "./fake-cluster.js";
+import { cluster, type Delay, type Message, text } from "./fake-cluster.js";
+import { Probes } from "./health.js";
 import { ChainRpc, RegistryLogContracts } from "./indexer-lag.js";
 import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
@@ -74,7 +75,11 @@ const queues = (of: (tag: string) => ReadonlyArray<Message>): Queues => {
   };
 };
 
-const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) => {
+const db = (
+  of: (tag: string) => ReadonlyArray<Message>,
+  down: boolean,
+  slow: Delay,
+) => {
   const unavailable = Effect.fail(new ToolError({ reason: "db_unavailable" }));
   const cursors = (tag: string, field: string) =>
     of(tag).map((c) => ({
@@ -83,6 +88,16 @@ const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) => {
       cursor: Number(c[field]),
     }));
   return Db.of({
+    cursors: slow(
+      down
+        ? unavailable
+        : Effect.succeed(
+            of("IndexerCursor").map((c) => ({
+              chainId: Number(c.chainId),
+              updatedAt: text(c.updatedAt),
+            })),
+          ),
+    ),
     queues: down ? unavailable : Effect.sync(() => queues(of)),
     syncState: down
       ? unavailable
@@ -185,15 +200,39 @@ export const fakes = (
   const of = (tag: string) => given.filter((m) => m._tag === tag);
   const down = (source: string) =>
     of("SourceDown").some((m) => m.source === source);
+  const slow =
+    (source: string): Delay =>
+    (e) =>
+      Effect.delay(
+        e,
+        Number(of("SourceSlow").find((m) => m.source === source)?.ms ?? 0),
+      );
+  const http = (source: string) => {
+    const failure = of("SourceDown").find((m) => m.source === source);
+    return slow(source)(
+      failure === undefined
+        ? Effect.void
+        : Effect.fail(
+            new ToolError({
+              reason: "unreachable",
+              message: text(failure.error),
+            }),
+          ),
+    );
+  };
   return Layer.mergeAll(
+    Layer.succeed(
+      Probes,
+      Probes.of({ api: http("api"), grafana: http("grafana") }),
+    ),
     Layer.succeed(
       ServiceMap,
       new Map(
         of("ServiceContainer").map((m) => [text(m.service), text(m.container)]),
       ),
     ),
-    Layer.succeed(Cluster, cluster(of, down("k8s"))),
-    Layer.succeed(Db, db(of, down("db"))),
+    Layer.succeed(Cluster, cluster(of, down("k8s"), slow("k8s"))),
+    Layer.succeed(Db, db(of, down("db"), slow("db"))),
     Layer.succeed(ChainRpc, chainRpc(of)),
     Layer.succeed(
       RegistryLogContracts,

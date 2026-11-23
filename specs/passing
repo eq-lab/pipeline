@@ -19,6 +19,11 @@ specs/mcp/errors.md#An unknown service is rejected
 specs/mcp/errors.md#Error lines are grouped by normalised message
 specs/mcp/errors.md#No errors in the window is an empty result
 specs/mcp/errors.md#Unreachable Grafana is reported, not hidden
+specs/mcp/health.md#A cursor that stopped moving makes the worker stale
+specs/mcp/health.md#A probe slower than 2 s is a timeout
+specs/mcp/health.md#An unreachable database leaves the other sources reported
+specs/mcp/health.md#Every source answering is all ok
+specs/mcp/health.md#One unreachable service does not fail health
 specs/mcp/indexer-lag.md#A cursor ahead of the head is no lag
 specs/mcp/indexer-lag.md#AccessManager sync lag counts only the operation events
 specs/mcp/indexer-lag.md#An unreachable database is reported, not hidden
@@ -45,6 +50,7 @@ specs/mcp/schema.md#An empty database has no tables
 specs/mcp/schema.md#An unreachable database is reported, not hidden
 specs/mcp/schema.md#Tables of the public schema with their columns
 specs/mcp/schema.md#Tables outside the public schema are not listed
+specs/mcp/transport.md#A configured token reaches the tool
 specs/mcp/transport.md#A missing Authorization header gets 401
 specs/mcp/transport.md#A prefix of a configured secret gets 401
 specs/mcp/transport.md#A secret sent with another scheme gets 401

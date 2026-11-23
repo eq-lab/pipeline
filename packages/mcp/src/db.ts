@@ -70,6 +70,11 @@ export class Db extends Context.Service<
       contracts: ReadonlyArray<string>,
       events: ReadonlyArray<string> | undefined,
     ) => Effect.Effect<number, ToolError>;
+    // `log_collector_state`: the indexer cursor of each chain (`health`).
+    readonly cursors: Effect.Effect<
+      ReadonlyArray<{ readonly chainId: number; readonly updatedAt: string }>,
+      ToolError
+    >;
   }
 >()("@pipeline/mcp/Db") {}
 

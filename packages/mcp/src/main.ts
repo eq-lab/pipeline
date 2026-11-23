@@ -9,6 +9,7 @@ import { RegistryLogContracts } from "./indexer-lag.js";
 import { chainRpc } from "./rpc.js";
 import { k8s } from "./k8s.js";
 import { listen } from "./node.js";
+import { httpProbes } from "./probes.js";
 import { postgres } from "./postgres.js";
 import { ServiceMap } from "./services.js";
 
@@ -31,6 +32,7 @@ const main = Effect.gen(function* () {
           ),
         ),
       ),
+      httpProbes({ apiUrl: config.apiUrl, grafanaUrl: config.grafana.url }),
     ),
   );
   const { handler, dispose } = HttpRouter.toWebHandler(

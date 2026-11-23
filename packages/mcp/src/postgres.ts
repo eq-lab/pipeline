@@ -182,6 +182,18 @@ export const postgres = (config: PostgresConfig) =>
                 events ?? null,
               ]),
             ).pipe(Effect.map(({ rows }) => rows[0]?.id ?? 0)),
+          cursors: readOnly(pool, config.statementTimeoutMs, (client) =>
+            client.query<{ chain_id: string; updated_at: Date }>(
+              "SELECT chain_id, updated_at FROM log_collector_state",
+            ),
+          ).pipe(
+            Effect.map(({ rows }) =>
+              rows.map((r) => ({
+                chainId: Number(r.chain_id),
+                updatedAt: r.updated_at.toISOString(),
+              })),
+            ),
+          ),
         }),
       ),
     ),
