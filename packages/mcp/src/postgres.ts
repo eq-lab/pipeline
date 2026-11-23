@@ -69,7 +69,7 @@ const toTables = (rows: ReadonlyArray<Row>): ReadonlyArray<Table> => {
   return [...tables].map(([name, columns]) => ({ name, columns }));
 };
 
-const limit =String(queueErrors);
+const limit = String(queueErrors);
 type Str<K extends string> = Record<K, string>;
 
 // pg returns bigint, numeric and count as strings.

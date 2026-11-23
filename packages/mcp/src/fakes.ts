@@ -75,7 +75,7 @@ const cluster = (
   });
 };
 
-const newest =(rows: ReadonlyArray<Message>) =>
+const newest = (rows: ReadonlyArray<Message>) =>
   rows
     .filter((r) => typeof r.error === "string")
     .sort(
