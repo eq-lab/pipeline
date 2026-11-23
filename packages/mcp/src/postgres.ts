@@ -66,14 +66,16 @@ export const postgres = (config: PostgresConfig) =>
   Layer.effect(
     Db,
     Effect.acquireRelease(
-      Effect.sync(
-        () =>
-          new pg.Pool({
-            connectionString: Redacted.value(config.url),
-            max: 5,
-            options: "-c default_transaction_read_only=on",
-          }),
-      ),
+      Effect.gen(function* () {
+        const log = Effect.runForkWith(yield* Effect.context());
+        const pool = new pg.Pool({
+          connectionString: Redacted.value(config.url),
+          max: 5,
+          options: "-c default_transaction_read_only=on",
+        });
+        pool.on("error", (cause) => log(Effect.logWarning("db idle", cause)));
+        return pool;
+      }),
       (pool) => Effect.promise(() => pool.end()),
     ).pipe(
       Effect.map((pool) =>

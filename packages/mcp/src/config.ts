@@ -42,8 +42,9 @@ export const mcpConfig = Config.all({
       Schema.Redacted(Schema.NonEmptyString),
       "MCP_DATABASE_URL",
     ),
-    statementTimeoutMs: Config.Int("MCP_STATEMENT_TIMEOUT_MS").pipe(
-      Config.withDefault(10_000),
-    ),
+    statementTimeoutMs: Config.schema(
+      Schema.Int.check(Schema.isBetween({ minimum: 5_000, maximum: 10_000 })),
+      "MCP_STATEMENT_TIMEOUT_MS",
+    ).pipe(Config.withDefault(10_000)),
   }),
 });
