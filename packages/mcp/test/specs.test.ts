@@ -5,7 +5,7 @@ import { check } from "../scripts/specs/bindings.js";
 import { repoRoot } from "../scripts/specs/files.js";
 import { specSuite } from "../scripts/specs/suite.js";
 
-specSuite(
+await specSuite(
   check,
   {
     describe: (name, body) => void describe(name, body),

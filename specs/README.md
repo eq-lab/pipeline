@@ -22,7 +22,11 @@ then:                 # new events in order, or a rejection
 - The event list in `then` matches as a whole: the same events in the same order, nothing extra. Fields inside an event match partially: listed fields must be equal, others are ignored. Numbers match within 1e-9.
 - YAML 1.2 core schema: dates stay strings.
 
-The package has no commands yet, so a command scenario is red (not implemented) until one exists.
+Commands bound today: `Call` (`specs/mcp/transport.md`). The runner sends one stateless MCP `tools/call` request (protocol 2026-07-28) to the server's web handler in process, no network: `TokenConfigured` events configure the clients, every other `given` event goes to the fakes, and the audit records are collected. `then` gets `Responded: { status, body }` followed by one `AuditRecorded` per record, with `fields` the record's sorted key names. It is not implemented (backlog) while the server, the fakes for a `given` source, or the called tool do not exist yet. Other commands are not implemented.
+
+What `Call` needs from the package: `src/http.ts` exports `app(tokens)` (the HTTP router layer), `src/audit.ts` exports the `AuditSink` service, and `src/fakes.ts` exports `fakes(given)`, a layer of fakes for the source events of `given` (sources not mentioned answer normally).
+
+The bindings return promises; the runner awaits them one scenario at a time.
 
 ## Adapter contract specs
 
