@@ -4,7 +4,7 @@
 import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
 import type { Cluster } from "./cluster.js";
-import { Db, schema, SchemaResult } from "./db.js";
+import { Db, queues, QueuesResult, schema, SchemaResult } from "./db.js";
 import { deployment, DeploymentInput, DeploymentState } from "./deployment.js";
 import { ErrorsParams, ErrorsResult, readErrors } from "./error-groups.js";
 import { ToolError } from "./errors.js";
@@ -39,6 +39,14 @@ const toolkit = Toolkit.make(
   })
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false),
+  Tool.make("queues", {
+    description:
+      "Worker outboxes: kyc_outbox (unprocessed count, oldest age, 20 recent errors) and yield_mint_outbox (count per status, 20 recent errors); errors cut to 500 characters.",
+    success: QueuesResult,
+    failure: ToolError,
+  })
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false),
   Tool.make("schema", {
     description:
       "Tables of the public schema of the test database with their columns: name, type, nullable.",
@@ -56,6 +64,7 @@ const handlers = toolkit.toLayer(
       deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
       errors: (input) => readErrors(input).pipe(Effect.provide(sources)),
       logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
+      queues: () => queues.pipe(Effect.provide(sources)),
       schema: () => schema.pipe(Effect.provide(sources)),
     });
   }),

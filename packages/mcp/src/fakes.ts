@@ -2,7 +2,7 @@
 // built from the `given` events, and the clock fixed at `now`.
 import { Clock, Effect, Layer, Option } from "effect";
 import { Cluster } from "./cluster.js";
-import { Db } from "./db.js";
+import { Db, type Queues, queueErrors } from "./db.js";
 import { ToolError } from "./errors.js";
 import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
@@ -74,8 +74,54 @@ const cluster = (
   });
 };
 
+const newest = (rows: ReadonlyArray<Message>) =>
+  rows
+    .filter((r) => typeof r.error === "string")
+    .sort(
+      (a, b) => Date.parse(text(b.createdAt)) - Date.parse(text(a.createdAt)),
+    )
+    .slice(0, queueErrors);
+
+const queues = (of: (tag: string) => ReadonlyArray<Message>): Queues => {
+  const kyc = of("KycOutboxRow");
+  const open = kyc
+    .filter((r) => r.processedAt === null)
+    .map((r) => text(r.createdAt))
+    .sort();
+  const mint = of("YieldMintOutboxRow");
+  const byStatus: Record<string, number> = {};
+  for (const { status } of mint)
+    byStatus[text(status)] = (byStatus[text(status)] ?? 0) + 1;
+  return {
+    kyc: {
+      unprocessed: open.length,
+      oldestUnprocessedAt: open[0] ?? null,
+      errors: newest(kyc).map((r) => ({
+        id: Number(r.id),
+        chainId: Number(r.chainId),
+        error: text(r.error),
+      })),
+    },
+    yieldMint: {
+      byStatus,
+      errors: newest(mint.map((r) => ({ ...r, error: r.lastError }))).map(
+        (r) => ({
+          chainId: Number(r.chainId),
+          loanId: Number(r.loanId),
+          repaymentId: Number(r.repaymentId),
+          status: text(r.status),
+          error: text(r.error),
+        }),
+      ),
+    },
+  };
+};
+
 const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) =>
   Db.of({
+    queues: down
+      ? Effect.fail(new ToolError({ reason: "db_unavailable" }))
+      : Effect.sync(() => queues(of)),
     tables: down
       ? Effect.fail(new ToolError({ reason: "db_unavailable" }))
       : Effect.succeed(

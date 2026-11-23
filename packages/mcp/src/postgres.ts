@@ -5,7 +5,7 @@
 import { Effect, Layer, Redacted } from "effect";
 import pg from "pg";
 
-import { Db, type Table } from "./db.js";
+import { Db, queueErrors, type Queues, type Table } from "./db.js";
 import { ToolError } from "./errors.js";
 
 export interface PostgresConfig {
@@ -62,6 +62,58 @@ const toTables = (rows: ReadonlyArray<Row>): ReadonlyArray<Table> => {
   return [...tables].map(([name, columns]) => ({ name, columns }));
 };
 
+const limit = String(queueErrors);
+type Str<K extends string> = Record<K, string>;
+
+// pg returns bigint, numeric and count as strings.
+const readQueues = async (client: pg.PoolClient): Promise<Queues> => {
+  const kyc = await client.query<{ unprocessed: string; oldest: Date | null }>(
+    `SELECT count(*) AS unprocessed, min(created_at) AS oldest
+    FROM kyc_outbox WHERE processed_at IS NULL`,
+  );
+  const kycErrors = await client.query<Str<"id" | "chain_id" | "error">>(
+    `SELECT id, chain_id, error FROM kyc_outbox
+    WHERE error IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT ${limit}`,
+  );
+  const statuses = await client.query<Str<"status" | "n">>(
+    "SELECT status, count(*) AS n FROM yield_mint_outbox GROUP BY status",
+  );
+  const mintErrors = await client.query<
+    Str<"chain_id" | "loan_id" | "repayment_id" | "status" | "error">
+  >(
+    `SELECT chain_id, loan_id, repayment_id,
+    status, last_error AS error FROM yield_mint_outbox
+    WHERE last_error IS NOT NULL ORDER BY created_at DESC LIMIT ${limit}`,
+  );
+  const { unprocessed, oldest } = kyc.rows[0] ?? {
+    unprocessed: "0",
+    oldest: null,
+  };
+  return {
+    kyc: {
+      unprocessed: Number(unprocessed),
+      oldestUnprocessedAt: oldest === null ? null : oldest.toISOString(),
+      errors: kycErrors.rows.map((r) => ({
+        id: Number(r.id),
+        chainId: Number(r.chain_id),
+        error: r.error,
+      })),
+    },
+    yieldMint: {
+      byStatus: Object.fromEntries(
+        statuses.rows.map((r) => [r.status, Number(r.n)]),
+      ),
+      errors: mintErrors.rows.map((r) => ({
+        chainId: Number(r.chain_id),
+        loanId: Number(r.loan_id),
+        repaymentId: Number(r.repayment_id),
+        status: r.status,
+        error: r.error,
+      })),
+    },
+  };
+};
+
 export const postgres = (config: PostgresConfig) =>
   Layer.effect(
     Db,
@@ -83,6 +135,7 @@ export const postgres = (config: PostgresConfig) =>
           tables: readOnly(pool, config.statementTimeoutMs, (client) =>
             client.query<Row>(columnsSql),
           ).pipe(Effect.map(({ rows }) => toTables(rows))),
+          queues: readOnly(pool, config.statementTimeoutMs, readQueues),
         }),
       ),
     ),

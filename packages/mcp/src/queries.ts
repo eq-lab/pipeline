@@ -1,7 +1,7 @@
 // Tool queries by tag (specs/README.md, "Queries"): each handler takes the raw
 // fields of the query, decoded like a tool call's arguments.
 import { Effect, Schema } from "effect";
-import { schema } from "./db.js";
+import { queues, schema } from "./db.js";
 import { deployment, DeploymentInput } from "./deployment.js";
 import { errorsQuery } from "./error-groups.js";
 import { ToolError } from "./errors.js";
@@ -15,5 +15,6 @@ export const queries = {
     ),
   Errors: errorsQuery,
   Logs: logsQuery,
+  Queues: () => queues,
   Schema: () => schema,
 };

@@ -22,6 +22,11 @@ specs/mcp/logs.md#Grep keeps only matching lines
 specs/mcp/logs.md#Lines of the service within the window, oldest first
 specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
 specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
+specs/mcp/queues.md#A long error is cut to 500 characters
+specs/mcp/queues.md#An unreachable database is reported, not hidden
+specs/mcp/queues.md#Counts, oldest age and errors of both outboxes
+specs/mcp/queues.md#Empty outboxes report nothing pending
+specs/mcp/queues.md#Only the 20 most recent errors are returned
 specs/mcp/schema.md#An empty database has no tables
 specs/mcp/schema.md#An unreachable database is reported, not hidden
 specs/mcp/schema.md#Tables of the public schema with their columns
