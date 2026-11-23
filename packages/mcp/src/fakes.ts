@@ -1,10 +1,13 @@
 // In-memory sources of the specs (specs/README.md, "Fakes"): every source port
-// built from the `given` events, and the clock fixed at `now`.
+// built from the `given` events, and the clock fixed at `now`. The database
+// fake is in `fakes-db.ts`.
 import { Clock, Effect, Layer } from "effect";
 import { Cluster } from "./cluster.js";
-import { Db, type Queues, queueErrors } from "./db.js";
+import { Db } from "./db.js";
 import { ToolError } from "./errors.js";
-import { cluster, type Message, text } from "./fake-cluster.js";
+import { cluster, type Delay, type Message, text } from "./fake-cluster.js";
+import { db } from "./fakes-db.js";
+import { Probes } from "./health.js";
 import { ChainRpc, RegistryLogContracts } from "./indexer-lag.js";
 import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
@@ -29,102 +32,6 @@ const fixedClock = (iso: string): Clock.Clock => {
     monotonicTimeNanos: live.monotonicTimeNanos,
     sleep: (duration) => live.sleep(duration),
   };
-};
-
-const newest = (rows: ReadonlyArray<Message>) =>
-  rows
-    .filter((r) => typeof r.error === "string")
-    .sort(
-      (a, b) => Date.parse(text(b.createdAt)) - Date.parse(text(a.createdAt)),
-    )
-    .slice(0, queueErrors);
-
-const queues = (of: (tag: string) => ReadonlyArray<Message>): Queues => {
-  const kyc = of("KycOutboxRow");
-  const open = kyc
-    .filter((r) => r.processedAt === null)
-    .map((r) => text(r.createdAt))
-    .sort();
-  const mint = of("YieldMintOutboxRow");
-  const byStatus: Record<string, number> = {};
-  for (const { status } of mint)
-    byStatus[text(status)] = (byStatus[text(status)] ?? 0) + 1;
-  return {
-    kyc: {
-      unprocessed: open.length,
-      oldestUnprocessedAt: open[0] ?? null,
-      errors: newest(kyc).map((r) => ({
-        id: Number(r.id),
-        chainId: Number(r.chainId),
-        error: text(r.error),
-      })),
-    },
-    yieldMint: {
-      byStatus,
-      errors: newest(mint.map((r) => ({ ...r, error: r.lastError }))).map(
-        (r) => ({
-          chainId: Number(r.chainId),
-          loanId: Number(r.loanId),
-          repaymentId: Number(r.repaymentId),
-          status: text(r.status),
-          error: text(r.error),
-        }),
-      ),
-    },
-  };
-};
-
-const db = (of: (tag: string) => ReadonlyArray<Message>, down: boolean) => {
-  const unavailable = Effect.fail(new ToolError({ reason: "db_unavailable" }));
-  const cursors = (tag: string, field: string) =>
-    of(tag).map((c) => ({
-      chainId: Number(c.chainId),
-      contract: text(c.contract),
-      cursor: Number(c[field]),
-    }));
-  return Db.of({
-    queues: down ? unavailable : Effect.sync(() => queues(of)),
-    syncState: down
-      ? unavailable
-      : Effect.succeed({
-          indexer: of("IndexerCursor").map((c) => ({
-            chainId: Number(c.chainId),
-            next: Number(c.lastIndexedBlock),
-            ...(typeof c.updatedAt === "string"
-              ? { updatedAt: c.updatedAt }
-              : {}),
-          })),
-          registry: cursors("SecurityRegistryCursor", "projectedLogId"),
-          accessManager: cursors("AccessManagerCursor", "lastLogId"),
-        }),
-    maxLogId: (chainId, contracts, events) =>
-      down
-        ? unavailable
-        : Effect.succeed(
-            Math.max(
-              0,
-              ...of("ContractLog")
-                .filter(
-                  (l) =>
-                    l.chainId === chainId &&
-                    contracts.includes(text(l.contract)) &&
-                    (events === undefined || events.includes(text(l.event))),
-                )
-                .map((l) => Number(l.id)),
-            ),
-          ),
-    tables: down
-      ? unavailable
-      : Effect.succeed(
-          of("Table")
-            .filter((t) => t.schema === "public")
-            .map((t) => ({
-              name: text(t.name),
-              columns: Array.isArray(t.columns) ? t.columns : [],
-            }))
-            .sort((a, b) => (a.name < b.name ? -1 : 1)),
-        ),
-  });
 };
 
 const chainRpc = (of: (tag: string) => ReadonlyArray<Message>) =>
@@ -185,15 +92,39 @@ export const fakes = (
   const of = (tag: string) => given.filter((m) => m._tag === tag);
   const down = (source: string) =>
     of("SourceDown").some((m) => m.source === source);
+  const slow =
+    (source: string): Delay =>
+    (e) =>
+      Effect.delay(
+        e,
+        Number(of("SourceSlow").find((m) => m.source === source)?.ms ?? 0),
+      );
+  const http = (source: string) => {
+    const failure = of("SourceDown").find((m) => m.source === source);
+    return slow(source)(
+      failure === undefined
+        ? Effect.void
+        : Effect.fail(
+            new ToolError({
+              reason: "unreachable",
+              message: text(failure.error),
+            }),
+          ),
+    );
+  };
   return Layer.mergeAll(
+    Layer.succeed(
+      Probes,
+      Probes.of({ api: http("api"), grafana: http("grafana") }),
+    ),
     Layer.succeed(
       ServiceMap,
       new Map(
         of("ServiceContainer").map((m) => [text(m.service), text(m.container)]),
       ),
     ),
-    Layer.succeed(Cluster, cluster(of, down("k8s"))),
-    Layer.succeed(Db, db(of, down("db"))),
+    Layer.succeed(Cluster, cluster(of, down("k8s"), slow("k8s"))),
+    Layer.succeed(Db, db(of, down("db"), slow("db"))),
     Layer.succeed(ChainRpc, chainRpc(of)),
     Layer.succeed(
       RegistryLogContracts,

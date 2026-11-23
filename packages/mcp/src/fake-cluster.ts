@@ -18,9 +18,13 @@ const isRef = (v: unknown): v is { name: string; key: string } =>
 const refName = (v: unknown) =>
   typeof v === "object" && v !== null && "name" in v ? text(v.name) : undefined;
 
+// `SourceSlow: { source, ms }` makes a source answer after `ms`.
+export type Delay = <A, E>(e: Effect.Effect<A, E>) => Effect.Effect<A, E>;
+
 export const cluster = (
   of: (tag: string) => ReadonlyArray<Message>,
   down: boolean,
+  slow: Delay,
 ) => {
   const unavailable = Effect.fail(
     new ToolError({ reason: "cluster_unavailable" }),
@@ -85,15 +89,17 @@ export const cluster = (
               ),
             ),
           ),
-    events: down
-      ? unavailable
-      : Effect.succeed(
-          of("KubeEvent").map((e) => ({
-            object: text(e.object),
-            reason: text(e.reason),
-            message: text(e.message),
-            ts: text(e.ts),
-          })),
-        ),
+    events: slow(
+      down
+        ? unavailable
+        : Effect.succeed(
+            of("KubeEvent").map((e) => ({
+              object: text(e.object),
+              reason: text(e.reason),
+              message: text(e.message),
+              ts: text(e.ts),
+            })),
+          ),
+    ),
   });
 };

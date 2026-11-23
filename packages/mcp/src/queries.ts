@@ -6,6 +6,7 @@ import { queues, schema } from "./db.js";
 import { deployment, DeploymentInput } from "./deployment.js";
 import { errorsQuery } from "./error-groups.js";
 import { ToolError } from "./errors.js";
+import { health } from "./health.js";
 import { indexerLag } from "./indexer-lag.js";
 import { logsQuery } from "./logs.js";
 
@@ -17,6 +18,7 @@ export const queries = {
       Effect.flatMap(deployment),
     ),
   Errors: errorsQuery,
+  Health: () => health,
   IndexerLag: () => indexerLag,
   Logs: logsQuery,
   Queues: () => queues,

@@ -6,6 +6,8 @@
 // `ServiceMap.config` (services.ts).
 import { Config, Schema } from "effect";
 
+const Url = Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/));
+
 const Token = Schema.Struct({
   id: Schema.NonEmptyString,
   secret: Schema.String.check(Schema.isMinLength(32)),
@@ -39,11 +41,10 @@ const Chains = Schema.fromJsonString(
 export const mcpConfig = Config.all({
   port: Config.Port("MCP_PORT"),
   tokens: Config.schema(Tokens, "MCP_TOKENS"),
+  // The test API's base URL, probed by `health`.
+  apiUrl: Config.schema(Url, "MCP_API_URL"),
   grafana: Config.all({
-    url: Config.schema(
-      Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/)),
-      "GRAFANA_URL",
-    ),
+    url: Config.schema(Url, "GRAFANA_URL"),
     token: Config.schema(
       Schema.Redacted(Schema.NonEmptyString),
       "GRAFANA_TOKEN",
