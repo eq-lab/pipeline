@@ -3,11 +3,19 @@
 import { Clock, Effect, Layer, Option } from "effect";
 import { Cluster } from "./cluster.js";
 import { ToolError } from "./errors.js";
+import { Logs } from "./logs.js";
 import { ServiceMap } from "./services.js";
 
 type Message = Readonly<Record<string, unknown>> & { readonly _tag: string };
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
+
+// `line: { repeat, times }` stands for the text repeated (specs/mcp/logs.md).
+const lineText = (line: unknown): string => {
+  if (typeof line !== "object" || line === null) return String(line);
+  const { repeat, times } = line as { repeat?: unknown; times?: unknown };
+  return String(repeat).repeat(Number(times));
+};
 
 const fixedClock = (iso: string): Clock.Clock => {
   const live = Clock.Clock.defaultValue();
@@ -65,6 +73,44 @@ const cluster = (
   });
 };
 
+const logs = (
+  of: (tag: string) => ReadonlyArray<Message>,
+  down: boolean,
+  nowMs: number,
+) => {
+  const stored = of("LokiLine")
+    .map((e) => ({
+      container: String(e.container),
+      ts: String(e.ts),
+      at: Date.parse(String(e.ts)),
+      line: lineText(e.line),
+    }))
+    .sort((a, b) => b.at - a.at);
+  return Logs.of({
+    lines: (query) =>
+      down
+        ? Effect.fail(
+            new ToolError({
+              reason: "logs_unavailable",
+              message: "logs unavailable: grafana down",
+            }),
+          )
+        : Effect.succeed(
+            stored
+              .filter(
+                (l) =>
+                  l.container === query.container &&
+                  l.at >= nowMs - query.sinceSeconds * 1000 &&
+                  l.at <= nowMs &&
+                  (query.contains === undefined ||
+                    l.line.includes(query.contains)),
+              )
+              .slice(0, query.limit)
+              .map(({ ts, line }) => ({ ts, line })),
+          ),
+  });
+};
+
 export const fakes = (
   given: ReadonlyArray<Message>,
   now: string | null,
@@ -80,6 +126,10 @@ export const fakes = (
       ),
     ),
     Layer.succeed(Cluster, cluster(of, down("k8s"))),
+    Layer.succeed(
+      Logs,
+      logs(of, down("grafana"), now === null ? Date.now() : Date.parse(now)),
+    ),
     now === null ? Layer.empty : Layer.succeed(Clock.Clock, fixedClock(now)),
   );
 };

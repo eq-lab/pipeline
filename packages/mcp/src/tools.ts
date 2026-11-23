@@ -1,10 +1,12 @@
 // Tool registry of the MCP server (docs/design-docs/mcp-test-env.md, "Tools"):
-// every tool is read only and needs the source ports (`Cluster`, `ServiceMap`).
+// every tool is read only and needs the source ports (`Cluster`, `Logs`,
+// `ServiceMap`).
 import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
 import type { Cluster } from "./cluster.js";
 import { deployment, DeploymentInput, DeploymentState } from "./deployment.js";
 import { ToolError } from "./errors.js";
+import { type Logs, LogsParams, LogsResult, readLogs } from "./logs.js";
 import type { ServiceMap } from "./services.js";
 
 const toolkit = Toolkit.make(
@@ -17,13 +19,23 @@ const toolkit = Toolkit.make(
   })
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false),
+  Tool.make("logs", {
+    description:
+      "Recent log lines of a configured service from Loki, oldest first; truncated says a limit was hit.",
+    parameters: LogsParams,
+    success: LogsResult,
+    failure: ToolError,
+  })
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false),
 );
 
 const handlers = toolkit.toLayer(
   Effect.gen(function* () {
-    const sources = yield* Effect.context<Cluster | ServiceMap>();
+    const sources = yield* Effect.context<Cluster | Logs | ServiceMap>();
     return toolkit.of({
       deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
+      logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
     });
   }),
 );

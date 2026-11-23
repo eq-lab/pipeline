@@ -6,6 +6,17 @@ specs/mcp/deployment.md#An unreachable Kubernetes API is reported, not hidden
 specs/mcp/deployment.md#Events older than an hour are left out
 specs/mcp/deployment.md#Image, pods and recent events of one service
 specs/mcp/deployment.md#Without a service every configured service is listed
+specs/mcp/logs.md#A limit above 500 is clamped and flagged
+specs/mcp/logs.md#A line of 2048 bytes is kept whole
+specs/mcp/logs.md#A line over 2048 bytes is cut and flagged
+specs/mcp/logs.md#A malformed window is invalid input
+specs/mcp/logs.md#A window over 24 hours is clamped to 24 hours and flagged
+specs/mcp/logs.md#An unknown service is rejected
+specs/mcp/logs.md#Grep is a literal filter, not LogQL
+specs/mcp/logs.md#Grep keeps only matching lines
+specs/mcp/logs.md#Lines of the service within the window, oldest first
+specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
+specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
 specs/mcp/transport.md#A missing Authorization header gets 401
 specs/mcp/transport.md#A prefix of a configured secret gets 401
 specs/mcp/transport.md#A secret sent with another scheme gets 401
