@@ -3,6 +3,7 @@ import { Cause, Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
 import { AuditSink } from "./audit.js";
 import { mcpConfig } from "./config.js";
+import { grafanaLogs } from "./grafana.js";
 import { app } from "./http.js";
 import { k8s } from "./k8s.js";
 import { listen } from "./node.js";
@@ -10,7 +11,9 @@ import { ServiceMap } from "./services.js";
 
 const main = Effect.gen(function* () {
   const config = yield* mcpConfig;
-  const sources = yield* Layer.build(Layer.merge(k8s, ServiceMap.config));
+  const sources = yield* Layer.build(
+    Layer.mergeAll(k8s, ServiceMap.config, grafanaLogs(config.grafana)),
+  );
   const { handler, dispose } = HttpRouter.toWebHandler(
     app(config.tokens).pipe(
       Layer.provide(AuditSink.stdout),
