@@ -1,7 +1,7 @@
 // In-memory database of the specs (specs/README.md, "Fakes"): the `Db` port
 // built from the `given` events; `fakes.ts` assembles it with the other fakes.
 import { Effect } from "effect";
-import { Db, type Queues, queueErrors } from "./db.js";
+import { Db, maxRows, type Queues, queueErrors } from "./db.js";
 import { ToolError } from "./errors.js";
 import { type Delay, type Message, text } from "./fake-cluster.js";
 
@@ -101,6 +101,29 @@ export const db = (
                 .map((l) => Number(l.id)),
             ),
           ),
+    query: (sql) => {
+      const failure = of("DbFails").find((m) => m.sql === sql);
+      const returned = of("DbReturns").find((m) => m.sql === sql);
+      if (down) return unavailable;
+      if (failure !== undefined)
+        return Effect.fail(
+          new ToolError({
+            reason: text(failure.error),
+            message: text(failure.error),
+          }),
+        );
+      if (returned === undefined)
+        return Effect.fail(new ToolError({ reason: "sql_error" }));
+      const count = Number(returned.rowCount);
+      return Effect.succeed({
+        columns: (returned.columns as ReadonlyArray<string>).map(String),
+        rows: Number.isFinite(count)
+          ? Array.from({ length: Math.min(count, maxRows + 1) }, (_, i) => [
+              i + 1,
+            ])
+          : (returned.rows as ReadonlyArray<ReadonlyArray<unknown>>),
+      });
+    },
     tables: down
       ? unavailable
       : Effect.succeed(

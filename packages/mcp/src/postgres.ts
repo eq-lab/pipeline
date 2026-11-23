@@ -8,6 +8,7 @@ import pg from "pg";
 import {
   Db,
   type LogCursor,
+  maxRows,
   queueErrors,
   type Queues,
   type SyncState,
@@ -151,6 +152,48 @@ const syncState = async (client: pg.PoolClient): Promise<SyncState> => {
   };
 };
 
+// Extended protocol (`rows` set): Postgres refuses multi-statement text, and
+// the portal is closed after the first page, so the rest is never loaded.
+class Capped extends pg.Query {
+  handlePortalSuspended(connection: { sync(): void }) {
+    connection.sync();
+  }
+}
+
+const reasons: Readonly<Record<string, string>> = {
+  "25006": "read_only_violation",
+  "57014": "statement_timeout",
+};
+
+// A database error comes back as a value so `readOnly` rolls back and does not
+// call the database unavailable.
+const runQuery = async (client: pg.PoolClient, sql: string) => {
+  try {
+    // pg types lack `rows` and type Submittable queries as the query itself;
+    // at runtime it returns a promise of the result.
+    const query = new Capped({
+      text: sql,
+      rows: maxRows + 1,
+      rowMode: "array",
+    } as pg.QueryConfig);
+    const result = await (client.query(
+      query,
+    ) as unknown as Promise<pg.QueryArrayResult>);
+    return {
+      columns: result.fields.map((f) => f.name),
+      rows: result.rows.slice(0, maxRows + 1),
+    };
+  } catch (error) {
+    if (!(error instanceof pg.DatabaseError)) throw error;
+    return new ToolError({
+      reason: error.message.includes("multiple commands")
+        ? "multiple_statements"
+        : (reasons[error.code ?? ""] ?? "sql_error"),
+      message: error.message,
+    });
+  }
+};
+
 export const postgres = (config: PostgresConfig) =>
   Layer.effect(
     Db,
@@ -194,6 +237,14 @@ export const postgres = (config: PostgresConfig) =>
               })),
             ),
           ),
+          query: (sql) =>
+            readOnly(pool, config.statementTimeoutMs, (client) =>
+              runQuery(client, sql),
+            ).pipe(
+              Effect.flatMap((r) =>
+                r instanceof ToolError ? Effect.fail(r) : Effect.succeed(r),
+              ),
+            ),
         }),
       ),
     ),

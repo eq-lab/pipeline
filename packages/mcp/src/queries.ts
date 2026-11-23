@@ -2,7 +2,7 @@
 // fields of the query, decoded like a tool call's arguments.
 import { Effect, Schema } from "effect";
 import { configView } from "./configview.js";
-import { queues, schema } from "./db.js";
+import { dbQuery, queues, schema } from "./db.js";
 import { deployment, DeploymentInput } from "./deployment.js";
 import { errorsQuery } from "./error-groups.js";
 import { ToolError } from "./errors.js";
@@ -22,5 +22,6 @@ export const queries = {
   IndexerLag: () => indexerLag,
   Logs: logsQuery,
   Queues: () => queues,
+  Query: dbQuery,
   Schema: () => schema,
 };
