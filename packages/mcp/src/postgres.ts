@@ -1,7 +1,7 @@
 // Postgres adapter of the `Db` port (docs/design-docs/mcp-test-env.md,
 // "Tools"): the read-only role; every call runs in its own `BEGIN READ ONLY`
-// transaction with `SET LOCAL statement_timeout`, so nothing a pooled
-// connection was left with carries over.
+// transaction with `SET LOCAL statement_timeout`, ended by `ROLLBACK`, so
+// nothing a pooled connection was left with carries over.
 import { Effect, Layer, Redacted } from "effect";
 import pg from "pg";
 
@@ -33,14 +33,19 @@ export const readOnly = <A>(
       await client.query(
         `SET LOCAL statement_timeout = ${String(Math.trunc(statementTimeoutMs))}`,
       );
-      const result = await run(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
+      return await run(client);
     } finally {
-      client.release();
+      // Never COMMIT: a rolled-back transaction also undoes a session-level
+      // `SET` or `set_config` a `query` statement made, so it cannot change
+      // the pooled connection for later calls (e.g. its `search_path`). A
+      // connection that cannot roll back is dropped, not reused.
+      client.release(
+        await client.query("ROLLBACK").then(
+          () => undefined,
+          (error: unknown) =>
+            error instanceof Error ? error : new Error("rollback failed"),
+        ),
+      );
     }
   }).pipe(
     Effect.tapError((cause) => Effect.logWarning("db", cause)),
@@ -182,8 +187,8 @@ const reasons: Readonly<Record<string, string>> = {
   "57014": "statement_timeout",
 };
 
-// A database error comes back as a value so `readOnly` rolls back and does not
-// call the database unavailable.
+// A database error comes back as a value so `readOnly` does not call the
+// database unavailable.
 const runQuery = async (client: pg.PoolClient, sql: string) => {
   try {
     // pg types lack `rows`; a submitted query returns itself, not a promise,
