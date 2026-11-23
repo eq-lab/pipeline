@@ -1,16 +1,14 @@
 // The `Call` command of specs/mcp/transport.md: one stateless MCP tools/call
 // over the server's web handler, in process, with fakes for `given` sources.
-import { existsSync } from "node:fs";
 import { Effect, Layer, type Context } from "effect";
 import { HttpRouter } from "effect/http";
 import type { SpecMessage, SpecOutcome } from "./outcome.js";
+import { type Fields, fakesLayer, loadSource } from "./seam.js";
 
 interface Token {
   readonly id: string;
   readonly secret: string;
 }
-
-type Record = Readonly<globalThis.Record<string, unknown>>;
 
 interface Modules {
   readonly app: (
@@ -18,38 +16,21 @@ interface Modules {
   ) => Layer.Layer<never, unknown, HttpRouter.HttpRouter>;
   readonly AuditSink: Context.Key<
     never,
-    { readonly write: (record: Record) => Effect.Effect<void> }
+    { readonly write: (record: Fields) => Effect.Effect<void> }
   >;
-  readonly fakes:
-    | ((given: ReadonlyArray<SpecMessage>) => Layer.Layer<never>)
-    | undefined;
 }
 
 const protocol = "2026-07-28";
 
-const source = (name: string) =>
-  new URL(`../../src/${name}.ts`, import.meta.url);
-
-const load = async (name: string): Promise<Record | null> => {
-  const url = source(name);
-  if (!existsSync(url)) return null;
-  return (await import(url.href)) as Record;
-};
-
 const loadModules = async (): Promise<Modules | string> => {
-  const http = await load("http");
-  const audit = await load("audit");
-  const fakes = await load("fakes");
+  const http = await loadSource("http");
+  const audit = await loadSource("audit");
   if (typeof http?.app !== "function") return "server app (src/http.ts app)";
   if (audit?.AuditSink === undefined)
     return "audit sink (src/audit.ts AuditSink)";
   return {
     app: http.app as Modules["app"],
     AuditSink: audit.AuditSink as Modules["AuditSink"],
-    fakes:
-      typeof fakes?.fakes === "function"
-        ? (fakes.fakes as NonNullable<Modules["fakes"]>)
-        : undefined,
   };
 };
 
@@ -101,28 +82,25 @@ const unknownTool = (status: number, body: string, tool: unknown) => {
 export const runCall = async (
   given: ReadonlyArray<SpecMessage>,
   call: SpecMessage,
+  now: string | null,
 ): Promise<SpecOutcome> => {
   const modules = await loadModules();
   if (typeof modules === "string")
     return { _tag: "NotImplemented", message: `command Call: ${modules}` };
-  const sources = given.filter((m) => !isToken(m));
-  if (sources.length > 0 && modules.fakes === undefined)
-    return {
-      _tag: "NotImplemented",
-      message: `fakes (src/fakes.ts fakes) for ${sources.map((m) => m._tag).join(", ")}`,
-    };
-  const records: Array<Record> = [];
+  const fakes = await fakesLayer(
+    given.filter((m) => !isToken(m)),
+    now,
+  );
+  if (typeof fakes === "string")
+    return { _tag: "NotImplemented", message: fakes };
+  const records: Array<Fields> = [];
   const sink = Layer.succeed(modules.AuditSink, {
     write: (record) => Effect.sync(() => void records.push(record)),
   });
   const { handler, dispose } = HttpRouter.toWebHandler(
     modules
       .app(given.filter(isToken))
-      .pipe(
-        Layer.provide(
-          Layer.merge(sink, modules.fakes?.(sources) ?? Layer.empty),
-        ),
-      ),
+      .pipe(Layer.provide(Layer.merge(sink, fakes))),
     { disableLogger: true },
   );
   try {
