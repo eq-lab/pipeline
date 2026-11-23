@@ -153,10 +153,27 @@ const syncState = async (client: pg.PoolClient): Promise<SyncState> => {
 };
 
 // Extended protocol (`rows` set): Postgres refuses multi-statement text, and
-// the portal is closed after the first page, so the rest is never loaded.
+// the portal is closed after the first page, so the rest is never loaded. With
+// `rows` set pg sends no Sync, so a server error must send it, or the
+// connection never gets ReadyForQuery and hangs.
+interface Sync {
+  sync(): void;
+}
+
+const baseHandleError = (
+  pg.Query.prototype as unknown as {
+    handleError: (this: pg.Query, error: Error, connection: Sync) => void;
+  }
+).handleError;
+
 class Capped extends pg.Query {
-  handlePortalSuspended(connection: { sync(): void }) {
+  handlePortalSuspended(connection: Sync) {
     connection.sync();
+  }
+
+  handleError(error: Error, connection: Sync) {
+    if (error instanceof pg.DatabaseError) connection.sync();
+    baseHandleError.call(this, error, connection);
   }
 }
 
@@ -169,16 +186,25 @@ const reasons: Readonly<Record<string, string>> = {
 // call the database unavailable.
 const runQuery = async (client: pg.PoolClient, sql: string) => {
   try {
-    // pg types lack `rows` and type Submittable queries as the query itself;
-    // at runtime it returns a promise of the result.
-    const query = new Capped({
-      text: sql,
-      rows: maxRows + 1,
-      rowMode: "array",
-    } as pg.QueryConfig);
-    const result = await (client.query(
-      query,
-    ) as unknown as Promise<pg.QueryArrayResult>);
+    // pg types lack `rows`; a submitted query returns itself, not a promise,
+    // so the result comes through the callback.
+    const result = await new Promise<pg.ResultBuilder<unknown[]>>(
+      (resolve, reject) => {
+        client.query(
+          new Capped(
+            {
+              text: sql,
+              rows: maxRows + 1,
+              rowMode: "array",
+            } as pg.QueryConfig,
+            (error, built) => {
+              if (error instanceof Error) reject(error);
+              else resolve(built as pg.ResultBuilder<unknown[]>);
+            },
+          ),
+        );
+      },
+    );
     return {
       columns: result.fields.map((f) => f.name),
       rows: result.rows.slice(0, maxRows + 1),
