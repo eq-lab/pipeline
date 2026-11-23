@@ -69,6 +69,15 @@ jobs:
             type=sha,format=short,prefix=,enable={{is_default_branch}}
             type=ref,event=tag
 
+      - name: Extract metadata for MCP image
+        id: meta-mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-mcp
+          tags: |
+            type=sha,format=short,prefix=,enable={{is_default_branch}}
+            type=ref,event=tag
+
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -108,3 +117,13 @@ jobs:
           push: true
           tags: ${{ steps.meta-trustee.outputs.tags }}
           labels: ${{ steps.meta-trustee.outputs.labels }}
+
+      - name: Build and push MCP image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: mcp
+          push: true
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          labels: ${{ steps.meta-mcp.outputs.labels }}
