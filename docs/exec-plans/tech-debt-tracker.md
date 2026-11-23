@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-200.**
+**Next free number: TD-201.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,14 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-200: MCP audit counts 0 result bytes for streamed (SSE) responses
+
+- **Date:** 2026-11-23
+- **Location:** `packages/mcp/src/http.ts` (`resultBytes` in the auth/audit middleware) — Issue #2158.
+- **Gap:** `resultBytes` is the length of a buffered response body; a streamed (SSE) body has no known length and is recorded as 0. The audit `outcome` is `ok` or `error` by HTTP status; a JSON-RPC error inside a `200` is `ok` until tools report their rejection reason.
+- **Impact:** Audit lines under-report size for streamed responses. Today the transport answers JSON, so nothing is streamed.
+- **Suggested fix:** count bytes while streaming the body; map tool rejection reasons to `outcome` when the tools land (children of epic #2153).
 
 ### TD-197: Audit-log rate fields and pre-rework registry snapshots still carry floored bps
 

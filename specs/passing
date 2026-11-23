@@ -1,6 +1,11 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/mcp/transport.md#A missing Authorization header gets 401
+specs/mcp/transport.md#A prefix of a configured secret gets 401
+specs/mcp/transport.md#A secret sent with another scheme gets 401
+specs/mcp/transport.md#An invalid token gets 401 with no detail
+specs/mcp/transport.md#With no configured tokens every request gets 401
 specs/tooling/spec-classes.md#A class A spec with a matching hash is fine
 specs/tooling/spec-classes.md#A class B regression is an error, as for class A
 specs/tooling/spec-classes.md#A class B spec in specs/approved is an error
