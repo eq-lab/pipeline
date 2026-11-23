@@ -62,6 +62,8 @@ Every table is also reachable through `query`. The Stellar indexer writes its cu
 
 A `pipeline-mcp` Deployment (one replica) in the test namespace via `eq-lab/argocd`, `pipeline/test.yaml`, alongside the other pipeline services: image from the `packages/mcp` build, a ConfigMap for the service→container map, Loki datasource uid, chain RPC URLs and ports; Secrets for tokens and credentials (env from `secretKeyRef`); a ServiceAccount bound to a read-only Role; a Service and an Ingress with TLS and an IP allowlist. The values PR is out of scope here.
 
+Source config, validated at startup like `MCP_TOKENS`: `MCP_SERVICES`, a JSON object `service → container` (e.g. `{"worker": "pipeline-worker-test-main"}`; the container name is also the Deployment name read by `deployment`), and `MCP_K8S_NAMESPACE`, the test namespace. The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES_SERVICE_HOST`/`KUBERNETES_SERVICE_PORT` with the mounted ServiceAccount token and CA, and only `GET`s deployments, pods and events of that namespace.
+
 ### Devops checklist (ready to send)
 
 Create by hand in the test environment:
