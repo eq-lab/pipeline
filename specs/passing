@@ -6,6 +6,11 @@ specs/mcp/deployment.md#An unreachable Kubernetes API is reported, not hidden
 specs/mcp/deployment.md#Events older than an hour are left out
 specs/mcp/deployment.md#Image, pods and recent events of one service
 specs/mcp/deployment.md#Without a service every configured service is listed
+specs/mcp/errors.md#A window over 24 hours is clamped to 24 hours
+specs/mcp/errors.md#An unknown service is rejected
+specs/mcp/errors.md#Error lines are grouped by normalised message
+specs/mcp/errors.md#No errors in the window is an empty result
+specs/mcp/errors.md#Unreachable Grafana is reported, not hidden
 specs/mcp/logs.md#A limit above 500 is clamped and flagged
 specs/mcp/logs.md#A line of 2048 bytes is kept whole
 specs/mcp/logs.md#A line over 2048 bytes is cut and flagged

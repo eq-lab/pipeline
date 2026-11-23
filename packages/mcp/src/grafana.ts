@@ -32,7 +32,12 @@ const QueryRange = Schema.Struct({
 // JSON string escaping is valid LogQL (Go) string escaping.
 const logql = (query: LogQuery) =>
   `{container=${JSON.stringify(query.container)}}` +
-  (query.contains === undefined ? "" : ` |= ${JSON.stringify(query.contains)}`);
+  (query.contains === undefined
+    ? ""
+    : ` |= ${JSON.stringify(query.contains)}`) +
+  (query.level === undefined
+    ? ""
+    : ` | detected_level=${JSON.stringify(query.level)}`);
 
 const iso = (nanos: string) =>
   new Date(Number(BigInt(nanos) / 1_000_000n)).toISOString();

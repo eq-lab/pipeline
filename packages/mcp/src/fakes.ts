@@ -84,6 +84,7 @@ const logs = (
       ts: String(e.ts),
       at: Date.parse(String(e.ts)),
       line: lineText(e.line),
+      level: text(e.level),
     }))
     .sort((a, b) => b.at - a.at);
   return Logs.of({
@@ -102,6 +103,7 @@ const logs = (
                   l.container === query.container &&
                   l.at >= nowMs - query.sinceSeconds * 1000 &&
                   l.at <= nowMs &&
+                  (query.level === undefined || l.level === query.level) &&
                   (query.contains === undefined ||
                     l.line.includes(query.contains)),
               )
