@@ -1,13 +1,21 @@
 // Kubernetes adapter of `Cluster` (docs/design-docs/mcp-test-env.md, checklist
-// item 3): in-cluster ServiceAccount, GET (get/list) of deployments, pods, events.
+// item 3): in-cluster ServiceAccount, GET (get/list) of deployments, pods,
+// configmaps, events. Secrets are never requested.
 import { readFileSync } from "node:fs";
 import { request } from "node:https";
 import { Config, Effect, Layer, Option, Schema } from "effect";
-import { Cluster } from "./cluster.js";
+import { Cluster, type EnvFrom } from "./cluster.js";
 import { ToolError } from "./errors.js";
 
 const account = "/var/run/secrets/kubernetes.io/serviceaccount";
 
+const Ref = Schema.optionalKey(
+  Schema.Struct({ name: Schema.String, key: Schema.String }),
+);
+
+const Name = Schema.optionalKey(Schema.Struct({ name: Schema.String }));
+
+// shortcut: other `valueFrom` kinds (fieldRef, resourceFieldRef) are shown as ***; resolve them when a chart uses them.
 const Deployment = Schema.Struct({
   spec: Schema.Struct({
     // shortcut: only `matchLabels` selectors; add `matchExpressions` if a chart uses them.
@@ -18,11 +26,36 @@ const Deployment = Schema.Struct({
       spec: Schema.Struct({
         // shortcut: the first container's image; list every container if a service gets sidecars.
         containers: Schema.NonEmptyArray(
-          Schema.Struct({ image: Schema.String }),
+          Schema.Struct({
+            image: Schema.String,
+            env: Schema.optionalKey(
+              Schema.Array(
+                Schema.Struct({
+                  name: Schema.String,
+                  value: Schema.optionalKey(Schema.String),
+                  valueFrom: Schema.optionalKey(
+                    Schema.Struct({
+                      configMapKeyRef: Ref,
+                      secretKeyRef: Ref,
+                    }),
+                  ),
+                }),
+              ),
+            ),
+            envFrom: Schema.optionalKey(
+              Schema.Array(
+                Schema.Struct({ configMapRef: Name, secretRef: Name }),
+              ),
+            ),
+          }),
         ),
       }),
     }),
   }),
+});
+
+const ConfigMap = Schema.Struct({
+  data: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 const PodList = Schema.Struct({
@@ -148,6 +181,18 @@ export const k8s = Layer.effect(
                   Effect.map((pods) =>
                     Option.some({
                       image: spec.template.spec.containers[0].image,
+                      env: (spec.template.spec.containers[0].env ?? []).map(
+                        ({ valueFrom, ...v }) => ({ ...v, ...valueFrom }),
+                      ),
+                      envFrom: (
+                        spec.template.spec.containers[0].envFrom ?? []
+                      ).flatMap<EnvFrom>(({ configMapRef, secretRef }) =>
+                        secretRef !== undefined
+                          ? [{ secret: secretRef.name }]
+                          : configMapRef !== undefined
+                            ? [{ configMap: configMapRef.name }]
+                            : [],
+                      ),
                       pods: pods.map(({ metadata, status }) => ({
                         name: metadata.name,
                         phase: status.phase,
@@ -167,6 +212,11 @@ export const k8s = Layer.effect(
             }),
           ),
         ),
+      configMap: (name) =>
+        get(
+          `/api/v1/namespaces/${namespace}/configmaps/${encodeURIComponent(name)}`,
+          ConfigMap,
+        ).pipe(Effect.map(Option.map((c) => c.data ?? {}))),
       events: list(`/api/v1/namespaces/${namespace}/events`, EventList).pipe(
         Effect.map((events) =>
           events.map((e) => ({
