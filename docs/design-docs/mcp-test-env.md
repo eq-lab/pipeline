@@ -70,10 +70,10 @@ The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES
 
 | Variable | Required | Format | Example | Used by |
 |---|---|---|---|---|
-| `MCP_PORT` | yes | port, 0–65535 | `8080` | the HTTP server |
+| `MCP_PORT` | yes | port, integer 1–65535 | `8080` | the HTTP server |
 | `MCP_TOKENS` | yes | JSON array `[{"id","secret"}]`, at least one, unique ids and secrets, `secret` ≥ 32 chars | `[{"id":"coding-flow","secret":"<32+ random chars>"}]` | auth of every call |
-| `MCP_SERVICES` | yes | JSON object `service → container`, non-empty string values; the container name is also the Deployment name | `{"worker":"pipeline-worker-test-main"}` | `logs`, `errors`, `deployment` |
-| `MCP_K8S_NAMESPACE` | yes | non-empty string | `pipeline-test` | `deployment`, `config` |
+| `MCP_SERVICES` | yes | JSON object `service → container`, non-empty string values; the container name is also the Deployment name | `{"worker":"pipeline-worker-test-main"}` | `logs`, `errors`, `deployment`, `config` |
+| `MCP_K8S_NAMESPACE` | yes | non-empty string | `pipeline-test` | `deployment`, `config`, `health` (its `k8s` probe lists the namespace's events) |
 | `GRAFANA_URL` | yes | `http(s)://` URL | `https://grafana.example.net` | `logs`, `errors`; `health` probes `GRAFANA_URL/api/health` |
 | `GRAFANA_TOKEN` | yes | non-empty string, a Viewer service-account token (secret) | `glsa_...` | `logs`, `errors` |
 | `LOKI_DATASOURCE_UID` | yes | non-empty string | `P8E80F9AEF21F6940` | `logs`, `errors` |
