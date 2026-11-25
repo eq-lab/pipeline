@@ -27,17 +27,25 @@ export const ConfigState = Schema.Struct({
   ),
 });
 
-const hasCredentials = (value: string) => {
+const hasCredentials = (part: string) => {
+  if (!/^[a-z][a-z\d+.-]*:\/\//i.test(part)) return false;
   try {
-    const url = new URL(value);
-    return url.username !== "" || url.password !== "";
+    const url = new URL(part);
+    return (
+      url.username !== "" ||
+      url.password !== "" ||
+      !["", "/"].includes(url.pathname) ||
+      url.search !== "" ||
+      url.hash !== ""
+    );
   } catch {
-    return false;
+    return true;
   }
 };
 
 export const masked = (name: string, value: string) =>
-  /KEY|SECRET|TOKEN|PASSWORD/i.test(name) || hasCredentials(value)
+  /KEY|SECRET|TOKEN|PASSWORD/i.test(name) ||
+  value.split(",").some((part) => hasCredentials(part.trim()))
     ? mask
     : value;
 
