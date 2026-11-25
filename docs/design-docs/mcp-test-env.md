@@ -66,7 +66,7 @@ The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES
 
 ### Environment variables
 
-`packages/mcp/src/config.ts` (plus `services.ts` for `MCP_SERVICES` and `k8s.ts` for `MCP_K8S_NAMESPACE`) is the source of truth; this list matches it. All are read once at startup. A missing or invalid required variable stops the server with exit code 1 and the failing key (never its value). Put secrets in Secrets (`secretKeyRef`), the rest in the ConfigMap.
+`packages/mcp/src/config.ts` (plus `services.ts` for `MCP_SERVICES` and `k8s.ts` for `MCP_K8S_NAMESPACE`) is the source of truth; this list matches it. All are read once at startup. A missing required variable, or an invalid value of any variable (the optional one included: its default applies only when it is unset), stops the server with exit code 1 and the failing key (never its value). Put secrets in Secrets (`secretKeyRef`), the rest in the ConfigMap.
 
 | Variable | Required | Format | Example | Used by |
 |---|---|---|---|---|
@@ -80,7 +80,7 @@ The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES
 | `MCP_API_URL` | yes | `http(s)://` URL of the test API | `http://pipeline-api-test-main:3000` | `health` probes it |
 | `MCP_CHAINS` | yes | JSON object `chainId → {kind, rpcUrl, registryLogContracts?}`: `chainId` a positive integer without leading zeros (≤ 16 digits), `kind` is `evm` or `stellar`, `rpcUrl` an `http(s)://` URL, `registryLogContracts` an optional array of non-empty contract addresses | `{"11155111":{"kind":"evm","rpcUrl":"https://rpc.example.net","registryLogContracts":["0xAbC...checksummed"]}}` | `indexer_lag` (head from RPC; `registryLogContracts` bound the SecurityRegistry projection lag) |
 | `MCP_DATABASE_URL` | yes | Postgres connection string of the read-only role (secret) | `postgres://mcp_ro:...@db:5432/pipeline` | `schema`, `query`, `indexer_lag`, `queues`, `health` |
-| `MCP_STATEMENT_TIMEOUT_MS` | no, default `10000` | integer, 5000–10000 | `8000` | `query` (`statement_timeout` of every call) |
+| `MCP_STATEMENT_TIMEOUT_MS` | no, default `10000` | integer, 5000–10000 | `8000` | `schema`, `query`, `indexer_lag`, `queues`, `health` (`SET LOCAL statement_timeout` of every database read; the client-side query timeout is this plus 5 s) |
 
 Notes:
 
