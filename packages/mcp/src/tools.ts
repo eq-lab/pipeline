@@ -3,6 +3,7 @@
 // `Db`, `Logs`, `Probes`, `RegistryLogContracts`, `ServiceMap`).
 import { Effect, Layer } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/ai";
+import { ToolReason } from "./audit.js";
 import type { Cluster } from "./cluster.js";
 import { configView, ConfigState } from "./configview.js";
 import {
@@ -118,16 +119,26 @@ const handlers = toolkit.toLayer(
       | RegistryLogContracts
       | ServiceMap
     >();
+    // Hands the rejection reason to the audit record of the request.
+    const run = <A, R>(effect: Effect.Effect<A, ToolError, R>) =>
+      effect.pipe(
+        Effect.provide(sources),
+        Effect.tapError((error) =>
+          Effect.map(Effect.service(ToolReason), (holder) => {
+            holder.reason = error.reason;
+          }),
+        ),
+      );
     return toolkit.of({
-      deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
-      config: () => configView.pipe(Effect.provide(sources)),
-      errors: (input) => readErrors(input).pipe(Effect.provide(sources)),
-      health: () => health.pipe(Effect.provide(sources)),
-      indexer_lag: () => indexerLag.pipe(Effect.provide(sources)),
-      logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
-      queues: () => queues.pipe(Effect.provide(sources)),
-      query: (input) => readQuery(input).pipe(Effect.provide(sources)),
-      schema: () => schema.pipe(Effect.provide(sources)),
+      deployment: (input) => run(deployment(input)),
+      config: () => run(configView),
+      errors: (input) => run(readErrors(input)),
+      health: () => run(health),
+      indexer_lag: () => run(indexerLag),
+      logs: (input) => run(readLogs(input)),
+      queues: () => run(queues),
+      query: (input) => run(readQuery(input)),
+      schema: () => run(schema),
     });
   }),
 );
