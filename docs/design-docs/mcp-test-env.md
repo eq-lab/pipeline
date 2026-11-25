@@ -62,7 +62,31 @@ Every table is also reachable through `query`. The Stellar indexer writes its cu
 
 A `pipeline-mcp` Deployment (one replica) in the test namespace via `eq-lab/argocd`, `pipeline/test.yaml`, alongside the other pipeline services: image from the `packages/mcp` build, a ConfigMap for the service→container map, Loki datasource uid, chain RPC URLs and ports; Secrets for tokens and credentials (env from `secretKeyRef`); a ServiceAccount bound to a read-only Role; a Service and an Ingress with TLS and an IP allowlist. The values PR is out of scope here.
 
-Source config, validated at startup like `MCP_TOKENS`: `MCP_SERVICES`, a JSON object `service → container` (e.g. `{"worker": "pipeline-worker-test-main"}`; the container name is also the Deployment name read by `deployment`), and `MCP_K8S_NAMESPACE`, the test namespace. The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES_SERVICE_HOST`/`KUBERNETES_SERVICE_PORT` with the mounted ServiceAccount token and CA, and only `GET`s deployments, pods and events of that namespace.
+The Kubernetes adapter reaches the API server through the in-cluster `KUBERNETES_SERVICE_HOST`/`KUBERNETES_SERVICE_PORT` (set by Kubernetes in every pod, also required) with the mounted ServiceAccount token and CA, and only `GET`s deployments, pods and events of the namespace.
+
+### Environment variables
+
+`packages/mcp/src/config.ts` (plus `services.ts` for `MCP_SERVICES` and `k8s.ts` for `MCP_K8S_NAMESPACE`) is the source of truth; this list matches it. All are read once at startup. A missing required variable, or an invalid value of any variable (the optional one included: its default applies only when it is unset), stops the server with exit code 1 and the failing key (never its value). Put secrets in Secrets (`secretKeyRef`), the rest in the ConfigMap.
+
+| Variable | Required | Format | Example | Used by |
+|---|---|---|---|---|
+| `MCP_PORT` | yes | port, integer 1–65535 | `8080` | the HTTP server |
+| `MCP_TOKENS` | yes | JSON array `[{"id","secret"}]`, at least one, unique ids and secrets, `secret` ≥ 32 chars | `[{"id":"coding-flow","secret":"<32+ random chars>"}]` | auth of every call |
+| `MCP_SERVICES` | yes | JSON object `service → container`, non-empty string values; the container name is also the Deployment name | `{"worker":"pipeline-worker-test-main"}` | `logs`, `errors`, `deployment`, `config` |
+| `MCP_K8S_NAMESPACE` | yes | non-empty string | `pipeline-test` | `deployment`, `config`, `health` (its `k8s` probe lists the namespace's events) |
+| `GRAFANA_URL` | yes | `http(s)://` URL | `https://grafana.example.net` | `logs`, `errors`; `health` probes `GRAFANA_URL/api/health` |
+| `GRAFANA_TOKEN` | yes | non-empty string, a Viewer service-account token (secret) | `glsa_...` | `logs`, `errors` |
+| `LOKI_DATASOURCE_UID` | yes | non-empty string | `P8E80F9AEF21F6940` | `logs`, `errors` |
+| `MCP_API_URL` | yes | `http(s)://` URL of the test API | `http://pipeline-api-test-main:3000` | `health` probes it |
+| `MCP_CHAINS` | yes | JSON object `chainId → {kind, rpcUrl, registryLogContracts?}`: `chainId` a positive integer without leading zeros (≤ 16 digits), `kind` is `evm` or `stellar`, `rpcUrl` an `http(s)://` URL, `registryLogContracts` an optional array of non-empty contract addresses | `{"11155111":{"kind":"evm","rpcUrl":"https://rpc.example.net","registryLogContracts":["0xAbC...checksummed"]}}` | `indexer_lag` (head from RPC; `registryLogContracts` bound the SecurityRegistry projection lag) |
+| `MCP_DATABASE_URL` | yes | Postgres connection string of the read-only role (secret) | `postgres://mcp_ro:...@db:5432/pipeline` | `schema`, `query`, `indexer_lag`, `queues`, `health` |
+| `MCP_STATEMENT_TIMEOUT_MS` | no, default `10000` | integer, 5000–10000 | `8000` | `schema`, `query`, `indexer_lag`, `queues`, `health` (`SET LOCAL statement_timeout` of every database read; the client-side query timeout is this plus 5 s) |
+
+Notes:
+
+- `health` probes `MCP_API_URL` and `GRAFANA_URL/api/health` with a plain GET; any HTTP response below 500 counts as up, a 5xx or no answer is an error.
+- `registryLogContracts` addresses are compared exactly with `contract_logs.contract_address`, which the worker stores in EIP-55 checksum case for EVM, so give EVM addresses in checksum case (a lowercase address matches nothing). Stellar contracts are given as the Strkey `C…` form verbatim. A chain without the key counts only the cursor's own contract.
+- An indexed chain id without an `MCP_CHAINS` entry gets an `error` instead of `head` and `lagBlocks` in `indexer_lag`.
 
 ### Devops checklist (ready to send)
 
