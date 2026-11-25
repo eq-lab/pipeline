@@ -108,6 +108,10 @@ const toolkit = Toolkit.make(
     .annotate(Tool.Destructive, false),
 );
 
+export const toolNames: ReadonlySet<string> = new Set(
+  Object.keys(toolkit.tools),
+);
+
 const handlers = toolkit.toLayer(
   Effect.gen(function* () {
     const sources = yield* Effect.context<

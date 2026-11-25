@@ -5,7 +5,7 @@ import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { AuditSink, ToolReason } from "./audit.js";
 import { authenticate, type Token } from "./auth.js";
-import { tools } from "./tools.js";
+import { toolNames, tools } from "./tools.js";
 
 const ToolCall = Schema.Struct({
   method: Schema.Literal("tools/call"),
@@ -53,7 +53,12 @@ const authAndAudit = (tokens: ReadonlyArray<Token>) =>
             outcome:
               tokenId === null
                 ? "unauthorized"
-                : (toolReason.reason ?? (ok ? "ok" : "error")),
+                : (toolReason.reason ??
+                  (tool !== null && !toolNames.has(tool)
+                    ? "invalid_input"
+                    : ok
+                      ? "ok"
+                      : "error")),
           });
           return yield* exit;
         });
