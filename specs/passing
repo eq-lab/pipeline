@@ -46,12 +46,17 @@ specs/mcp/logs.md#Lines of the service within the window, oldest first
 specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
 specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
 specs/mcp/query.md#500 rows are returned whole
+specs/mcp/query.md#A bytea comes back as hex with a `\x` prefix
+specs/mcp/query.md#A date comes back as the text Postgres prints
 specs/mcp/query.md#A missing or empty statement is invalid input
 specs/mcp/query.md#A result over 1 MiB is rejected, not loaded whole
 specs/mcp/query.md#A select returns columns and rows in database order
 specs/mcp/query.md#A statement over the timeout is cancelled
 specs/mcp/query.md#A statement that is not text is invalid input
 specs/mcp/query.md#A syntax error is reported as an SQL error
+specs/mcp/query.md#A timestamp comes back as the text Postgres prints
+specs/mcp/query.md#A timestamptz comes back as the text Postgres prints, with its zone offset
+specs/mcp/query.md#An interval and an array of timestamps come back as text
 specs/mcp/query.md#An unreachable database is reported, not hidden
 specs/mcp/query.md#DDL is rejected as a write
 specs/mcp/query.md#More than 500 rows are cut at 500 and flagged

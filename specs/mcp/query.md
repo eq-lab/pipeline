@@ -2,7 +2,7 @@ Status: approved
 
 # `query`: read-only SQL
 
-`query` runs one caller-written SQL statement and returns `{columns, rows, truncated}`. It is defence in depth around open-ended SQL: the database role is read-only, every call runs in its own `BEGIN READ ONLY` transaction with `SET LOCAL statement_timeout`, the statement is sent as exactly one prepared statement (multi-statement text is refused), and at most 500 rows come back. The 501st row is fetched only to set `truncated: true`; the rest of the result is never loaded. The values of the rows read are also capped at 1 MiB (1048576 bytes) in total, counted as their text size on the wire with a null counting 0: a larger result is rejected as `result_too_large`, and the rows past the cap are not kept.
+`query` runs one caller-written SQL statement and returns `{columns, rows, truncated}`. It is defence in depth around open-ended SQL: the database role is read-only, every call runs in its own `BEGIN READ ONLY` transaction with `SET LOCAL statement_timeout`, the statement is sent as exactly one prepared statement (multi-statement text is refused), and at most 500 rows come back. The 501st row is fetched only to set `truncated: true`; the rest of the result is never loaded. The values of the rows read are also capped at 1 MiB (1048576 bytes) in total, counted as their text size on the wire with a null counting 0: a larger result is rejected as `result_too_large`, and the rows past the cap are not kept. Values that JSON cannot carry (timestamps, dates, bytea, intervals and arrays of them) come back as the text Postgres prints, and the cap counts that text.
 
 The scenarios are queries against the `Db` fake. `given` says how the fake answers a statement: `DbReturns: { sql, columns, rows }`, or `DbReturns: { sql, columns: [id], rowCount: N }` for a result of N rows `[1]` .. `[N]`, or `DbFails: { sql, error }` with the error the database port reports for it (`read_only_violation`, `statement_timeout`, `multiple_statements`, `syntax_error`, `result_too_large`). Calls reach the tool already authenticated (`specs/mcp/transport.md`).
 
@@ -165,6 +165,98 @@ query:
   Query: { sql: "SELECT repeat('x', 100000000) FROM generate_series(1, 500)" }
 then:
   rejected: result_too_large
+```
+
+## A timestamp comes back as the text Postgres prints
+
+A `timestamp` is not a JSON value; it stays text, so `SELECT *` on a table with `created_at` works.
+
+```spec
+given:
+  - DbReturns:
+      sql: "SELECT chain_id, updated_at FROM log_collector_state"
+      columns: [chain_id, updated_at]
+      rows:
+        - [1, "2026-11-25 10:15:30.123456"]
+query:
+  Query: { sql: "SELECT chain_id, updated_at FROM log_collector_state" }
+then:
+  columns: [chain_id, updated_at]
+  rows:
+    - [1, "2026-11-25 10:15:30.123456"]
+  truncated: false
+```
+
+## A timestamptz comes back as the text Postgres prints, with its zone offset
+
+```spec
+given:
+  - DbReturns:
+      sql: "SELECT created_at FROM kyc_outbox LIMIT 1"
+      columns: [created_at]
+      rows:
+        - ["2026-11-25 10:15:30.123456+00"]
+query:
+  Query: { sql: "SELECT created_at FROM kyc_outbox LIMIT 1" }
+then:
+  columns: [created_at]
+  rows:
+    - ["2026-11-25 10:15:30.123456+00"]
+  truncated: false
+```
+
+## A date comes back as the text Postgres prints
+
+```spec
+given:
+  - DbReturns:
+      sql: "SELECT DATE '2026-11-25' AS d"
+      columns: [d]
+      rows:
+        - ["2026-11-25"]
+query:
+  Query: { sql: "SELECT DATE '2026-11-25' AS d" }
+then:
+  columns: [d]
+  rows:
+    - ["2026-11-25"]
+  truncated: false
+```
+
+## A bytea comes back as hex with a `\x` prefix
+
+```spec
+given:
+  - DbReturns:
+      sql: "SELECT '\\x01'::bytea AS b"
+      columns: [b]
+      rows:
+        - ["\\x01"]
+query:
+  Query: { sql: "SELECT '\\x01'::bytea AS b" }
+then:
+  columns: [b]
+  rows:
+    - ["\\x01"]
+  truncated: false
+```
+
+## An interval and an array of timestamps come back as text
+
+```spec
+given:
+  - DbReturns:
+      sql: "SELECT INTERVAL '1 day 02:00:00' AS i, ARRAY['2026-11-25 10:00:00'::timestamp] AS a"
+      columns: [i, a]
+      rows:
+        - ["1 day 02:00:00", "{\"2026-11-25 10:00:00\"}"]
+query:
+  Query: { sql: "SELECT INTERVAL '1 day 02:00:00' AS i, ARRAY['2026-11-25 10:00:00'::timestamp] AS a" }
+then:
+  columns: [i, a]
+  rows:
+    - ["1 day 02:00:00", "{\"2026-11-25 10:00:00\"}"]
+  truncated: false
 ```
 
 ## A syntax error is reported as an SQL error
