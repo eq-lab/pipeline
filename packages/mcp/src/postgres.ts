@@ -28,23 +28,33 @@ export const readOnly = <A>(
 ) =>
   Effect.tryPromise(async () => {
     const client = await pool.connect();
+    let broken: Error | undefined;
     try {
       await client.query("BEGIN READ ONLY");
       await client.query(
         `SET LOCAL statement_timeout = ${String(Math.trunc(statementTimeoutMs))}`,
       );
       return await run(client);
+    } catch (error) {
+      // A client-side failure (query timeout) leaves the server's reply
+      // pending and unguarded: cut the socket, do not queue ROLLBACK on it.
+      if (!(error instanceof pg.DatabaseError)) {
+        broken = error instanceof Error ? error : new Error("db failed");
+        client.connection.stream.destroy();
+      }
+      throw error;
     } finally {
       // Never COMMIT: a rolled-back transaction also undoes a session-level
       // `SET` or `set_config` a `query` statement made, so it cannot change
       // the pooled connection for later calls (e.g. its `search_path`). A
       // connection that cannot roll back is dropped, not reused.
       client.release(
-        await client.query("ROLLBACK").then(
-          () => undefined,
-          (error: unknown) =>
-            error instanceof Error ? error : new Error("rollback failed"),
-        ),
+        broken ??
+          (await client.query("ROLLBACK").then(
+            () => undefined,
+            (error: unknown) =>
+              error instanceof Error ? error : new Error("rollback failed"),
+          )),
       );
     }
   }).pipe(
