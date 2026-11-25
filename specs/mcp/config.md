@@ -2,7 +2,7 @@ Status: approved
 
 # `config`: runtime configuration with secrets masked
 
-`config` returns `{services: [{service, env, secrets?, envFrom?}]}` for every configured service, sorted by name: `env` maps each environment variable of the service's Deployment to its value, with values from ConfigMaps resolved. A value is masked as `***` when it comes from a `secretKeyRef`, when its key contains `KEY`, `SECRET`, `TOKEN` or `PASSWORD` (any case), or when it is a URL with credentials (any user info, a user name alone included, since RPC providers put API keys there). Kubernetes Secrets are never read: a `secretKeyRef` is masked by its reference, not by its value. For each masked `secretKeyRef` variable, `secrets` maps the variable name to its reference `{secret, key}`, so an agent sees where the value comes from. `envFrom` lists the Deployment's `envFrom` sources in order as `{secret: <name>}` or `{configMap: <name>}`: names only, their keys and values are not read. `secrets` and `envFrom` are left out when empty.
+`config` returns `{services: [{service, env, secrets?, envFrom?}]}` for every configured service, sorted by name: `env` maps each environment variable of the service's Deployment to its value, with values from ConfigMaps resolved. A value is masked as `***` when it comes from a `secretKeyRef`, when its key contains `KEY`, `SECRET`, `TOKEN` or `PASSWORD` (any case), or when it holds a URL with credentials. A URL is a part of the form `scheme://...`; it has credentials when it has any user info (a user name alone included), a path other than empty or `/`, a query or a fragment, since RPC providers put API keys there (`https://eth-sepolia.g.alchemy.com/v2/<key>`, `https://user@host`). A value is split on `,` and each part, trimmed, is checked on its own: one URL with credentials masks the whole value, and a part that is not a URL does not mask it. A harmless URL with a path, such as `http://loki:3100/loki/api/v1/push`, is masked too: hiding it is safer than guessing which path segment is a key. Kubernetes Secrets are never read: a `secretKeyRef` is masked by its reference, not by its value. For each masked `secretKeyRef` variable, `secrets` maps the variable name to its reference `{secret, key}`, so an agent sees where the value comes from. `envFrom` lists the Deployment's `envFrom` sources in order as `{secret: <name>}` or `{configMap: <name>}`: names only, their keys and values are not read. `secrets` and `envFrom` are left out when empty.
 
 The scenarios are queries against the `Cluster` fake: `ServiceContainer` is the configured map, `DeploymentEnv: { deployment, name, value }`, `{ deployment, name, configMapKeyRef: { name, key } }` or `{ deployment, name, secretKeyRef: { name, key } }` is one variable, `ConfigMapValue: { name, key, value }` a ConfigMap entry, `DeploymentEnvFrom: { deployment, secretRef: { name } }` or `{ deployment, configMapRef: { name } }` is one `envFrom` source, `SecretValue: { name, key, value }` a Secret the server must never read. Calls reach the tool already authenticated (`specs/mcp/transport.md`).
 
@@ -85,6 +85,40 @@ then:
   services:
     - service: worker
       env: { DATABASE_URL: "***", STELLAR_RPC: "***", LOKI_URL: "http://loki:3100" }
+```
+
+## An API key in a URL path or query is masked
+
+```spec
+given:
+  - ServiceContainer: { service: worker, container: pipeline-worker-test-main }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: EVM_RPC_URL, configMapKeyRef: { name: pipeline-config, key: evm_rpc_url } }
+  - ConfigMapValue: { name: pipeline-config, key: evm_rpc_url, value: "https://eth-sepolia.g.alchemy.com/v2/alch-key-123" }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: MAINNET_RPC, value: "https://mainnet.infura.io/v3/infura-key-456" }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: BASE_RPC, value: "https://rpc.example.org?apikey=qn-key-789" }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: STELLAR_RPC, value: "https://soroban.example.org/" }
+query:
+  Config: {}
+then:
+  services:
+    - service: worker
+      env: { EVM_RPC_URL: "***", MAINNET_RPC: "***", BASE_RPC: "***", STELLAR_RPC: "https://soroban.example.org/" }
+```
+
+## Every URL of a comma-separated list is checked
+
+```spec
+given:
+  - ServiceContainer: { service: worker, container: pipeline-worker-test-main }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: EVM_RPC_URLS, value: "https://rpc.sepolia.example.org, https://eth-sepolia.g.alchemy.com/v2/alch-key-123" }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: FALLBACK_RPCS, value: "https://rpc1.example.org,https://rpc2.example.org" }
+  - DeploymentEnv: { deployment: pipeline-worker-test-main, name: CHAINS, value: "1,11155111" }
+query:
+  Config: {}
+then:
+  services:
+    - service: worker
+      env: { EVM_RPC_URLS: "***", FALLBACK_RPCS: "https://rpc1.example.org,https://rpc2.example.org", CHAINS: "1,11155111" }
 ```
 
 ## `envFrom` sources are listed by name, never read
