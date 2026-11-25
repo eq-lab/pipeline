@@ -3,9 +3,9 @@
 import { Clock, Effect, Exit, Layer, Option, Schema } from "effect";
 import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { AuditSink } from "./audit.js";
+import { AuditSink, ToolReason } from "./audit.js";
 import { authenticate, type Token } from "./auth.js";
-import { tools } from "./tools.js";
+import { toolNames, tools } from "./tools.js";
 
 const ToolCall = Schema.Struct({
   method: Schema.Literal("tools/call"),
@@ -33,10 +33,13 @@ const authAndAudit = (tokens: ReadonlyArray<Token>) =>
           const request = yield* HttpServerRequest.HttpServerRequest;
           const tokenId = authenticate(tokens, request.headers.authorization);
           const tool = tokenId === null ? null : yield* toolName(request);
+          const toolReason = { reason: null as string | null };
           const exit =
             tokenId === null
               ? Exit.succeed(HttpServerResponse.empty({ status: 401 }))
-              : yield* Effect.exit(handler);
+              : yield* Effect.exit(
+                  Effect.provideService(handler, ToolReason, toolReason),
+                );
           const ok = Exit.isSuccess(exit) && exit.value.status < 400;
           yield* sink.write({
             tokenId,
@@ -47,7 +50,15 @@ const authAndAudit = (tokens: ReadonlyArray<Token>) =>
               Exit.isSuccess(exit) && exit.value.body._tag === "Uint8Array"
                 ? exit.value.body.body.length
                 : 0,
-            outcome: tokenId === null ? "unauthorized" : ok ? "ok" : "error",
+            outcome:
+              tokenId === null
+                ? "unauthorized"
+                : (toolReason.reason ??
+                  (tool !== null && !toolNames.has(tool)
+                    ? "invalid_input"
+                    : ok
+                      ? "ok"
+                      : "error")),
           });
           return yield* exit;
         });

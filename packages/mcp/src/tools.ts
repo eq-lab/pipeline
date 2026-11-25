@@ -1,8 +1,9 @@
 // Tool registry of the MCP server (docs/design-docs/mcp-test-env.md, "Tools"):
 // every tool is read only and needs the source ports (`ChainRpc`, `Cluster`,
 // `Db`, `Logs`, `Probes`, `RegistryLogContracts`, `ServiceMap`).
-import { Effect, Layer } from "effect";
-import { McpServer, Tool, Toolkit } from "effect/ai";
+import { Cause, Effect, Layer, Option } from "effect";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
+import { ToolReason } from "./audit.js";
 import type { Cluster } from "./cluster.js";
 import { configView, ConfigState } from "./configview.js";
 import {
@@ -107,6 +108,10 @@ const toolkit = Toolkit.make(
     .annotate(Tool.Destructive, false),
 );
 
+export const toolNames: ReadonlySet<string> = new Set(
+  Object.keys(toolkit.tools),
+);
+
 const handlers = toolkit.toLayer(
   Effect.gen(function* () {
     const sources = yield* Effect.context<
@@ -118,18 +123,47 @@ const handlers = toolkit.toLayer(
       | RegistryLogContracts
       | ServiceMap
     >();
+    const run = <A, R>(effect: Effect.Effect<A, ToolError, R>) =>
+      effect.pipe(
+        Effect.provide(sources),
+        Effect.onError((cause) =>
+          Effect.map(Effect.service(ToolReason), (holder) => {
+            holder.reason = Option.match(Cause.findErrorOption(cause), {
+              onNone: () => "error",
+              onSome: (error) => error.reason,
+            });
+          }),
+        ),
+      );
     return toolkit.of({
-      deployment: (input) => deployment(input).pipe(Effect.provide(sources)),
-      config: () => configView.pipe(Effect.provide(sources)),
-      errors: (input) => readErrors(input).pipe(Effect.provide(sources)),
-      health: () => health.pipe(Effect.provide(sources)),
-      indexer_lag: () => indexerLag.pipe(Effect.provide(sources)),
-      logs: (input) => readLogs(input).pipe(Effect.provide(sources)),
-      queues: () => queues.pipe(Effect.provide(sources)),
-      query: (input) => readQuery(input).pipe(Effect.provide(sources)),
-      schema: () => schema.pipe(Effect.provide(sources)),
+      deployment: (input) => run(deployment(input)),
+      config: () => run(configView),
+      errors: (input) => run(readErrors(input)),
+      health: () => run(health),
+      indexer_lag: () => run(indexerLag),
+      logs: (input) => run(readLogs(input)),
+      queues: () => run(queues),
+      query: (input) => run(readQuery(input)),
+      schema: () => run(schema),
     });
   }),
 );
 
-export const tools = McpServer.toolkit(toolkit).pipe(Layer.provide(handlers));
+const invalidInput = McpServer.middleware(
+  (effect, { method }) =>
+    method !== "tools/call"
+      ? effect
+      : Effect.tapError(effect, (error) =>
+          error instanceof McpSchema.InvalidParams
+            ? Effect.map(Effect.service(ToolReason), (holder) => {
+                holder.reason = "invalid_input";
+              })
+            : Effect.void,
+        ),
+  { global: true },
+);
+
+export const tools = Layer.merge(
+  McpServer.toolkit(toolkit).pipe(Layer.provide(handlers)),
+  invalidInput,
+);

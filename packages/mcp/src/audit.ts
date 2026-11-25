@@ -10,6 +10,11 @@ export interface AuditRecord {
   readonly outcome: string;
 }
 
+export const ToolReason = Context.Reference<{ reason: string | null }>(
+  "@pipeline/mcp/ToolReason",
+  { defaultValue: () => ({ reason: null }) },
+);
+
 export class AuditSink extends Context.Service<
   AuditSink,
   { readonly write: (record: AuditRecord) => Effect.Effect<void> }

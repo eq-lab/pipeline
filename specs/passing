@@ -1,6 +1,8 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/mcp/audit-outcome.md#A timed-out statement is audited as statement_timeout
+specs/mcp/audit-outcome.md#Parameters the tool's schema rejects are audited as invalid_input
 specs/mcp/config.md#A URL with credentials is masked, a URL without is shown
 specs/mcp/config.md#A secret-like key from a ConfigMap is masked
 specs/mcp/config.md#A value from a Secret is masked
@@ -67,6 +69,7 @@ specs/mcp/schema.md#Tables outside the public schema are not listed
 specs/mcp/transport.md#A configured token reaches the tool
 specs/mcp/transport.md#A missing Authorization header gets 401
 specs/mcp/transport.md#A prefix of a configured secret gets 401
+specs/mcp/transport.md#A rejected tool call is audited with its reason
 specs/mcp/transport.md#A secret sent with another scheme gets 401
 specs/mcp/transport.md#An invalid token gets 401 with no detail
 specs/mcp/transport.md#Each client is audited under its own token id
