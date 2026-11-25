@@ -101,6 +101,20 @@ export const guard = (client: pg.PoolClient) => {
   });
 };
 
+// Types pg would turn into Date, Buffer or an object, which JSON cannot carry:
+// they stay the text Postgres prints (and the byte cap counted), bytea as
+// `\x…`. date, time-less/with zone timestamps, bytea, interval, and arrays of
+// them.
+const asText = new Set([
+  17, 1082, 1114, 1184, 1186, 1001, 1182, 1115, 1185, 1187,
+]);
+const types = {
+  getTypeParser: (oid: number): ((v: string) => unknown) =>
+    asText.has(oid)
+      ? (v) => v
+      : (pg.types.getTypeParser(oid) as (v: string) => unknown),
+};
+
 const reasons: Readonly<Record<string, string>> = {
   "25006": "read_only_violation",
   "57014": "statement_timeout",
@@ -122,6 +136,7 @@ export const runQuery = async (client: pg.PoolClient, sql: string) => {
               text: sql,
               rows: maxRows + 1,
               rowMode: "array",
+              types,
             } as pg.QueryConfig,
             (error, built) => {
               if (error instanceof Error) reject(error);
