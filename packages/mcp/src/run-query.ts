@@ -47,16 +47,17 @@ class Capped extends pg.Query {
   }
 }
 
-// pg-protocol buffers a whole DataRow and decodes its values before
-// `Capped.handleDataRow` counts them, so one value of hundreds of MB would be
-// held whole, and one over V8's string limit (`SELECT repeat('x', 600000000)`)
-// throws inside the socket's data handler and crashes the process. The guard
-// reads every message header on the socket from connect on and, while a
-// `query` statement runs, closes the connection at the header of a DataRow
-// too long to fit under the cap, before its body is read. A DataRow carries 2
-// bytes of field count and 4 per field (at most 1664) besides the values.
-const maxRowBody = maxBytes + 2 + 4 * 1664;
-const dataRow = 0x44;
+// pg-protocol buffers a whole message and decodes its strings before pg sees
+// it, so one value of hundreds of MB would be held whole, and one over V8's
+// string limit throws inside the socket's data handler and crashes the
+// process: a DataRow (`SELECT repeat('x', 600000000)`), and as well an
+// ErrorResponse quoting the value (`SELECT repeat('x', 600000000)::int`), a
+// NoticeResponse or CopyData. The guard reads every message header on the
+// socket from connect on and, while a `query` statement runs, closes the
+// connection at the header of any message longer than the largest DataRow
+// that fits under the cap, before its body is read. A DataRow carries 2 bytes
+// of field count and 4 per field (at most 1664) besides the values.
+const maxBody = maxBytes + 2 + 4 * 1664;
 
 interface Guard {
   armed: boolean;
@@ -92,7 +93,7 @@ export const guard = (client: pg.PoolClient) => {
       if (have < header.length) continue;
       have = 0;
       skip = header.readUInt32BE(1) - 4;
-      if (state.armed && header[0] === dataRow && skip > maxRowBody) {
+      if (state.armed && skip > maxBody) {
         state.tripped = true;
         stream.destroy();
       }
