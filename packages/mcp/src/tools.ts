@@ -1,8 +1,8 @@
 // Tool registry of the MCP server (docs/design-docs/mcp-test-env.md, "Tools"):
 // every tool is read only and needs the source ports (`ChainRpc`, `Cluster`,
 // `Db`, `Logs`, `Probes`, `RegistryLogContracts`, `ServiceMap`).
-import { Effect, Layer } from "effect";
-import { McpServer, Tool, Toolkit } from "effect/ai";
+import { Cause, Effect, Layer, Option } from "effect";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { ToolReason } from "./audit.js";
 import type { Cluster } from "./cluster.js";
 import { configView, ConfigState } from "./configview.js";
@@ -119,13 +119,15 @@ const handlers = toolkit.toLayer(
       | RegistryLogContracts
       | ServiceMap
     >();
-    // Hands the rejection reason to the audit record of the request.
     const run = <A, R>(effect: Effect.Effect<A, ToolError, R>) =>
       effect.pipe(
         Effect.provide(sources),
-        Effect.tapError((error) =>
+        Effect.onError((cause) =>
           Effect.map(Effect.service(ToolReason), (holder) => {
-            holder.reason = error.reason;
+            holder.reason = Option.match(Cause.findErrorOption(cause), {
+              onNone: () => "error",
+              onSome: (error) => error.reason,
+            });
           }),
         ),
       );
@@ -143,4 +145,21 @@ const handlers = toolkit.toLayer(
   }),
 );
 
-export const tools = McpServer.toolkit(toolkit).pipe(Layer.provide(handlers));
+const invalidInput = McpServer.middleware(
+  (effect, { method }) =>
+    method !== "tools/call"
+      ? effect
+      : Effect.tapError(effect, (error) =>
+          error instanceof McpSchema.InvalidParams
+            ? Effect.map(Effect.service(ToolReason), (holder) => {
+                holder.reason = "invalid_input";
+              })
+            : Effect.void,
+        ),
+  { global: true },
+);
+
+export const tools = Layer.merge(
+  McpServer.toolkit(toolkit).pipe(Layer.provide(handlers)),
+  invalidInput,
+);
