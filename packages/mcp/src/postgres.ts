@@ -8,6 +8,7 @@ import pg from "pg";
 import {
   Db,
   type LogCursor,
+  maxBytes,
   maxRows,
   queueErrors,
   type Queues,
@@ -165,20 +166,36 @@ interface Sync {
   sync(): void;
 }
 
-const baseHandleError = (
-  pg.Query.prototype as unknown as {
-    handleError: (this: pg.Query, error: Error, connection: Sync) => void;
-  }
-).handleError;
+const base = pg.Query.prototype as unknown as {
+  handleError: (this: pg.Query, error: Error, connection: Sync) => void;
+  handleDataRow: (this: pg.Query, msg: { fields: (string | null)[] }) => void;
+};
 
+const tooLarge = new ToolError({
+  reason: "result_too_large",
+  message: `result over ${String(maxBytes)} bytes; select fewer rows or columns`,
+});
+
+// Past `maxBytes` pg's `_canceledDueToError` drops the rest unparsed. shortcut:
+// the server still streams the rest of the 501-row batch until it ends or
+// `statement_timeout` fires; send a cancel request if that cost shows.
 class Capped extends pg.Query {
+  declare _canceledDueToError: Error | false;
+  bytes = 0;
+
+  handleDataRow(msg: { fields: (string | null)[] }) {
+    for (const f of msg.fields) this.bytes += Buffer.byteLength(f ?? "");
+    if (this.bytes > maxBytes) this._canceledDueToError = tooLarge;
+    base.handleDataRow.call(this, msg);
+  }
+
   handlePortalSuspended(connection: Sync) {
     connection.sync();
   }
 
   handleError(error: Error, connection: Sync) {
     if (error instanceof pg.DatabaseError) connection.sync();
-    baseHandleError.call(this, error, connection);
+    base.handleError.call(this, error, connection);
   }
 }
 
@@ -215,6 +232,7 @@ const runQuery = async (client: pg.PoolClient, sql: string) => {
       rows: result.rows.slice(0, maxRows + 1),
     };
   } catch (error) {
+    if (error === tooLarge) return tooLarge;
     if (!(error instanceof pg.DatabaseError)) throw error;
     return new ToolError({
       reason: error.message.includes("multiple commands")

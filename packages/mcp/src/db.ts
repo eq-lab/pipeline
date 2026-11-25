@@ -56,10 +56,12 @@ export interface SyncState {
   readonly accessManager: ReadonlyArray<LogCursor>;
 }
 
-// `query` (specs/mcp/query.md): the port returns at most `maxRows + 1` rows and
-// fails with the database's reason (`read_only_violation`, `statement_timeout`,
+// `query` (specs/mcp/query.md): the port returns at most `maxRows + 1` rows
+// holding at most `maxBytes` of text values, and fails with `result_too_large`
+// or the database's reason (`read_only_violation`, `statement_timeout`,
 // `multiple_statements`, `syntax_error`, `sql_error`) and message.
 export const maxRows = 500;
+export const maxBytes = 1024 * 1024;
 
 export interface Rows {
   readonly columns: ReadonlyArray<string>;
