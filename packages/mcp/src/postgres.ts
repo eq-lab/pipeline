@@ -234,6 +234,11 @@ export const postgres = (config: PostgresConfig) =>
         const pool = new pg.Pool({
           connectionString: Redacted.value(config.url),
           max: 5,
+          // Client-side bounds: statement_timeout fires on the server only.
+          // shortcut: fixed 5 s connect wait and 5 s query grace, not config;
+          // make them options if a slow network needs it.
+          connectionTimeoutMillis: 5000,
+          query_timeout: config.statementTimeoutMs + 5000,
           options: "-c default_transaction_read_only=on",
         });
         pool.on("error", (cause) => log(Effect.logWarning("db idle", cause)));
