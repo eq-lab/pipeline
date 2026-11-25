@@ -1,4 +1,4 @@
-Status: draft
+Status: approved
 
 # Audit outcome of rejected tool calls
 
