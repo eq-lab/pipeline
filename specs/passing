@@ -45,6 +45,7 @@ specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
 specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
 specs/mcp/query.md#500 rows are returned whole
 specs/mcp/query.md#A missing or empty statement is invalid input
+specs/mcp/query.md#A result over 1 MiB is rejected, not loaded whole
 specs/mcp/query.md#A select returns columns and rows in database order
 specs/mcp/query.md#A statement over the timeout is cancelled
 specs/mcp/query.md#A statement that is not text is invalid input

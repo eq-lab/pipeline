@@ -2,9 +2,9 @@ Status: approved
 
 # `query`: read-only SQL
 
-`query` runs one caller-written SQL statement and returns `{columns, rows, truncated}`. It is defence in depth around open-ended SQL: the database role is read-only, every call runs in its own `BEGIN READ ONLY` transaction with `SET LOCAL statement_timeout`, the statement is sent as exactly one prepared statement (multi-statement text is refused), and at most 500 rows come back. The 501st row is fetched only to set `truncated: true`; the rest of the result is never loaded.
+`query` runs one caller-written SQL statement and returns `{columns, rows, truncated}`. It is defence in depth around open-ended SQL: the database role is read-only, every call runs in its own `BEGIN READ ONLY` transaction with `SET LOCAL statement_timeout`, the statement is sent as exactly one prepared statement (multi-statement text is refused), and at most 500 rows come back. The 501st row is fetched only to set `truncated: true`; the rest of the result is never loaded. The values of the rows read are also capped at 1 MiB (1048576 bytes) in total, counted as their text size on the wire with a null counting 0: a larger result is rejected as `result_too_large`, and the rows past the cap are not kept.
 
-The scenarios are queries against the `Db` fake. `given` says how the fake answers a statement: `DbReturns: { sql, columns, rows }`, or `DbReturns: { sql, columns: [id], rowCount: N }` for a result of N rows `[1]` .. `[N]`, or `DbFails: { sql, error }` with the error the database port reports for it (`read_only_violation`, `statement_timeout`, `multiple_statements`, `syntax_error`). Calls reach the tool already authenticated (`specs/mcp/transport.md`).
+The scenarios are queries against the `Db` fake. `given` says how the fake answers a statement: `DbReturns: { sql, columns, rows }`, or `DbReturns: { sql, columns: [id], rowCount: N }` for a result of N rows `[1]` .. `[N]`, or `DbFails: { sql, error }` with the error the database port reports for it (`read_only_violation`, `statement_timeout`, `multiple_statements`, `syntax_error`, `result_too_large`). Calls reach the tool already authenticated (`specs/mcp/transport.md`).
 
 ## A select returns columns and rows in database order
 
@@ -152,6 +152,19 @@ then:
     [481], [482], [483], [484], [485], [486], [487], [488], [489], [490], [491], [492], [493], [494], [495], [496], [497], [498], [499], [500]
   ]
   truncated: true
+```
+
+## A result over 1 MiB is rejected, not loaded whole
+
+A few huge values could otherwise stream gigabytes into the MCP server within the timeout and exhaust its memory. Past 1 MiB of values the remaining rows are not kept, and the caller is told to narrow the query.
+
+```spec
+given:
+  - DbFails: { sql: "SELECT repeat('x', 100000000) FROM generate_series(1, 500)", error: result_too_large }
+query:
+  Query: { sql: "SELECT repeat('x', 100000000) FROM generate_series(1, 500)" }
+then:
+  rejected: result_too_large
 ```
 
 ## A syntax error is reported as an SQL error

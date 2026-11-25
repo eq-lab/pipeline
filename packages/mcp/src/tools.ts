@@ -90,7 +90,7 @@ const toolkit = Toolkit.make(
     .annotate(Tool.Destructive, false),
   Tool.make("query", {
     description:
-      "Run one read-only SQL statement on the test database (read-only transaction, statement timeout); returns columns, rows (at most 500) and truncated.",
+      "Run one read-only SQL statement on the test database (read-only transaction, statement timeout); returns columns, rows (at most 500) and truncated; a result over 1 MiB fails as result_too_large.",
     parameters: QueryParams,
     success: QueryResult,
     failure: ToolError,
