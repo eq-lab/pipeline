@@ -11,9 +11,9 @@ section: Start here
 1. Confirm Pipeline can serve your jurisdiction (see [Legal](/references/legal/)).
 2. Set up a self-custodied wallet. Pipeline never holds your keys.
 3. Fund the wallet with at least 1,000 USDC and a small balance for network fees.
-4. Connect the wallet at pipeline.one and pass KYB.
+4. Connect the wallet at https://pipeline.one.
 5. Submit a deposit request. Your USDC goes straight to the custody account.
-6. The platform screens your address and the deposit (KYT, Know Your Transaction). On a clean result it approves your address to hold PLUSD and signs a voucher for your request.
+6. The platform screens your address and the deposit (KYT, Know Your Transaction). On a clean result, it approves your address to hold PLUSD and signs a voucher for your request.
 7. Claim with the voucher. PLUSD is minted to your address 1:1.
 8. Stake PLUSD in the staking vault and receive sPLUSD. Yield goes into the sPLUSD price.
 
