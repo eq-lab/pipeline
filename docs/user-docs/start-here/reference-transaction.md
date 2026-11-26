@@ -12,21 +12,22 @@ Pipeline's architecture has been stress-tested against the trade below. It shows
 
 | Parameter | Detail |
 |---|---|
-| **Commodity** | Jet fuel — aviation kerosene, JET A-1 |
-| **Trade corridor** | South Korea (sourcing) → Chinese bonded storage (tank farm) → Mongolia (end buyer) |
-| **Originator / Servicer** | A commodity trade finance Originator |
-| **Sourcing counterparty** | Vitol / Korean refiners (FOB South Korea) |
-| **Storage** | Chinese bonded tank farm under CMA (SGS or Intertek) |
-| **Offtaker** | An aviation fuel distributor |
-| **Facility size** | $20M (indicative) |
-| **Senior tranche** | $17M (85%) — funded by Pipeline lenders |
-| **Equity tranche** | $3M (15%) — funded by the Originator, first-loss |
-| **Duration** | 90 days |
-| **Senior coupon** | 14.0% gross annualised |
-| **Collateral structure** | CMA over stored product + assignment of offtake receivable |
-| **Price reference** | MOPS (Mean of Platts Singapore) jet fuel benchmark |
-| **Payment mechanism** | LC at sight or documentary collection |
-| **Hedging** | Back-to-back sale with confirmed offtaker at market-linked price |
+| **Commodity** | Gold pyrite concentrate |
+| **Trade corridor** | Greece (FOB) → China, shipped around the Cape of Good Hope |
+| **Originator / Servicer** | A metals concentrates Originator |
+| **Offtaker** | A buyer in China |
+| **Cargo value** | $2.72M |
+| **Facility** | $1.765M (65% of cargo value, the cap for gold concentrate) |
+| **Pool share** | $1.5M (85% of the facility, 55% of cargo value), funded by Pipeline lenders |
+| **Originator share** | $265K (15% of the facility, 10% of cargo value), lent alongside the pool on the same terms |
+| **Borrower equity** | $955K (35% of cargo value), paid into the collection account before drawdown |
+| **Duration** | 20 days, from drawdown to LC payment |
+| **Interest rate** | 14.4% gross annualised |
+| **Collateral structure** | Pledge of the full set of bills of lading; assignment of the sale proceeds |
+| **Price reference** | Contract formula on the LBMA Gold Price, adjusted for grade |
+| **Payment mechanism** | LC at sight, confirmed outside China by a Tier-1 bank |
+| **Hedging** | Back-to-back sale on the same price formula, with pricing periods matched |
+| **Insurance** | ICC (A) cargo cover at CIF value plus 10%, with the Security Agent as loss payee |
 
 ## Lifecycle flow
 
@@ -36,70 +37,69 @@ Pipeline's architecture has been stress-tested against the trade below. It shows
 
 #### Sourcing
 
-The Originator identifies the deal. An aviation fuel distributor needs JET A-1, sourced from Korean refiners via Vitol's supply chain.
+The Originator identifies the deal. A trader buys gold pyrite concentrate FOB Greece and has sold it to a buyer in China.
 
-#### KYB, KYT and pre-screening
+#### KYB and pre-screening
 
-The Originator submits KYB packs for the borrower, the offtaker and the CMA provider. Protocol Operations runs KYB, KYT, sanctions, AML and credit screens on every party.
+The Originator submits KYB packs for the borrower, the buyer and the inspector. Pipeline runs AML and sanctions checks on every party and its owners, and a conflict-minerals check on the origin of the concentrate.
 
 #### Term sheet and underwriting
 
-The Originator prepares the indicative term sheet: facility size, duration, pricing, collateral, hedging. Underwriting covers price assumptions, corridor risk and the offtaker's payment record.
+The Originator prepares the term sheet and credit memo: facility size, duration, pricing, collateral, hedging and a risk score for every counterparty. Underwriting covers the assay and price formula, the corridor and the buyer's payment route.
 
 #### Risk Council approval
 
-The deal is reviewed against the Credit Policy: commodity, corridor, borrower tier, concentration, advance ratio, hedging. On approval, the Trustee records the loan in the loan registry: facility size, senior and equity tranches, rate, origination and maturity dates, offtaker price. The loan starts as Approved.
+Pipeline screens the file against the Credit Policy: commodity class and advance ratio, jurisdictions, risk scores, concentration and the payment route for a Chinese buyer. The Risk Council approves the facility and records it on-chain as Approved.
 
-#### Equity tranche commitment
+#### Originator's share
 
-The Originator joins the facility by accession and funds the $3M equity tranche before the senior tranche is drawn.
+The Originator pays its $265K share, 15% of the facility and 10% of the cargo value, to the lending vehicle before the drawdown, where it is held on trust for the Originator.
 
-#### Senior tranche funding
+#### Collection account and notices
 
-A local legal opinion confirms the security ranks first. The lending vehicle, the initial lender under the master facility agreement, wires $17M to fund the seller. The Trustee records the disbursement in the loan registry. Interest starts to accrue and the loan becomes Performing. A per-loan debt token mirrors the outstanding principal.
+The borrower opens a collection account at an investment-grade bank that gives it no credit facility and waives set-off. The account is charged to the Security Agent, which co-signs every payment out of it, and a standing instruction sends receipts to the lending vehicle. The seller acknowledges Pipeline as financier, and the buyer is notified that the sale proceeds are assigned to the lenders.
 
-#### Cargo loading and sailing
+#### Loading
 
-Cargo loads at the Korean refinery FOB. The bill of lading is endorsed to the Security Agent by way of pledge. The Security Agent records it in the security registry. Inspectors appointed by the lending vehicle verify quantity and quality at the load port.
+The concentrate loads at the Greek port, and the inspector certifies its quantity and quality. The full set of bills of lading is endorsed to the Security Agent by way of pledge.
 
-#### Bonded storage
+#### Drawdown
 
-Cargo arrives at the Chinese bonded tank farm. The CMA provider (SGS or Intertek) takes possession and issues warehouse receipts pledged to the Security Agent. The Security Agent hands the security over from the bill of lading to the warehouse pledge in one step.
+Before the drawdown, the borrower pays its $955K equity into the collection account, a local legal opinion confirms the security ranks first, and the buyer's LC is issued. The Independent Trustee approves the drawdown, and the lending vehicle pays the $1.765M facility into the collection account. Interest starts to accrue and the loan becomes Performing.
+
+#### Payment to the seller
+
+The Security Agent checks the bills of lading and approves paying the seller the full $2.72M price from the collection account.
 
 #### Daily monitoring
 
-The platform marks the stored product against MOPS. LTV is the outstanding amount plus accrued interest, divided by the value of the goods. When LTV rises above 85%, a margin call opens. The borrower brings LTV back to 80% with cash or goods within the cure period. A stale price blocks a margin call.
+The platform marks the concentrate daily on its contract formula: payable gold at the LBMA price on the latest assay, less treatment charges and penalties. If LTV rises above 70%, a margin call opens, and the borrower restores 65% within 3 business days, in cash or by partial repayment. At 75%, the Risk Council may declare a default.
 
-#### Offtake to Mongolia
+#### LC payment
 
-The jet fuel distributor takes delivery. Payment falls due per LC or documentary collection terms.
+On day 20, the Security Agent releases the shipping documents for presentation under the LC, and the confirming bank pays at sight into the collection account while the cargo is still at sea. A standing instruction sends the receipts to the lending vehicle by the next business day.
 
-#### Repayment
+#### Repayment and yield
 
-The jet fuel distributor wires USD to the collection account, co-signed by the Security Agent. The repayment is applied by the priority of payments, booked on-chain and split into senior principal, senior interest, fees and the equity distribution.
+The receipts are applied to the lenders by share: $1.5M of principal with its interest to the lending vehicle, and $265K with its interest to the Originator. Paying the Originator needs the Independent Trustee's co-signature. The pool's interest, net of fees, is minted as PLUSD into the staking vault, and the sPLUSD price rises.
 
-#### Yield mint
+#### Release and closing
 
-The senior interest net of fees is minted as PLUSD into the staking vault. The sPLUSD price moves up. Fees go to the capital wallet as sPLUSD shares.
-
-#### Collateral release and equity distribution
-
-The Security Agent releases the security. The equity tranche principal and the residual go to the Originator. With nothing outstanding, the Trustee closes the loan.
+The Security Agent releases its remaining security, the surplus goes to the borrower within one business day, and the facility is closed.
 
 ## Illustrative investor yield
 
-Applying illustrative fee rates (management fee 1.0% a year, performance fee 15% of net interest) to this transaction. Interest accrues on a 365.25-day year.
+The illustrative fee rates below, an origination fee of 1.5% a year and a Pipeline performance fee of 2% a year, both on deployed capital, apply to the pool's share. Interest accrues on a 365.25-day year.
 
 | Component | Value |
 |---|---|
-| **Senior debt deployed (85% of $20M)** | $17,000,000 |
-| **Gross senior interest rate (annualised)** | 14.0% |
-| **Duration** | 90 days |
-| **Gross interest earned** | $586,448 ($17M × 14% × 90/365.25) |
-| **Less: Management fee (1.0% p.a. on $17M × 90d)** | ($41,889) |
-| **Net interest before performance fee** | $544,559 |
-| **Less: Performance fee (15% of net interest)** | ($81,684) |
-| **Net interest to sPLUSD holders from this deal** | $462,875 |
-| **Effective net yield (annualised, on deployed capital)** | ~11.0% p.a. |
+| **Pool capital deployed (85% of the $1.765M facility)** | $1,500,000 |
+| **Gross interest rate (annualised)** | 14.4% |
+| **Duration** | 20 days |
+| **Gross interest earned** | $11,828 ($1.5M × 14.4% × 20/365.25) |
+| **Less: origination fee (1.5% a year)** | ($1,232) |
+| **Less: Pipeline performance fee (2% a year)** | ($1,643) |
+| **Net interest to sPLUSD holders from this deal** | $8,953 |
+| **Effective net yield (annualised, on deployed capital)** | ~10.9% |
 
-90-day duration means deployed capital recycles four times per year.
+A 20-day duration means deployed capital recycles about 18 times a year.
