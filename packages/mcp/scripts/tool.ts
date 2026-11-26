@@ -87,7 +87,10 @@ const allow = (root: string, args: ReadonlyArray<string>): number => {
   return failed ? 1 : 0;
 };
 
-const approve = (root: string, args: ReadonlyArray<string>): number => {
+const approve = async (
+  root: string,
+  args: ReadonlyArray<string>,
+): Promise<number> => {
   if (args.length === 0) {
     console.error("usage: yarn spec:approve specs/<area>/<topic>.md ...");
     return 2;
@@ -130,7 +133,8 @@ const approve = (root: string, args: ReadonlyArray<string>): number => {
     const text = setStatus(readSpec(root, path), "approved");
     writeFileSync(resolve(root, path), text);
     hashes.set(path, specHash(root, path, text));
-    const red = blocks.filter((b) => check(b, root) !== null).length;
+    let red = 0;
+    for (const b of blocks) if ((await check(b, root)) !== null) red++;
     console.log(
       `approved ${path}${red > 0 ? ` (${String(red)} of ${String(blocks.length)} scenarios red: backlog until green)` : ""}`,
     );
@@ -139,9 +143,12 @@ const approve = (root: string, args: ReadonlyArray<string>): number => {
   return failed ? 1 : 0;
 };
 
-const ratchetPassing = (root: string, flexOnly = false): number => {
+const ratchetPassing = async (
+  root: string,
+  flexOnly = false,
+): Promise<number> => {
   const passing = readPassing(root);
-  const next = ratchet(runAll(root, check), passing, flexOnly);
+  const next = ratchet(await runAll(root, check), passing, flexOnly);
   writePassing(root, next);
   const added = next.filter((id) => !passing.has(id));
   console.log(
@@ -155,7 +162,7 @@ const ratchetPassing = (root: string, flexOnly = false): number => {
   return 0;
 };
 
-const main = (argv: ReadonlyArray<string>): number => {
+const main = async (argv: ReadonlyArray<string>): Promise<number> => {
   const [command, ...args] = argv;
   switch (command) {
     case "guard":
@@ -163,11 +170,11 @@ const main = (argv: ReadonlyArray<string>): number => {
     case "allow":
       return allow(packageRoot, args);
     case "approve":
-      return approve(repoRoot, args);
+      return await approve(repoRoot, args);
     case "ratchet":
-      return ratchetPassing(repoRoot);
+      return await ratchetPassing(repoRoot);
     case "ratchet-flex":
-      return ratchetPassing(repoRoot, true);
+      return await ratchetPassing(repoRoot, true);
     default:
       console.error(
         "usage: tool.ts guard | allow <path>... | approve <spec>... | ratchet | ratchet-flex",
@@ -176,4 +183,4 @@ const main = (argv: ReadonlyArray<string>): number => {
   }
 };
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

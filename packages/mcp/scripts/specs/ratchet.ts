@@ -149,16 +149,23 @@ export const writePassing = (root: string, ids: ReadonlyArray<string>) => {
   writeFileSync(join(root, passingFile), ids.map((id) => `${id}\n`).join(""));
 };
 
-export const runAll = (root: string, check: Check): ReadonlyArray<Result> =>
-  listSpecFiles(root).flatMap((path) => {
+export const runAll = async (
+  root: string,
+  check: Check,
+): Promise<ReadonlyArray<Result>> => {
+  const results: Array<Result> = [];
+  for (const path of listSpecFiles(root)) {
     const text = readSpec(root, path);
     const status = readStatus(text);
-    if (typeof status !== "string") return [];
-    return parseBlocks(text).map((block) => ({
-      path,
-      name: block.name,
-      line: block.line,
-      status,
-      red: check(block, root),
-    }));
-  });
+    if (typeof status !== "string") continue;
+    for (const block of parseBlocks(text))
+      results.push({
+        path,
+        name: block.name,
+        line: block.line,
+        status,
+        red: await check(block, root),
+      });
+  }
+  return results;
+};

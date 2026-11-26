@@ -1,6 +1,85 @@
 specs/flex/limits.md#A limit above the maximum is clamped to it
 specs/flex/limits.md#A limit within the maximum is kept
 specs/flex/limits.md#A missing limit takes the default
+specs/mcp/audit-outcome.md#A timed-out statement is audited as statement_timeout
+specs/mcp/audit-outcome.md#Parameters the tool's schema rejects are audited as invalid_input
+specs/mcp/config.md#A URL with credentials is masked, a URL without is shown
+specs/mcp/config.md#A secret-like key from a ConfigMap is masked
+specs/mcp/config.md#A value from a Secret is masked
+specs/mcp/config.md#An API key in a URL path or query is masked
+specs/mcp/config.md#An unreachable Kubernetes API is reported, not hidden
+specs/mcp/config.md#Every URL of a comma-separated list is checked
+specs/mcp/config.md#Plain and ConfigMap values are shown
+specs/mcp/config.md#Secret references and `envFrom` of two services
+specs/mcp/config.md#Secret-like keys are masked even with a plain value
+specs/mcp/config.md#`envFrom` sources are listed by name, never read
+specs/mcp/deployment.md#An unknown service is rejected
+specs/mcp/deployment.md#An unreachable Kubernetes API is reported, not hidden
+specs/mcp/deployment.md#Events older than an hour are left out
+specs/mcp/deployment.md#Image, pods and recent events of one service
+specs/mcp/deployment.md#Without a service every configured service is listed
+specs/mcp/errors.md#A window over 24 hours is clamped to 24 hours
+specs/mcp/errors.md#An unknown service is rejected
+specs/mcp/errors.md#Error lines are grouped by normalised message
+specs/mcp/errors.md#No errors in the window is an empty result
+specs/mcp/errors.md#Unreachable Grafana is reported, not hidden
+specs/mcp/health.md#A cursor that stopped moving makes the worker stale
+specs/mcp/health.md#A probe slower than 2 s is a timeout
+specs/mcp/health.md#An unreachable database leaves the other sources reported
+specs/mcp/health.md#Every source answering is all ok
+specs/mcp/health.md#One unreachable service does not fail health
+specs/mcp/indexer-lag.md#A cursor ahead of the head is no lag
+specs/mcp/indexer-lag.md#AccessManager sync lag counts only the operation events
+specs/mcp/indexer-lag.md#An unreachable database is reported, not hidden
+specs/mcp/indexer-lag.md#Lag is the head minus the last indexed block
+specs/mcp/indexer-lag.md#One unreachable RPC does not hide the other chains
+specs/mcp/indexer-lag.md#Registry projection lag counts only the registry's log contracts
+specs/mcp/logs.md#A limit above 500 is clamped and flagged
+specs/mcp/logs.md#A line of 2048 bytes is kept whole
+specs/mcp/logs.md#A line over 2048 bytes is cut and flagged
+specs/mcp/logs.md#A malformed window is invalid input
+specs/mcp/logs.md#A window over 24 hours is clamped to 24 hours and flagged
+specs/mcp/logs.md#An unknown service is rejected
+specs/mcp/logs.md#Grep is a literal filter, not LogQL
+specs/mcp/logs.md#Grep keeps only matching lines
+specs/mcp/logs.md#Lines of the service within the window, oldest first
+specs/mcp/logs.md#More lines than the limit keeps the most recent and flags it
+specs/mcp/logs.md#Unreachable Grafana is reported, not hidden
+specs/mcp/query.md#500 rows are returned whole
+specs/mcp/query.md#A bytea comes back as hex with a `\x` prefix
+specs/mcp/query.md#A date comes back as the text Postgres prints
+specs/mcp/query.md#A missing or empty statement is invalid input
+specs/mcp/query.md#A result over 1 MiB is rejected, not loaded whole
+specs/mcp/query.md#A select returns columns and rows in database order
+specs/mcp/query.md#A statement over the timeout is cancelled
+specs/mcp/query.md#A statement that is not text is invalid input
+specs/mcp/query.md#A syntax error is reported as an SQL error
+specs/mcp/query.md#A timestamp comes back as the text Postgres prints
+specs/mcp/query.md#A timestamptz comes back as the text Postgres prints, with its zone offset
+specs/mcp/query.md#An interval and an array of timestamps come back as text
+specs/mcp/query.md#An unreachable database is reported, not hidden
+specs/mcp/query.md#DDL is rejected as a write
+specs/mcp/query.md#More than 500 rows are cut at 500 and flagged
+specs/mcp/query.md#Multi-statement text is rejected
+specs/mcp/query.md#Write SQL is rejected
+specs/mcp/queues.md#A long error is cut to 500 characters
+specs/mcp/queues.md#An unreachable database is reported, not hidden
+specs/mcp/queues.md#Counts, oldest age and errors of both outboxes
+specs/mcp/queues.md#Empty outboxes report nothing pending
+specs/mcp/queues.md#Only the 20 most recent errors are returned
+specs/mcp/schema.md#An empty database has no tables
+specs/mcp/schema.md#An unreachable database is reported, not hidden
+specs/mcp/schema.md#Tables of the public schema with their columns
+specs/mcp/schema.md#Tables outside the public schema are not listed
+specs/mcp/transport.md#A configured token reaches the tool
+specs/mcp/transport.md#A missing Authorization header gets 401
+specs/mcp/transport.md#A prefix of a configured secret gets 401
+specs/mcp/transport.md#A rejected tool call is audited with its reason
+specs/mcp/transport.md#A secret sent with another scheme gets 401
+specs/mcp/transport.md#An invalid token gets 401 with no detail
+specs/mcp/transport.md#Each client is audited under its own token id
+specs/mcp/transport.md#The audit record never holds the token, the arguments or the result
+specs/mcp/transport.md#With no configured tokens every request gets 401
 specs/tooling/spec-classes.md#A class A spec with a matching hash is fine
 specs/tooling/spec-classes.md#A class B regression is an error, as for class A
 specs/tooling/spec-classes.md#A class B spec in specs/approved is an error

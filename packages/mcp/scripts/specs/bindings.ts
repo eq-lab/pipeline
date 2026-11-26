@@ -1,8 +1,10 @@
-// What the specs run against (specs/README.md, "Runner"): queries over the
-// package's pure functions and the `spec-classes` adapter of the tooling.
+// What the specs run against (specs/README.md, "Runner"): `ClampLimit`, tool
+// queries via src/queries.ts, `Call` over the MCP server, and `spec-classes`.
 import { clampLimit } from "../../src/limits.js";
+import { runCall } from "./call.js";
 import { approveRefusal, type ClassInput, classProblems } from "./classes.js";
-import type { SpecMessage, ValueOutcome } from "./outcome.js";
+import type { SpecMessage, SpecOutcome, ValueOutcome } from "./outcome.js";
+import { runSourceQuery } from "./query.js";
 import { makeCheck } from "./run.js";
 
 const notImplemented = (what: string) =>
@@ -11,11 +13,7 @@ const notImplemented = (what: string) =>
 const optionalNumber = (value: unknown) =>
   value === undefined || typeof value === "number";
 
-const runQuery = (
-  _given: ReadonlyArray<SpecMessage>,
-  query: SpecMessage,
-): ValueOutcome => {
-  if (query._tag !== "ClampLimit") return notImplemented(`query ${query._tag}`);
+const clampLimitQuery = (query: SpecMessage): ValueOutcome => {
   const { limit, max, fallback } = query;
   if (
     !optionalNumber(limit) ||
@@ -46,8 +44,21 @@ const runAdapterSpec = (
   return notImplemented(`spec-classes ${when._tag}`);
 };
 
+const runSpec = (
+  given: ReadonlyArray<SpecMessage>,
+  when: SpecMessage,
+  now: string | null,
+): Promise<SpecOutcome> =>
+  when._tag === "Call"
+    ? runCall(given, when, now)
+    : Promise.resolve(notImplemented(`command ${when._tag}`));
+
 export const check = makeCheck({
-  runSpec: (_given, when) => notImplemented(`command ${when._tag}`),
-  runQuery,
-  runAdapterSpec,
+  runSpec,
+  runQuery: (given, query, now) =>
+    query._tag === "ClampLimit"
+      ? Promise.resolve(clampLimitQuery(query))
+      : runSourceQuery(given, query, now),
+  runAdapterSpec: (adapter, response, when) =>
+    Promise.resolve(runAdapterSpec(adapter, response, when)),
 });

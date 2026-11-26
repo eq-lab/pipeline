@@ -22,7 +22,15 @@ then:                 # new events in order, or a rejection
 - The event list in `then` matches as a whole: the same events in the same order, nothing extra. Fields inside an event match partially: listed fields must be equal, others are ignored. Numbers match within 1e-9.
 - YAML 1.2 core schema: dates stay strings.
 
-The package has no commands yet, so a command scenario is red (not implemented) until one exists.
+Commands bound today: `Call` (`specs/mcp/transport.md`). The runner sends one stateless MCP `tools/call` request (protocol 2026-07-28) to the server's web handler in process, no network: `TokenConfigured` events configure the clients, every other `given` event goes to the fakes, and the audit records are collected. `then` gets `Responded: { status, body }` followed by one `AuditRecorded` per record, with `fields` the record's sorted key names. It is not implemented (backlog) while the server, the fakes for a `given` source, or the called tool do not exist yet. Other commands are not implemented.
+
+What `Call` needs from the package: `src/http.ts` exports `app(tokens)` (the HTTP router layer), `src/audit.ts` exports the `AuditSink` service, and `src/fakes.ts` exports the fakes (see "Fakes").
+
+## Fakes
+
+`src/fakes.ts` exports `fakes(given, now)`: a layer (no requirements, no errors) that provides every source port the tools use, built from the source events of `given` (`now` is the scenario's ISO time or null; the fakes also own the clock where a tool needs it). Sources not mentioned answer normally. Without the module, a scenario whose `given` has source events is not implemented (backlog). The runner uses the same `fakes` for queries and for `Call`.
+
+The bindings return promises; the runner awaits them one scenario at a time.
 
 ## Adapter contract specs
 
@@ -54,7 +62,9 @@ then:
 # then: { rejected: invalid_query }
 ```
 
-Queries bound today: `ClampLimit: { limit?, max, fallback }` (`limit`). An unknown query is not implemented (backlog).
+Queries bound in the tooling: `ClampLimit: { limit?, max, fallback }` (`limit`).
+
+Every other query goes to the package: `src/queries.ts` exports `queries`, a map from the query tag (`Deployment`, `Logs`, `Health`, ...) to a handler `(input) => Effect`, where `input` is the query's fields. The runner provides `fakes(given, now)` and runs the effect: its value is the `then` value; a failure whose error has a string `reason` is `rejected: <reason>`; any other failure or defect makes the scenario red with the cause. A tool task adds its handler to `queries`, never a change to the guarded tooling. A tag missing from `queries`, or a missing module, is not implemented (backlog).
 
 ## Statuses
 
@@ -71,7 +81,7 @@ Every file starts with the line `Status: draft` or `Status: approved`.
 - an approved scenario is green but not in `specs/passing`: run `yarn spec:ratchet` and commit the file;
 - a line of `specs/passing` names no approved scenario.
 
-Rules for agents: write no tests; do not edit files with `Status: approved` (outside `specs/flex/`) or their fixtures; do not touch `specs/approved`; do not remove lines from `specs/passing`; never run `yarn spec:approve` or `yarn spec:ratchet`. Agents add lines of class B scenarios (`specs/flex/`) themselves with `yarn workspace @pipeline/mcp spec:ratchet-flex` (class B only: it neither adds nor touches class A lines).
+Rules for agents: write no tests; do not edit files with `Status: approved` (outside `specs/flex/`) or their fixtures; do not touch `specs/approved`; do not remove lines from `specs/passing`; never run `yarn spec:approve`. After making approved scenarios green, agents run `yarn spec:ratchet` themselves and commit `specs/passing` (it only adds lines of green approved scenarios and drops lines of removed class B scenarios; it never removes a class A line). `yarn workspace @pipeline/mcp spec:ratchet-flex` does the same for `specs/flex/` only.
 
 Summary line of the check: `exec specs: approved N green, N red (backlog), N regressions; draft N green, N red`.
 
@@ -90,7 +100,7 @@ The tooling lives in `packages/mcp/scripts/` (`specs/*`, `guard/files.ts`, `tool
 | Command | Who | What |
 |---|---|---|
 | `yarn spec:approve specs/<area>/<topic>.md ...` | human, devops | marks specs approved and records their hashes in `specs/approved` |
-| `yarn spec:ratchet` | human, devops | records every green approved scenario in `specs/passing` |
+| `yarn spec:ratchet` | agent, human, devops | records every green approved scenario in `specs/passing` (adds only; removing lines is human-only) |
 | `yarn workspace @pipeline/mcp spec:ratchet-flex` | agent | the same for `specs/flex/` only |
 | `yarn workspace @pipeline/mcp guard` | check | guarded files match `packages/mcp/guarded.sha256` |
 | `yarn workspace @pipeline/mcp specs` | check | runs every spec with the ratchet |
