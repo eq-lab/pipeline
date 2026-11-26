@@ -32,9 +32,9 @@ Pipeline onboards Loan Originators: established lenders in commodity trade finan
 4. Stake PLUSD in the PLUSD staking vault and receive sPLUSD.
 5. Yield goes into the sPLUSD price. There is no claim step. Full walkthrough in [Quick start manual](/start-here/quick-start/).
 
-### How is my senior capital protected?
+### How is my capital protected?
 
-Two layers protect the senior tranche: the deal structure and the operating setup.
+Two layers protect lenders: the deal structure and the operating setup.
 
 Deal structure:
 
@@ -101,7 +101,7 @@ Pipeline's legal structure is bankruptcy-remote, and no single person can approv
 - An independent director approves each facility after the Risk Council
 - The independent Security Agent holds the loans' security on trust for all lenders and co-signs the borrower's collection account
 
-A charitable trust owns the lending vehicle that finances commodity trades. The lending vehicle wholly owns a funding vehicle, which borrows investors' USDC, keeps the liquidity buffer, and lends the rest to the lending vehicle. Each trade loan sits under a master facility agreement, with the Originator lending alongside on the same terms.
+A charitable trust owns the lending vehicle that finances commodity trades. The lending vehicle wholly owns a funding vehicle, which borrows USDC from lenders, keeps the liquidity buffer, and lends the rest to the lending vehicle. Each trade loan sits under a master facility agreement, with the Originator lending alongside on the same terms.
 
 ### What jurisdictions can Pipeline serve?
 
