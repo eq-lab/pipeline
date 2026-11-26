@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" role="img" aria-label="Reference transaction lifecycle: origination, set-up of the collection account and notices, funding against the bills of lading, repayment from the LC with interest minted into the vault, and closure." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
-<title>Reference transaction lifecycle: origination, set-up of the collection account and notices, funding against the bills of lading, repayment from the LC with interest minted into the vault, and closure.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" role="img" aria-label="Reference transaction lifecycle: origination; set-up of the Originator&#x27;s share, the collection account and notices; the trade: loading, drawdown, payment to the seller and daily monitoring; repayment from the LC with interest minted into the vault; and closure." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest">
+<title>Reference transaction lifecycle: origination; set-up of the Originator&#x27;s share, the collection account and notices; the trade: loading, drawdown, payment to the seller and daily monitoring; repayment from the LC with interest minted into the vault; and closure.</title>
 <defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="m9a9ccc" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#9a9ccc"/></marker></defs>
 <rect width="960" height="620" fill="#ffffff"/>
 <circle cx="31.0" cy="34.0" r="11" fill="#000080"/>
@@ -39,8 +39,9 @@
 <path d="M 292.4 164.0 L 292.4 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <rect x="207.6" y="186.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
 <text x="217.6" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Collection account</text>
-<text x="217.6" y="232.2" font-size="12.5" fill="#5c5a57">charged to the Security</text>
-<text x="217.6" y="249.4" font-size="12.5" fill="#5c5a57">Agent, which co-signs</text>
+<text x="217.6" y="232.2" font-size="12.5" fill="#5c5a57">opened by the borrower,</text>
+<text x="217.6" y="249.4" font-size="12.5" fill="#5c5a57">charged to the Security</text>
+<text x="217.6" y="266.6" font-size="12.5" fill="#5c5a57">Agent, which co-signs</text>
 <path d="M 292.4 278.0 L 292.4 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <rect x="207.6" y="300.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
 <text x="217.6" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Notices</text>
@@ -49,7 +50,7 @@
 <text x="217.6" y="380.7" font-size="12.5" fill="#5c5a57">assigned</text>
 <circle cx="406.2" cy="34.0" r="11" fill="#000080"/>
 <text x="406.2" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
-<text x="425.2" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Funding</text>
+<text x="425.2" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Trade</text>
 <path d="M 567.8 34.0 L 579.8 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
 <line x1="395.2" y1="54" x2="564.8" y2="54" stroke="#000080" stroke-width="2"/>
 <rect x="395.2" y="72.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
@@ -60,36 +61,36 @@
 <path d="M 480.0 164.0 L 480.0 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <rect x="395.2" y="186.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
 <text x="405.2" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Drawdown</text>
-<text x="405.2" y="232.2" font-size="12.5" fill="#5c5a57">equity in, Independent</text>
-<text x="405.2" y="249.4" font-size="12.5" fill="#5c5a57">Trustee approves,</text>
-<text x="405.2" y="266.6" font-size="12.5" fill="#5c5a57">$1.765M paid in</text>
+<text x="405.2" y="232.2" font-size="12.5" fill="#5c5a57">borrower&#x27;s equity in;</text>
+<text x="405.2" y="249.4" font-size="12.5" fill="#5c5a57">$1.765M transferred to</text>
+<text x="405.2" y="266.6" font-size="12.5" fill="#5c5a57">the collection account</text>
 <path d="M 480.0 278.0 L 480.0 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <rect x="395.2" y="300.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
 <text x="405.2" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Seller paid</text>
 <text x="405.2" y="346.3" font-size="12.5" fill="#5c5a57">the Security Agent</text>
 <text x="405.2" y="363.5" font-size="12.5" fill="#5c5a57">approves $2.72M against</text>
 <text x="405.2" y="380.7" font-size="12.5" fill="#5c5a57">the B/L</text>
+<path d="M 480.0 392.0 L 480.0 414.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="395.2" y="414.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="405.2" y="437.1" font-size="14.5" fill="#262524" font-weight="600">Daily monitoring</text>
+<text x="405.2" y="460.3" font-size="12.5" fill="#5c5a57">margin call above 70 %;</text>
+<text x="405.2" y="477.5" font-size="12.5" fill="#5c5a57">restore 65 % within 3</text>
+<text x="405.2" y="494.7" font-size="12.5" fill="#5c5a57">business days</text>
 <circle cx="593.8" cy="34.0" r="11" fill="#000080"/>
 <text x="593.8" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
 <text x="612.8" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Repayment</text>
 <path d="M 755.4 34.0 L 767.4 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
 <line x1="582.8" y1="54" x2="752.4" y2="54" stroke="#000080" stroke-width="2"/>
 <rect x="582.8" y="72.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
-<text x="592.8" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Daily monitoring</text>
-<text x="592.8" y="118.2" font-size="12.5" fill="#5c5a57">margin call above 70 %;</text>
-<text x="592.8" y="135.4" font-size="12.5" fill="#5c5a57">restore 65 % within 3</text>
-<text x="592.8" y="152.6" font-size="12.5" fill="#5c5a57">business days</text>
+<text x="592.8" y="95.0" font-size="14.5" fill="#262524" font-weight="600">LC payment</text>
+<text x="592.8" y="118.2" font-size="12.5" fill="#5c5a57">the confirming bank pays</text>
+<text x="592.8" y="135.4" font-size="12.5" fill="#5c5a57">at sight on day 20</text>
 <path d="M 667.6 164.0 L 667.6 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <rect x="582.8" y="186.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
-<text x="592.8" y="209.1" font-size="14.5" fill="#262524" font-weight="600">LC payment</text>
-<text x="592.8" y="232.2" font-size="12.5" fill="#5c5a57">the confirming bank pays</text>
-<text x="592.8" y="249.4" font-size="12.5" fill="#5c5a57">at sight on day 20</text>
-<path d="M 667.6 278.0 L 667.6 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="582.8" y="300.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
-<text x="592.8" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Repaid by share</text>
-<text x="592.8" y="346.3" font-size="12.5" fill="#5c5a57">pool interest minted into</text>
-<text x="592.8" y="363.5" font-size="12.5" fill="#5c5a57">the vault; sPLUSD price</text>
-<text x="592.8" y="380.7" font-size="12.5" fill="#5c5a57">rises</text>
+<text x="592.8" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Repaid by share</text>
+<text x="592.8" y="232.2" font-size="12.5" fill="#5c5a57">pool interest minted into</text>
+<text x="592.8" y="249.4" font-size="12.5" fill="#5c5a57">the vault; sPLUSD price</text>
+<text x="592.8" y="266.6" font-size="12.5" fill="#5c5a57">rises</text>
 <circle cx="781.4" cy="34.0" r="11" fill="#000080"/>
 <text x="781.4" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">5</text>
 <text x="800.4" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Closure</text>
@@ -116,4 +117,4 @@
 <rect x="826.6" y="550.0" width="57.2" height="20.0" rx="10" fill="#dfe2f2" stroke="#dfe2f2" stroke-width="0"/>
 <text x="855.2" y="564.0" font-size="12" fill="#000080" font-weight="600" text-anchor="middle">Closed</text>
 <text x="20.0" y="602.0" font-size="13" fill="#5c5a57">$1.765M facility: $1.5M from Pipeline lenders and $265K from the Originator, pari passu; $955K borrower equity. 20 days. Figures are illustrative.</text>
-</svg>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo4ZjYzMDcyMC0wYTY4LTQyM2UtODFjYy0zZWE4NzM3NzM5ZDAAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaPs1UEuPTHJonDeteGN1yVQAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDo1YTg4ZDJlOC1iNTVkLTRkZjktYWFkMy0yM2IyMDc4N2U4NTVscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoXtgadKwO0cykCpJPkhkYBwAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFgg2UU0NYKjxpOczxEzlOD4DO718/+v5Jzb2eOeAKEI/8SkZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaB02edsXUWuuhe84ghdg6ZYAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYIJoB7jBnVavntaZeEsKVgN4tM4JEUKliqDlge19JTf9RZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GTH8Zmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjhmNjMwNzIwLTBhNjgtNDIzZS04MWNjLTNlYTg3Mzc3MzlkMC9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjUzYjJkYTU4LTFiOTgtNDMxOS1iYjBmLTU1OWYwMmYxYzhmZHJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCDZRTQ1gqPGk5zPETOU4PgM7vXz/6/knNvZ454AoQj/xKJjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggG2cU1q6YsB8kQQ6JEvBl1DJL3lr9uvWfAiAL/0Yj/oOiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggc1lRhwLFVM2kvN0em5o35VA22f7gM1wOenFHvM+IAr10Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQDLfk7W7QH+N6zChgs7XAl8wgO+HkRuqtYIZQpD05qwx5mGVTIIzqGTnuknFEcTiTE+L9EXF3Qk2l9yKLiyDLOM=</c2pa:manifest></metadata></svg>
