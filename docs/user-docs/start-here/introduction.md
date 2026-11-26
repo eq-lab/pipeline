@@ -21,7 +21,7 @@ Every loan is recorded on-chain. Its terms, status, disbursements, and repayment
 |   | **Traditional trade finance fund** | **Pipeline** |
 |---|---|---|
 | **Access** | Quarterly subscription windows; accreditation gates | Permissioned; approved addresses deposit at any time |
-| **Liquidity** | Quarterly redemptions, often gated | Instant retail withdrawals from a 10–15% liquidity buffer; larger ones at quarterly windows |
+| **Liquidity** | Quarterly redemptions, often gated | Instant retail withdrawals from a 10–15% liquidity buffer; quarterly windows for larger ones |
 | **Transparency** | Quarterly investor letter; limited deal disclosure | Every loan on a public on-chain registry |
 | **Counterparty risk** | Manager discretion on selection | Every deal is assessed against the published Credit Policy |
 
