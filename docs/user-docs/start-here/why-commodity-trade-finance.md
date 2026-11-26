@@ -6,7 +6,7 @@ section: Start here
 
 # Why commodity trade finance
 
-Commodity trade finance is short-duration secured lending against physical goods in transit or in storage. A trader buys a cargo from a seller and sells it to an end-buyer. It needs working capital between paying the seller and receiving payment from the end-buyer. The loan is secured by the goods and the papers that control them: bills of lading, warehouse receipts, storage agreements. It repays from the sale proceeds. Durations run 30 to 180 days. It is the oldest secured lending product in commerce.
+Commodity trade finance is short-duration secured lending against physical goods in transit or in storage. A trader buys a cargo from a seller and sells it to an end-buyer. It needs working capital between paying the seller and receiving payment from the end-buyer. The loan is secured by the goods and the papers that control them: bills of lading, warehouse receipts, storage agreements. It repays from the sale proceeds. Durations run 15 to 180 days. It is the oldest secured lending product in commerce.
 
 ## Structural advantages of the asset class
 
