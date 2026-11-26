@@ -15,7 +15,7 @@ Five features keep historic default rates below 0.3% across the 2008 financial c
 | Property | What it means |
 |---|---|
 | **Self-liquidating** | The loan repays from sale proceeds from a pre-contracted offtaker. |
-| **Short duration** | 30–180 day duration with rapid capital recycle. |
+| **Short duration** | 15-180 day duration with rapid capital recycle. |
 | **Physical collateral** | Standardised commodities with transparent pricing and deep secondary markets. Physically verifiable, sold in days. |
 | **Established legal framework** | Bills of lading and warehouse receipts have centuries of commercial law behind them. UCC Article 7 in the US. |
 | **Third-party verification** | Independent collateral managers (SGS, Cotecna, Intertek) inspect cargo. |
