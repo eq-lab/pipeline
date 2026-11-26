@@ -484,22 +484,22 @@ def governance_detail():
 @diagram("boss-loan-lifecycle", "jpeg")
 def loan_lifecycle():
     d = Diagram("boss-loan-lifecycle", 960, 700,
-                "Reference transaction lifecycle: origination, set-up of the collection account and notices, "
-                "funding against the bills of lading, repayment from the LC with interest minted into the vault, "
-                "and closure.")
+                "Reference transaction lifecycle: origination; set-up of the Originator's share, the collection "
+                "account and notices; the trade: loading, drawdown, payment to the seller and daily monitoring; "
+                "repayment from the LC with interest minted into the vault; and closure.")
     phases = [
         ("Origination", [("Sourcing", "the Originator identifies the deal"),
                          ("KYB and screening", "AML, sanctions and conflict-minerals checks"),
                          ("Underwriting", "term sheet, risk scores, price formula, payment route"),
                          ("Approval", "the Risk Council approves and records it on-chain")]),
         ("Set-up", [("Originator's share", "$265K paid in before drawdown, held on trust"),
-                    ("Collection account", "charged to the Security Agent, which co-signs"),
+                    ("Collection account", "opened by the borrower, charged to the Security Agent, which co-signs"),
                     ("Notices", "seller acknowledges the financier; sale proceeds assigned")]),
-        ("Funding", [("Loading", "B/L endorsed to the Security Agent; inspector certifies"),
-                     ("Drawdown", "equity in, Independent Trustee approves, $1.765M paid in"),
-                     ("Seller paid", "the Security Agent approves $2.72M against the B/L")]),
-        ("Repayment", [("Daily monitoring", "margin call above 70 %; restore 65 % within 3 business days"),
-                       ("LC payment", "the confirming bank pays at sight on day 20"),
+        ("Trade", [("Loading", "B/L endorsed to the Security Agent; inspector certifies"),
+                   ("Drawdown", "borrower's equity in; $1.765M transferred to the collection account"),
+                   ("Seller paid", "the Security Agent approves $2.72M against the B/L"),
+                   ("Daily monitoring", "margin call above 70 %; restore 65 % within 3 business days")]),
+        ("Repayment", [("LC payment", "the confirming bank pays at sight on day 20"),
                        ("Repaid by share", "pool interest minted into the vault; sPLUSD price rises")]),
         ("Closure", [("Security released", "by the Security Agent"),
                      ("Surplus paid", "to the borrower within one business day"),
