@@ -26,7 +26,7 @@ You can also wire USD to the protocol's bank account. When the wire is booked, P
 
 ## For originators
 
-1. Fill out the application [here](https://forms.gle/kP1H3VJ5dKVoou6Q8).
+1. Fill out the application form [here](https://forms.gle/kP1H3VJ5dKVoou6Q8).
 2. We will contact you within five business days.
 3. If approved, complete onboarding, including KYB and KYT.
 4. Start originating loans and earn the equity tranche return.
