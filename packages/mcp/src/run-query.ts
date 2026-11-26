@@ -104,15 +104,32 @@ export const guard = (client: pg.PoolClient) => {
 // Types pg would turn into Date, Buffer or an object, which JSON cannot carry:
 // they stay the text Postgres prints (and the byte cap counted), bytea as
 // `\x…`. date, time-less/with zone timestamps, bytea, interval, and arrays of
-// them.
+// them. A float NaN or ±Infinity stays its text too, and numeric[] elements
+// stay text like numeric, not floats that lose digits.
 const asText = new Set([
   17, 1082, 1114, 1184, 1186, 1001, 1182, 1115, 1185, 1187,
 ]);
+type Parser = (v: string) => unknown;
+const textArray: number = 1009;
+const strings = pg.types.getTypeParser(textArray) as Parser;
+const float = (v: string) => {
+  const n = Number.parseFloat(v);
+  return Number.isFinite(n) ? n : v;
+};
+const floats = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(floats) : typeof v === "string" ? float(v) : v;
+const parsers: ReadonlyMap<number, Parser> = new Map<number, Parser>([
+  [700, float],
+  [701, float],
+  [1021, (v) => floats(strings(v))],
+  [1022, (v) => floats(strings(v))],
+  [1231, strings],
+]);
 const types = {
-  getTypeParser: (oid: number): ((v: string) => unknown) =>
+  getTypeParser: (oid: number): Parser =>
     asText.has(oid)
       ? (v) => v
-      : (pg.types.getTypeParser(oid) as (v: string) => unknown),
+      : (parsers.get(oid) ?? (pg.types.getTypeParser(oid) as Parser)),
 };
 
 const reasons: Readonly<Record<string, string>> = {
