@@ -29,7 +29,7 @@ Every loan is recorded on-chain. Its terms, status, disbursements, and repayment
 
 Existing on-chain credit pools lend USDC against borrower-pledged collateral, often with thin underwriting and weak recovery rights. They have suffered losses from undercollateralised lending and poor workouts. Pipeline differs on these points:
 
-- A professional Loan Originator underwrites every loan and puts its own equity in the deal.
+- A professional Loan Originator underwrites every loan and lends its own money in it on the same terms as the pool.
 - Loans are secured by physical goods and the rights to them: bills of lading, warehouse pledges, assigned receivables. An independent Security Agent holds the security on trust for all lenders.
 - Deposited USDC goes straight to a custody account. No smart contract holds lender USDC.
 - The lending vehicle is bankruptcy-remote and has no beneficial owner. A licensed trustee co-signs every outflow of funds.
