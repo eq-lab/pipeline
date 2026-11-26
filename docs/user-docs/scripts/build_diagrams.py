@@ -484,26 +484,26 @@ def governance_detail():
 @diagram("boss-loan-lifecycle", "jpeg")
 def loan_lifecycle():
     d = Diagram("boss-loan-lifecycle", 960, 700,
-                "Reference transaction lifecycle: origination, funding, transit and storage under the Security "
-                "Agent, repayment by priority of payments with interest minted into the vault, and closure.")
+                "Reference transaction lifecycle: origination, set-up of the collection account and notices, "
+                "funding against the bills of lading, repayment from the LC with interest minted into the vault, "
+                "and closure.")
     phases = [
         ("Origination", [("Sourcing", "the Originator identifies the deal"),
-                         ("KYB and KYT", "on every party to the deal"),
-                         ("Underwriting", "term sheet, prices, corridor, offtaker"),
-                         ("Approval", "Risk Council approves; the Trustee records the loan")]),
-        ("Funding", [("Equity tranche", "Originator accedes and funds $3M, first loss"),
-                     ("Legal opinion", "security ranks first"),
-                     ("Senior tranche", "lending vehicle wires $17M; debt token issued")]),
-        ("Cargo", [("Loading", "B/L endorsed to the Security Agent; inspectors verify"),
-                                 ("Bonded storage", "Security Agent hands over to the warehouse pledge"),
-                                 ("Daily monitoring", "LTV above 85 % opens a margin call; cure to 80 %"),
-                                 ("Offtake", "the distributor takes delivery")]),
-        ("Repayment", [("Offtaker pays", "into the collection account co-signed by the Security Agent"),
-                       ("Priority of payments", "senior principal, senior interest, fees, equity"),
-                       ("Interest minted", "into the vault; sPLUSD price rises; fees to the capital wallet")]),
+                         ("KYB and screening", "AML, sanctions and conflict-minerals checks"),
+                         ("Underwriting", "term sheet, risk scores, price formula, payment route"),
+                         ("Approval", "the Risk Council approves and records it on-chain")]),
+        ("Set-up", [("Originator's share", "$265K paid in before drawdown, held on trust"),
+                    ("Collection account", "charged to the Security Agent, which co-signs"),
+                    ("Notices", "seller acknowledges the financier; sale proceeds assigned")]),
+        ("Funding", [("Loading", "B/L endorsed to the Security Agent; inspector certifies"),
+                     ("Drawdown", "equity in, Independent Trustee approves, $1.765M paid in"),
+                     ("Seller paid", "the Security Agent approves $2.72M against the B/L")]),
+        ("Repayment", [("Daily monitoring", "margin call above 70 %; restore 65 % within 3 business days"),
+                       ("LC payment", "the confirming bank pays at sight on day 20"),
+                       ("Repaid by share", "pool interest minted into the vault; sPLUSD price rises")]),
         ("Closure", [("Security released", "by the Security Agent"),
-                     ("Equity paid out", "equity principal and residual to the Originator"),
-                     ("Loan closed", "by the Trustee, nothing outstanding")]),
+                     ("Surplus paid", "to the borrower within one business day"),
+                     ("Facility closed", "nothing outstanding")]),
     ]
     n = len(phases)
     gap = 18
@@ -532,9 +532,9 @@ def loan_lifecycle():
     # loan status rail
     ry = grid_b + 44
     d.text(20, ry - 22, "LOAN STATUS", size=T_REGION, bold=True, color=INK2, spacing=0.07)
-    # anchors: Approved at the approval step, Performing at the senior tranche, Closed at closure
+    # anchors: Approved at the approval step, Performing at the drawdown, Closed at closure
     a_x = xs[0] + cw / 2
-    p_x = xs[1] + cw / 2
+    p_x = xs[2] + cw / 2
     c_x = xs[4] + cw / 2
     d.raw(f'<line x1="{a_x}" y1="{ry + 10}" x2="{c_x}" y2="{ry + 10}" stroke="{HAIR}" stroke-width="3"/>')
     d.raw(f'<line x1="{p_x}" y1="{ry + 10}" x2="{c_x}" y2="{ry + 10}" stroke="{SAGE}" stroke-width="3"/>')
@@ -542,8 +542,8 @@ def loan_lifecycle():
     d.chip(p_x, ry, "Performing: interest accrues", anchor="middle", kind="ok")
     d.chip(c_x, ry, "Closed", anchor="middle", kind="chain")
     y = ry + 52
-    y = d.para(20, y, "$20M facility: $17M senior from Pipeline lenders, $3M equity from the Originator. 90 days. "
-               "Figures are illustrative.", 920, size=T_NOTE)[0]
+    y = d.para(20, y, "$1.765M facility: $1.5M from Pipeline lenders and $265K from the Originator, pari passu; "
+               "$955K borrower equity. 20 days. Figures are illustrative.", 920, size=T_NOTE)[0]
     d.h = int(y + 18)
     return d
 
