@@ -158,7 +158,11 @@ async fn process_allows<T, P>(
         "evm: processing whitelist allows"
     );
 
-    for candidate in candidates.into_iter().take(batch_size) {
+    let mut submitted = 0usize;
+    for candidate in candidates {
+        if submitted >= batch_size {
+            break;
+        }
         let Ok(user) = candidate.wallet_address.parse::<Address>() else {
             tracing::warn!(
                 wallet = %candidate.wallet_address,
@@ -193,6 +197,7 @@ async fn process_allows<T, P>(
 
         match whitelister.submit_allow(user).await {
             Ok(tx_hash) => {
+                submitted += 1;
                 if let Err(e) = kyc_repo
                     .set_on_chain_allowed(chain_id, &candidate.wallet_address)
                     .await

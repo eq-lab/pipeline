@@ -779,8 +779,8 @@ one (`docs/exec-plans/active/evm-relayer-v5.md`). Each tick:
 
 - **Phases 0–2.** The KYC phases (profiles, Sumsub, Crystal) run unchanged.
 - **Phase 3 — whitelist.**
-  - Signs `WhitelistRegistry.allow(addr)` for up to `JOB_RELAYER_EVM_BATCH_SIZE` KYC-cleared
-    candidates (default 50).
+  - Signs `WhitelistRegistry.allow(addr)` until `JOB_RELAYER_EVM_BATCH_SIZE` allows (default 50)
+    have succeeded; invalid, already-allowed and failed candidates do not count.
   - Skips any address `isAllowed` already reports.
   - Marks a profile allowed only once a receipt with `status = 1` arrives within 120 s.
   - Signs with the configured chain id rather than the one the RPC reports.
