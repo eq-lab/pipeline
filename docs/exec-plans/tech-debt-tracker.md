@@ -384,7 +384,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a `chain_id` parameter/filter to `fetch_unverified_transfers` and
   pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
 
-### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize)
+### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize) [RESOLVED 2026-11-27 / #2264]
+
+- **Resolved:** both disallow passes go through `packages/worker/src/relayer/revoke.rs`. It checks on-chain access, submits `WhitelistRegistry.disallow` (EVM) or `set_authorized(addr, false)` (Soroban), and sets `on_chain_allowed = FALSE` only once access is confirmed gone; a failed submission is retried next tick. Candidates are every `kyt_status = 2` profile whatever its flag, so rows the old DB-only pass already cleared are revoked too, at the cost of one view call per KYT-failed profile per tick. The original entry follows.
 
 - **Date:** 2026-07-06 (widened to EVM 2026-10-08)
 - **Location:** the disallow passes of `packages/worker/src/relayer/stellar/whitelist.rs` (`phase_sync_whitelist_stellar`) and `packages/worker/src/relayer/evm/whitelist.rs` (`phase_sync_whitelist_evm`)
@@ -2486,7 +2488,9 @@ line, whichever section it lands in.
 - **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
 - **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.
 
-### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain
+### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain [RESOLVED 2026-11-27 / #2264]
+
+- **Resolved:** `stellar_disallow_candidates_sql` adds, whatever the Elliptic flag, every `on_chain_allowed` profile whose address is in `lp_settlement_address_history` but is no LP's current `stellar_address` and is not covered by the depositor branch of the allow gate. The TD-31 revoke path deauthorises it. KYT-failed settlement addresses take the TD-31 path. Limit: an address replaced before the history table existed (#1831), if any, has no history row and is not found. The original entry follows.
 
 - **Date:** 2026-11-12
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs`, `packages/shared/src/kyc_repo.rs` (`stellar_allow_candidates_sql`) — Issue #1889.

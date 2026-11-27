@@ -4,6 +4,7 @@ pub mod elliptic_check;
 pub mod evm;
 pub mod kyt_check;
 pub mod relayer_job;
+pub mod revoke;
 pub mod stellar;
 pub mod sumsub_check;
 pub mod wire_in_match;

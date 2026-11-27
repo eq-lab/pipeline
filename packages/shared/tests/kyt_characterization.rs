@@ -7,8 +7,9 @@ use shared::elliptic::config::EllipticSettings;
 use shared::elliptic::models::EllipticResponse;
 use shared::kyc_repo::{
     evm_allow_candidates_sql, next_kyt_status, stellar_allow_candidates_sql, KytTransferResult,
-    KYT_ADDRESS_RISK_SQL, KYT_CLEAR, KYT_FAILED, PROFILE_KYT_CLEAR_SQL, PROFILE_KYT_FAILED_SQL,
-    TRANSFER_KYT_RESULT_SQL, UNSCREENED_PROFILES_SQL, UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL,
+    KYT_ADDRESS_RISK_SQL, KYT_CLEAR, KYT_FAILED, KYT_FAILED_DISALLOW_CANDIDATES_SQL,
+    PROFILE_KYT_CLEAR_SQL, PROFILE_KYT_FAILED_SQL, TRANSFER_KYT_RESULT_SQL,
+    UNSCREENED_PROFILES_SQL, UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL,
 };
 
 fn flat(sql: &str) -> String {
@@ -159,6 +160,14 @@ fn unverified_transfers_are_requests_with_null_kyt_status_so_provider_errors_ret
     assert_eq!(
         flat(UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL),
         format!("{select} chain_id = $1 AND event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL ORDER BY id LIMIT $2")
+    );
+}
+
+#[test]
+fn kyt_disallow_candidates_are_every_failed_profile_whatever_its_db_flag() {
+    assert_eq!(
+        flat(KYT_FAILED_DISALLOW_CANDIDATES_SQL),
+        "SELECT wallet_address FROM lp_profiles WHERE chain_id = $1 AND kyt_status = 2"
     );
 }
 
