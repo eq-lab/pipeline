@@ -12,43 +12,49 @@ Pipeline's legal structure rests on three principles.
 
 ### Bankruptcy remoteness
 
-The initial lender is a bankruptcy-remote lending vehicle. Security sits with the Security Agent, on trust for all lenders. Title documents held by the Security Agent do not form part of its estate. The collection account carries no credit facility at the borrower's bank, so the bank has no right of set-off.
+Lenders lend to a bankruptcy-remote funding vehicle. A charitable trust owns the lending vehicle, which wholly owns the funding vehicle, so no one owns the structure beneficially. Security sits with the Security Agent, on trust for all lenders. Title documents held by the Security Agent do not form part of its estate. The borrower's collection account carries no credit facility at its bank, and the bank waives set-off.
 
 ### Secured lending with full recourse
 
-The lender holds a claim on the borrower, with full recourse. The commodity is security for that claim. The lender never takes title to the goods. Bills of lading are endorsed to the Security Agent by way of pledge. Every facility requires first-ranking security, confirmed by a local legal opinion.
+The lenders hold a claim on the borrower, with full recourse. The commodity is security for that claim. The lenders never take title to the goods: the borrower formally keeps title, while the lenders control the goods and hold the commercial claim on the offtaker until repayment.
+
+Every facility requires first-ranking security, confirmed by a local legal opinion. Pipeline is named as financier in the purchase contract, by an addendum the seller acknowledges, in the collateral management agreement and in the notice of assignment to the offtaker. Bills of lading name the Security Agent as consignee, or are endorsed to it by way of pledge, for all lenders. Warehouse receipts and cargo insurance name it too.
 
 ### Lenders decide, agents execute
 
-Grace, extensions, default, the call of the loan, enforcement and write-downs are lender decisions under the master facility agreement. The Majority Lenders take them. Changes to economics and release of security outside its release condition need the consent of all lenders. The facility agent and the Security Agent carry the decisions out and record them.
+Grace, extensions, default, the call of the loan, enforcement and write-downs are lender decisions under the master facility agreement. The Majority Lenders take them. Changes to economics and release of security outside its release condition need the consent of all lenders. The Facility Agent and the Security Agent carry the decisions out and record them.
 
 ## Structure
 
+- **Charitable trust**: owns the lending vehicle. The structure has no beneficial owner.
+- **Lending vehicle**: lends pool capital in every facility under the master facility agreement, pari passu with the Originator. Bankruptcy remote. An independent director approves each facility after the Risk Council.
+- **Funding vehicle**: wholly owned by the lending vehicle. Borrows USDC from lenders under limited-recourse loan agreements, keeps the liquidity buffer, and lends the rest to the lending vehicle.
+
 Each facility is documented by a master facility agreement (MFA) and an agency deed, with security documents per jurisdiction.
 
-- **Lending vehicle**: the initial lender under the MFA. Bankruptcy remote. Holds the senior share of the facility.
-- **Loan Originator and other lenders**: join a facility by accession deed, or take over an existing share by transfer certificate.
-- **Borrower**: owes the loan with full recourse. Grants security to the Security Agent. Pays into a collection account co-signed by the Security Agent.
-- **Facility agent**: appointed under the agency deed. Keeps the loan register, records drawdowns, repayments, payments, accessions and transfers, and applies the priority of payments.
-- **Security Agent**: an independent security trustee appointed under the agency deed. Holds the bills of lading by way of pledge, warehouse release rights, assigned receivables and loss-payee rights on cargo and trade credit insurance. Holds the security on trust for all lenders, by the facility's priority of payments. Enforces on Majority Lender instruction.
-- **Inspection companies**: appointed by the lending vehicle. Certificates are addressed to the Security Agent and all lenders.
+- **Loan Originator**: lends in the facility pari passu with the lending vehicle and joins it by accession deed. Other lenders join the same way, or take over an existing share by transfer certificate.
+- **Borrower**: owes the loan with full recourse. Grants security to the Security Agent. Opens a collection account charged to the Security Agent, which co-signs it.
+- **Facility Agent**: Pipeline, appointed under the agency deed. Keeps the facility records, records drawdowns, repayments, payments, accessions and transfers, and applies receipts to the lenders by share, mostly through automated protocol functions.
+- **Security Agent**: an independent security trustee appointed under the agency deed: the bills of lading by way of pledge, warehouse release rights, the assigned sale proceeds, loss-payee rights under the cargo insurance and any trade credit insurance, and a charge over the collection account. Enforces on Majority Lender instruction.
+- **Inspector**: an independent inspector from Pipeline's panel, appointed and paid by the borrower under the facility agreement. Reports are addressed to the Security Agent and all lenders.
 
-Each agent is liable only for gross negligence, wilful misconduct or fraud. The Majority Lenders may replace either agent. Enforcement proceeds are applied by the priority of payments: agent costs, then lenders, then surplus to the borrower. A change to the collection account's signing mandate without notice to the Security Agent is an event of default.
+Each agent is liable only for gross negligence, wilful misconduct or fraud. The Majority Lenders may replace either agent. Recoveries are applied in this order: enforcement costs, principal to all lenders pro rata, interest pro rata, protocol fees accrued up to the default date, and any surplus to the borrower. A change to the collection account's mandate or a diverted payment is an event of default.
 
-## Trustee role
+## Independent Trustee
 
-"Trustee" across these docs refers to Pipeline's Trustee, which runs the lending vehicle and its operations. The Trustee:
+The Independent Trustee is a licensed trust company. It:
 
-- Runs the lending vehicle as lender under the MFA
-- Records loans, disbursements, lender wires out and USD/USDC conversions on-chain through the Trustee role
-- Manages the USD bank account that receives offtaker wires and handles USD/USDC conversion
-- Appoints the inspection companies for the lending vehicle and enters inspection results through its inspection operators
+- Holds a mandatory key on every custody account
+- Co-signs every payment out of the lending vehicle's and the funding vehicle's accounts; inflows and withdrawals paid automatically from the on-chain buffer are exempt
+- Approves every drawdown
+- Signs drawdowns, lender wires out and USD/USDC conversions on-chain through the Trustee role
+- Can freeze payments and have either vehicle's board replaced on a trigger event
 
-While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
+The Trustee holds no security and does not underwrite or verify trades. Enforcement against borrowers belongs to the Security Agent.
 
 ## What is not part of the legal structure
 
-The Loan Originator is not a Pipeline entity. It is a per-deal counterparty. It joins a facility as a lender by accession, contributes the equity tranche and stands as merchant of record on the underlying trade.
+The Loan Originator is not a Pipeline entity. It is a per-deal counterparty. It joins a facility as a lender by accession and lends pari passu with the lending vehicle.
 
 ## Legal counsel
 

@@ -42,7 +42,7 @@ The protocol keeps a cash book of the bank account. Every bank movement that cha
 
 *Implements all on-chain smart contracts.*
 
-It issues PLUSD and sPLUSD as the lender-facing tokens. Each facility has a participation contract that holds its terms and its lenders' shares: the lending vehicle's, for the pool, and the Originator's. Together they form the public loan book. The security registry records the security behind each facility. The operational contracts are the deposit manager, the minter, the withdrawal queue, the pocket for defaulted loans and the access manager.
+It issues PLUSD and sPLUSD as the lender-facing tokens. The loan registry records each facility with its terms and its lenders' shares: the lending vehicle's, for the pool, and the Originator's. It is the public loan book. The security registry records the security behind each facility. The operational contracts are the deposit manager, the minter, the withdrawal queue, the debt token factory, the pocket for defaulted loans and the access manager.
 
 ## Relayer
 
@@ -61,10 +61,10 @@ Governance handles privileged events: role grants, defaults, write-downs, upgrad
 | Role | Powers | Delay |
 |---|---|---|
 | Admin | Grants and revokes roles, sets limits and accounts, unpauses, sets the withdrawal recovery rate | None |
-| Risk Council | Approves facilities, declares default, reverses repayment entries | None |
+| Risk Council | Approves facilities and adds them to the loan registry, declares default, reverses repayment entries | None |
 | Risk Council | Writes down, cures, amends loan terms, reverses other entries | 24 hours |
 | Guardian | Cancels a scheduled call of a guarded role | None |
 | Pauser | Pauses a contract | None |
 | Upgrader | Upgrades a contract | None |
 
-Each role is held separately. Governance roles are held by multisigs. The Risk Council role is held by the Risk Council's multisig of three voting members. The cash reporter role is held by a 2-of-2 multisig. In lender decisions under the master facility agreement, the Risk Council casts the lending vehicle's vote and the Originator votes its own share.
+Each role is held separately. Governance roles are held by multisigs. The Risk Council role is held by the Risk Council's multisig of three voting members. The cash reporter role is held by a 2-of-2 multisig.

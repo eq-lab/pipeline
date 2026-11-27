@@ -1,64 +1,83 @@
 ---
-title: Loan origination and underwriting
+title: Loan origination
 order: 7
 section: How Pipeline works
 ---
 
-# Loan origination and underwriting
+# Loan origination
 
 ## The Originator model
 
-Originators are private credit funds in commodity trade finance and other experts in this domain with their own borrower networks and underwriting teams. Pipeline qualifies the Originator, agrees programmatic terms, then takes deal flow. Every Originator passes onboarding (KYB and KYT, audited financials, track record, sanctions, and AML) before submitting deals.
-
-On every deal, the Originator commits the equity tranche, up to 30% of facility size, as first-loss capital.
+Loan Originators are private credit funds and other commodity trade finance lenders with their own borrower networks and underwriting teams. Pipeline qualifies each Originator, agrees programmatic terms, then takes its deal flow. Every Originator passes onboarding (KYB and KYT, audited financials, track record, sanctions, and AML) before submitting deals.
 
 <div class="callout info">
-Qualified Originators source, underwrite, and stand behind every loan.
+Qualified Originators source and underwrite every loan, and lend their own money in it on the same terms as the pool.
 </div>
+
+### Originators have skin in the game
+
+The Originator underwrites each facility it brings and lends in it pari passu with the lending vehicle: same rate, same security, losses shared by each lender's share. Its minimum share is set by the deal score, the lower of the borrower's and the offtaker's Risk Score:
+
+| Deal score | Minimum Originator share |
+|---|---|
+| 4.00 or more | 5% |
+| 3.00–3.99 | 10% |
+| 2.00–2.99 | 20% |
+| Below 2.00 | Not financed |
+
+Where the Originator is the borrower or its affiliate, its group funds at least 20% of the facility and an unaffiliated co-lender at least a further 10%, so the lending vehicle funds at most 70%. The affiliation is disclosed to the Risk Council and all lenders before approval.
+
+The Originator earns interest on its share, plus a servicing fee from the pool's interest where the facility terms provide one.
 
 ## How a deal moves through Pipeline
 
 ### Phase 1 — Sourcing
 
-The Originator identifies a deal: a borrower with a contracted offtake, a cargo to finance, a known corridor. They submit an indicative term sheet: commodity, corridor, facility size, duration, pricing, collateral, hedging.
+The Originator identifies a deal: a borrower with a contracted sale, a cargo to finance, a known corridor. It submits an indicative term sheet: commodity, corridor, facility size, duration, pricing, collateral, hedging.
 
-Pipeline pre-screens against eligibility: whitelist commodity, whitelist corridor, concentration headroom, duration bounds, hedging adequacy. KYB and KYT are initiated on borrower, offtaker, CMA and every other counterparty.
+Pipeline pre-screens it against the Credit Policy: eligible commodity; listed jurisdictions for every counterparty and every place the goods are loaded, stored or discharged; corridor; concentration headroom; tenor; price-risk cover. KYB, AML and sanctions checks start on every party and its beneficial owners.
 
 ### Phase 2 — Structuring
 
-If pre-screen clears, external counsel scopes loan documentation, security package, and enforcement. The Originator negotiates structure with borrower and offtaker: collateral pledge, payment mechanism (LC at sight, documentary collection, escrow), inspection schedule, hedging.
+If the pre-screen clears, external counsel scopes the loan documentation, security package and enforcement. The Originator negotiates the structure with the borrower and the offtaker: the security, the payment route (an LC, cash against documents, or an open-account sale with credit insurance), the inspection plan and the hedge.
 
-The Originator appoints an independent CMA (SGS, Cotecna, Intertek). Independent inspectors, appointed by the lending vehicle, handle load, transit, and discharge checkpoints. The Security Agent holds the security on trust for all lenders and co-signs the collection account. A local legal opinion confirms that the security ranks first. Liquidators are pre-onboarded so collateral can be moved quickly after a default.
+The borrower appoints and pays an independent inspector from Pipeline's panel, who checks the goods at loading, in transit where the route needs it, and at discharge. Stored goods sit under a collateral management agreement and are reported on at least weekly.
 
-A benchmark price source is fixed for LTV monitoring. Hedging strategy is documented per the Credit Policy.
+The Security Agent holds the security on trust for all lenders and co-signs the borrower's collection account. A local legal opinion confirms that the security ranks first. A primary liquidator and two independent back-ups are onboarded for the corridor before drawdown.
+
+An independent price source is fixed for daily LTV monitoring: Platts, Argus or an exchange price, through the contract formula where the goods are formula-priced. Price risk is covered by a back-to-back sale, a financial hedge or a contracted pricing formula.
 
 ### Phase 3 — Risk Council approval
 
-The Originator presents the underwriting package. The Risk Council reviews it against the Credit Policy:
+The Originator prepares the underwriting file: the term sheet and its credit memo with every Risk Score, the KYB, AML and sanctions checks, the borrower's audited accounts, the signed purchase and sale contracts, hedging evidence, the security documents, insurance and legal opinion, the inspection plan and the liquidators. The Risk Council screens it against the Credit Policy:
 
-- Borrower tier and the pricing/turnaround envelope
-- Commodity tier and concentration headroom
-- Corridor tier and corridor-specific modifiers
-- LTV ladder with corridor, commodity, and counterparty modifiers stacked
-- Duration within product bounds
-- Hedging adequacy and benchmark price linkage
-- Single-counterparty exposure across borrower, offtaker, CMA
+- Commodity class and advance ratio
+- Jurisdictions and corridor, and the payment route for a PRC buyer
+- Every counterparty's Risk Score and the approval route it sets
+- Facility size, tenor and price-risk cover
+- Concentration headroom
+- The security package and the collection account
 
-On approval, the Trustee records the loan in the loan registry with status Approved. The data fixed at origination cannot change: borrower reference, facility size, senior and equity tranches, offtaker price, interest rate, origination and maturity dates. Lifecycle state changes over the loan's life. In the security registry, the Risk Council sets the loan's security terms: advance ratio, margin-call ratio and cure period.
+A facility needs 2 of 3 votes, or every member who is not recused where any Risk Score is 2.00–2.99. The Risk Council approves the facility and records it on-chain as Approved, and the lending vehicle's independent director approves it after the Council.
 
 ### Phase 4 — Funding
 
-The Originator commits the equity tranche. The loan record holds the senior and equity amounts. The protocol does not check the equity payment.
+Before the drawdown, the Originator pays its share to the lending vehicle, where it is held on trust for the Originator. The borrower pays its equity into the collection account, the notices of assignment go out, and the Independent Trustee approves the drawdown.
 
-The Trustee wires the senior tranche from the USD bank account to the borrower and records the disbursement. The first disbursement moves the loan to Performing and starts interest. A per-loan debt token is issued for principal outstanding.
+The lending vehicle pays the whole drawdown, the Originator's share included, into the collection account, and interest starts. The Security Agent releases the funds to the seller only against the seller's documents of title or holding certificate, or as cash cover for an import LC.
 
-## Borrower tiers
+## Counterparty Risk Score
 
-| Tier | Profile | Turnaround |
-|---|---|---|
-| **Tier 1** | Investment-grade or top-tier merchant with audited financials and prior trade history | 48 hours |
-| **Tier 2** | Mid-market with verified financials and recurring trade flow | 5 days |
-| **Tier 3** | Smaller or newer merchant with collateral-driven approval | 10 days |
+Every counterparty is scored before funding on eight weighted axes, from 1.00 to 5.00. The lowest score among a facility's counterparties sets its approval route.
+
+| Score | Route |
+|---|---|
+| 4.00 or more | Standard approval |
+| 3.00–3.99 | Enhanced due diligence; the credit memo names the weak axes and their mitigants |
+| 2.00–2.99 | Unanimous approval and at least one structural mitigant: smaller size, shorter tenor, extra insurance or extra collateral |
+| Below 2.00 | Rejected |
+
+A score of 1 on jurisdiction, financial strength or independence rejects the counterparty whatever the total.
 
 ## Originator qualification
 

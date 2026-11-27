@@ -21,7 +21,7 @@ Request a deposit, wait for KYT screening, claim PLUSD. Two actions on your side
 - The minimum deposit is 1,000 USDC. There is no maximum beyond the rate limits below.
 - You pay the network fees for the request and the claim. The protocol does not.
 - Pipeline never takes custody of your keys. Every step starts from your own wallet.
-- You pass KYB before your first deposit. A clean KYT screen of your first deposit authorises your address. See [Onboarding](/lenders/onboarding/).
+- A clean KYT screen of your first deposit authorises your address. See [Onboarding](/lenders/onboarding/).
 
 ---
 
@@ -61,9 +61,9 @@ If screening does not return clean, your USDC stays in the deposit custody accou
 
 ### Bank wire deposits
 
-You can also wire USD to the protocol's bank account. When the wire arrives, the cash reporter, a 2-of-2 multisig, records it on-chain with the bank reference. Each bank reference can be recorded once. The protocol mints PLUSD 1:1 and stakes it straight into sPLUSD for your address. You receive sPLUSD, not PLUSD. A wire that cannot be matched to a lender is held in escrow until the Trustee assigns it to a lender or returns it.
+You can also wire USD to the protocol's bank account once you have passed KYC or KYB. When the wire arrives, the cash reporter, a 2-of-2 multisig, records it on-chain with the bank reference. Each bank reference can be recorded once. The protocol mints PLUSD 1:1 and stakes it straight into sPLUSD for your address. You receive sPLUSD, not PLUSD. A wire that cannot be matched to a lender is held in escrow until the Trustee assigns it to a lender or returns it.
 
-Before your first wire, your settlement wallet must be able to hold PLUSD. A Stellar `G…` wallet needs a PLUSD trustline, which only you can add from that wallet. After your entity passes KYB, Pipeline authorises the settlement address for PLUSD automatically, usually within a few minutes. Without the trustline the mint cannot be made to your wallet.
+Before your first wire, your settlement wallet must be able to hold PLUSD. A Stellar `G…` wallet needs a PLUSD trustline, which only you can add from that wallet. After you pass KYC or KYB, Pipeline authorises the settlement address for PLUSD automatically, usually within a few minutes. Without the trustline the mint cannot be made to your wallet.
 
 Bank wire deposits count against a separate protocol mint limit: 1,000,000 per transaction and 10,000,000 per 24-hour window.
 
@@ -74,7 +74,7 @@ Bank wire deposits count against a separate protocol mint limit: 1,000,000 per t
 Your request stays unclaimed on-chain in every case. The off-chain handling differs.
 
 - Clean. Pipeline issues the voucher. You claim. PLUSD is minted.
-- Not clean. Pipeline issues no voucher. The Trustee decides what happens to the USDC off-chain.
+- Not clean. Pipeline issues no voucher and decides what happens to the USDC off-chain. Any payment out of custody needs the Independent Trustee's co-signature.
 
 ---
 

@@ -6,51 +6,52 @@ section: How Pipeline works
 
 # Protocol layer
 
-The Protocol Layer is a set of on-chain smart contracts. PLUSD is the dollar token. sPLUSD is the share of the PLUSD staking vault. The loan registry is the public record of every loan facility. The other contracts run deposits, mints, withdrawals, defaults and access.
+The Protocol Layer is a set of on-chain smart contracts. PLUSD is the dollar token. sPLUSD is the share of the PLUSD staking vault. The loan registry is the public record of every facility. The other contracts run deposits, mints, withdrawals, defaults and access.
 
 ## Token architecture
 
 ### PLUSD
 
-Permissioned dollar token. 1 PLUSD is a claim on 1 USD of the pool. Only addresses approved by the protocol can hold it. PLUSD moves only between approved holders.
+Permissioned dollar token. 1 PLUSD is a claim on 1 USD of the pool. Only addresses approved by the protocol after KYT can hold it. PLUSD moves only between approved holders.
 
-PLUSD is minted 1:1 in two cases: a lender deposits USDC, or a lender's bank wire arrives. The minter also mints PLUSD for loan interest and protocol fees at repayment. Each minting path has a per-transaction and a 24-hour limit.
+PLUSD is minted 1:1 in two cases: a lender deposits USDC, or a lender's bank wire arrives. The minter also mints PLUSD for loan interest and protocol fees when interest is booked. Each minting path has a per-transaction and a 24-hour limit.
 
 ### sPLUSD
 
 Share of the PLUSD staking vault. Any PLUSD holder can stake. Bank-wire deposits are staked for the lender on arrival. Redemption back to PLUSD is instant at the current share price.
 
-The share price rises when loan interest or bank interest is minted into the vault. Interest is minted in one amount when a borrower repays, so the share price moves in steps.
+The share price rises when loan interest or bank interest is minted into the vault. Borrowers pay interest monthly, and it is minted in one amount when booked, so the share price moves in steps.
 
 ### Debt token
 
 Each loan has its own debt token. One token equals 1 USD of principal outstanding. The capital wallet holds the tokens frozen, and their supply follows the loan registry. Debt tokens are never money and are never counted in PLUSD.
 
-## LoanRegistry
+## Loan registry
 
-Every loan is one non-transferable record held by the capital wallet. It carries data fixed at origination: a hash of the borrower reference, facility size, senior and equity tranches, offtaker price, interest rate, origination and maturity dates. It also carries lifecycle state: status, amounts disbursed, repaid and written down, interest periods and each repayment's split.
+The loan registry holds one record per facility, added by the Risk Council on approval. Each record carries the terms fixed at approval: a hash of the borrower reference, facility size, each lender's share, offtaker price, interest rate, approval and maturity dates. It also carries lifecycle state: status, amounts drawn, repaid and written down, interest periods and each repayment's split by lender.
 
 Statuses: Approved, Performing, WatchList, Default, Closed. A cured default returns to WatchList.
 
 Interest is simple interest on principal outstanding at the current rate, on a 365.25-day year. A new interest period starts on every change of principal or rate.
 
-The loan registry is part of the pool's value. Principal outstanding counts in the pool's assets.
+The pool's share of principal outstanding counts in the pool's assets.
 
 ## Core operational contracts
 
 | Contract | Purpose |
 |---|---|
 | **Deposit manager** | Lender sends USDC. The USDC goes straight to the deposit account. After screening, the relayer signs a voucher. The voucher is submitted, and PLUSD is minted 1:1 to the lender. Minimum 1,000 USDC, at most 5,000,000 per deposit and 10,000,000 per 24 hours across all lenders. |
-| **Minter** | Keeps the cash book of the bank account. Mints PLUSD for bank wires in, books loan disbursements and repayments, mints interest into the vault and fees to the capital wallet as sPLUSD shares, books wires out, USDC-to-bank conversions, bank income and charges, and reversals. |
-| **Withdrawal queue** | First-in, first-out exit. Lenders escrow PLUSD and get a queue position. A claim needs a voucher signed by the relayer and enough USDC in the withdrawal account to cover the queue up to that position. The queue pays USDC from the withdrawal account through its allowance and burns the PLUSD. |
-| **Security registry** | One record per security instrument behind a loan, written and confirmed by the Security Agent. Holds inspections, prices and each loan's security terms. Computes LTV and opens margin calls. |
+| **Minter** | Keeps the cash book of the bank account. Mints PLUSD for bank wires in, books drawdowns and repayments, mints interest into the vault and fees to the capital wallet as sPLUSD shares, books wires out, USDC-to-bank conversions, bank income and charges, and reversals. |
+| **Withdrawal queue** | Pays withdrawals from the liquidity buffer. Lenders escrow PLUSD. After screening, the relayer signs a voucher. A retail withdrawal is paid at once while the buffer covers it, otherwise in order as the buffer is topped up. Larger withdrawals are paid at the quarterly windows. The queue pays USDC from the withdrawal account through its allowance and burns the PLUSD. |
+| **Loan registry** | One record per facility. Holds the terms, the lenders' shares and the lifecycle state. |
+| **Security registry** | One record per security instrument behind a facility, written and confirmed by the Security Agent. Holds inspections, prices and each facility's security terms. Computes LTV and opens margin calls. |
 | **Debt token factory** | Registers each loan's debt token and keeps its supply equal to principal outstanding. |
-| **Pocket** | Holds a defaulted loan's share of the vault for the holders at the time of default. Pays recoveries to them and burns write-downs. |
+| **Pocket** | Holds the pool's share of a defaulted facility in PLUSD for the sPLUSD holders at the time of default. Pays recoveries to them and burns write-downs. |
 | **Access manager** | Role hub. Every privileged call goes through it. It maps each action to a role, applies the role's delay, and lets a guardian cancel a scheduled call. |
 
 ## Recovery
 
-When the Risk Council declares a loan in default, the loan's principal outstanding moves from the vault into the pocket for that loan. The pocket belongs to the vault holders at that moment, pro rata to their balance. Repayments and recoveries on the loan go to the pocket, and those holders claim them. A write-down burns PLUSD from the pocket. If the vault could not cover the full amount at default, the uncovered part of a write-down is recorded as an unabsorbed loss. See [Default management](/risks/default-management/).
+When the Risk Council declares a facility in default, the pool's share of its principal outstanding, in PLUSD, moves from the vault into the pocket for that facility. The pocket belongs to the vault holders at that moment, pro rata to their balance. Repayments and recoveries on the facility go to the pocket, and those holders claim them. A write-down burns PLUSD from the pocket. If the vault could not cover the full amount at default, the uncovered part of a write-down is recorded as an unabsorbed loss. See [Default management](/risks/default-management/).
 
 The withdrawal queue has one more lever. The Admin can set a recovery rate below 1.0 once. From then on, every claim pays the face value times that rate. The rate cannot be changed after it is set.
 
@@ -59,12 +60,12 @@ The withdrawal queue has one more lever. The Admin can set a recovery rate below
 | Role | Powers | Delay |
 |---|---|---|
 | Admin | Grants and revokes roles, sets limits and accounts, unpauses, sets the recovery rate | None |
-| Trustee | Records loans, disbursements, wires out and USDC-to-bank conversions, bank charges | None |
-| Cash reporter | Records bank wires in, repayments and bank income | None |
-| Risk Council | Declares default, reverses repayment entries | None |
+| Trustee | Held by the Independent Trustee. Records drawdowns, wires out, USDC-to-bank conversions and bank charges | None |
+| Cash reporter | Records bank wires in, interest, repayments and bank income | None |
+| Risk Council | Approves facilities and adds them to the loan registry, declares default, reverses repayment entries | None |
 | Risk Council | Writes down, cures, amends loan terms, reverses other entries | 24 hours |
 | Security Agent | Writes and confirms security records | None |
-| Inspection operator | Enters and approves inspection results | None |
+| Inspection operator | Enters and approves Pipeline's inspection results | None |
 | Guardian | Cancels a scheduled call of a guarded role | None |
 | Pauser | Pauses a contract | None |
 | Upgrader | Upgrades a contract | None |

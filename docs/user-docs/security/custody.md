@@ -13,15 +13,15 @@ Investor USDC sits in custody accounts, never inside a smart contract. The smart
 | Account | Holds | Funded by | Drawn for |
 |---|---|---|---|
 | Deposit custody account | USDC from investor deposits | Investor deposits, sent straight from the deposit manager | Conversion to bank dollars for loans, top-ups of the withdrawal custody account |
-| Capital wallet | Loan records and per-loan debt tokens; fee shares in the vault | Loan registry and minter | Nothing. It holds records, not cash. |
-| Withdrawal custody account | USDC for queued withdrawals | Top-ups | Investor withdrawal claims, through the withdrawal queue's allowance |
-| Trustee bank account | US dollars | Investor wires, borrower and offtaker repayments, conversions from USDC | Loan disbursements, investor bank withdrawals, conversions to USDC, expenses |
+| Capital wallet | Pipeline's fee shares in the vault | Minter | Nothing. It holds fee shares, not cash. |
+| Withdrawal custody account | USDC for queued withdrawals and the liquidity buffer: 10–15% of the pool | Top-ups | Investor withdrawal claims, through the withdrawal queue's allowance |
+| USD bank account | US dollars | Investor wires, receipts from borrowers' collection accounts, interest, conversions from USDC | Drawdowns into collection accounts, investor bank withdrawals, conversions to USDC, expenses |
 
 The minter books every movement of bank dollars on-chain. The bank balance itself is held off-chain.
 
 ## Signing policy
 
-Each custody account signs under a multi-party signing policy. No single person can move USDC from a custody account.
+Each custody account is an MPC wallet with a 3-of-5 quorum. The Independent Trustee, a licensed trust company, holds a mandatory key and co-signs every payment out of Pipeline's accounts. Withdrawals paid automatically from the buffer are exempt. No single person can move USDC from a custody account.
 
 ## Withdrawal allowance
 
@@ -29,4 +29,4 @@ The withdrawal queue pays claims from the withdrawal custody account through an 
 
 ## Custody reporting
 
-Custody balances are readable on-chain. The minter adds custody USDC, booked bank cash, cash in transit and loan principal outstanding into one pool total.
+Custody balances are readable on-chain. The minter adds custody USDC, booked bank cash, cash in transit and the pool's share of loan principal outstanding into one pool total.

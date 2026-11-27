@@ -19,17 +19,17 @@ A borrower does not repay. The goods cannot be sold, or the sale is late or brin
 #### What mitigates it
 
 - Pipeline lends only where, on every day the money is out, it holds the goods or a bank's promise to pay. Advances secured only by a supply contract and the trader's promise are not taken.
-- Each loan is secured by security instruments held by the Security Agent for the lenders: endorsed bills of lading, warehouse pledges, collateral management agreements, assigned receivables, letter of credit proceeds, cash cover.
-- Each loan has an advance ratio (80 % by default). LTV is outstanding principal plus accrued interest, divided by the value of the security. A margin call opens when LTV rises above the margin-call ratio (85 % by default). The borrower must bring LTV back to the advance ratio within the cure period. The security registry runs these checks on-chain.
-- The Originator funds an equity tranche on each loan. It is recorded on the loan.
+- Each loan is secured by security instruments held by the Security Agent for the lenders: endorsed bills of lading, warehouse pledges, collateral management agreements, assigned receivables, letter of credit proceeds, cash cover, insurance proceeds.
+- Each loan has an advance ratio of 80 %, 75 % or 65 % by commodity class. LTV is outstanding principal plus accrued interest, divided by the value of the security. A margin call opens when LTV rises 5 points above the advance ratio. The borrower must restore the advance ratio within 3 business days. The security registry runs these checks on-chain.
+- The borrower pays its own equity into the trade before drawdown. The Originator lends at least 5–20 % of each loan on the same terms as the pool, so it shares any loss.
 - The Risk Council approves each loan against the [Credit Policy](/risks/credit-policy/).
-- Each deal is reviewed by goods, corridor and counterparties, with a liquidation plan.
+- Each deal is reviewed by goods, corridor and counterparties, with a primary liquidator and two back-ups onboarded before drawdown.
 - First-ranking security only. A local legal opinion confirms it before funding.
-- Concentration limits cap exposure to any single deal, borrower, offtaker, originator, commodity or corridor.
+- Once the pool passes $30M, concentration limits cap exposure to a single borrower, to Tier 3 jurisdictions, to a single country and to a single commodity.
 
 #### What remains
 
-The security can be worth less than the debt when it is sold. The equity tranche is recorded on the loan; the smart contracts do not enforce that it absorbs loss first. A loss on a defaulted loan is borne by the holders of sPLUSD at the moment of default. See [Default management](/risks/default-management/).
+The security can be worth less than the debt when it is sold. A shortfall falls on the lenders by share: the Originator's part on the Originator, the pool's part on the holders of sPLUSD at the moment of default. Below $30M the pool has no concentration limits, so one default can be a large share of it. See [Default management](/risks/default-management/).
 
 ## Liquidity risk
 
@@ -40,12 +40,13 @@ Withdrawal requests exceed the USDC available for withdrawals. Lenders wait.
 #### What mitigates it
 
 - Unstaking sPLUSD to PLUSD is instant.
-- Withdrawals run through a first-in, first-out queue. A request is paid once the withdrawal custody account holds enough USDC to cover the queue up to that request.
-- Loans are self-liquidating trade loans. Principal returns when the borrower's buyer pays.
+- Pipeline keeps 10–15 % of the pool in an on-chain liquidity buffer. Retail withdrawals are paid from it once screened. If it runs short, requests are paid in order as it is topped up.
+- Larger withdrawals are paid at the quarterly withdrawal windows.
+- Loans are self-liquidating trade loans of up to 180 days. Principal returns when the borrower's buyer pays.
 
 #### What remains
 
-USDC lent to borrowers is not available until loans are repaid. A withdrawal waits in the queue until enough USDC is moved to the withdrawal custody account. There is no fixed payout time.
+USDC lent to borrowers is not available until loans are repaid. If withdrawals exceed the buffer, retail requests wait in the queue until it is topped up, and larger withdrawals wait for the next quarterly window.
 
 ## Custody risk
 
@@ -56,7 +57,7 @@ Loss or misuse of the keys that control the custody accounts holding lender USDC
 #### What mitigates it
 
 - Deposited USDC goes straight to a deposit custody account. The smart contracts do not hold lender USDC.
-- Each custody account signs under a multi-party signing policy.
+- Each custody account is an MPC wallet with a 3-of-5 quorum. The Independent Trustee, a licensed trust company, holds a mandatory key and co-signs every payment out of Pipeline's accounts, except withdrawals paid automatically from the buffer.
 - Withdrawals are paid from a separate withdrawal custody account. The withdrawal queue can draw only up to the allowance that account grants it.
 
 #### What remains
@@ -91,9 +92,9 @@ A captured role holder pushes through a hostile change.
 #### What mitigates it
 
 - Every privileged action is mapped to one role in the access manager.
-- Risk Council actions run with a 24-hour delay, except a default declaration and a repayment reversal. Each delayed action is public while it waits.
+- Risk Council actions run with a 24-hour delay, except facility approval, a default declaration and a repayment reversal. Each delayed action is public while it waits.
 - The Guardian can cancel a scheduled action during its delay. The Guardian cannot grant roles, pause, unpause, upgrade or move funds.
-- The Risk Council is a multisig of several people. The Admin, Guardian, Pauser and Upgrader are multisigs. The Cash Reporter is a 2-of-2 multisig.
+- The Risk Council signs through a multisig of its three voting members. The Admin, Guardian, Pauser and Upgrader are multisigs. The Cash Reporter is a 2-of-2 multisig. The Trustee role is held by the Independent Trustee.
 
 #### What remains
 
@@ -108,13 +109,13 @@ Regulatory classification, jurisdictional authority or sanctions rules change in
 #### What mitigates it
 
 - Secured lending under a master facility agreement and an agency deed. The Security Agent holds the security on trust for all lenders
-- Permissioned access: every lender address is screened before it may hold PLUSD; no anonymous capital
-- KYB and KYT for every counterparty: lenders, Originators, borrowers and every other party
+- Permissioned access: every lender address and deposit is screened (KYT) before the address may hold PLUSD; lenders who wire USD pass KYC or KYB
+- KYB, AML and sanctions checks on Originators, borrowers and every other party to a deal
 - Jurisdictional eligibility list maintained on the [Legal](/references/legal/) page
 
 #### What remains
 
-Regulatory regimes can change. The eligibility list can be revised. A change in rules can restrict who may deposit or hold PLUSD.
+Regulatory regimes can change. The eligibility list can be revised. USDC lenders are identified only by KYT screening of their address. A change in rules can require identity checks for every lender, or restrict who may deposit or hold PLUSD.
 
 ## Operational risk
 
@@ -126,12 +127,12 @@ Key compromise, vendor incident, booking error or a missed action by an operator
 
 - The backend cannot mint PLUSD alone. A deposit mint needs a real USDC deposit. Every other mint needs the Cash Reporter.
 - Vouchers are single-use and expire.
-- The Risk Council can reverse a disbursement or a repayment booking and correct the cash book.
+- The Risk Council can reverse a drawdown or a repayment booking and correct the cash book.
 - The Pauser can stop each contract.
 
 #### What remains
 
-A compromised voucher key can approve deposits that should have failed screening, and approve withdrawal claims in queue order. A compromised Cash Reporter can mint PLUSD up to the mint limits. A compromised Trustee signer can book wrong disbursements, wire-outs, ramps and expenses. Expenses booked by the Trustee have no cap. The Admin restores service by revoking and re-granting roles.
+A compromised voucher key can approve deposits that should have failed screening, and approve withdrawal claims in queue order. A compromised Cash Reporter can mint PLUSD up to the mint limits. A compromised Trustee signer can book wrong drawdowns, wire-outs, ramps and expenses. Expenses booked by the Trustee role have no cap. The Admin restores service by revoking and re-granting roles.
 
 <div class="callout safety">
   <h4>The shape of the risk profile</h4>

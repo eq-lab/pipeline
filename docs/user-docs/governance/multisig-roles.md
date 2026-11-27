@@ -13,15 +13,15 @@ Every privileged action in the protocol goes through the access manager. The acc
 | Role | Holder | Delay | Powers |
 |---|---|---|---|
 | Admin | Multisig | None | Grants and revokes roles, unpauses, sets limits and custody accounts, sets the voucher signer, sets the recovery rate |
-| Risk Council | Multisig of several people | None for default and reversing a repayment; 24 hours for the rest | Default, cure, write-down, closing defaulted loans, loan amendments, interest adjustments, reversals, corrections |
-| Trustee | The Trustee | None | Opens and services loans, disbursements, bank withdrawals, cash conversions, expenses |
-| Cash reporter | 2-of-2 multisig | None | Books incoming wires, repayments and bank income |
+| Risk Council | Risk Council Multisig, three voting members | None for facility approval, default and reversing a repayment; 24 hours for the rest | Facility approval, default, cure, write-down, closing defaulted loans, loan amendments, interest adjustments, reversals, corrections |
+| Trustee | The Independent Trustee | None | Services facilities; records drawdowns, bank withdrawals, cash conversions, expenses |
+| Cash reporter | 2-of-2 multisig | None | Books incoming wires, interest, repayments and bank income |
 | Whitelist admin | Platform backend | None | Approves addresses to hold PLUSD |
 | Guardian | Multisig | None | Cancels scheduled calls of operational roles |
 | Pauser | Multisig | None | Pauses contracts |
 | Upgrader | Multisig | None | Upgrades contracts |
 | Security Agent | The Security Agent | None | Writes and attests security records |
-| Inspection operator | The lending vehicle | None | Enters inspections; a second operator approves each one |
+| Inspection operator | The lending vehicle | None | Enters Pipeline's inspections; a second operator approves each one |
 
 The mint role on PLUSD is held by two contracts: the deposit manager and the minter. No person holds it.
 
@@ -51,9 +51,10 @@ No delay. The access manager refuses an Admin holder with a delay.
 
 #### Powers
 
+- Approves facilities and adds them to the loan registry
 - Declares default, cures, writes down and closes defaulted loans
 - Amends loan economics and adjusts interest
-- Reverses disbursements and repayments and corrects the vault's accounting
+- Reverses drawdowns and repayments and corrects the vault's accounting
 
 #### Powers it does NOT have
 
@@ -64,11 +65,11 @@ No delay. The access manager refuses an Admin holder with a delay.
 
 #### Composition
 
-Multisig of several people. See [Risk Council](/governance/risk-committee/).
+Three voting members, signing through the Risk Council Multisig. See [Risk Council](/governance/risk-committee/).
 
 #### Tempo
 
-Declaring a default and reversing a repayment run without a delay. Every other call waits 24 hours. The Guardian or the Admin can cancel during the wait.
+Approving a facility, declaring a default and reversing a repayment run without a delay. Every other call waits 24 hours. The Guardian or the Admin can cancel during the wait.
 
 ## Guardian
 

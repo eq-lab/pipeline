@@ -53,11 +53,11 @@ A compromised Guardian can cancel scheduled calls. It cannot do anything else.
 
 ### Backend compromise
 
-The platform backend screens addresses, approves PLUSD holders and signs deposit and withdrawal vouchers. The Pauser pauses the deposit manager and the withdrawal queue. The Admin revokes the backend's approval role and replaces the voucher signer key on both contracts. The backend cannot mint PLUSD on its own: a deposit mint needs a request backed by USDC already in custody, and minter mints need the Cash reporter role.
+The platform backend screens addresses, approves PLUSD holders and signs deposit and withdrawal vouchers. The Pauser pauses the deposit manager and the withdrawal queue. The Admin revokes the backend's approval role and replaces the voucher signer key on both contracts. A hardware circuit breaker cuts the backend's access to custody. The backend cannot mint PLUSD on its own: a deposit mint needs a request backed by USDC already in custody, and minter mints need the Cash reporter role.
 
 ### Trustee key compromise
 
-The Admin revokes the Trustee role. The compromised key can no longer open loans, record disbursements or book cash movements. The Trustee cannot mint PLUSD. The Risk Council reverses any wrong disbursement after its 24-hour delay. The Admin grants the Trustee role to a new signer set.
+The Admin revokes the Trustee role. The compromised key can no longer record drawdowns, register debt tokens or book cash movements. The Trustee role cannot mint PLUSD. The Independent Trustee's custody key alone cannot move funds: each custody account needs 3 of 5 signers. The Risk Council reverses any wrong drawdown after its 24-hour delay. The Admin grants the Trustee role to a new signer set.
 
 ### Cash reporter compromise
 

@@ -89,7 +89,7 @@ The Security Agent releases its remaining security, the surplus goes to the borr
 
 ## Illustrative investor yield
 
-The illustrative fee rates below, an origination fee of 1.5% a year and a Pipeline performance fee of 2% a year, both on deployed capital, apply to the pool's share. Interest accrues on a 365.25-day year.
+The illustrative fee rates below, the Originator's servicing fee of 1.5% a year and a Pipeline performance fee of 2% a year, both on deployed capital, apply to the pool's share. Interest accrues on a 365.25-day year.
 
 | Component | Value |
 |---|---|
@@ -97,7 +97,7 @@ The illustrative fee rates below, an origination fee of 1.5% a year and a Pipeli
 | **Gross interest rate (annualised)** | 14.4% |
 | **Duration** | 20 days |
 | **Gross interest earned** | $11,828 ($1.5M × 14.4% × 20/365.25) |
-| **Less: origination fee (1.5% a year)** | ($1,232) |
+| **Less: Originator's servicing fee (1.5% a year)** | ($1,232) |
 | **Less: Pipeline performance fee (2% a year)** | ($1,643) |
 | **Net interest to sPLUSD holders from this deal** | $8,953 |
 | **Effective net yield (annualised, on deployed capital)** | ~10.9% |

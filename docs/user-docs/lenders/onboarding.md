@@ -6,7 +6,11 @@ section: For Lenders
 
 # Onboarding
 
-Create an account, pass KYB, connect a wallet, deposit. Pipeline runs KYT on every deposit. Only screened addresses can hold PLUSD.
+Connect a wallet and deposit. Pipeline runs KYT on every deposit. Only screened addresses can hold PLUSD. Lenders who deposit or withdraw by bank wire pass KYC or KYB first.
+
+## Who can lend
+
+Entities and individuals from non-sanctioned jurisdictions, outside the US.
 
 ## What you need
 
@@ -18,16 +22,15 @@ Create an account, pass KYB, connect a wallet, deposit. Pipeline runs KYT on eve
 
 You sign in with a wallet or with an email and password. Both lead to one account.
 
-1. Pass KYB. See Entity verification below.
-2. Connect your wallet. The connected address is the address that holds your PLUSD and sPLUSD.
-3. Request a deposit. Your USDC goes straight to the protocol's deposit custody account. The request is recorded on-chain with your address and amount.
-4. Pipeline screens your address and the deposit transaction (KYT). This usually takes seconds, sometimes minutes.
-5. On a clean result, Pipeline authorises your address to hold PLUSD and issues a signed voucher for your request.
-6. Claim the deposit with the voucher. The protocol mints PLUSD 1:1 to your address. From there you can stake into sPLUSD or send PLUSD to other authorised addresses.
+1. Connect your wallet. The connected address is the address that holds your PLUSD and sPLUSD.
+2. Request a deposit. Your USDC goes straight to the protocol's deposit custody account. The request is recorded on-chain with your address and amount.
+3. Pipeline screens your address and the deposit transaction (KYT). This usually takes seconds, sometimes minutes.
+4. On a clean result, Pipeline authorises your address to hold PLUSD and issues a signed voucher for your request.
+5. Claim the deposit with the voucher. The protocol mints PLUSD 1:1 to your address. From there you can stake into sPLUSD or send PLUSD to other authorised addresses.
 
-### Entity verification
+### Verification for bank wires
 
-Every lender passes KYB. You register the legal entity you act for and upload its documents. The Trustee reviews them and passes the entity, asks for changes, or refuses it. A refusal is final and suspends the account. To deposit by bank wire, you also name a settlement address. You can change it at any time by signing with the new wallet, unless the entity is refused. Deposits are minted to the address linked when they are processed.
+To deposit or withdraw by bank wire, you pass KYC as an individual, or KYB for the legal entity you act for, and upload the documents. Pipeline reviews them and passes the account, asks for changes, or refuses it. A refusal is final and suspends the account. You also name a settlement address. You can change it at any time by signing with the new wallet, unless the account is refused. Wire deposits are minted to the address linked when they are processed.
 
 ## Re-screening
 
@@ -36,7 +39,7 @@ PLUSD is a permissioned token. Only addresses the protocol has authorised can ho
 ## What we cannot serve
 
 - Wallets on OFAC or equivalent sanctions lists
-- Jurisdictions Pipeline cannot legally serve
+- Lenders from the US or from sanctioned jurisdictions
 
 ## Next steps
 
