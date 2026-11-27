@@ -6,19 +6,9 @@ use shared::kyt::{KytProvider, KytVerdict};
 
 const BATCH_SIZE: i64 = 100;
 
-pub enum TransferScope {
-    AllChains,
-    Chain,
-}
-
-pub async fn phase_check_kyt<P: KytProvider>(
-    provider: &P,
-    kyc_repo: &KycRepo,
-    chain_id: i64,
-    transfers: TransferScope,
-) {
+pub async fn phase_check_kyt<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chain_id: i64) {
     screen_addresses(provider, kyc_repo, chain_id).await;
-    screen_events(provider, kyc_repo, chain_id, transfers).await;
+    screen_events(provider, kyc_repo, chain_id).await;
 }
 
 pub async fn screen_profile<P: KytProvider>(
@@ -104,22 +94,12 @@ async fn screen_addresses<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chai
     }
 }
 
-async fn screen_events<P: KytProvider>(
-    provider: &P,
-    kyc_repo: &KycRepo,
-    chain_id: i64,
-    scope: TransferScope,
-) {
+async fn screen_events<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chain_id: i64) {
     let name = provider.name();
-    let transfers = match scope {
-        TransferScope::AllChains => kyc_repo.fetch_unverified_transfers(BATCH_SIZE).await,
-        TransferScope::Chain => {
-            kyc_repo
-                .fetch_unverified_transfers_for_chain(chain_id, BATCH_SIZE)
-                .await
-        }
-    };
-    let transfers = match transfers {
+    let transfers = match kyc_repo
+        .fetch_unverified_transfers_for_chain(chain_id, BATCH_SIZE)
+        .await
+    {
         Ok(t) => t,
         Err(e) => {
             tracing::error!(provider = name, error = %e, "failed to fetch unverified events");

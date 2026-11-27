@@ -9,7 +9,6 @@ use shared::kyc_repo::{
     evm_allow_candidates_sql, next_kyt_status, stellar_allow_candidates_sql, KytTransferResult,
     KYT_ADDRESS_RISK_SQL, KYT_CLEAR, KYT_FAILED, PROFILE_KYT_CLEAR_SQL, PROFILE_KYT_FAILED_SQL,
     TRANSFER_KYT_RESULT_SQL, UNSCREENED_PROFILES_SQL, UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL,
-    UNVERIFIED_TRANSFERS_SQL,
 };
 
 fn flat(sql: &str) -> String {
@@ -157,10 +156,6 @@ fn unverified_transfers_are_requests_with_null_kyt_status_so_provider_errors_ret
     let select = "SELECT id, event_name, COALESCE(params->>'user', params->>'withdrawer') AS sender, \
                   params->>'receiver' AS receiver, (params->>'amount')::numeric AS amount, tx_hash, chain_id \
                   FROM contract_logs WHERE";
-    assert_eq!(
-        flat(UNVERIFIED_TRANSFERS_SQL),
-        format!("{select} event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL ORDER BY id LIMIT $1")
-    );
     assert_eq!(
         flat(UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL),
         format!("{select} chain_id = $1 AND event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL ORDER BY id LIMIT $2")

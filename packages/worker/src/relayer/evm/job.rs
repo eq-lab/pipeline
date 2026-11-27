@@ -50,8 +50,8 @@ pub(crate) async fn run_evm_relayer_inner(
     );
 
     let crystal_client = if settings.crystal_enabled {
-        let crystal_settings =
-            CrystalSettings::from_env().context("Crystal is enabled but settings are missing")?;
+        let crystal_settings = CrystalSettings::from_env_for_chain(settings.chain_id)
+            .context("Crystal is enabled but settings are missing")?;
         Some(CrystalClient::new(crystal_settings))
     } else {
         None

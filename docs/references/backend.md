@@ -796,6 +796,10 @@ Required env:
 - `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
 - An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_EVM_RPC_URL`.
 
+Optional env: `CHAIN_<id>_CRYSTAL_BLOCKCHAIN` — the Crystal blockchain name for that chain's
+transaction checks (e.g. `bsc`). Unset falls back to the global `CRYSTAL_BLOCKCHAIN`. Each EVM
+relayer screens only its own chain's `DepositRequested`/`WithdrawalRequested` rows (#2260).
+
 **No Stellar yield-mint phase.** There is no Stellar yield-mint phase either: `minter.repay` mints
 interest and fees in the same call (`pipeline-stellar-contracts` #33), and the phase was removed
 in #1793.

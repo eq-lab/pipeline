@@ -320,18 +320,6 @@ pub const KYT_ADDRESS_RISK_SQL: &str = "UPDATE lp_profiles
 
 pub const PROFILE_KYT_FAILED_SQL: &str = "UPDATE lp_profiles SET kyt_status = 2, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2";
 
-pub const UNVERIFIED_TRANSFERS_SQL: &str = "SELECT id,
-                    event_name,
-                    COALESCE(params->>'user', params->>'withdrawer') AS sender,
-                    params->>'receiver' AS receiver,
-                    (params->>'amount')::numeric AS amount,
-                    tx_hash,
-                    chain_id
-             FROM contract_logs
-             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL
-             ORDER BY id
-             LIMIT $1";
-
 pub const UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL: &str = "SELECT id,
                     event_name,
                     COALESCE(params->>'user', params->>'withdrawer') AS sender,
@@ -780,20 +768,8 @@ impl KycRepo {
         Ok(result.rows_affected())
     }
 
-    pub async fn fetch_unverified_transfers(
-        &self,
-        batch_size: i64,
-    ) -> anyhow::Result<Vec<UnverifiedTransfer>> {
-        let rows = sqlx::query_as::<_, UnverifiedTransfer>(UNVERIFIED_TRANSFERS_SQL)
-            .bind(batch_size)
-            .fetch_all(&self.pool)
-            .await?;
-        Ok(rows)
-    }
-
-    /// Chain-scoped variant of `fetch_unverified_transfers`. Used by the Stellar
-    /// KYT phase so it only screens its own chain's transfers and preserves the
-    /// Strkey (case-sensitive) sender address (no lowercasing here or in the caller).
+    /// Unscreened requests of one chain only; the sender is returned as stored
+    /// (Strkey case preserved).
     pub async fn fetch_unverified_transfers_for_chain(
         &self,
         chain_id: i64,
