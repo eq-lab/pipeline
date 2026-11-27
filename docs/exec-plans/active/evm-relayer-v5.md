@@ -66,7 +66,7 @@ Soroban mints yield with a separate `yield_minter.mint_yield` call after `Paymen
 
 `submit_allow` replaces today's `watch()` call. `watch()` returns once the transaction is included, ignores a revert and never times out, so it is not equivalent to Soroban's terminal-status poll.
 
-The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` as BUG-27 and not fixed here.
+The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` as BUG-27 and not fixed here. _Update:_ #2271 fixed BUG-27 (with #2275); `sync_whitelist` / `run_passes` in `stellar/whitelist.rs` now runs the disallow pass on every tick, including when the allow fetch fails.
 
 **D3. Wire-in matching is shared, not duplicated.**
 The three statements in `LpBankDepositRepo`'s `WireInMatcher` key on:
@@ -153,7 +153,7 @@ _None._
    - Note on `CHAIN_1_EVM_INDEXER_MINTER_ADDRESS` that it also gates the relayer's wire-in phase, mirroring the Soroban note on `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
 
 10. **Bug and debt trackers.**
-    - `docs/exec-plans/known-bugs.md`: `phase_sync_whitelist_stellar` returns before its disallow pass whenever there are no allow candidates, so KYT-failed profiles keep `on_chain_allowed = TRUE` until some allow candidate appears.
+    - `docs/exec-plans/known-bugs.md`: `phase_sync_whitelist_stellar` returns before its disallow pass whenever there are no allow candidates, so KYT-failed profiles keep `on_chain_allowed = TRUE` until some allow candidate appears. _Update:_ #2271 fixed this (BUG-27), so the entry is no longer open.
     - `docs/exec-plans/tech-debt-tracker.md`:
       - Widen TD-31 to EVM (done by #2264: both chains now revoke on-chain via `relayer/revoke.rs`).
       - Add TD-140: `shared::bitgo` and the EVM-only outbox methods (`discover_pending`, `mark_submitted`) have no caller, and EVM rows left in `yield_mint_outbox` are inert.
