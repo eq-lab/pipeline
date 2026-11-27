@@ -552,49 +552,58 @@ def loan_lifecycle():
 @diagram("boss-ccr-thresholds", "png")
 def ltv_thresholds():
     d = Diagram("boss-ccr-thresholds", 960, 360,
-                "Loan-to-value thresholds: drawn up to 80 %; a margin call opens above 85 % and must bring LTV "
-                "back to 80 % within the cure period. No haircut.")
+                "Loan-to-value thresholds for an 80 % facility: a margin call opens at 85 % and must bring LTV back "
+                "to 80 % within 3 business days; at 90 % the Risk Council may declare a default.")
     x0, x1 = 40, 920
-    lo, hi = 60, 100
+    lo, hi = 70, 100
 
     def X(v):
         return x0 + (v - lo) / (hi - lo) * (x1 - x0)
 
-    by, bh = 120, 34
-    zones = [(lo, 80, SAGE_T, SAGE), (80, 85, AMBER_T, AMBER_L), (85, hi, ROSE_T, ROSE)]
-    for a, b, f, s_ in zones:
+    by, bh = 168, 34
+    ROSE_D = "#f1d9de"
+    zones = [(lo, 80, SAGE_T), (80, 85, AMBER_T), (85, 90, ROSE_T), (90, hi, ROSE_D)]
+    for a, b, f in zones:
         d.rect(X(a), by, X(b) - X(a), bh, fill=f, stroke=f, sw=0, rx=0)
     d.rect(x0, by, x1 - x0, bh, fill="none", stroke=HAIR, sw=1, rx=0)
-    # labels inside zones
     d.text((X(lo) + X(80)) / 2, by + 22, "Within the advance ratio", size=T_SUB, bold=True, color=SAGE,
            anchor="middle")
-    d.text((X(85) + X(hi)) / 2, by + 22, "Margin call open", size=T_SUB, bold=True, color=ROSE, anchor="middle")
+    d.text((X(85) + X(90)) / 2, by + 22, "Margin call", size=T_SUB, bold=True, color=ROSE, anchor="middle")
+    d.text((X(90) + X(hi)) / 2, by + 22, "Default may be declared", size=T_SUB, bold=True, color=ROSE,
+           anchor="middle")
     # ticks
-    for v in (60, 70, 80, 85, 90, 100):
+    for v in (70, 80, 85, 90, 100):
         d.raw(f'<line x1="{X(v):.1f}" y1="{by + bh}" x2="{X(v):.1f}" y2="{by + bh + 6}" stroke="{INK2}" '
               f'stroke-width="1"/>')
-        d.text(X(v), by + bh + 22, f"{v} %", size=T_SUB, color=INK2, anchor="middle")
-    for v, col in ((80, SAGE), (85, ROSE)):
-        d.raw(f'<line x1="{X(v):.1f}" y1="{by - 30}" x2="{X(v):.1f}" y2="{by + bh}" stroke="{col}" '
+        d.text(X(v), by + bh + 22, f"{v} %", size=T_SUB, color=INK2, anchor="middle")
+    # threshold lines: 80 and 90 on the lower tier, 85 on the upper tier
+    for v, col, top in ((80, SAGE, by - 30), (90, ROSE, by - 30), (85, ROSE, by - 76)):
+        d.raw(f'<line x1="{X(v):.1f}" y1="{top}" x2="{X(v):.1f}" y2="{by + bh}" stroke="{col}" '
               f'stroke-width="2"/>')
     d.text(X(80) - 8, by - 36, "Advance ratio 80 %", size=T_SUB, bold=True, color=SAGE, anchor="end")
     d.text(X(80) - 8, by - 18, "highest LTV at drawdown", size=12.5, color=INK2, anchor="end")
-    d.text(X(85) + 8, by - 36, "Margin-call ratio 85 %", size=T_SUB, bold=True, color=ROSE)
-    d.text(X(85) + 8, by - 18, "above it, a margin call opens", size=12.5, color=INK2)
+    d.text(X(85), by - 100, "Margin call 85 %", size=T_SUB, bold=True, color=ROSE, anchor="middle")
+    d.text(X(85), by - 82, "advance ratio + 5 points", size=12.5, color=INK2, anchor="middle")
+    d.text(X(90) + 8, by - 36, "Default threshold 90 %", size=T_SUB, bold=True, color=ROSE)
+    d.text(X(90) + 8, by - 18, "advance ratio + 10 points", size=12.5, color=INK2)
     # direction of travel
-    d.arrow([(X(62), 40), (X(75), 40)], color=INK2)
-    d.text(X(75) + 8, 44.5, "goods price falls or interest accrues: LTV rises", size=12.5, color=INK2)
-    # cure arrow: from margin-call zone back to 80 %
+    d.arrow([(X(70.5), 40), (X(76), 40)], color=INK2)
+    d.text(X(76) + 8, 44.5, "goods price falls or interest accrues: LTV rises", size=12.5, color=INK2)
+    # cure arrow: from the margin-call zone back to 80 %
     cy = by + bh + 46
-    d.arrow([(X(92), by + bh + 30), (X(92), cy), (X(80), cy), (X(80), by + bh + 30)], color=SAGE)
-    d.text((X(80) + X(92)) / 2, cy + 20, "cure: cash or goods restore 80 % within the cure period",
+    d.arrow([(X(87.5), by + bh + 30), (X(87.5), cy), (X(80), cy), (X(80), by + bh + 30)], color=SAGE)
+    d.text((X(80) + X(87.5)) / 2, cy + 20,
+           "cure: restore 80 % within 3 business days, in cash or by partial repayment",
            size=12.5, color=SAGE, anchor="middle", bold=True)
     y = cy + 58
     y = d.para(x0, y, "LTV = (principal outstanding + accrued interest) ÷ security value. Goods count at counted "
-               "quantity × market price; cash cover, receivables, LC proceeds and prepayments at face; insurance "
-               "never. No haircut. Ratios are set per loan.", x1 - x0, size=T_NOTE)[0]
-    y = d.para(x0, y + 22, "A stale price does not open a margin call. The end of the cure period does not "
-               "default the loan by itself; the Risk Council decides.", x1 - x0, size=T_NOTE)[0]
+               "quantity × market price, or by the contract formula; cash cover, receivables, LC proceeds and "
+               "prepayments at face; insurance never. No haircut.", x1 - x0, size=T_NOTE)[0]
+    y = d.para(x0, y + 22, "The advance ratio is capped at 80 %, 75 % or 65 % by commodity class, and is at least "
+               "10 points lower for open-account sales. The margin call opens 5 points above it and the default "
+               "threshold sits 10 points above it.", x1 - x0, size=T_NOTE)[0]
+    y = d.para(x0, y + 22, "A stale price does not open a margin call. An uncured margin call is an event of "
+               "default, which the Risk Council declares.", x1 - x0, size=T_NOTE)[0]
     d.h = int(y + 18)
     return d
 
