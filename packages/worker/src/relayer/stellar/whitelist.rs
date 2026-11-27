@@ -13,6 +13,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
 use shared::kyc_repo::{KycRepo, WhitelistCandidate};
@@ -239,6 +240,51 @@ pub fn classify_authorized_simulate(
     }
 }
 
+#[async_trait]
+trait WhitelistStore: Send + Sync {
+    async fn fetch_profiles_to_allow_stellar(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+        elliptic_enabled: bool,
+    ) -> Result<Vec<WhitelistCandidate>>;
+    async fn fetch_profiles_to_disallow(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+        elliptic_enabled: bool,
+    ) -> Result<Vec<WhitelistCandidate>>;
+    async fn set_on_chain_allowed(&self, chain_id: i64, wallet_address: &str) -> Result<()>;
+    async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> Result<()>;
+}
+
+#[async_trait]
+impl WhitelistStore for KycRepo {
+    async fn fetch_profiles_to_allow_stellar(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+        elliptic_enabled: bool,
+    ) -> Result<Vec<WhitelistCandidate>> {
+        KycRepo::fetch_profiles_to_allow_stellar(self, chain_id, sumsub_enabled, elliptic_enabled)
+            .await
+    }
+    async fn fetch_profiles_to_disallow(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+        elliptic_enabled: bool,
+    ) -> Result<Vec<WhitelistCandidate>> {
+        KycRepo::fetch_profiles_to_disallow(self, chain_id, sumsub_enabled, elliptic_enabled).await
+    }
+    async fn set_on_chain_allowed(&self, chain_id: i64, wallet_address: &str) -> Result<()> {
+        KycRepo::set_on_chain_allowed(self, chain_id, wallet_address).await
+    }
+    async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> Result<()> {
+        KycRepo::set_disallowed(self, chain_id, wallet_address).await
+    }
+}
+
 // ─── Phase function ──────────────────────────────────────────────────────────
 
 /// Stellar parallel of `phase_sync_whitelist`. Reads pending Stellar profiles, pre-checks
@@ -256,6 +302,26 @@ pub async fn phase_sync_whitelist_stellar(
     elliptic_enabled: bool,
     batch_size: usize,
 ) {
+    sync_whitelist(
+        whitelister,
+        kyc_repo,
+        chain_id,
+        sumsub_enabled,
+        elliptic_enabled,
+        batch_size,
+    )
+    .await;
+}
+
+async fn sync_whitelist(
+    whitelister: &StellarWhitelister,
+    kyc_repo: &dyn WhitelistStore,
+    chain_id: i64,
+    sumsub_enabled: bool,
+    elliptic_enabled: bool,
+    batch_size: usize,
+) {
+    // An allow-fetch error counts as zero candidates, so the disallow pass still runs (#2275).
     let candidates = match kyc_repo
         .fetch_profiles_to_allow_stellar(chain_id, sumsub_enabled, elliptic_enabled)
         .await
@@ -263,7 +329,7 @@ pub async fn phase_sync_whitelist_stellar(
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "stellar: failed to fetch profiles to allow");
-            return;
+            Vec::new()
         }
     };
 
@@ -289,7 +355,7 @@ async fn run_passes(
 
 async fn process_allows(
     whitelister: &StellarWhitelister,
-    kyc_repo: &KycRepo,
+    kyc_repo: &dyn WhitelistStore,
     chain_id: i64,
     candidates: Vec<WhitelistCandidate>,
     batch_size: usize,
@@ -372,7 +438,7 @@ async fn process_allows(
 // Note: DB-side only — the Stellar access_manager has no deauthorize path exposed
 // by this relayer today. On-chain revocation is a future gap item.
 async fn process_disallows(
-    kyc_repo: &KycRepo,
+    kyc_repo: &dyn WhitelistStore,
     chain_id: i64,
     sumsub_enabled: bool,
     elliptic_enabled: bool,
@@ -409,8 +475,13 @@ async fn process_disallows(
 
 #[cfg(test)]
 mod tests {
-    use super::run_passes;
     use std::cell::RefCell;
+    use std::sync::Mutex;
+
+    use super::*;
+
+    const CHAIN_ID: i64 = 7;
+    const FAILED_WALLET: &str = "GKYTFAILED";
 
     async fn passes_run(allow_count: usize) -> Vec<&'static str> {
         let ran = RefCell::new(vec![]);
@@ -431,5 +502,88 @@ mod tests {
     #[tokio::test]
     async fn both_passes_run_in_order_with_allow_candidates() {
         assert_eq!(passes_run(2).await, ["allow", "disallow"]);
+    }
+
+    struct FakeStore {
+        allow_fetch_fails: bool,
+        disallowed: Mutex<Vec<(i64, String)>>,
+    }
+
+    impl FakeStore {
+        fn new(allow_fetch_fails: bool) -> Self {
+            Self {
+                allow_fetch_fails,
+                disallowed: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl WhitelistStore for FakeStore {
+        async fn fetch_profiles_to_allow_stellar(
+            &self,
+            _chain_id: i64,
+            _sumsub_enabled: bool,
+            _elliptic_enabled: bool,
+        ) -> Result<Vec<WhitelistCandidate>> {
+            if self.allow_fetch_fails {
+                anyhow::bail!("allow query failed");
+            }
+            Ok(vec![])
+        }
+        async fn fetch_profiles_to_disallow(
+            &self,
+            _chain_id: i64,
+            _sumsub_enabled: bool,
+            _elliptic_enabled: bool,
+        ) -> Result<Vec<WhitelistCandidate>> {
+            Ok(vec![WhitelistCandidate {
+                wallet_address: FAILED_WALLET.to_owned(),
+            }])
+        }
+        async fn set_on_chain_allowed(&self, _chain_id: i64, _wallet_address: &str) -> Result<()> {
+            panic!("no allow candidates, so nothing should be allowed");
+        }
+        async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> Result<()> {
+            self.disallowed
+                .lock()
+                .unwrap()
+                .push((chain_id, wallet_address.to_owned()));
+            Ok(())
+        }
+    }
+
+    fn whitelister() -> StellarWhitelister {
+        StellarWhitelister::new(
+            CHAIN_ID,
+            "http://127.0.0.1:1",
+            "test".to_owned(),
+            ContractStrkey([1u8; 32]),
+            ContractStrkey([2u8; 32]),
+            SigningKey::from_bytes(&[3u8; 32]),
+        )
+    }
+
+    async fn disallowed_after_sync(store: &FakeStore) -> Vec<(i64, String)> {
+        sync_whitelist(&whitelister(), store, CHAIN_ID, true, true, 10).await;
+        store.disallowed.lock().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn disallow_pass_runs_when_allow_fetch_fails() {
+        let store = FakeStore::new(true);
+        assert_eq!(
+            disallowed_after_sync(&store).await,
+            vec![(CHAIN_ID, FAILED_WALLET.to_owned())]
+        );
+    }
+
+    #[tokio::test]
+    async fn disallow_pass_runs_when_no_allow_candidates() {
+        let store = FakeStore::new(false);
+        assert_eq!(
+            disallowed_after_sync(&store).await,
+            vec![(CHAIN_ID, FAILED_WALLET.to_owned())]
+        );
     }
 }
