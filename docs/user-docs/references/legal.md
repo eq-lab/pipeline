@@ -10,13 +10,13 @@ This page gathers the compliance and legal framing for Pipeline. Nothing on this
 
 ## Eligibility
 
-Pipeline serves approved entities and individuals from jurisdictions Pipeline is licensed to onboard. Every counterparty passes KYB (Know Your Business) and KYT (Know Your Transaction): lenders, Originators, borrowers and every other party. Every lender address is screened before it may hold PLUSD. Every USDC deposit is screened before PLUSD is minted.
+Pipeline serves entities and individuals from non-sanctioned jurisdictions, outside the US. Every lender address and every USDC deposit are screened (KYT, Know Your Transaction) before PLUSD is minted. Lenders who wire USD pass KYC (Know Your Customer) or KYB (Know Your Business). Originators pass KYB, KYT, AML and sanctions checks. Borrowers and every other party to a deal pass KYB, AML and sanctions checks.
 
 ## Cannot serve
 
 - Wallets on OFAC or equivalent sanctions lists
-- Jurisdictions not on the published eligibility list
-- Legal entities or individuals failing KYB, KYT or wallet screening
+- Lenders from the US or from sanctioned jurisdictions
+- Legal entities or individuals failing KYT or wallet screening, or KYC or KYB where it applies
 
 ## Terms of use
 
@@ -26,7 +26,7 @@ The terms of use govern wallet onboarding, compliance obligations, eligibility, 
 
 ## Privacy policy
 
-Pipeline collects KYB and KYT screening data through its compliance vendors. It does not sell or share this data with third parties outside of vendor workflows required for screening.
+Pipeline collects KYC, KYB and KYT screening data through its compliance vendors. It does not sell or share this data with third parties outside of vendor workflows required for screening.
 
 *Privacy policy, pending publication.* The full Privacy Policy will be published here.
 
@@ -38,18 +38,19 @@ Information on this site is not investment, legal, or tax advice. Yield figures 
 
 Each facility is a secured loan to a borrower under a master facility agreement (MFA) and an agency deed.
 
-- A bankruptcy-remote lending vehicle is the initial lender. Pipeline's Trustee runs it and its operations.
-- The Loan Originator and other lenders join a facility by accession, or take over a share by transfer certificate.
-- The facility agent administers the facility: drawdowns, repayments, payments, accessions and transfer certificates.
-- The Security Agent, an independent security trustee, holds the security on trust for all lenders by the priority of payments.
+- Lenders lend USDC to a bankruptcy-remote funding vehicle, which lends to the lending vehicle. A charitable trust owns the lending vehicle, so neither vehicle has a beneficial owner.
+- The lending vehicle lends in each facility pari passu with the Loan Originator. The Originator and other lenders join a facility by accession, or take over a share by transfer certificate.
+- Pipeline, as Facility Agent, administers the facility: drawdowns, repayments, payments, accessions and transfer certificates.
+- The Independent Trustee, a licensed trust company, co-signs every payment out of both vehicles' accounts, except withdrawals paid automatically from the buffer, and approves every drawdown.
+- The Security Agent, an independent security trustee, holds the security on trust for all lenders by the priority of payments. It is independent of Pipeline and of every Originator.
 - Bills of lading are endorsed to the Security Agent by way of pledge. The lender never takes title to the goods.
 - The Security Agent co-signs the borrower's collection account.
 - A facility is funded only where the lenders' security ranks first. A local legal opinion confirms it.
-- Inspection companies appointed by the lending vehicle check the goods.
+- An independent inspector, appointed and paid by the borrower from Pipeline's panel, checks the goods.
 - The borrower carries full recourse. The goods are security for the loan.
-- Lender decisions are taken by the Majority Lenders. Changes to economics need all lenders. While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
+- Lender decisions are taken by the Majority Lenders. Changes to economics need all lenders.
 
-Lender access is permissioned by KYB, KYT and sanctions screening. Where the regulatory regime in a target jurisdiction evolves, Pipeline's eligibility list and structural architecture are updated accordingly. The protocol does not represent that it is registered, authorised, or licensed under securities, banking, or commodities regulation in any specific jurisdiction beyond what is published in the eligibility list.
+Lender access is permissioned by KYT and sanctions screening, with KYC or KYB for bank wires. Where the regulatory regime in a target jurisdiction evolves, Pipeline's eligibility list and structural architecture are updated accordingly. The protocol does not represent that it is registered, authorised, or licensed under securities, banking, or commodities regulation in any specific jurisdiction beyond what is published in the eligibility list.
 
 ## Privacy and data
 
