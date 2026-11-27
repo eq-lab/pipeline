@@ -256,6 +256,7 @@ pub async fn phase_sync_whitelist_stellar(
     elliptic_enabled: bool,
     batch_size: usize,
 ) {
+    // An allow-fetch error counts as zero candidates, so the disallow pass still runs (#2275).
     let candidates = match kyc_repo
         .fetch_profiles_to_allow_stellar(chain_id, sumsub_enabled, elliptic_enabled)
         .await
@@ -263,7 +264,7 @@ pub async fn phase_sync_whitelist_stellar(
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "stellar: failed to fetch profiles to allow");
-            return;
+            Vec::new()
         }
     };
 
