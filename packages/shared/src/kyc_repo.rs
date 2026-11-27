@@ -470,7 +470,12 @@ pub fn stellar_disallow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: b
                     AND h.address = p.wallet_address
                     AND (h.chain_id IS NULL OR h.chain_id = $1)
                )
-               AND NOT EXISTS (SELECT 1 FROM lps l WHERE l.stellar_address = p.wallet_address)
+               AND NOT EXISTS (
+                  SELECT 1 FROM lps l
+                  WHERE l.stellar_address = p.wallet_address
+                    AND l.kyb_status = 'Passed'
+                    AND l.address_linked_at IS NOT NULL
+               )
                AND NOT {depositor}))"
     )
 }
