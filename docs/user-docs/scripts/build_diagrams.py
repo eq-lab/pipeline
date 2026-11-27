@@ -128,7 +128,7 @@ def system_architecture():
     d.region(LX, Y0, LW, yi + hi + 12 - Y0, "Origination layer", kind="off")
     d.box(bx, Y0 + 36, bw, 66, "Originators", "submit loan applications", kind="off", pad=9)
     d.box(bx, Y0 + 112, bw, yl - 10 - (Y0 + 112), "Screening", "KYB, AML, sanctions", kind="off", pad=9)
-    d.box(bx, yl, bw, hl, "Trustee", "records facilities", kind="off", pad=8)
+    d.box(bx, yl, bw, hl, "Risk Council", "adds approved facilities", kind="off", pad=8)
     d.box(bx, ys, bw, hs, "Price feed", "market prices of goods", kind="off", pad=8)
     d.box(bx, yi, bw, hi, "Independent inspector", kind="off", pad=9)
     g1, g2 = bx + bw, px
