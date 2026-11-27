@@ -38,7 +38,10 @@ impl EvmRelayerSettings {
                 "CHAIN_{chain_id}_EVM_INDEXER_MINTER_ADDRESS"
             ))?,
             sumsub_enabled: env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?,
-            crystal_enabled: env_parse("CRYSTAL_ENABLED", true)?,
+            crystal_enabled: {
+                env_parse::<bool>("CRYSTAL_ENABLED", true)?;
+                shared::kyt::crystal_enabled()
+            },
             batch_size: env_parse("JOB_RELAYER_EVM_BATCH_SIZE", 50usize)?,
         })
     }
@@ -149,9 +152,7 @@ impl StellarRelayerSettings {
 
         let interval_secs = env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?;
         let sumsub_enabled = env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?;
-        // Lenient parse (1/true/yes, case-insensitive) to match how the API reads
-        // ELLIPTIC_ENABLED, so the two components never disagree on the same value.
-        let elliptic_enabled = env_flag("ELLIPTIC_ENABLED", false);
+        let elliptic_enabled = shared::kyt::elliptic_enabled();
         let batch_size = env_parse("JOB_RELAYER_STELLAR_BATCH_SIZE", 50usize)?;
         let legacy_env_keys = legacy_stellar_relayer_keys(&p, |k| env::var_os(k).is_some());
 
@@ -222,17 +223,6 @@ where
             .parse::<T>()
             .with_context(|| format!("{key} must be a valid number")),
         Err(_) => Ok(default),
-    }
-}
-
-/// Lenient boolean flag: `1`/`true`/`yes` (case-insensitive) → true; any other
-/// value → false; unset → `default`. Mirrors the API's `ELLIPTIC_ENABLED`
-/// parsing so both components interpret the same value identically. (Unlike
-/// `env_parse::<bool>`, which errors on anything but exact `true`/`false`.)
-fn env_flag(key: &str, default: bool) -> bool {
-    match env::var(key) {
-        Ok(v) => matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"),
-        Err(_) => default,
     }
 }
 
