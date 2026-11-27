@@ -42,8 +42,8 @@ Replace `<worker>` with the worker container (e.g. `pipeline-worker-test-main`).
 | Alert | LogQL | Fire when | Severity |
 |-------|-------|-----------|----------|
 | KYT provider failing | `sum by (provider, chain_id, kind, error_class) (count_over_time({container="<worker>"} \|= "kyt provider error" \| logfmt provider, chain_id, kind, error_class [10m]))` | `> 5` for 10m | on-call Slack |
-| KYT backlog stuck | `max by (provider, chain_id) (max_over_time({container="<worker>"} \|= "kyt backlog" \| logfmt provider, chain_id, oldest_transfer_age_secs \| unwrap oldest_transfer_age_secs [5m]))` (repeat with `oldest_profile_age_secs`) | `> 3600` | on-call Slack |
-| KYT step silent | `absent_over_time({container="<worker>"} \|= "kyt backlog" [15m])` | `== 1` while KYT is enabled | on-call Slack |
+| KYT backlog stuck | `max by (provider, chain_id) (max_over_time({container="<worker>"} \|= "kyt backlog" != "failed to read kyt backlog" \| logfmt provider, chain_id, oldest_transfer_age_secs \| unwrap oldest_transfer_age_secs \| __error__="" [5m]))` (repeat with `oldest_profile_age_secs`) | `> 3600` | on-call Slack |
+| KYT step silent | `absent_over_time({container="<worker>"} \|= "kyt backlog" != "failed to read kyt backlog" [15m])` | `== 1` while KYT is enabled | on-call Slack |
 
 ## Audit log reliability
 
