@@ -43,10 +43,10 @@ def legend(d, x, y, items):
 # ---------------------------------------------------------------- architecture
 @diagram("boss-system-architecture", "png")
 def system_architecture():
-    W, H = 960, 752
+    W, H = 960, 834
     d = Diagram("boss-system-architecture", W, H,
                 "Pipeline architecture: origination layer and relayer off-chain, protocol layer on-chain, "
-                "capital layer of custody accounts and a USD bank account; every privileged call goes "
+                "capital layer of MPC custody accounts and a USD bank account; every privileged call goes "
                 "through the access manager.")
     LX, LW = 20, 190
     PX, PW = 274, 370
@@ -60,13 +60,13 @@ def system_architecture():
 
     # role holders on top
     d.box(PX, 14, PW, 84, "Role holders",
-          "Admin, Risk Council, Guardian, Pauser, Upgrader, Trustee, cash reporter, Security Agent",
+          "Admin, Risk Council, Trustee, Cash Reporter, Guardian, Pauser, Upgrader, Security Agent",
           kind="role", pad=10)
 
     rows = {}
     y = Y0 + 36
-    for k, h in [("access", 58), ("tokens", 78), ("loan", 58), ("sec", 58),
-                 ("dm", 58), ("wq", 58), ("minter", 58), ("pocket", 78)]:
+    for k, h in [("access", 58), ("tokens", 78), ("part", 58), ("sec", 58), ("insp", 58),
+                 ("dm", 58), ("wq", 58), ("minter", 58), ("pocket", 92)]:
         rows[k] = (y, h, y + h / 2)
         y += h + 10
     bottom = y - 10 + 14
@@ -79,60 +79,65 @@ def system_architecture():
     d.text(ax - 8, Y0 + 24, "every privileged call", size=12.5, color=INK2, anchor="end")
 
     yt, ht, ct = rows["tokens"]
-    t3 = (pw - 20) / 3
-    d.box(px, yt, t3, ht, "PLUSD", "dollar token", pad=10, valign="top")
-    d.box(px + t3 + 10, yt, t3, ht, "Debt token", "one per loan", pad=10, valign="top")
-    d.box(px + 2 * (t3 + 10), yt, t3, ht, "sPLUSD", "staking vault share", pad=10, valign="top")
+    t2 = (pw - 10) / 2
+    d.box(px, yt, t2, ht, "PLUSD", "dollar token", pad=10)
+    d.box(px + t2 + 10, yt, t2, ht, "sPLUSD", "staking vault share", pad=10)
 
-    yl, hl, cl = rows["loan"]
-    d.box(px, yl, pw, hl, "Loan registry", "one non-transferable record per loan", pad=8)
+    yl, hl, cl = rows["part"]
+    d.box(px, yl, pw, hl, "Loan registry", "one record per facility: terms, lender shares, lifecycle", pad=8)
     ys, hs, cs = rows["sec"]
-    d.box(px, ys, pw, hs, "Security registry", "security records, prices, LTV, margin calls", pad=8)
+    yi, hi, ci = rows["insp"]
+    d.box(px, ys, pw, yi + hi - ys, "Security registry",
+          "security records, inspection reports, prices, LTV, margin calls", pad=8)
     yd, hd, cd = rows["dm"]
     d.box(px, yd, pw, hd, "Deposit manager", "USDC request, voucher, PLUSD minted 1:1", pad=8)
     yw, hw, cw_ = rows["wq"]
-    d.box(px, yw, pw, hw, "Withdrawal queue", "first in, first out; pays USDC, burns PLUSD", pad=8)
+    d.box(px, yw, pw, hw, "Withdrawal queue", "pays USDC from the buffer; burns PLUSD", pad=8)
     ym, hm, cm = rows["minter"]
     d.box(px, ym, pw, hm, "Minter", "cash book; mints for wires, interest and fees", pad=8)
     yp, hp, cp = rows["pocket"]
-    h2 = (pw - 10) / 2
-    d.box(px, yp, h2, hp, "Pocket", "a defaulted loan, for holders at default", pad=10, valign="top")
-    d.box(px + h2 + 10, yp, h2, hp, "Debt token factory", "supply follows principal", pad=10, valign="top")
+    pw1 = round((pw - 10) * 0.62)
+    d.box(px, yp, pw1, hp, "Pocket",
+          "the pool's share of a defaulted facility in PLUSD, for the respective sPLUSD holders", pad=8)
+    d.box(px + pw1 + 10, yp, pw - pw1 - 10, hp, "Debt token factory", "supply follows principal", pad=8)
 
     # capital layer
     cap_bottom = ym + hm + 14
     d.region(CX, Y0, CW, cap_bottom - Y0, "Capital layer", kind="off")
-    d.box(cx, yt, cw, yl + hl - yt, "Capital wallet", "holds loan records and debt tokens; receives protocol fees",
-          kind="off", pad=12)
+    d.para(CX + 16, Y0 + 42, "Custody accounts are MPC wallets, 3-of-5; the Independent Trustee holds a key.",
+           CW - 32, size=12.5)
+    d.box(cx, yt, cw, ht, "Capital wallet", "receives Pipeline's performance fee",
+          kind="off", pad=10)
     d.box(cx, yd, cw, hd, "Deposit account", "receives lender USDC", kind="off", pad=8)
-    d.box(cx, yw, cw, hw, "Withdrawal account", "pays lender withdrawals", kind="off", pad=8)
-    d.box(cx, ym, cw, hm, "USD bank account", "managed by the Trustee", kind="off", pad=8)
+    d.box(cx, yw, cw, hw, "Withdrawal account", "holds the 10–15 % buffer", kind="off", pad=8)
+    d.box(cx, ym, cw, hm, "USD bank account", "Independent Trustee co-signs", kind="off", pad=8)
     ey = cap_bottom + 28
-    d.box(cx, ey, cw, bottom - ey, "Borrowers, offtakers and lenders", kind="actor", pad=9)
+    d.box(cx, ey, cw, bottom - ey, "Lenders and borrowers' collection accounts", kind="actor", pad=9)
     d.arrow([(cx + 40, ym + hm), (cx + 40, ey)], start=True)
     d.text(cx + 50, cap_bottom + 19, "USD wires", size=T_LABEL, color=INK2, halo=True)
 
     gl, gr = px + pw, cx
     mid = (gl + gr) / 2
-    d.arrow([(gl, ct), (gr, ct)], label="fees", lx=mid, ly=ct - 7)
-    d.arrow([(gr, cl), (gl, cl)], style="signal", label="holds", lx=mid, ly=cl - 7)
+    d.arrow([(gl, ct), (gr, ct)], label="fee", lx=mid, ly=ct - 7)
     d.arrow([(gl, cd), (gr, cd)], label="USDC", lx=mid, ly=cd - 7)
     d.arrow([(gr, cw_), (gl, cw_)], label="USDC", lx=mid, ly=cw_ - 7)
     d.arrow([(gr, cm), (gl, cm)], style="signal", label="booked", lx=mid, ly=cm - 7)
 
     # origination layer
     bx, bw = LX + 12, LW - 24
-    d.region(LX, Y0, LW, ys + hs + 12 - Y0, "Origination layer", kind="off")
+    d.region(LX, Y0, LW, yi + hi + 12 - Y0, "Origination layer", kind="off")
     d.box(bx, Y0 + 36, bw, 66, "Originators", "submit loan applications", kind="off", pad=9)
-    d.box(bx, Y0 + 112, bw, yl - 10 - (Y0 + 112), "KYB and KYT", "every counterparty", kind="off", pad=9)
-    d.box(bx, yl, bw, hl, "Trustee", "records approved loans", kind="off", pad=8)
+    d.box(bx, Y0 + 112, bw, yl - 10 - (Y0 + 112), "Screening", "KYB, AML, sanctions", kind="off", pad=9)
+    d.box(bx, yl, bw, hl, "Trustee", "records facilities", kind="off", pad=8)
     d.box(bx, ys, bw, hs, "Price feed", "market prices of goods", kind="off", pad=8)
+    d.box(bx, yi, bw, hi, "Independent inspector", kind="off", pad=9)
     g1, g2 = bx + bw, px
-    d.arrow([(g1, cl), (g2, cl)], style="signal", label="loans", lx=(g1 + g2) / 2, ly=cl - 7)
+    d.arrow([(g1, cl), (g2, cl)], style="signal", label="facilities", lx=(g1 + g2) / 2, ly=cl - 7)
     d.arrow([(g1, cs), (g2, cs)], style="signal", label="prices", lx=(g1 + g2) / 2, ly=cs - 7)
+    d.arrow([(g1, ci), (g2, ci)], style="signal", label="reports", lx=(g1 + g2) / 2, ly=ci - 7)
 
     # relayer
-    rtop = ys + hs + 24
+    rtop = yi + hi + 24
     d.region(LX, rtop, LW, bottom - rtop, "Relayer", kind="off")
     vy, vh = rtop + 36, 80
     d.box(bx, vy, bw, vh, "Signs vouchers", "for deposit and withdrawal claims", kind="off", pad=9)
