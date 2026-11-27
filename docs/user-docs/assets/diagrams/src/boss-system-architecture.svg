@@ -1,119 +1,124 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="752" viewBox="0 0 960 752" role="img" aria-label="Pipeline architecture: origination layer and relayer off-chain, protocol layer on-chain, capital layer of custody accounts and a USD bank account; every privileged call goes through the access manager." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
-<title>Pipeline architecture: origination layer and relayer off-chain, protocol layer on-chain, capital layer of custody accounts and a USD bank account; every privileged call goes through the access manager.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="834" viewBox="0 0 960 834" role="img" aria-label="Pipeline architecture: origination layer and relayer off-chain, protocol layer on-chain, capital layer of MPC custody accounts and a USD bank account; every privileged call goes through the access manager." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest">
+<title>Pipeline architecture: origination layer and relayer off-chain, protocol layer on-chain, capital layer of MPC custody accounts and a USD bank account; every privileged call goes through the access manager.</title>
 <defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="m77746f" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#77746f"/></marker></defs>
-<rect width="960" height="752" fill="#ffffff"/>
+<rect width="960" height="834" fill="#ffffff"/>
 <path d="M 20.0 34.0 L 54.0 34.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <text x="64.0" y="38.5" font-size="12.5" fill="#5c5a57">money or tokens move</text>
 <path d="M 20.0 60.0 L 54.0 60.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
 <text x="64.0" y="64.5" font-size="12.5" fill="#5c5a57">records, signs or approves</text>
 <rect x="274.0" y="14.0" width="370.0" height="84.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
 <text x="284.0" y="39.4" font-size="15.5" fill="#262524" font-weight="600">Role holders</text>
-<text x="284.0" y="63.2" font-size="13" fill="#5c5a57">Admin, Risk Council, Guardian, Pauser, Upgrader, Trustee,</text>
-<text x="284.0" y="81.2" font-size="13" fill="#5c5a57">cash reporter, Security Agent</text>
-<rect x="274.0" y="116.0" width="370.0" height="624.0" rx="10" fill="#f6f7fb" stroke="#9a9ccc" stroke-width="1"/>
+<text x="284.0" y="63.2" font-size="13" fill="#5c5a57">Admin, Risk Council, Trustee, Cash Reporter, Guardian,</text>
+<text x="284.0" y="81.2" font-size="13" fill="#5c5a57">Pauser, Upgrader, Security Agent</text>
+<rect x="274.0" y="116.0" width="370.0" height="706.0" rx="10" fill="#f6f7fb" stroke="#9a9ccc" stroke-width="1"/>
 <text x="290.0" y="140.0" font-size="12" fill="#000080" font-weight="600" letter-spacing="0.84">PROTOCOL LAYER</text>
 <rect x="288.0" y="152.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
 <text x="296.0" y="173.3" font-size="15.5" fill="#000080" font-weight="600">Access manager</text>
 <text x="296.0" y="197.2" font-size="13" fill="#5c5a57">maps every privileged call to a role</text>
 <path d="M 554.0 98.0 L 554.0 152.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
 <text x="546.0" y="140.0" font-size="12.5" fill="#5c5a57" text-anchor="end">every privileged call</text>
-<rect x="288.0" y="220.0" width="107.3" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="298.0" y="243.9" font-size="15.5" fill="#000080" font-weight="600">PLUSD</text>
-<text x="298.0" y="267.8" font-size="13" fill="#5c5a57">dollar token</text>
-<rect x="405.3" y="220.0" width="107.3" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="415.3" y="243.9" font-size="15.5" fill="#000080" font-weight="600">Debt token</text>
-<text x="415.3" y="267.8" font-size="13" fill="#5c5a57">one per loan</text>
-<rect x="522.7" y="220.0" width="107.3" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="532.7" y="243.9" font-size="15.5" fill="#000080" font-weight="600">sPLUSD</text>
-<text x="532.7" y="267.8" font-size="13" fill="#5c5a57">staking vault</text>
-<text x="532.7" y="285.7" font-size="13" fill="#5c5a57">share</text>
+<rect x="288.0" y="220.0" width="166.0" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="298.0" y="251.3" font-size="15.5" fill="#000080" font-weight="600">PLUSD</text>
+<text x="298.0" y="275.2" font-size="13" fill="#5c5a57">dollar token</text>
+<rect x="464.0" y="220.0" width="166.0" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="474.0" y="251.3" font-size="15.5" fill="#000080" font-weight="600">sPLUSD</text>
+<text x="474.0" y="275.2" font-size="13" fill="#5c5a57">staking vault share</text>
 <rect x="288.0" y="308.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
 <text x="296.0" y="329.3" font-size="15.5" fill="#000080" font-weight="600">Loan registry</text>
-<text x="296.0" y="353.2" font-size="13" fill="#5c5a57">one non-transferable record per loan</text>
-<rect x="288.0" y="376.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="296.0" y="397.3" font-size="15.5" fill="#000080" font-weight="600">Security registry</text>
-<text x="296.0" y="421.2" font-size="13" fill="#5c5a57">security records, prices, LTV, margin calls</text>
-<rect x="288.0" y="444.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="296.0" y="465.3" font-size="15.5" fill="#000080" font-weight="600">Deposit manager</text>
-<text x="296.0" y="489.2" font-size="13" fill="#5c5a57">USDC request, voucher, PLUSD minted 1:1</text>
+<text x="296.0" y="353.2" font-size="13" fill="#5c5a57">one record per facility: terms, lender shares, lifecycle</text>
+<rect x="288.0" y="376.0" width="342.0" height="126.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="296.0" y="422.3" font-size="15.5" fill="#000080" font-weight="600">Security registry</text>
+<text x="296.0" y="446.2" font-size="13" fill="#5c5a57">security records, inspection reports, prices, LTV,</text>
+<text x="296.0" y="464.1" font-size="13" fill="#5c5a57">margin calls</text>
 <rect x="288.0" y="512.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="296.0" y="533.3" font-size="15.5" fill="#000080" font-weight="600">Withdrawal queue</text>
-<text x="296.0" y="557.2" font-size="13" fill="#5c5a57">first in, first out; pays USDC, burns PLUSD</text>
+<text x="296.0" y="533.3" font-size="15.5" fill="#000080" font-weight="600">Deposit manager</text>
+<text x="296.0" y="557.2" font-size="13" fill="#5c5a57">USDC request, voucher, PLUSD minted 1:1</text>
 <rect x="288.0" y="580.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="296.0" y="601.3" font-size="15.5" fill="#000080" font-weight="600">Minter</text>
-<text x="296.0" y="625.2" font-size="13" fill="#5c5a57">cash book; mints for wires, interest and fees</text>
-<rect x="288.0" y="648.0" width="166.0" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="298.0" y="672.0" font-size="15.5" fill="#000080" font-weight="600">Pocket</text>
-<text x="298.0" y="695.9" font-size="13" fill="#5c5a57">a defaulted loan, for</text>
-<text x="298.0" y="713.8" font-size="13" fill="#5c5a57">holders at default</text>
-<rect x="464.0" y="648.0" width="166.0" height="78.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="474.0" y="672.0" font-size="15.5" fill="#000080" font-weight="600">Debt token factory</text>
-<text x="474.0" y="695.9" font-size="13" fill="#5c5a57">supply follows principal</text>
-<rect x="710.0" y="116.0" width="230.0" height="536.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
+<text x="296.0" y="601.3" font-size="15.5" fill="#000080" font-weight="600">Withdrawal queue</text>
+<text x="296.0" y="625.2" font-size="13" fill="#5c5a57">pays USDC from the buffer; burns PLUSD</text>
+<rect x="288.0" y="648.0" width="342.0" height="58.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="296.0" y="669.3" font-size="15.5" fill="#000080" font-weight="600">Minter</text>
+<text x="296.0" y="693.2" font-size="13" fill="#5c5a57">cash book; mints for wires, interest and fees</text>
+<rect x="288.0" y="716.0" width="206.0" height="92.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="296.0" y="736.4" font-size="15.5" fill="#000080" font-weight="600">Pocket</text>
+<text x="296.0" y="760.3" font-size="13" fill="#5c5a57">the pool&#x27;s share of a defaulted</text>
+<text x="296.0" y="778.2" font-size="13" fill="#5c5a57">facility in PLUSD, for the</text>
+<text x="296.0" y="796.1" font-size="13" fill="#5c5a57">respective sPLUSD holders</text>
+<rect x="504.0" y="716.0" width="126.0" height="92.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="512.0" y="735.7" font-size="15.5" fill="#000080" font-weight="600">Debt token</text>
+<text x="512.0" y="755.1" font-size="15.5" fill="#000080" font-weight="600">factory</text>
+<text x="512.0" y="779.0" font-size="13" fill="#5c5a57">supply follows</text>
+<text x="512.0" y="796.9" font-size="13" fill="#5c5a57">principal</text>
+<rect x="710.0" y="116.0" width="230.0" height="604.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
 <text x="726.0" y="140.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">CAPITAL LAYER</text>
-<rect x="724.0" y="220.0" width="202.0" height="146.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="736.0" y="267.4" font-size="15.5" fill="#262524" font-weight="600">Capital wallet</text>
-<text x="736.0" y="291.3" font-size="13" fill="#5c5a57">holds loan records and debt</text>
-<text x="736.0" y="309.2" font-size="13" fill="#5c5a57">tokens; receives protocol</text>
-<text x="736.0" y="327.1" font-size="13" fill="#5c5a57">fees</text>
-<rect x="724.0" y="444.0" width="202.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="732.0" y="465.3" font-size="15.5" fill="#262524" font-weight="600">Deposit account</text>
-<text x="732.0" y="489.2" font-size="13" fill="#5c5a57">receives lender USDC</text>
+<text x="726.0" y="158.0" font-size="12.5" fill="#5c5a57">Custody accounts are MPC</text>
+<text x="726.0" y="175.2" font-size="12.5" fill="#5c5a57">wallets, 3-of-5; the Independent</text>
+<text x="726.0" y="192.4" font-size="12.5" fill="#5c5a57">Trustee holds a key.</text>
+<rect x="724.0" y="220.0" width="202.0" height="78.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="734.0" y="242.3" font-size="15.5" fill="#262524" font-weight="600">Capital wallet</text>
+<text x="734.0" y="266.2" font-size="13" fill="#5c5a57">receives Pipeline&#x27;s</text>
+<text x="734.0" y="284.1" font-size="13" fill="#5c5a57">performance fee</text>
 <rect x="724.0" y="512.0" width="202.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="732.0" y="533.3" font-size="15.5" fill="#262524" font-weight="600">Withdrawal account</text>
-<text x="732.0" y="557.2" font-size="13" fill="#5c5a57">pays lender withdrawals</text>
+<text x="732.0" y="533.3" font-size="15.5" fill="#262524" font-weight="600">Deposit account</text>
+<text x="732.0" y="557.2" font-size="13" fill="#5c5a57">receives lender USDC</text>
 <rect x="724.0" y="580.0" width="202.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="732.0" y="601.3" font-size="15.5" fill="#262524" font-weight="600">USD bank account</text>
-<text x="732.0" y="625.2" font-size="13" fill="#5c5a57">managed by the Trustee</text>
-<rect x="724.0" y="680.0" width="202.0" height="60.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
-<text x="733.0" y="704.6" font-size="15.5" fill="#262524" font-weight="600">Borrowers, offtakers</text>
-<text x="733.0" y="724.0" font-size="15.5" fill="#262524" font-weight="600">and lenders</text>
-<path d="M 764.0 638.0 L 764.0 680.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" marker-start="url(#m4a4845)" stroke-linejoin="round"/>
-<text x="774.0" y="671.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">USD wires</text>
+<text x="732.0" y="601.3" font-size="15.5" fill="#262524" font-weight="600">Withdrawal account</text>
+<text x="732.0" y="625.2" font-size="13" fill="#5c5a57">holds the 10–15 % buffer</text>
+<rect x="724.0" y="648.0" width="202.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="732.0" y="669.3" font-size="15.5" fill="#262524" font-weight="600">USD bank account</text>
+<text x="732.0" y="693.2" font-size="13" fill="#5c5a57">Independent Trustee co-signs</text>
+<rect x="724.0" y="748.0" width="202.0" height="74.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="733.0" y="779.6" font-size="15.5" fill="#262524" font-weight="600">Lenders and borrowers&#x27;</text>
+<text x="733.0" y="799.0" font-size="15.5" fill="#262524" font-weight="600">collection accounts</text>
+<path d="M 764.0 706.0 L 764.0 748.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" marker-start="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="774.0" y="739.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">USD wires</text>
 <path d="M 630.0 259.0 L 724.0 259.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<text x="677.0" y="252.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">fees</text>
-<path d="M 724.0 337.0 L 630.0 337.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<text x="677.0" y="330.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">holds</text>
-<path d="M 630.0 473.0 L 724.0 473.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<text x="677.0" y="466.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">USDC</text>
-<path d="M 724.0 541.0 L 630.0 541.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="677.0" y="252.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">fee</text>
+<path d="M 630.0 541.0 L 724.0 541.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
 <text x="677.0" y="534.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">USDC</text>
-<path d="M 724.0 609.0 L 630.0 609.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<text x="677.0" y="602.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">booked</text>
-<rect x="20.0" y="116.0" width="190.0" height="330.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
+<path d="M 724.0 609.0 L 630.0 609.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="677.0" y="602.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">USDC</text>
+<path d="M 724.0 677.0 L 630.0 677.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<text x="677.0" y="670.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">booked</text>
+<rect x="20.0" y="116.0" width="190.0" height="398.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
 <text x="36.0" y="140.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">ORIGINATION LAYER</text>
 <rect x="32.0" y="152.0" width="166.0" height="66.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
 <text x="41.0" y="177.3" font-size="15.5" fill="#262524" font-weight="600">Originators</text>
 <text x="41.0" y="201.2" font-size="13" fill="#5c5a57">submit loan applications</text>
 <rect x="32.0" y="228.0" width="166.0" height="70.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="41.0" y="255.3" font-size="15.5" fill="#262524" font-weight="600">KYB and KYT</text>
-<text x="41.0" y="279.2" font-size="13" fill="#5c5a57">every counterparty</text>
+<text x="41.0" y="255.3" font-size="15.5" fill="#262524" font-weight="600">Screening</text>
+<text x="41.0" y="279.2" font-size="13" fill="#5c5a57">KYB, AML, sanctions</text>
 <rect x="32.0" y="308.0" width="166.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
 <text x="40.0" y="329.3" font-size="15.5" fill="#262524" font-weight="600">Trustee</text>
-<text x="40.0" y="353.2" font-size="13" fill="#5c5a57">records approved loans</text>
+<text x="40.0" y="353.2" font-size="13" fill="#5c5a57">records facilities</text>
 <rect x="32.0" y="376.0" width="166.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
 <text x="40.0" y="397.3" font-size="15.5" fill="#262524" font-weight="600">Price feed</text>
 <text x="40.0" y="421.2" font-size="13" fill="#5c5a57">market prices of goods</text>
+<rect x="32.0" y="444.0" width="166.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="41.0" y="467.6" font-size="15.5" fill="#262524" font-weight="600">Independent</text>
+<text x="41.0" y="486.9" font-size="15.5" fill="#262524" font-weight="600">inspector</text>
 <path d="M 198.0 337.0 L 288.0 337.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<text x="243.0" y="330.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">loans</text>
+<text x="243.0" y="330.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">facilities</text>
 <path d="M 198.0 405.0 L 288.0 405.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
 <text x="243.0" y="398.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">prices</text>
-<rect x="20.0" y="458.0" width="190.0" height="282.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
-<text x="36.0" y="482.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">RELAYER</text>
-<rect x="32.0" y="494.0" width="166.0" height="80.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="41.0" y="517.4" font-size="15.5" fill="#262524" font-weight="600">Signs vouchers</text>
-<text x="41.0" y="541.2" font-size="13" fill="#5c5a57">for deposit and</text>
-<text x="41.0" y="559.1" font-size="13" fill="#5c5a57">withdrawal claims</text>
-<rect x="32.0" y="580.0" width="166.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="40.0" y="601.3" font-size="15.5" fill="#262524" font-weight="600">Matches wires</text>
-<text x="40.0" y="625.2" font-size="13" fill="#5c5a57">bank wire to cash book</text>
-<rect x="32.0" y="648.0" width="166.0" height="78.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
-<text x="41.0" y="670.4" font-size="15.5" fill="#262524" font-weight="600">Screens lenders</text>
-<text x="41.0" y="694.2" font-size="13" fill="#5c5a57">KYT; approves PLUSD</text>
-<text x="41.0" y="712.1" font-size="13" fill="#5c5a57">holders</text>
-<path d="M 198.0 534.0 L 270.0 534.0 L 270.0 473.0 L 288.0 473.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<path d="M 270.0 534.0 L 270.0 541.0 L 288.0 541.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<text x="205.0" y="527.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">vouchers</text>
-<path d="M 198.0 609.0 L 288.0 609.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
-<text x="243.0" y="602.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">matches</text>
-</svg>
+<path d="M 198.0 473.0 L 288.0 473.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<text x="243.0" y="466.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">reports</text>
+<rect x="20.0" y="526.0" width="190.0" height="296.0" rx="10" fill="#f9f8f7" stroke="#c9c7c4" stroke-width="1"/>
+<text x="36.0" y="550.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">RELAYER</text>
+<rect x="32.0" y="562.0" width="166.0" height="80.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="41.0" y="585.4" font-size="15.5" fill="#262524" font-weight="600">Signs vouchers</text>
+<text x="41.0" y="609.2" font-size="13" fill="#5c5a57">for deposit and</text>
+<text x="41.0" y="627.1" font-size="13" fill="#5c5a57">withdrawal claims</text>
+<rect x="32.0" y="648.0" width="166.0" height="58.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="40.0" y="669.3" font-size="15.5" fill="#262524" font-weight="600">Matches wires</text>
+<text x="40.0" y="693.2" font-size="13" fill="#5c5a57">bank wire to cash book</text>
+<rect x="32.0" y="716.0" width="166.0" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="41.0" y="745.4" font-size="15.5" fill="#262524" font-weight="600">Screens lenders</text>
+<text x="41.0" y="769.2" font-size="13" fill="#5c5a57">KYT; approves PLUSD</text>
+<text x="41.0" y="787.1" font-size="13" fill="#5c5a57">holders</text>
+<path d="M 198.0 602.0 L 270.0 602.0 L 270.0 541.0 L 288.0 541.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<path d="M 270.0 602.0 L 270.0 609.0 L 288.0 609.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<text x="205.0" y="595.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">vouchers</text>
+<path d="M 198.0 677.0 L 288.0 677.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<text x="243.0" y="670.0" font-size="13" fill="#5c5a57" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">matches</text>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTpjYjc3NjIxZi0wNmU1LTRmYmEtODEzZS1kYzZkMzI3Y2ZhMWQAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaHMUoMrM9uj6qMuPG9GhUEwAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDplMzY1ZDZiNC1iODJhLTQyZjUtYWQ1Zi01NmM2OTFlMTVlNTBscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNo4BWSvt7VAna+ChYB/Oc+UgAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggJJV5tKaRhR71HbdPHhsXa9ozRHnhs4kllccqH9gFiw+kZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaBiklHvkDji42ypIQTv38ngAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYIKi6b7M6fCDghf+o2M1hRM3nyT4kPUhXNLUKICoNN8u4ZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GTjNZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOmNiNzc2MjFmLTA2ZTUtNGZiYS04MTNlLWRjNmQzMjdjZmExZC9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOmQ0MDZiZjFmLTAyZjYtNDJmMC05MDg0LTY3MTAyZWY2MzQ0NHJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCAklXm0ppGFHvUdt08eGxdr2jNEeeGziSWVxyof2AWLD6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggkJw3h8FoZEbd3vkGycQIU/09uu2UKVZEHCFz6aBH/Z6iY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFgg16wwFd083dR5V9piDoW1a8qG7xYT2U51b6mzrdsEkA90Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQLQzvjkHd6NBDdobqO0qungG7KF6FsVR55+/ds3YHxi/ddgaxZ7xw4MfIxPrE4YVZZ8OkcJY7BMOw0VmuDUXTGs=</c2pa:manifest></metadata></svg>
