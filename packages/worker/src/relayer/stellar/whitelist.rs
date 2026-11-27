@@ -398,9 +398,9 @@ async fn process_allows(
     candidates: Vec<WhitelistCandidate>,
     batch_size: usize,
 ) {
-    let mut submitted = 0usize;
+    let (mut submitted, mut failed) = (0usize, 0usize);
     for candidate in candidates {
-        if submitted >= batch_size {
+        if submitted >= batch_size || failed >= batch_size {
             break;
         }
         let Some(holder) = holder_scval(&candidate.wallet_address) else {
@@ -462,6 +462,7 @@ async fn process_allows(
                 }
             }
             Err(e) => {
+                failed += 1;
                 tracing::error!(
                     wallet = %candidate.wallet_address,
                     error = %e,
@@ -674,7 +675,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failing_allow_submissions_do_not_use_up_the_batch() {
+    async fn failing_allow_submissions_stop_at_the_batch_size() {
         let simulations = Arc::new(Mutex::new(0usize));
         let mut server = mockito::Server::new_async().await;
         let seen = Arc::clone(&simulations);
@@ -700,7 +701,7 @@ mod tests {
             ContractStrkey([2u8; 32]),
             SigningKey::from_bytes(&[3u8; 32]),
         );
-        let candidates = (0..2)
+        let candidates = (0..3)
             .map(|_| WhitelistCandidate {
                 wallet_address: holder_strkey(),
             })
@@ -710,10 +711,9 @@ mod tests {
             &FakeStore::new(false),
             CHAIN_ID,
             candidates,
-            1,
+            2,
         )
         .await;
-        // Per candidate: one is_authorized check plus one failed submit; a spent batch would stop at one candidate.
         assert_eq!(*simulations.lock().unwrap(), 4);
     }
 

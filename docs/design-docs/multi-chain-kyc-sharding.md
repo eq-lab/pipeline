@@ -148,7 +148,7 @@ Phase 3 calls the SAC's `authorized(holder) -> bool` view via `simulateTransacti
 - `Error(Contract, #13)` (`NoTrustline`): a `G…` with no PLUSD trustline. Only the holder can create one (`changeTrust`), and `set_authorized` would trap the same way, so the candidate is skipped at `debug` level without submitting and does not count against `batch_size`.
 - Any other error, or a missing or non-bool result (`Unknown`): fall through to submit. `set_authorized(addr, true)` is idempotent on the SAC, so a duplicate submit is just a wasted fee, not a correctness bug.
 
-`batch_size` counts successful submissions, not candidates or failed submits (#2297), so trustline-less linked addresses and repeatedly failing submits cannot starve deposit-path candidates.
+`batch_size` counts successful submissions, not candidates or failed submits (#2297), so trustline-less linked addresses and repeatedly failing submits cannot starve deposit-path candidates. A tick also stops after `batch_size` failed submits (#2306), so a run of slow failures cannot stretch it to one confirm timeout per candidate.
 
 ### Case sensitivity
 
