@@ -69,7 +69,7 @@ Loop (every JOB_RELAYER_INTERVAL_SECS):
 
 #### 2b. Transfer Screening (unverified transactions)
 
-- Query: existing `fetch_unverified_transfers()` (WHERE `event_name = 'Transfer' AND kyt_status IS NULL`)
+- Query: `fetch_unverified_transfers_for_chain(chain_id, batch_size)` (WHERE `chain_id = $1 AND event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL`), with the relayer's own chain. The original design reused the unscoped `fetch_unverified_transfers()`, which was deleted in #2260.
 - For each transfer:
   1. Call `CrystalClient::screen_transaction(tx_hash)` — evaluate tx risk
   2. Call `CrystalClient::screen_address(sender)` — evaluate sender risk
