@@ -6,22 +6,22 @@ section: For Originators
 
 # Overview
 
-Pipeline gives Originators senior capital deal by deal. There is no balance-sheet negotiation, no syndication and no quarterly fund cycle. The Originator funds the equity tranche and keeps its economics.
+Pipeline lends alongside Originators, deal by deal. There is no balance-sheet negotiation, no syndication and no quarterly fund cycle. The Originator lends at least 5–20% of each facility on the same terms as the pool and earns interest on its share, plus a servicing fee where the facility terms provide one.
 
 ## Who Originators are
 
-Commodity trade finance experts, including private credit funds, with their own borrower networks and underwriting teams. They originate from existing relationships, structure the deals and bring them to Pipeline for senior funding. They are independent counterparties, not Pipeline employees. An Originator joins each facility it brings as a lender, by accession.
+Commodity trade finance experts, including private credit funds, with their own borrower networks and underwriting teams. They originate from existing relationships, structure the deals and bring them to Pipeline. They are independent counterparties, not Pipeline employees. An Originator joins each facility it brings as a lender, by accession.
 
 ## What Originators get
 
-- Senior debt financing
+- Additional capital lent alongside their own, on the same terms
 - Capital recycling: repaid principal frees capacity for the next cargo
-- The equity tranche return on each deal
-- A public deal record: every facility is in the on-chain loan registry
+- Interest on their share of each facility, plus a servicing fee where the facility terms provide one
+- A public deal record: every facility is recorded on-chain
 
 ## What Pipeline requires
 
-- Equity-tranche commitment per deal, up to 30%, structured as first-loss
+- A 5–20% share of each facility by deal score, lent pari passu with the pool and paid in before each drawdown
 - Track record: a book of completed transactions, demonstrable underwriting discipline
 - Audited financial statements (minimum two-year horizon)
 - KYB, KYT, UBO, sanctions and AML clearance across firm and principals
