@@ -34,6 +34,7 @@ const ALL_SIGNALS: &[&str] = &[
 pub fn blockchain_for_chain(chain_id: i64, global: Option<String>) -> Option<String> {
     env::var(format!("CHAIN_{chain_id}_CRYSTAL_BLOCKCHAIN"))
         .ok()
+        .filter(|v| !v.trim().is_empty())
         .or(global)
 }
 

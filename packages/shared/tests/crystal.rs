@@ -38,6 +38,16 @@ fn per_chain_blockchain_overrides_global_and_absence_keeps_global() {
     assert_eq!(blockchain_for_chain(987_655, None), None);
 }
 
+#[test]
+fn blank_per_chain_blockchain_falls_back_to_global() {
+    std::env::set_var("CHAIN_987656_CRYSTAL_BLOCKCHAIN", "");
+    std::env::set_var("CHAIN_987657_CRYSTAL_BLOCKCHAIN", "  \t");
+    let global = || Some("eth".to_owned());
+    assert_eq!(blockchain_for_chain(987_656, global()), global());
+    assert_eq!(blockchain_for_chain(987_657, global()), global());
+    assert_eq!(blockchain_for_chain(987_656, None), None);
+}
+
 // ── Response parsing ──────────────────────────────────────────
 
 #[test]
