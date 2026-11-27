@@ -83,9 +83,12 @@ pub async fn process_disallows(
 
 #[cfg(test)]
 mod tests {
-    use super::{revoke_confirmed, Revoker};
+    use super::{process_disallows, revoke_confirmed, DisallowStore, Revoker};
+    use async_trait::async_trait;
+    use shared::kyc_repo::WhitelistCandidate;
     use std::cell::RefCell;
     use std::future::{ready, Future};
+    use std::sync::Mutex;
 
     struct FakeChain {
         authorized: RefCell<Vec<&'static str>>,
@@ -157,5 +160,52 @@ mod tests {
         let chain = FakeChain::new(&["A", "B"]);
         let confirmed = revoke_confirmed(&chain, 1, wallets(&["A", "B"]), 1).await;
         assert_eq!(confirmed, ["A"]);
+    }
+
+    #[derive(Default)]
+    struct FakeStore {
+        disallowed: Mutex<Vec<(i64, String)>>,
+    }
+
+    #[async_trait]
+    impl DisallowStore for FakeStore {
+        async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> anyhow::Result<()> {
+            self.disallowed
+                .lock()
+                .unwrap()
+                .push((chain_id, wallet_address.to_owned()));
+            Ok(())
+        }
+    }
+
+    fn candidates(ws: &[&str]) -> Vec<WhitelistCandidate> {
+        ws.iter()
+            .map(|w| WhitelistCandidate {
+                wallet_address: (*w).to_owned(),
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn db_flag_is_cleared_only_after_the_revoke_is_confirmed() {
+        let chain = FakeChain::new(&["A"]);
+        let store = FakeStore::default();
+        chain.fail_next_revoke.replace(true);
+
+        process_disallows(&chain, &store, 7, Ok(candidates(&["A"])), 10).await;
+        assert!(store.disallowed.lock().unwrap().is_empty());
+
+        process_disallows(&chain, &store, 7, Ok(candidates(&["A"])), 10).await;
+        assert_eq!(*chain.revoked.borrow(), ["A"]);
+        assert_eq!(*store.disallowed.lock().unwrap(), [(7, "A".to_owned())]);
+    }
+
+    #[tokio::test]
+    async fn candidate_fetch_error_touches_neither_chain_nor_db() {
+        let chain = FakeChain::new(&["A"]);
+        let store = FakeStore::default();
+        process_disallows(&chain, &store, 7, Err(anyhow::anyhow!("db down")), 10).await;
+        assert!(chain.revoked.borrow().is_empty());
+        assert!(store.disallowed.lock().unwrap().is_empty());
     }
 }
