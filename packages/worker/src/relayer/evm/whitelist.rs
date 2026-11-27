@@ -221,3 +221,110 @@ async fn process_allows<T, P>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use alloy::primitives::address;
+    use alloy::providers::ProviderBuilder;
+    use alloy::sol_types::SolCall;
+    use async_trait::async_trait;
+    use serde_json::{json, Value};
+    use shared::kyc_repo::WhitelistCandidate;
+
+    use super::*;
+    use crate::evm_http::evm_rpc_client;
+    use crate::relayer::revoke::DisallowStore;
+
+    const CHAIN_ID: i64 = 11;
+    const REGISTRY: Address = address!("00000000000000000000000000000000000000aa");
+    const KYT_FAILED: &str = "0x00000000000000000000000000000000000000bb";
+
+    #[derive(Default)]
+    struct FakeStore {
+        disallowed: Mutex<Vec<(i64, String)>>,
+    }
+
+    #[async_trait]
+    impl DisallowStore for FakeStore {
+        async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> Result<()> {
+            self.disallowed
+                .lock()
+                .unwrap()
+                .push((chain_id, wallet_address.to_owned()));
+            Ok(())
+        }
+    }
+
+    /// Runs the EVM disallow pass for one KYT-failed wallet against a fake JSON-RPC node whose
+    /// `isAllowed` answers `allowed` and which refuses every `eth_sendTransaction`.
+    /// Returns the transactions the pass tried to send and the wallets it recorded as disallowed.
+    async fn disallow_pass(allowed: bool) -> (Vec<Value>, Vec<(i64, String)>) {
+        let sent = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let mut server = mockito::Server::new_async().await;
+        let seen = Arc::clone(&sent);
+        let _node = server
+            .mock("POST", "/")
+            .with_header("content-type", "application/json")
+            .with_body_from_request(move |req| {
+                let body: Value = serde_json::from_slice(req.body().unwrap()).unwrap();
+                let reply = match body["method"].as_str().unwrap() {
+                    "eth_blockNumber" => json!({ "result": "0x1" }),
+                    "eth_call" => json!({ "result": format!("0x{:064x}", u8::from(allowed)) }),
+                    "eth_sendTransaction" => {
+                        seen.lock().unwrap().push(body["params"][0].clone());
+                        json!({ "error": { "code": -32000, "message": "node refuses txs" } })
+                    }
+                    _ => json!({ "error": { "code": -32601, "message": "method not found" } }),
+                };
+                let mut reply = reply.as_object().unwrap().clone();
+                reply.insert("jsonrpc".into(), json!("2.0"));
+                reply.insert("id".into(), body["id"].clone());
+                Value::Object(reply).to_string().into_bytes()
+            })
+            .create_async()
+            .await;
+
+        let provider =
+            ProviderBuilder::new().on_client(evm_rpc_client(server.url().parse().unwrap()));
+        let whitelister = EvmWhitelister::new(CHAIN_ID, REGISTRY, provider, Address::ZERO);
+        let store = FakeStore::default();
+        let candidates = vec![WhitelistCandidate {
+            wallet_address: KYT_FAILED.to_owned(),
+        }];
+        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10).await;
+
+        let sent = sent.lock().unwrap().clone();
+        let disallowed = store.disallowed.lock().unwrap().clone();
+        (sent, disallowed)
+    }
+
+    #[tokio::test]
+    async fn kyt_failed_allowed_wallet_gets_a_registry_disallow_and_no_db_flag_until_confirmed() {
+        let (sent, disallowed) = disallow_pass(true).await;
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        let tx = &sent[0];
+        assert_eq!(
+            tx["to"].as_str().unwrap().parse::<Address>().unwrap(),
+            REGISTRY
+        );
+        let input = tx.get("input").or_else(|| tx.get("data")).unwrap();
+        let expected = WhitelistRegistry::disallowCall {
+            user: KYT_FAILED.parse().unwrap(),
+        }
+        .abi_encode();
+        assert_eq!(
+            input.as_str().unwrap(),
+            format!("0x{}", alloy::hex::encode(expected))
+        );
+        assert!(disallowed.is_empty(), "{disallowed:?}");
+    }
+
+    #[tokio::test]
+    async fn kyt_failed_wallet_the_registry_no_longer_allows_is_recorded_without_a_tx() {
+        let (sent, disallowed) = disallow_pass(false).await;
+        assert!(sent.is_empty(), "{sent:?}");
+        assert_eq!(disallowed, [(CHAIN_ID, KYT_FAILED.to_owned())]);
+    }
+}

@@ -465,7 +465,12 @@ async fn process_allows(
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
+
+    use serde_json::{json, Value};
+    use stellar_xdr::curr::{
+        HostFunction, InvokeContractArgs, OperationBody, TransactionEnvelope, WriteXdr,
+    };
 
     use super::*;
 
@@ -584,5 +589,105 @@ mod tests {
     #[tokio::test]
     async fn disallow_pass_runs_when_no_allow_candidates() {
         assert_disallow_pass_ran_without_confirmation(&FakeStore::new(false)).await;
+    }
+
+    fn holder_strkey() -> String {
+        Ed25519Pub([9u8; 32]).to_string().as_str().to_owned()
+    }
+
+    fn invoked(envelope_b64: &str) -> InvokeContractArgs {
+        let TransactionEnvelope::Tx(env) =
+            TransactionEnvelope::from_xdr_base64(envelope_b64, Limits::none()).unwrap()
+        else {
+            panic!("not a v1 envelope");
+        };
+        let OperationBody::InvokeHostFunction(op) = &env.tx.operations[0].body else {
+            panic!("not an invoke");
+        };
+        let HostFunction::InvokeContract(args) = &op.host_function else {
+            panic!("not a contract call");
+        };
+        args.clone()
+    }
+
+    /// Runs the Stellar disallow pass for one KYT-failed holder against a fake Soroban RPC whose
+    /// PLUSD `authorized` view answers `authorized` and which fails every other simulation.
+    /// Returns the `access_manager.execute` args the pass simulated and the wallets it recorded.
+    async fn stellar_disallow_pass(authorized: bool) -> (Vec<Vec<ScVal>>, Vec<(i64, String)>) {
+        let executed = Arc::new(Mutex::new(Vec::<Vec<ScVal>>::new()));
+        let mut server = mockito::Server::new_async().await;
+        let seen = Arc::clone(&executed);
+        let _rpc = server
+            .mock("POST", "/")
+            .with_header("content-type", "application/json")
+            .with_body_from_request(move |req| {
+                let body: Value = serde_json::from_slice(req.body().unwrap()).unwrap();
+                let result = if body["method"] == "simulateTransaction" {
+                    let call = invoked(body["params"]["transaction"].as_str().unwrap());
+                    if ScVal::Symbol(call.function_name.clone()) == symbol("authorized") {
+                        let xdr = ScVal::Bool(authorized)
+                            .to_xdr_base64(Limits::none())
+                            .unwrap();
+                        json!({ "latestLedger": 1, "results": [{ "xdr": xdr }] })
+                    } else {
+                        seen.lock().unwrap().push(call.args.to_vec());
+                        json!({ "latestLedger": 1, "error": "simulation refused by the fake" })
+                    }
+                } else {
+                    json!({ "latestLedger": 1, "error": "unexpected method" })
+                };
+                json!({ "jsonrpc": "2.0", "id": body["id"], "result": result })
+                    .to_string()
+                    .into_bytes()
+            })
+            .create_async()
+            .await;
+
+        let whitelister = StellarWhitelister::new(
+            CHAIN_ID,
+            &server.url(),
+            "test".to_owned(),
+            ContractStrkey([1u8; 32]),
+            ContractStrkey([2u8; 32]),
+            SigningKey::from_bytes(&[3u8; 32]),
+        );
+        let store = FakeStore::new(false);
+        let candidates = vec![WhitelistCandidate {
+            wallet_address: holder_strkey(),
+        }];
+        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10).await;
+
+        let executed = executed.lock().unwrap().clone();
+        let disallowed = store.disallowed.lock().unwrap().clone();
+        (executed, disallowed)
+    }
+
+    #[tokio::test]
+    async fn kyt_failed_authorized_holder_gets_set_authorized_false_and_no_db_flag_until_confirmed()
+    {
+        let (executed, disallowed) = stellar_disallow_pass(true).await;
+        let holder = address_account(&Ed25519Pub([9u8; 32]));
+        let expected_inner: VecM<ScVal> = vec![holder, ScVal::Bool(false)].try_into().unwrap();
+        assert_eq!(
+            executed,
+            [vec![
+                address_contract(&ContractStrkey([2u8; 32])),
+                symbol("set_authorized"),
+                ScVal::Vec(Some(ScVec(expected_inner))),
+                address_account(&Ed25519Pub(
+                    SigningKey::from_bytes(&[3u8; 32])
+                        .verifying_key()
+                        .to_bytes()
+                )),
+            ]]
+        );
+        assert!(disallowed.is_empty(), "{disallowed:?}");
+    }
+
+    #[tokio::test]
+    async fn kyt_failed_holder_already_deauthorized_is_recorded_without_a_tx() {
+        let (executed, disallowed) = stellar_disallow_pass(false).await;
+        assert!(executed.is_empty(), "{executed:?}");
+        assert_eq!(disallowed, [(CHAIN_ID, holder_strkey())]);
     }
 }
