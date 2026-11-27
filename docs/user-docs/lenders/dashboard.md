@@ -37,7 +37,7 @@ You cannot see individual loans under your allocation. PLUSD and sPLUSD are fung
 
 ## Protocol Dashboard
 
-Protocol-wide figures live on the Protocol Dashboard: total value locked, PLUSD in circulation, amount outstanding in loans, the loan book and its yield, current APY net to sPLUSD, withdrawal queue depth and yield history. To be published.
+Protocol-wide figures live on the Protocol Dashboard: total value locked, PLUSD in circulation, amount outstanding in loans, the loan book and its yield, current APY net to sPLUSD, the liquidity buffer, withdrawal queue depth and yield history. To be published.
 
 ## Verifying on your own
 
