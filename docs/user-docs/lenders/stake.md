@@ -30,7 +30,7 @@ A bank wire deposit skips these steps. The protocol mints the PLUSD and stakes i
 
 Your share count stays the same after you stake. The PLUSD each share redeems for grows when new PLUSD is minted into the vault. Share price is the vault's PLUSD divided by the number of shares.
 
-You can stake and unstake at any time. There is no lock-up, no queue at the vault and no minimum hold.
+You can stake and unstake at any time, with no queue at the vault and no minimum hold.
 
 ### Who can stake
 
@@ -48,15 +48,15 @@ Converting PLUSD back to USDC is a separate step through the withdrawal queue. S
 
 ## What affects your yield
 
-{% include diagram.html src="d4-yield-accretion.svg" caption="How interest reaches sPLUSD. A repayment is split on-chain. Senior interest is minted into the vault and the share price steps up. Fees go to the capital wallet as shares." %}
+{% include diagram.html src="d4-yield-accretion.svg" caption="How interest reaches sPLUSD. Interest received is split on-chain. The pool's interest, net of fees, is minted into the vault and the share price steps up. Pipeline's fee goes to the capital wallet as shares." %}
 
-Interest from loans is the source of yield. Borrowers are invoiced interest monthly. When a borrower pays, the senior interest is minted as new PLUSD into the vault in one go. The share price steps up on that day. There is no daily accrual in the share price.
+Interest from loans is the source of yield. Borrowers are invoiced interest monthly. When a borrower pays, the pool's interest, net of fees, is minted as new PLUSD into the vault in one go. The share price steps up on that day. There is no daily accrual in the share price.
 
-Fees on a repayment go to the capital wallet as sPLUSD shares. They do not change the share price.
+Pipeline's fee goes to the capital wallet as sPLUSD shares. It does not change the share price.
 
 Income the protocol books on its bank account is minted into the vault and raises the share price. Bank charges and ramp shortfalls are burned from the vault and lower it.
 
-A default lowers the vault. The Risk Council, acting for the Majority Lenders, declares the default. The loan's outstanding PLUSD moves from the vault into a separate pocket for that loan. The pocket belongs to the sPLUSD holders at the moment of the default, pro rata to their shares. Recoveries on the loan go to the pocket, and those holders claim them. Holders who left the vault before the default do not share in the loss or the recoveries. See [Default management](/risks/default-management/).
+A default lowers the vault. The Risk Council declares the default. The pool's share of the loan moves from the vault into a separate pocket for that loan. The pocket belongs to the sPLUSD holders at the moment of the default, pro rata to their shares. Recoveries on the loan go to the pocket, and those holders claim them. Holders who left the vault before the default do not share in the loss or the recoveries. See [Default management](/risks/default-management/).
 
 ---
 
