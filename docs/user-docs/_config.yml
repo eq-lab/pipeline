@@ -1,10 +1,10 @@
 title: Pipeline
 tagline: On-chain yield from commodity trade finance.
 description: >-
-  Pipeline is a decentralized commodity trade finance protocol. 
-  Lenders deposit USDC and earn from senior lending to finance commodity 
-  trades — high yield, short duration, secured by physical cargo, self-liquidating, 
-  tracked on a public on-chain registry.
+  Pipeline is a decentralized commodity trade finance protocol.
+  Lenders deposit USDC and earn interest on short-duration, self-liquidating
+  loans that finance commodity trades, secured by physical goods and
+  recorded on-chain.
 url: https://docs.pipeline.one
 baseurl: ""
 permalink: /:path/
