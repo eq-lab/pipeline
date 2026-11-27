@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::config::EllipticSettings;
 use super::models::EllipticResponse;
 use super::signing::sign_request;
+use crate::kyt::{KytProvider, KytVerdict};
 
 pub struct EllipticClient {
     http: reqwest::Client,
@@ -110,5 +112,34 @@ impl EllipticClient {
             );
         }
         Ok(resp)
+    }
+
+    fn verdict(&self, resp: EllipticResponse) -> KytVerdict {
+        let risky = self.settings.is_risky(&resp);
+        (
+            resp.risk_score.unwrap_or(0.0) as f32,
+            resp.evaluation_detail,
+            risky,
+        )
+    }
+}
+
+#[async_trait]
+impl KytProvider for EllipticClient {
+    fn name(&self) -> &'static str {
+        "Elliptic"
+    }
+
+    async fn address_verdict(&self, address: &str) -> Result<KytVerdict> {
+        Ok(self.verdict(self.screen_wallet(address).await?))
+    }
+
+    async fn deposit_verdict(&self, tx_hash: &str, sender: &str) -> Result<KytVerdict> {
+        Ok(self.verdict(self.screen_transaction(tx_hash, sender, sender).await?))
+    }
+
+    // Stellar addresses are case-sensitive Strkeys — do NOT lowercase.
+    fn profile_address(&self, sender: &str) -> String {
+        sender.to_owned()
     }
 }
