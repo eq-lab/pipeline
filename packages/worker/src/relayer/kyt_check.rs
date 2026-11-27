@@ -6,9 +6,67 @@ use shared::kyt::{KytProvider, KytVerdict};
 
 const BATCH_SIZE: i64 = 100;
 
-pub async fn phase_check_kyt<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chain_id: i64) {
+pub async fn phase_check_kyt<P: KytProvider>(
+    provider: &P,
+    kyc_repo: &KycRepo,
+    chain_id: i64,
+    backlog_warn_secs: i64,
+) {
     screen_addresses(provider, kyc_repo, chain_id).await;
     screen_events(provider, kyc_repo, chain_id).await;
+    report_backlog(provider.name(), kyc_repo, chain_id, backlog_warn_secs).await;
+}
+
+pub fn backlog_age_secs(oldest_ts: Option<i64>, now_ts: i64) -> i64 {
+    oldest_ts.map_or(0, |ts| (now_ts - ts).max(0))
+}
+
+pub fn error_class(e: &anyhow::Error) -> &'static str {
+    if e.downcast_ref::<sqlx::Error>().is_some() {
+        return "db";
+    }
+    match e.downcast_ref::<reqwest::Error>() {
+        Some(r) if r.is_timeout() => "timeout",
+        Some(r) if r.is_connect() => "connect",
+        Some(r) if r.is_decode() => "decode",
+        Some(_) => "request",
+        None => "provider",
+    }
+}
+
+async fn report_backlog(provider: &str, kyc_repo: &KycRepo, chain_id: i64, warn_secs: i64) {
+    let b = match kyc_repo.kyt_backlog(chain_id).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(provider, chain_id, error = %e, "failed to read kyt backlog");
+            return;
+        }
+    };
+    let now = Utc::now().timestamp();
+    let transfer_age = backlog_age_secs(b.oldest_transfer_ts, now);
+    let profile_age = backlog_age_secs(b.oldest_profile_ts, now);
+    if transfer_age.max(profile_age) > warn_secs {
+        tracing::warn!(
+            provider,
+            chain_id,
+            unscreened_transfers = b.transfers,
+            oldest_transfer_age_secs = transfer_age,
+            unscreened_profiles = b.profiles,
+            oldest_profile_age_secs = profile_age,
+            threshold_secs = warn_secs,
+            "kyt backlog over threshold"
+        );
+    } else {
+        tracing::info!(
+            provider,
+            chain_id,
+            unscreened_transfers = b.transfers,
+            oldest_transfer_age_secs = transfer_age,
+            unscreened_profiles = b.profiles,
+            oldest_profile_age_secs = profile_age,
+            "kyt backlog"
+        );
+    }
 }
 
 pub async fn screen_profile<P: KytProvider>(
@@ -60,10 +118,14 @@ async fn screen_addresses<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chai
         let (risk, signals_json, is_risky) = match screen_profile(provider, wallet).await {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
+                tracing::error!(
+                    provider = name,
+                    chain_id,
+                    kind = "profile",
+                    error_class = error_class(&e),
                     wallet,
-                    error = %e,
-                    "{name} address screening failed, will retry next iteration"
+                    error = format!("{e:#}"),
+                    "kyt provider error, will retry next tick"
                 );
                 continue;
             }
@@ -113,11 +175,19 @@ async fn screen_events<P: KytProvider>(provider: &P, kyc_repo: &KycRepo, chain_i
 
     for transfer in &transfers {
         if let Err(e) = screen_single_event(provider, kyc_repo, transfer).await {
-            tracing::warn!(
+            tracing::error!(
+                provider = name,
+                chain_id = transfer.chain_id,
+                kind = "transfer",
+                error_class = if transfer.sender.is_none() {
+                    "no_sender"
+                } else {
+                    error_class(&e)
+                },
                 log_id = transfer.id,
                 tx_hash = transfer.tx_hash,
-                error = %e,
-                "{name} event screening failed, will retry next iteration"
+                error = format!("{e:#}"),
+                "kyt provider error, will retry next tick"
             );
         }
     }

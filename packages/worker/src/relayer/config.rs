@@ -20,8 +20,12 @@ pub struct EvmRelayerSettings {
     pub minter_address: Option<Address>,
     pub sumsub_enabled: bool,
     pub crystal_enabled: bool,
+    pub kyt_backlog_warn_secs: i64,
     pub batch_size: usize,
 }
+
+const KYT_BACKLOG_WARN_SECS: &str = "JOB_RELAYER_KYT_BACKLOG_WARN_SECS";
+const KYT_BACKLOG_WARN_SECS_DEFAULT: i64 = 1800;
 
 impl EvmRelayerSettings {
     pub fn from_chain_env(chain_id: i64) -> Result<Self> {
@@ -42,6 +46,7 @@ impl EvmRelayerSettings {
                 env_parse::<bool>("CRYSTAL_ENABLED", true)?;
                 shared::kyt::crystal_enabled()
             },
+            kyt_backlog_warn_secs: env_parse(KYT_BACKLOG_WARN_SECS, KYT_BACKLOG_WARN_SECS_DEFAULT)?,
             batch_size: env_parse("JOB_RELAYER_EVM_BATCH_SIZE", 50usize)?,
         })
     }
@@ -76,6 +81,7 @@ pub struct StellarRelayerSettings {
     pub sumsub_enabled: bool,
     /// KYT via Elliptic. Enabled with ELLIPTIC_ENABLED=true.
     pub elliptic_enabled: bool,
+    pub kyt_backlog_warn_secs: i64,
     /// Maximum addresses processed per Phase 3 cycle.
     pub batch_size: usize,
     pub legacy_env_keys: Vec<String>,
@@ -167,6 +173,7 @@ impl StellarRelayerSettings {
             signing_key,
             sumsub_enabled,
             elliptic_enabled,
+            kyt_backlog_warn_secs: env_parse(KYT_BACKLOG_WARN_SECS, KYT_BACKLOG_WARN_SECS_DEFAULT)?,
             batch_size,
             legacy_env_keys,
         })

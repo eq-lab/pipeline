@@ -334,6 +334,25 @@ pub const UNVERIFIED_TRANSFERS_FOR_CHAIN_SQL: &str = "SELECT id,
              ORDER BY id
              LIMIT $2";
 
+#[derive(sqlx::FromRow)]
+pub struct KytBacklog {
+    pub transfers: i64,
+    pub oldest_transfer_ts: Option<i64>,
+    pub profiles: i64,
+    pub oldest_profile_ts: Option<i64>,
+}
+
+pub const KYT_BACKLOG_SQL: &str = "SELECT t.n AS transfers, t.oldest AS oldest_transfer_ts,
+                    p.n AS profiles, p.oldest AS oldest_profile_ts
+             FROM (SELECT COUNT(*) AS n, MIN(block_timestamp) AS oldest
+                   FROM contract_logs
+                   WHERE chain_id = $1
+                     AND event_name IN ('DepositRequested', 'WithdrawalRequested')
+                     AND kyt_status IS NULL) t,
+                  (SELECT COUNT(*) AS n, EXTRACT(EPOCH FROM MIN(created_at))::bigint AS oldest
+                   FROM lp_profiles
+                   WHERE chain_id = $1 AND kyt_screened_at IS NULL) p";
+
 pub const TRANSFER_KYT_RESULT_SQL: &str = "UPDATE contract_logs
              SET kyt_status = $2,
                  kyt_tx_risk = $3,
@@ -868,6 +887,13 @@ impl KycRepo {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows)
+    }
+
+    pub async fn kyt_backlog(&self, chain_id: i64) -> anyhow::Result<KytBacklog> {
+        Ok(sqlx::query_as::<_, KytBacklog>(KYT_BACKLOG_SQL)
+            .bind(chain_id)
+            .fetch_one(&self.pool)
+            .await?)
     }
 
     pub async fn set_kyt_address_risk(
