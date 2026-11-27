@@ -45,9 +45,9 @@ pub async fn revoke_confirmed(
         if submitted >= batch_size {
             break;
         }
-        submitted += 1;
         match chain.revoke(&wallet).await {
             Ok(()) => {
+                submitted += 1;
                 tracing::info!(chain_id, %wallet, "revoke: on-chain revocation confirmed");
                 confirmed.push(wallet);
             }
@@ -160,6 +160,14 @@ mod tests {
         let chain = FakeChain::new(&["A", "B"]);
         let confirmed = revoke_confirmed(&chain, 1, wallets(&["A", "B"]), 1).await;
         assert_eq!(confirmed, ["A"]);
+    }
+
+    #[tokio::test]
+    async fn failing_wallets_do_not_use_up_the_batch() {
+        let chain = FakeChain::new(&["bad", "B"]);
+        chain.fail_next_revoke.replace(true);
+        let confirmed = revoke_confirmed(&chain, 1, wallets(&["bad", "B"]), 1).await;
+        assert_eq!(confirmed, ["B"]);
     }
 
     #[derive(Default)]
