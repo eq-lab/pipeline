@@ -135,7 +135,13 @@ pub(crate) async fn run_stellar_relayer_inner(
 
         // Phase 2: Elliptic KYT/AML screening (chain-scoped).
         if let Some(ref elliptic) = elliptic_client {
-            phase_check_elliptic(elliptic, &kyc_repo, chain_id).await;
+            phase_check_elliptic(
+                elliptic,
+                &kyc_repo,
+                chain_id,
+                settings.kyt_backlog_warn_secs,
+            )
+            .await;
         }
 
         // Phase 3: sync whitelist on-chain via access_manager.execute(set_authorized).

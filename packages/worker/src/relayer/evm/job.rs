@@ -104,7 +104,7 @@ pub(crate) async fn run_evm_relayer_inner(
         }
 
         if let Some(ref crystal) = crystal_client {
-            phase_check_crystal(crystal, &kyc_repo, chain_id).await;
+            phase_check_crystal(crystal, &kyc_repo, chain_id, settings.kyt_backlog_warn_secs).await;
         }
 
         phase_sync_whitelist_evm(

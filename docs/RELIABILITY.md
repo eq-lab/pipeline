@@ -28,6 +28,22 @@ See [`QUALITY_SCORE.md`](./QUALITY_SCORE.md) for latency and availability target
 | Price feed polling gap > 2h | worker | On-call Slack |
 | AIS blackout > 12h | worker | Originator + Trustee + Team |
 | Bridge auto-sign failure | worker | Immediate on-call page |
+| KYT provider errors / unscreened backlog | worker (relayer) | See [KYT screening alerts](#kyt-screening-alerts) |
+
+## KYT screening alerts
+
+A Crystal or Elliptic failure never fails or clears a request: the row stays unscreened (`PendingVerification`) and is retried next relayer tick. These two log lines make that visible. There is no metrics stack; the alerts are Loki rules over worker logs (plain text, no ANSI, `key=value` fields).
+
+- `kyt provider error, will retry next tick` (ERROR), one per failed screening: `provider` (`crystal`/`elliptic`), `chain_id`, `kind` (`profile`/`transfer`), `error_class` (`provider` = non-2xx, provider error code or incomplete analysis; `timeout`, `connect`, `request`, `decode`, `db`, `no_sender`), then `error` (full text).
+- `kyt backlog` (INFO) every tick per chain, or `kyt backlog over threshold` (WARN) when the oldest unscreened item is older than `JOB_RELAYER_KYT_BACKLOG_WARN_SECS` (default 1800): `provider`, `chain_id`, `unscreened_transfers`, `oldest_transfer_age_secs` (from `block_timestamp`), `unscreened_profiles`, `oldest_profile_age_secs` (from `created_at`).
+
+Replace `<worker>` with the worker container (e.g. `pipeline-worker-test-main`).
+
+| Alert | LogQL | Fire when | Severity |
+|-------|-------|-----------|----------|
+| KYT provider failing | `sum by (provider, chain_id, kind, error_class) (count_over_time({container="<worker>"} \|= "kyt provider error" \| logfmt provider, chain_id, kind, error_class [10m]))` | `> 5` for 10m | on-call Slack |
+| KYT backlog stuck | `max by (provider, chain_id) (max_over_time({container="<worker>"} \|= "kyt backlog" \| logfmt provider, chain_id, oldest_transfer_age_secs \| unwrap oldest_transfer_age_secs [5m]))` (repeat with `oldest_profile_age_secs`) | `> 3600` | on-call Slack |
+| KYT step silent | `absent_over_time({container="<worker>"} \|= "kyt backlog" [15m])` | `== 1` while KYT is enabled | on-call Slack |
 
 ## Audit log reliability
 
