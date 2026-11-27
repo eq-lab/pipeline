@@ -620,20 +620,23 @@ def ltv_thresholds():
 @diagram("boss-loss-defense", "jpeg")
 def loss_defense():
     d = Diagram("boss-loss-defense", 900, 800,
-                "Layered protection: a credit loss meets the advance ratio, security enforcement, the equity "
-                "tranche and the default pocket; a contract incident meets custody outside the contracts, "
-                "vouchers and mint limits, role separation and pause.")
+                "Layered protection: a credit loss meets the advance ratio, security enforcement, the "
+                "Originator's co-lending and the default pocket; a contract incident meets MPC custody outside "
+                "the contracts, vouchers and mint limits, role separation and pause.")
     cw, gx = 410, 20
     xs = [20, 20 + cw + 40]
     cols = [
         ("Credit loss", "default, fraud, shortfall", [
-            ("Advance ratio", "drawn up to 80 % of security value; above 85 %, a margin call restores 80 %"),
+            ("Advance ratio", "drawn up to 80, 75 or 65 % of security value by commodity class; at 5 points "
+                              "above, a margin call must restore it within 3 business days"),
             ("Security enforcement", "the Security Agent enforces; goods sold through pre-onboarded liquidators"),
-            ("Equity tranche", "the Originator's capital takes the first loss; recorded, not enforced on-chain"),
+            ("Co-lending", "the Originator lends 5–20 % of each facility on the same terms as the pool "
+                           "and shares any loss"),
             ("Default pocket", "confines the loss to vault holders at default; recoveries go back to them"),
         ]),
         ("Contract incident", "bug, key compromise, attack", [
-            ("Custody outside the contracts", "contracts hold no USDC; the queue reaches only its allowance"),
+            ("Custody outside the contracts", "MPC wallets, 3-of-5, with a key held by the Independent "
+                                              "Trustee; the queue reaches only its allowance"),
             ("Vouchers and mint limits", "signed voucher per claim; per-transaction and 24-hour mint limits"),
             ("Role separation", "every privileged call through the access manager; the Admin revokes"),
             ("Pause", "the Pauser stops each contract at once"),
