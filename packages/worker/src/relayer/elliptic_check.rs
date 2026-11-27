@@ -1,6 +1,8 @@
 use chrono::Utc;
 use shared::elliptic::client::EllipticClient;
-use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer, KYT_CLEAR, KYT_FAILED};
+use shared::elliptic::config::EllipticSettings;
+use shared::elliptic::models::EllipticResponse;
+use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer, KYT_FAILED};
 
 const BATCH_SIZE: i64 = 100;
 
@@ -10,6 +12,23 @@ const BATCH_SIZE: i64 = 100;
 pub async fn phase_check_elliptic(elliptic: &EllipticClient, kyc_repo: &KycRepo, chain_id: i64) {
     screen_addresses(elliptic, kyc_repo, chain_id).await;
     screen_events(elliptic, kyc_repo, chain_id).await;
+}
+
+fn verdict(settings: &EllipticSettings, resp: &EllipticResponse) -> (f32, serde_json::Value, bool) {
+    // evaluation_detail is already a JSON value; store it verbatim as the audit signals.
+    (
+        resp.risk_score.unwrap_or(0.0) as f32,
+        resp.evaluation_detail.clone(),
+        settings.is_risky(resp),
+    )
+}
+
+pub async fn screen_profile(
+    elliptic: &EllipticClient,
+    wallet: &str,
+) -> anyhow::Result<(f32, serde_json::Value, bool)> {
+    let resp = elliptic.screen_wallet(wallet).await?;
+    Ok(verdict(elliptic.settings(), &resp))
 }
 
 async fn screen_addresses(elliptic: &EllipticClient, kyc_repo: &KycRepo, chain_id: i64) {
@@ -28,17 +47,15 @@ async fn screen_addresses(elliptic: &EllipticClient, kyc_repo: &KycRepo, chain_i
     }
 
     for profile in &profiles {
-        let resp = match elliptic.screen_wallet(&profile.wallet_address).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(wallet = profile.wallet_address, error = %e,
+        let (risk, signals_json, is_risky) =
+            match screen_profile(elliptic, &profile.wallet_address).await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(wallet = profile.wallet_address, error = %e,
                     "Elliptic address screening failed, will retry next iteration");
-                continue;
-            }
-        };
-        let risk = resp.risk_score.unwrap_or(0.0) as f32;
-        // evaluation_detail is already a JSON value; store it verbatim as the audit signals.
-        let signals_json = resp.evaluation_detail.clone();
+                    continue;
+                }
+            };
         if let Err(e) = kyc_repo
             .set_kyt_address_risk(
                 chain_id,
@@ -53,7 +70,7 @@ async fn screen_addresses(elliptic: &EllipticClient, kyc_repo: &KycRepo, chain_i
             continue;
         }
 
-        let setter = if elliptic.settings().is_risky(&resp) {
+        let setter = if is_risky {
             tracing::warn!(
                 wallet = profile.wallet_address,
                 risk,
@@ -95,12 +112,10 @@ async fn screen_events(elliptic: &EllipticClient, kyc_repo: &KycRepo, chain_id: 
     }
 }
 
-async fn screen_single_event(
+pub async fn screen_transfer(
     elliptic: &EllipticClient,
-    kyc_repo: &KycRepo,
     transfer: &UnverifiedTransfer,
-) -> anyhow::Result<()> {
-    let chain_id = transfer.chain_id;
+) -> anyhow::Result<KytTransferResult> {
     // Stellar addresses are case-sensitive Strkeys — do NOT lowercase.
     let addr = transfer
         .sender
@@ -109,50 +124,31 @@ async fn screen_single_event(
 
     // Deposit → transaction (source_of_funds) screening; store on the tx_* fields.
     // Withdrawal → wallet_exposure address screening; store on the sender_* fields.
-    // Mirrors crystal_check.rs::screen_single_event, minus the EVM lowercasing.
-    let risky = if transfer.event_name == "DepositRequested" {
-        let resp = elliptic
+    let deposit = transfer.event_name == "DepositRequested";
+    let resp = if deposit {
+        elliptic
             .screen_transaction(&transfer.tx_hash, addr, addr)
-            .await?;
-        let tx_risk = resp.risk_score.unwrap_or(0.0) as f32;
-        let tx_signals = resp.evaluation_detail.clone();
-        let risky = elliptic.settings().is_risky(&resp);
-        kyc_repo
-            .set_transfer_kyt_result(
-                transfer.id,
-                &KytTransferResult {
-                    kyt_status: if risky { KYT_FAILED } else { KYT_CLEAR },
-                    tx_risk: Some(tx_risk),
-                    tx_signals: Some(&tx_signals),
-                    sender_risk: None,
-                    sender_signals: None,
-                    screened_at: Utc::now(),
-                },
-            )
-            .await?;
-        risky
+            .await?
     } else {
-        let resp = elliptic.screen_wallet(addr).await?;
-        let risk = resp.risk_score.unwrap_or(0.0) as f32;
-        let signals = resp.evaluation_detail.clone();
-        let risky = elliptic.settings().is_risky(&resp);
-        kyc_repo
-            .set_transfer_kyt_result(
-                transfer.id,
-                &KytTransferResult {
-                    kyt_status: if risky { KYT_FAILED } else { KYT_CLEAR },
-                    tx_risk: None,
-                    tx_signals: None,
-                    sender_risk: Some(risk),
-                    sender_signals: Some(&signals),
-                    screened_at: Utc::now(),
-                },
-            )
-            .await?;
-        risky
+        elliptic.screen_wallet(addr).await?
     };
+    let (risk, signals, risky) = verdict(elliptic.settings(), &resp);
+    Ok(KytTransferResult::screened(deposit, risky, risk, signals))
+}
 
-    if risky {
+async fn screen_single_event(
+    elliptic: &EllipticClient,
+    kyc_repo: &KycRepo,
+    transfer: &UnverifiedTransfer,
+) -> anyhow::Result<()> {
+    let chain_id = transfer.chain_id;
+    let result = screen_transfer(elliptic, transfer).await?;
+    kyc_repo
+        .set_transfer_kyt_result(transfer.id, &result)
+        .await?;
+
+    if result.kyt_status == KYT_FAILED {
+        let addr = transfer.sender.as_deref().unwrap_or_default();
         tracing::warn!(
             log_id = transfer.id,
             address = addr,
