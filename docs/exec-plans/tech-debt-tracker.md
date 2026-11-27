@@ -386,7 +386,7 @@ line, whichever section it lands in.
 
 ### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize) [RESOLVED 2026-11-27 / #2264]
 
-- **Resolved:** both disallow passes go through `packages/worker/src/relayer/revoke.rs`. It checks on-chain access, submits `WhitelistRegistry.disallow` (EVM) or `set_authorized(addr, false)` (Soroban), and sets `on_chain_allowed = FALSE` only once access is confirmed gone; a failed submission is retried next tick. Candidates are every `kyt_status = 2` profile whatever its flag, so rows the old DB-only pass already cleared are revoked too, at the cost of one view call per KYT-failed profile per tick. The original entry follows.
+- **Resolved:** both disallow passes go through `packages/worker/src/relayer/revoke.rs`. It checks on-chain access, submits `WhitelistRegistry.disallow` (EVM) or `set_authorized(addr, false)` (Soroban), and sets `on_chain_allowed = FALSE` only once access is confirmed gone; a failed submission is retried after a per-wallet in-memory backoff (#2298). Candidates are every `kyt_status = 2` profile whatever its flag, so rows the old DB-only pass already cleared are revoked too, at the cost of one view call per KYT-failed profile per tick. The original entry follows.
 
 - **Date:** 2026-07-06 (widened to EVM 2026-10-08)
 - **Location:** the disallow passes of `packages/worker/src/relayer/stellar/whitelist.rs` (`phase_sync_whitelist_stellar`) and `packages/worker/src/relayer/evm/whitelist.rs` (`phase_sync_whitelist_evm`)
