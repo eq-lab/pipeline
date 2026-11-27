@@ -150,11 +150,12 @@ def system_architecture():
 # ---------------------------------------------------------------- capital layer
 @diagram("boss-capital-layer", "png")
 def capital_layer():
-    W, H = 960, 572
+    W, H = 960, 604
     d = Diagram("boss-capital-layer", W, H,
                 "Capital layer: deposit, withdrawal and capital custody accounts and the USD bank "
-                "account; USDC enters through the deposit account and leaves through the withdrawal account; "
-                "every bank movement is recorded on-chain.")
+                "account; USDC enters through the deposit account and leaves through the withdrawal account, "
+                "which holds the liquidity buffer; drawdowns go to and receipts come from the borrower's "
+                "collection account; every bank movement is recorded on-chain.")
     bw, gap, x0 = 205, 18, 42
     xs = [x0 + i * (bw + gap) for i in range(4)]
     legend(d, xs[2], 38, [("flow", "money moves")])
@@ -164,14 +165,14 @@ def capital_layer():
     d.box(xs[0], ly, xs[1] + bw - xs[0], lh, "Lenders", kind="actor", align="center", pad=8)
 
     ry = 130
-    d.region(24, ry, 912, 158, "Custody accounts", kind="off", right=True,
-             sub="each controlled by a multisig")
-    by, bh = ry + 52, 86
+    d.region(24, ry, 912, 172, "Custody accounts", kind="off", right=True,
+             sub="MPC wallets, 3-of-5; the Independent Trustee holds a key")
+    by, bh = ry + 52, 104
     dep = d.box(xs[0], by, bw, bh, "Deposit account", "receives lender USDC at request", kind="off")
-    wd = d.box(xs[1], by, bw, bh, "Withdrawal account", "pays claims up to the queue's allowance",
-               kind="off")
+    wd = d.box(xs[1], by, bw, bh, "Withdrawal account",
+               "holds the 10–15 % liquidity buffer; pays claims up to the queue's allowance", kind="off")
     d.box(xs[2], by, xs[3] + bw - xs[2], bh, "Capital wallet",
-          "holds loan records and debt tokens; receives fees as sPLUSD shares", kind="off")
+          "receives Pipeline's performance fee, minted as PLUSD", kind="off")
 
     d.arrow([(dep["cx"], ly + lh), (dep["cx"], by)], label="USDC, via the deposit manager",
             lx=dep["cx"] + 8, ly=106, lanchor="start")
@@ -179,9 +180,10 @@ def capital_layer():
             lx=wd["cx"] + 48, ly=106, lanchor="start")
 
     # bank
-    bank_y, bank_h = 360, 74
+    bank_y, bank_h = 360, 84
     bank = d.box(42, bank_y, 588, bank_h, "USD bank account",
-                 "managed by the Trustee: lender wires, disbursements, repayments, bank interest and charges",
+                 "co-signed by the Independent Trustee: lender wires, drawdowns, receipts, interest, "
+                 "bank interest and charges",
                  kind="off", pad=10)
     d.arrow([(dep["cx"], by + bh), (dep["cx"], bank_y)], label="USDC to USD",
             lx=dep["cx"] + 8, ly=328, lanchor="start")
@@ -196,22 +198,23 @@ def capital_layer():
            bw + 10, size=12.5)
 
     # outside world
-    oy, oh = 500, 50
-    ow = 150
-    ox = [42, 261, 480]
+    oy, oh = 504, 86
     bb = bank_y + bank_h
-    for x, title, lab, mode in [(ox[0], "Lenders", "wire in, wire out", "both"),
-                                (ox[1], "Borrowers", "disbursement", "down"),
-                                (ox[2], "Offtakers", "repayment", "up")]:
-        d.box(x, oy, ow, oh, title, kind="actor", align="center")
-        c = x + ow / 2
-        if mode == "both":
-            d.arrow([(c, oy), (c, bb)], start=True)
-        elif mode == "up":
-            d.arrow([(c, oy), (c, bb)])
-        else:
-            d.arrow([(c, bb), (c, oy)])
-        d.text(c + 8, 472, lab, size=T_LABEL, color=INK2, halo=True)
+    lend = d.box(42, oy, 150, oh, "Lenders", kind="actor", align="center")
+    c = lend["cx"]
+    d.arrow([(c, oy), (c, bb)], start=True)
+    d.text(c + 8, 472, "wire in, wire out", size=T_LABEL, color=INK2, halo=True)
+    col = d.box(250, oy, 214, oh, "Collection account", "the borrower's, charged to the Security Agent",
+                kind="actor", align="center")
+    cl, cr = col["cx"] - 30, col["cx"] + 30
+    d.arrow([(cl, bb), (cl, oy)])
+    d.text(cl - 8, 472, "drawdown", size=T_LABEL, color=INK2, anchor="end", halo=True)
+    d.arrow([(cr, oy), (cr, bb)])
+    d.text(cr + 8, 472, "receipts", size=T_LABEL, color=INK2, halo=True)
+    off = d.box(552, oy, 140, oh, "Offtakers", kind="actor", align="center")
+    d.arrow([(off["x"], oy + oh / 2), (col["r"], oy + oh / 2)])
+    d.text((off["x"] + col["r"]) / 2, oy + oh / 2 - 8, "sale price", size=T_LABEL, color=INK2,
+           anchor="middle", halo=True)
     return d
 
 
