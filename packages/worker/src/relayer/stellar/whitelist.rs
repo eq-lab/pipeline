@@ -694,7 +694,14 @@ mod tests {
                 wallet_address: holder_strkey(),
             })
             .collect();
-        process_allows(&whitelister, &FakeStore::new(false), CHAIN_ID, candidates, 1).await;
+        process_allows(
+            &whitelister,
+            &FakeStore::new(false),
+            CHAIN_ID,
+            candidates,
+            1,
+        )
+        .await;
         // Per candidate: one is_authorized check plus one failed submit; a spent batch would stop at one candidate.
         assert_eq!(*simulations.lock().unwrap(), 4);
     }
