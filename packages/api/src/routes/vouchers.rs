@@ -103,6 +103,10 @@ pub fn resolve_stellar_voucher_signing(
         .ok_or(VoucherError::ChainNotConfigured(chain_id))
 }
 
+pub fn kyt_blocks_voucher(kyt_gate_enabled: bool, kyt_status: Option<i16>) -> bool {
+    kyt_gate_enabled && kyt_status != Some(1)
+}
+
 /// Dispatch-aware wallet normalisation.
 ///
 /// - EVM: lowercase the address (existing behaviour — EVM addresses are stored
@@ -262,7 +266,7 @@ async fn deposit_voucher_evm(
         }
     };
 
-    if state.crystal_enabled && req.kyt_status != Some(1) {
+    if kyt_blocks_voucher(state.crystal_enabled, req.kyt_status) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -376,7 +380,7 @@ async fn withdrawal_voucher_evm(
         }
     };
 
-    if state.crystal_enabled && req.kyt_status != Some(1) {
+    if kyt_blocks_voucher(state.crystal_enabled, req.kyt_status) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -480,7 +484,7 @@ async fn deposit_voucher_stellar(
     // Elliptic KYT: when enabled, the deposit must have passed screening
     // (kyt_status = 1), mirroring the EVM Crystal gate. When Elliptic is disabled,
     // Stellar deposit rows have kyt_status = NULL, so this check is skipped.
-    if state.elliptic_enabled && req.kyt_status != Some(1) {
+    if kyt_blocks_voucher(state.elliptic_enabled, req.kyt_status) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -564,7 +568,7 @@ async fn withdrawal_voucher_stellar(
     // Elliptic KYT: when enabled, the withdrawal address must have passed
     // screening (kyt_status = 1), mirroring the EVM Crystal gate. When Elliptic is
     // disabled, Stellar withdrawal rows have kyt_status = NULL, so this is skipped.
-    if state.elliptic_enabled && req.kyt_status != Some(1) {
+    if kyt_blocks_voucher(state.elliptic_enabled, req.kyt_status) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
