@@ -263,7 +263,7 @@ Existing columns unchanged:
 | `packages/shared/src/kyc_repo.rs` | **Edit** — add new repo methods, update allow/disallow queries |
 | `packages/shared/migrations/` | **New** — Crystal columns on both `lp_profiles` and `contract_logs` |
 | `packages/worker/src/relayer/kyt_check.rs` | **New (#2259)** — the one provider-agnostic Phase 2 step (2a profiles, 2b transfers, status writes) |
-| `packages/worker/src/relayer/crystal_check.rs` | **Thin wiring** — `phase_check_crystal` runs `kyt_check` with Crystal over the unscoped `fetch_unverified_transfers` |
+| `packages/worker/src/relayer/crystal_check.rs` | **Thin wiring** — `phase_check_crystal` runs `kyt_check` with Crystal over the chain-scoped `fetch_unverified_transfers_for_chain` (the original unscoped `fetch_unverified_transfers` was deleted in #2260) |
 | `packages/worker/src/relayer/whitelist_sync.rs` | **Rewrite** → `whitelist.rs` — on-chain only, reads DB flags |
 | `packages/worker/src/relayer/relayer_job.rs` | **Edit** — 3-phase loop, conditional phase execution, inject CrystalClient |
 | `packages/worker/src/relayer/config.rs` | **Edit** — add `sumsub_enabled`/`crystal_enabled`, conditional settings loading |
