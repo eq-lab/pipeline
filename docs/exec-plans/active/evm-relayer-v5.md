@@ -61,12 +61,12 @@ Soroban mints yield with a separate `yield_minter.mint_yield` call after `Paymen
 | `is_already_authorized(user)`: PLUSD SAC `authorized` view | `is_already_allowed(user)`: `isAllowed` view. The phase treats an `Err` as "proceed with submit", as the Soroban phase does. |
 | `submit_set_authorized(user)`: simulate, sign, send, then poll `getTransaction` until SUCCESS / FAILED (30 × 1 s) | `submit_allow(user)`: `allow(user).send()`, then `get_receipt()` under `with_timeout(Some(CONFIRM_TIMEOUT))`. Bail when `status()` is false or the timeout hits. `CONFIRM_TIMEOUT` is 120 s, about 10 Hoodi blocks against Soroban's roughly 6 ledgers. |
 | Sign with the configured `network_passphrase` | Sign with the configured chain id. Build the provider with `ProviderBuilder::with_chain_id(chain_id)` plus the gas and nonce fillers, instead of `with_recommended_fillers()`, whose `ChainIdFiller` trusts the RPC. |
-| `take(batch_size)` from `JOB_RELAYER_STELLAR_BATCH_SIZE` | `take(batch_size)` from `JOB_RELAYER_EVM_BATCH_SIZE`, default 50. |
-| DB-only disallow pass (`fetch_profiles_to_disallow` / `set_disallowed`) with the KYT flag `elliptic_enabled` | The same DB-only pass with the KYT flag `crystal_enabled`. No on-chain `disallow`, because Soroban has no on-chain deauthorize (TD-31 now covers both chains). |
+| Up to `batch_size` successful submits per tick from `JOB_RELAYER_STELLAR_BATCH_SIZE`; already-authorized, no-trustline and failed candidates do not count (#2297); the tick stops after `batch_size` failed submits (#2306) | Up to `batch_size` successful submits from `JOB_RELAYER_EVM_BATCH_SIZE`, default 50; invalid, already-allowed and failed candidates do not count (#2297); the tick stops after `batch_size` failed submits (#2306). |
+| Disallow pass (`fetch_profiles_to_disallow` / `set_disallowed`) with the KYT flag `elliptic_enabled`. Originally DB-only; since #2264 it revokes on-chain (`set_authorized false`) via `relayer/revoke.rs` before clearing the DB flag. | The same pass with the KYT flag `crystal_enabled`. Originally DB-only; since #2264 it revokes on-chain (`disallow`) via `relayer/revoke.rs` before clearing the DB flag. |
 
 `submit_allow` replaces today's `watch()` call. `watch()` returns once the transaction is included, ignores a revert and never times out, so it is not equivalent to Soroban's terminal-status poll.
 
-The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` as BUG-27 and not fixed here.
+The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` as BUG-27 and not fixed here. _Update:_ #2271 fixed BUG-27 (with #2275); `sync_whitelist` / `run_passes` in `stellar/whitelist.rs` now runs the disallow pass on every tick, including when the allow fetch fails.
 
 **D3. Wire-in matching is shared, not duplicated.**
 The three statements in `LpBankDepositRepo`'s `WireInMatcher` key on:
@@ -117,7 +117,7 @@ _None._
    - `EvmWhitelister` holds `chain_id`, the registry instance and the signer address, and provides `is_already_allowed` and `submit_allow`.
    - `phase_sync_whitelist_evm(whitelister, kyc_repo, chain_id, sumsub_enabled, crystal_enabled, batch_size)`:
      - an allow pass over `fetch_profiles_to_allow`, limited to `batch_size`;
-     - then the DB-only disallow pass, which always runs.
+     - then the disallow pass, which always runs (originally DB-only; since #2264 it revokes on-chain via `relayer/revoke.rs`).
 
 4. **`relayer/evm/job.rs`** — `run_evm_relayer_inner`, moved out of `relayer_job.rs`.
    - Build the provider per D2 and `EvmWhitelister`.
@@ -153,9 +153,9 @@ _None._
    - Note on `CHAIN_1_EVM_INDEXER_MINTER_ADDRESS` that it also gates the relayer's wire-in phase, mirroring the Soroban note on `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
 
 10. **Bug and debt trackers.**
-    - `docs/exec-plans/known-bugs.md`: `phase_sync_whitelist_stellar` returns before its disallow pass whenever there are no allow candidates, so KYT-failed profiles keep `on_chain_allowed = TRUE` until some allow candidate appears.
+    - `docs/exec-plans/known-bugs.md`: `phase_sync_whitelist_stellar` returns before its disallow pass whenever there are no allow candidates, so KYT-failed profiles keep `on_chain_allowed = TRUE` until some allow candidate appears. _Update:_ #2271 fixed this (BUG-27), so the entry is no longer open.
     - `docs/exec-plans/tech-debt-tracker.md`:
-      - Widen TD-31 to EVM: the disallow pass is DB-only on both chains, although the EVM registry exposes `disallow`.
+      - Widen TD-31 to EVM (done by #2264: both chains now revoke on-chain via `relayer/revoke.rs`).
       - Add TD-140: `shared::bitgo` and the EVM-only outbox methods (`discover_pending`, `mark_submitted`) have no caller, and EVM rows left in `yield_mint_outbox` are inert.
       - Add TD-141: EVM `allow` has no fee bumping. alloy's default nonce manager reads the `pending` nonce, so one stuck transaction queues every later one.
       - Bump "Next free number".
@@ -203,8 +203,8 @@ Update the spec first (docs-first rule), then the rest.
 - **`docs/product-specs/relayer-service.md`**
   - §3 and §4: on EVM v5 the relayer mints no yield; `PipelineMinter.repay` mints in the same call.
   - §5 and Role Assignments:
-    - the EVM relayer holds `WHITELIST_MANAGER_ROLE` and calls `allow` only;
-    - revocation is DB-only on both chains.
+    - the EVM relayer holds `WHITELIST_MANAGER_ROLE` and calls `allow` and, since #2264, `disallow` (originally `allow` only);
+    - revocation is on-chain on both chains since #2264 (EVM `disallow`, Stellar `set_authorized false`), then the DB flag is cleared.
 - **`docs/references/backend.md`**
   - Add an "EVM relayer" section next to the Soroban one, covering the phases, env vars and role prerequisite.
   - Make the Phase 5 paragraph chain-neutral: add the EVM gate key and the D3 row shape.

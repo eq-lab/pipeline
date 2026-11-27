@@ -148,7 +148,7 @@ Phase 3 calls the SAC's `authorized(holder) -> bool` view via `simulateTransacti
 - `Error(Contract, #13)` (`NoTrustline`): a `G…` with no PLUSD trustline. Only the holder can create one (`changeTrust`), and `set_authorized` would trap the same way, so the candidate is skipped at `debug` level without submitting and does not count against `batch_size`.
 - Any other error, or a missing or non-bool result (`Unknown`): fall through to submit. `set_authorized(addr, true)` is idempotent on the SAC, so a duplicate submit is just a wasted fee, not a correctness bug.
 
-`batch_size` counts submissions, not candidates, so trustline-less linked addresses cannot starve deposit-path candidates.
+`batch_size` counts successful submissions, not candidates or failed submits (#2297), so trustline-less linked addresses and repeatedly failing submits cannot starve deposit-path candidates. A tick also stops after `batch_size` failed submits (#2306), so a run of slow failures cannot stretch it to one confirm timeout per candidate.
 
 ### Case sensitivity
 
@@ -160,4 +160,4 @@ Phase 3 calls the SAC's `authorized(holder) -> bool` view via `simulateTransacti
 
 ## KYT no-downgrade rule
 
-`lp_profiles.kyt_status = 2` (failed) is sticky. The address screen (`set_profile_kyt_clear`, Crystal and Elliptic) runs `UPDATE lp_profiles SET kyt_status = 1 ... AND kyt_status IS DISTINCT FROM 2`, so a clean address verdict never overwrites a failure recorded by event screening; the skipped clear is logged at info. Only the failed-setting path (`set_profile_kyt_failed`) and a manual DB reset can change a failed profile. No automated or API reset path exists. The pure rule is `shared::kyc_repo::next_kyt_status`. Per-request `contract_logs.kyt_status` is written once, only for rows where it is NULL (`fetch_unverified_transfers`), so a re-screen cannot overwrite it.
+`lp_profiles.kyt_status = 2` (failed) is sticky. The address screen (`set_profile_kyt_clear`, Crystal and Elliptic) runs `UPDATE lp_profiles SET kyt_status = 1 ... AND kyt_status IS DISTINCT FROM 2`, so a clean address verdict never overwrites a failure recorded by event screening; the skipped clear is logged at info. Only the failed-setting path (`set_profile_kyt_failed`) and a manual DB reset can change a failed profile. No automated or API reset path exists. The pure rule is `shared::kyc_repo::next_kyt_status`. Per-request `contract_logs.kyt_status` is written once, only for rows where it is NULL (`fetch_unverified_transfers_for_chain`), so a re-screen cannot overwrite it.

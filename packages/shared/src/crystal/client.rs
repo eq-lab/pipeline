@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 
 use super::config::CrystalSettings;
 use super::models::{CrystalResponse, RiskCheckRequest};
+use crate::kyt::{KytProvider, KytVerdict};
 
 pub struct CrystalClient {
     http: reqwest::Client,
@@ -99,5 +101,63 @@ impl CrystalClient {
         }
 
         Ok(resp)
+    }
+}
+
+fn verdict<S: serde::Serialize>(
+    riskscore: f64,
+    signals: Option<&S>,
+    risky: bool,
+) -> Result<KytVerdict> {
+    Ok((riskscore as f32, serde_json::to_value(signals)?, risky))
+}
+
+#[async_trait]
+impl KytProvider for CrystalClient {
+    fn name(&self) -> &'static str {
+        "Crystal"
+    }
+
+    async fn address_verdict(&self, address: &str) -> Result<KytVerdict> {
+        let resp = self.screen_address(address).await?;
+        if resp.data.is_none() {
+            tracing::info!(
+                wallet = address,
+                "Crystal returned no data (address has no on-chain history), treating as clean"
+            );
+        }
+        let (riskscore, signals) = match resp.data.as_ref() {
+            Some(data) => (
+                data.counterparty.riskscore.unwrap_or(0.0),
+                data.counterparty.signals.as_ref(),
+            ),
+            None => (0.0, None),
+        };
+        verdict(
+            riskscore,
+            signals,
+            self.settings.is_risky_address(riskscore, signals),
+        )
+    }
+
+    async fn deposit_verdict(&self, tx_hash: &str, sender: &str) -> Result<KytVerdict> {
+        let resp = self.screen_transaction("deposit", tx_hash, sender).await?;
+        let (riskscore, signals) = match resp.data.as_ref() {
+            Some(data) => (
+                data.counterparty.riskscore.unwrap_or(0.0),
+                data.signals.as_ref(),
+            ),
+            None => (0.0, None),
+        };
+        verdict(
+            riskscore,
+            signals,
+            self.settings.is_risky_tx(riskscore, signals),
+        )
+    }
+
+    // lp_profiles stores EVM addresses lowercased; the raw event field may not be.
+    fn profile_address(&self, sender: &str) -> String {
+        sender.to_lowercase()
     }
 }

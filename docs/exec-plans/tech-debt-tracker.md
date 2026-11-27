@@ -367,7 +367,9 @@ line, whichever section it lands in.
 - **Impact:** Footer is presentationally complete but not functionally wired. No broken/misleading destinations ship; the links simply do nothing.
 - **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
 
-### TD-30: `fetch_unverified_transfers` is not chain-scoped
+### TD-30: `fetch_unverified_transfers` is not chain-scoped [RESOLVED 2026-11-27 / #2260]
+
+- **Resolved:** the unscoped fetch is deleted; the EVM Crystal step uses `fetch_unverified_transfers_for_chain` with its own chain, and `CHAIN_<id>_CRYSTAL_BLOCKCHAIN` overrides the global `CRYSTAL_BLOCKCHAIN`. The original entry follows.
 
 - **Date:** 2026-07-06
 - **Location:** `packages/shared/src/kyc_repo.rs` — `fetch_unverified_transfers`
@@ -382,7 +384,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a `chain_id` parameter/filter to `fetch_unverified_transfers` and
   pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
 
-### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize)
+### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize) [RESOLVED 2026-11-27 / #2264]
+
+- **Resolved:** both disallow passes go through `packages/worker/src/relayer/revoke.rs`. It checks on-chain access, submits `WhitelistRegistry.disallow` (EVM) or `set_authorized(addr, false)` (Soroban), and sets `on_chain_allowed = FALSE` only once access is confirmed gone; a failed submission is retried after a per-wallet in-memory backoff (#2298). Candidates are every `kyt_status = 2` profile whatever its flag, so rows the old DB-only pass already cleared are revoked too, at the cost of one view call per KYT-failed profile per tick. The original entry follows.
 
 - **Date:** 2026-07-06 (widened to EVM 2026-10-08)
 - **Location:** the disallow passes of `packages/worker/src/relayer/stellar/whitelist.rs` (`phase_sync_whitelist_stellar`) and `packages/worker/src/relayer/evm/whitelist.rs` (`phase_sync_whitelist_evm`)
@@ -2484,7 +2488,9 @@ line, whichever section it lands in.
 - **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
 - **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.
 
-### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain
+### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain [RESOLVED 2026-11-27 / #2264]
+
+- **Resolved:** `stellar_disallow_candidates_sql` adds, whatever the Elliptic flag, every `on_chain_allowed` profile whose address is in `lp_settlement_address_history` but is not the current `stellar_address` of a KYB `Passed` LP with `address_linked_at` set (#2287) and is not covered by the depositor branch of the allow gate. The TD-31 revoke path deauthorises it. KYT-failed settlement addresses take the TD-31 path. Limit: an address replaced before the history table existed (#1831), if any, has no history row and is not found. The original entry follows.
 
 - **Date:** 2026-11-12
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs`, `packages/shared/src/kyc_repo.rs` (`stellar_allow_candidates_sql`) — Issue #1889.

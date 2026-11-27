@@ -149,13 +149,11 @@ async fn main() -> anyhow::Result<()> {
         "security mark suggestions configured"
     );
 
-    let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
-        .ok()
-        .is_none_or(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
-
-    // Elliptic KYT (Stellar). Defaults to false — matches the worker's ELLIPTIC_ENABLED.
-    let elliptic_enabled = std::env::var("ELLIPTIC_ENABLED")
-        .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
+    let crystal_enabled = shared::kyt::crystal_enabled();
+    let elliptic_enabled = shared::kyt::elliptic_enabled();
+    if !elliptic_enabled && !stellar_voucher_signers.is_empty() {
+        tracing::warn!("ELLIPTIC_ENABLED is off while Stellar is configured: linked settlement addresses of KYB LPs on Stellar are not screened (TD-184)");
+    }
 
     let state = Arc::new(AppState {
         pool: pool.clone(),

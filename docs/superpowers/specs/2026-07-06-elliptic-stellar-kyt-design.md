@@ -97,7 +97,7 @@ All references updated: `kyc_repo.rs` (queries, `CrystalTransferResult`, `Reques
 
 ### 5. Relayer wiring — Stellar Phase 2
 
-New `packages/worker/src/relayer/elliptic_check.rs` mirroring `crystal_check.rs`:
+**Structure (#2259):** one provider-agnostic step, `packages/worker/src/relayer/kyt_check.rs`, does 2a/2b for both providers through the `shared::kyt::KytProvider` trait (`packages/shared/src/kyt.rs`: address verdict, deposit/source-of-funds verdict, profile-address normalization). `EllipticClient` implements it in `shared/src/elliptic/client.rs` (verdict via `EllipticSettings::is_risky`, i.e. threshold or non-empty `triggered_rules`; Strkey case preserved), as `CrystalClient` does for EVM. `packages/worker/src/relayer/elliptic_check.rs` is thin wiring: `phase_check_elliptic` runs that step with Elliptic over the chain-scoped `fetch_unverified_transfers_for_chain`; `crystal_check.rs` is wired the same way over the same chain-scoped fetch with its own chain (TD-30, #2260; the unscoped fetch is deleted).
 
 - `phase_check_elliptic(elliptic, kyc_repo, chain_id)`:
   - **2a — addresses:** `fetch_unscreened_profiles(chain_id)` → `screen_wallet` → store `kyt_address_risk`/`kyt_address_signals`/`kyt_screened_at` → set profile `kyt_status` clear/failed.

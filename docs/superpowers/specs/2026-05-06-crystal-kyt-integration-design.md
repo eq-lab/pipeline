@@ -52,6 +52,8 @@ Loop (every JOB_RELAYER_INTERVAL_SECS):
 
 **Skipped entirely** when `JOB_RELAYER_CRYSTAL_ENABLED=false`.
 
+**Structure (#2259):** `phase_check_crystal` (`relayer/crystal_check.rs`) is thin wiring into the shared step `relayer/kyt_check.rs`, which drives any `shared::kyt::KytProvider`; `CrystalClient` implements that trait, so the verdict rules below live in `shared/src/crystal/`.
+
 **Two sub-tasks:**
 
 #### 2a. Address Screening (one-time, new profiles only)
@@ -67,7 +69,7 @@ Loop (every JOB_RELAYER_INTERVAL_SECS):
 
 #### 2b. Transfer Screening (unverified transactions)
 
-- Query: existing `fetch_unverified_transfers()` (WHERE `event_name = 'Transfer' AND kyt_status IS NULL`)
+- Query: `fetch_unverified_transfers_for_chain(chain_id, batch_size)` (WHERE `chain_id = $1 AND event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL`), with the relayer's own chain. The original design reused the unscoped `fetch_unverified_transfers()`, which was deleted in #2260.
 - For each transfer:
   1. Call `CrystalClient::screen_transaction(tx_hash)` — evaluate tx risk
   2. Call `CrystalClient::screen_address(sender)` — evaluate sender risk
@@ -253,13 +255,15 @@ Existing columns unchanged:
 | File | Change |
 |------|--------|
 | `packages/shared/src/crystal/config.rs` | **New** — CrystalSettings |
-| `packages/shared/src/crystal/client.rs` | **New** — CrystalClient |
+| `packages/shared/src/crystal/client.rs` | **New** — CrystalClient; implements `KytProvider` (address/deposit verdicts, "no data = clear", EVM lowercasing of the profile address) |
+| `packages/shared/src/kyt.rs` | **New (#2259)** — `KytProvider` trait shared with Elliptic |
 | `packages/shared/src/crystal/models.rs` | **New** — API response structs |
 | `packages/shared/src/crystal/mod.rs` | **New** — module export |
 | `packages/shared/src/lib.rs` | **Edit** — add `pub mod crystal` |
 | `packages/shared/src/kyc_repo.rs` | **Edit** — add new repo methods, update allow/disallow queries |
 | `packages/shared/migrations/` | **New** — Crystal columns on both `lp_profiles` and `contract_logs` |
-| `packages/worker/src/relayer/kyt.rs` | **Rewrite** → `crystal_check.rs` — real Crystal API calls |
+| `packages/worker/src/relayer/kyt_check.rs` | **New (#2259)** — the one provider-agnostic Phase 2 step (2a profiles, 2b transfers, status writes) |
+| `packages/worker/src/relayer/crystal_check.rs` | **Thin wiring** — `phase_check_crystal` runs `kyt_check` with Crystal over the chain-scoped `fetch_unverified_transfers_for_chain` (the original unscoped `fetch_unverified_transfers` was deleted in #2260) |
 | `packages/worker/src/relayer/whitelist_sync.rs` | **Rewrite** → `whitelist.rs` — on-chain only, reads DB flags |
 | `packages/worker/src/relayer/relayer_job.rs` | **Edit** — 3-phase loop, conditional phase execution, inject CrystalClient |
 | `packages/worker/src/relayer/config.rs` | **Edit** — add `sumsub_enabled`/`crystal_enabled`, conditional settings loading |

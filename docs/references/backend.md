@@ -779,12 +779,15 @@ one (`docs/exec-plans/active/evm-relayer-v5.md`). Each tick:
 
 - **Phases 0–2.** The KYC phases (profiles, Sumsub, Crystal) run unchanged.
 - **Phase 3 — whitelist.**
-  - Signs `WhitelistRegistry.allow(addr)` for up to `JOB_RELAYER_EVM_BATCH_SIZE` KYC-cleared
-    candidates (default 50).
+  - Signs `WhitelistRegistry.allow(addr)` until `JOB_RELAYER_EVM_BATCH_SIZE` allows (default 50)
+    have succeeded; invalid, already-allowed and failed candidates do not count. The pass also
+    stops after that many failed allows (#2306).
   - Skips any address `isAllowed` already reports.
   - Marks a profile allowed only once a receipt with `status = 1` arrives within 120 s.
   - Signs with the configured chain id rather than the one the RPC reports.
-  - KYT failures are recorded in the database only (TD-31).
+  - When Crystal is on, signs `WhitelistRegistry.disallow(addr)` for KYT-failed profiles that
+    `isAllowed` still reports, within the same batch size and receipt wait, and marks a profile
+    disallowed only once access is confirmed gone (shared with Soroban in `relayer/revoke.rs`).
 - **Phase 5 — wire-in matching.** The same phase as on Soroban (below), run when the indexer's
   `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set.
 
@@ -795,6 +798,10 @@ Required env:
 - `CHAIN_<id>_RELAYER_SIGNER_KEY` — the address must hold `WHITELIST_MANAGER_ROLE`, with zero delay.
 - `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
 - An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_EVM_RPC_URL`.
+
+Optional env: `CHAIN_<id>_CRYSTAL_BLOCKCHAIN` — the Crystal blockchain name for that chain's
+transaction checks (e.g. `bsc`). Unset falls back to the global `CRYSTAL_BLOCKCHAIN`. Each EVM
+relayer screens only its own chain's `DepositRequested`/`WithdrawalRequested` rows (#2260).
 
 **No Stellar yield-mint phase.** There is no Stellar yield-mint phase either: `minter.repay` mints
 interest and fees in the same call (`pipeline-stellar-contracts` #33), and the phase was removed

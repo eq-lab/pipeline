@@ -31,6 +31,13 @@ const ALL_SIGNALS: &[&str] = &[
     "wallet",                  // Personal wallet services (non-custodial)
 ];
 
+pub fn blockchain_for_chain(chain_id: i64, global: Option<String>) -> Option<String> {
+    env::var(format!("CHAIN_{chain_id}_CRYSTAL_BLOCKCHAIN"))
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or(global)
+}
+
 #[derive(Clone)]
 pub struct CrystalSettings {
     pub api_key: String,
@@ -42,6 +49,12 @@ pub struct CrystalSettings {
 }
 
 impl CrystalSettings {
+    pub fn from_env_for_chain(chain_id: i64) -> Result<Self> {
+        let mut settings = Self::from_env()?;
+        settings.blockchain = blockchain_for_chain(chain_id, settings.blockchain);
+        Ok(settings)
+    }
+
     pub fn from_env() -> Result<Self> {
         let api_key =
             env::var("CRYSTAL_API_KEY").context("required env var CRYSTAL_API_KEY is not set")?;
