@@ -2490,7 +2490,7 @@ line, whichever section it lands in.
 
 ### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain [RESOLVED 2026-11-27 / #2264]
 
-- **Resolved:** `stellar_disallow_candidates_sql` adds, whatever the Elliptic flag, every `on_chain_allowed` profile whose address is in `lp_settlement_address_history` but is no LP's current `stellar_address` and is not covered by the depositor branch of the allow gate. The TD-31 revoke path deauthorises it. KYT-failed settlement addresses take the TD-31 path. Limit: an address replaced before the history table existed (#1831), if any, has no history row and is not found. The original entry follows.
+- **Resolved:** `stellar_disallow_candidates_sql` adds, whatever the Elliptic flag, every `on_chain_allowed` profile whose address is in `lp_settlement_address_history` but is not the current `stellar_address` of a KYB `Passed` LP with `address_linked_at` set (#2287) and is not covered by the depositor branch of the allow gate. The TD-31 revoke path deauthorises it. KYT-failed settlement addresses take the TD-31 path. Limit: an address replaced before the history table existed (#1831), if any, has no history row and is not found. The original entry follows.
 
 - **Date:** 2026-11-12
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs`, `packages/shared/src/kyc_repo.rs` (`stellar_allow_candidates_sql`) — Issue #1889.
