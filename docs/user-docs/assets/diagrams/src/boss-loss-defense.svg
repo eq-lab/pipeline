@@ -1,74 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="667" viewBox="0 0 900 667" role="img" aria-label="Layered protection: a credit loss meets the advance ratio, security enforcement, the equity tranche and the default pocket; a contract incident meets custody outside the contracts, vouchers and mint limits, role separation and pause." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
-<title>Layered protection: a credit loss meets the advance ratio, security enforcement, the equity tranche and the default pocket; a contract incident meets custody outside the contracts, vouchers and mint limits, role separation and pause.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="739" viewBox="0 0 900 739" role="img" aria-label="Layered protection: a credit loss meets the advance ratio, security enforcement, the Originator&#x27;s co-lending and the default pocket; a contract incident meets MPC custody outside the contracts, vouchers and mint limits, role separation and pause." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest">
+<title>Layered protection: a credit loss meets the advance ratio, security enforcement, the Originator&#x27;s co-lending and the default pocket; a contract incident meets MPC custody outside the contracts, vouchers and mint limits, role separation and pause.</title>
 <defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="mb1334b" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#b1334b"/></marker></defs>
-<rect width="900" height="667" fill="#ffffff"/>
+<rect width="900" height="739" fill="#ffffff"/>
 <rect x="20.0" y="20.0" width="410.0" height="63.0" rx="6" fill="#f9eef0" stroke="#b1334b" stroke-width="1.25"/>
 <text x="32.0" y="43.8" font-size="15.5" fill="#b1334b" font-weight="600">Credit loss</text>
 <text x="32.0" y="67.7" font-size="13" fill="#5c5a57">default, fraud, shortfall</text>
 <path d="M 225.0 83.0 L 225.0 109.0" fill="none" stroke="#b1334b" stroke-width="1.5" marker-end="url(#mb1334b)" stroke-linejoin="round"/>
-<rect x="20.0" y="109.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="43.0" cy="149.5" r="11" fill="#2f6b3a"/>
-<text x="43.0" y="153.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
-<text x="62.0" y="132.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Advance ratio</text>
-<text x="62.0" y="156.8" font-size="13" fill="#5c5a57">drawn up to 80 % of security value; above 85 %, a margin</text>
-<text x="62.0" y="174.7" font-size="13" fill="#5c5a57">call restores 80 %</text>
-<path d="M 225.0 190.0 L 225.0 216.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="20.0" y="216.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="43.0" cy="256.5" r="11" fill="#2f6b3a"/>
-<text x="43.0" y="260.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
-<text x="62.0" y="239.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Security enforcement</text>
-<text x="62.0" y="263.8" font-size="13" fill="#5c5a57">the Security Agent enforces; goods sold through</text>
-<text x="62.0" y="281.6" font-size="13" fill="#5c5a57">pre-onboarded liquidators</text>
-<path d="M 225.0 297.0 L 225.0 323.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="20.0" y="323.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="43.0" cy="363.5" r="11" fill="#2f6b3a"/>
-<text x="43.0" y="367.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
-<text x="62.0" y="346.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Equity tranche</text>
-<text x="62.0" y="370.7" font-size="13" fill="#5c5a57">the Originator&#x27;s capital takes the first loss; recorded, not</text>
-<text x="62.0" y="388.6" font-size="13" fill="#5c5a57">enforced on-chain</text>
-<path d="M 225.0 404.0 L 225.0 430.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="20.0" y="430.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="43.0" cy="470.5" r="11" fill="#2f6b3a"/>
-<text x="43.0" y="474.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
-<text x="62.0" y="453.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Default pocket</text>
-<text x="62.0" y="477.7" font-size="13" fill="#5c5a57">confines the loss to vault holders at default; recoveries go</text>
-<text x="62.0" y="495.6" font-size="13" fill="#5c5a57">back to them</text>
+<rect x="20.0" y="109.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="158.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="162.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="62.0" y="132.9" font-size="15.5" fill="#2f6b3a" font-weight="600">Advance ratio</text>
+<text x="62.0" y="156.8" font-size="13" fill="#5c5a57">drawn up to 80, 75 or 65 % of security value by commodity</text>
+<text x="62.0" y="174.7" font-size="13" fill="#5c5a57">class; at 5 points above, a margin call must restore it within</text>
+<text x="62.0" y="192.6" font-size="13" fill="#5c5a57">3 business days</text>
+<path d="M 225.0 208.0 L 225.0 234.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="234.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="283.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="287.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="62.0" y="266.9" font-size="15.5" fill="#2f6b3a" font-weight="600">Security enforcement</text>
+<text x="62.0" y="290.8" font-size="13" fill="#5c5a57">the Security Agent enforces; goods sold through</text>
+<text x="62.0" y="308.6" font-size="13" fill="#5c5a57">pre-onboarded liquidators</text>
+<path d="M 225.0 333.0 L 225.0 359.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="359.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="408.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="412.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
+<text x="62.0" y="391.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Co-lending</text>
+<text x="62.0" y="415.7" font-size="13" fill="#5c5a57">the Originator lends 5–20 % of each facility on the same</text>
+<text x="62.0" y="433.6" font-size="13" fill="#5c5a57">terms as the pool and shares any loss</text>
+<path d="M 225.0 458.0 L 225.0 484.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="484.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="533.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="537.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
+<text x="62.0" y="516.9" font-size="15.5" fill="#2f6b3a" font-weight="600">Default pocket</text>
+<text x="62.0" y="540.8" font-size="13" fill="#5c5a57">confines the loss to vault holders at default; recoveries go</text>
+<text x="62.0" y="558.6" font-size="13" fill="#5c5a57">back to them</text>
 <rect x="470.0" y="20.0" width="410.0" height="63.0" rx="6" fill="#f9eef0" stroke="#b1334b" stroke-width="1.25"/>
 <text x="482.0" y="43.8" font-size="15.5" fill="#b1334b" font-weight="600">Contract incident</text>
 <text x="482.0" y="67.7" font-size="13" fill="#5c5a57">bug, key compromise, attack</text>
 <path d="M 675.0 83.0 L 675.0 109.0" fill="none" stroke="#b1334b" stroke-width="1.5" marker-end="url(#mb1334b)" stroke-linejoin="round"/>
-<rect x="470.0" y="109.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="493.0" cy="149.5" r="11" fill="#2f6b3a"/>
-<text x="493.0" y="153.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">A</text>
-<text x="512.0" y="132.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Custody outside the contracts</text>
-<text x="512.0" y="156.8" font-size="13" fill="#5c5a57">contracts hold no USDC; the queue reaches only its</text>
-<text x="512.0" y="174.7" font-size="13" fill="#5c5a57">allowance</text>
-<path d="M 675.0 190.0 L 675.0 216.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="470.0" y="216.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="493.0" cy="256.5" r="11" fill="#2f6b3a"/>
-<text x="493.0" y="260.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">B</text>
-<text x="512.0" y="239.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Vouchers and mint limits</text>
-<text x="512.0" y="263.8" font-size="13" fill="#5c5a57">signed voucher per claim; per-transaction and 24-hour mint</text>
-<text x="512.0" y="281.6" font-size="13" fill="#5c5a57">limits</text>
-<path d="M 675.0 297.0 L 675.0 323.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="470.0" y="323.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="493.0" cy="363.5" r="11" fill="#2f6b3a"/>
-<text x="493.0" y="367.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">C</text>
-<text x="512.0" y="346.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Role separation</text>
-<text x="512.0" y="370.7" font-size="13" fill="#5c5a57">every privileged call through the access manager; the</text>
-<text x="512.0" y="388.6" font-size="13" fill="#5c5a57">Admin revokes</text>
-<path d="M 675.0 404.0 L 675.0 430.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<rect x="470.0" y="430.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
-<circle cx="493.0" cy="470.5" r="11" fill="#2f6b3a"/>
-<text x="493.0" y="474.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">D</text>
-<text x="512.0" y="462.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Pause</text>
-<text x="512.0" y="486.7" font-size="13" fill="#5c5a57">the Pauser stops each contract at once</text>
-<path d="M 225.0 511.0 L 225.0 557.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<text x="233.0" y="539.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
-<path d="M 675.0 511.0 L 675.0 557.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
-<text x="683.0" y="539.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
-<rect x="20.0" y="557.0" width="860.0" height="62.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
-<text x="450.0" y="580.3" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">Lender capital</text>
-<text x="450.0" y="604.2" font-size="13" fill="#5c5a57" text-anchor="middle">PLUSD staked in the sPLUSD vault</text>
-<text x="20.0" y="649.0" font-size="13" fill="#5c5a57">Terminal mode: the Admin can set one recovery rate below 1 on the withdrawal queue, once. Every claim then pays that fraction of face value.</text>
-</svg>
+<rect x="470.0" y="109.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="158.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="162.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">A</text>
+<text x="512.0" y="141.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Custody outside the contracts</text>
+<text x="512.0" y="165.8" font-size="13" fill="#5c5a57">MPC wallets, 3-of-5, with a key held by the Independent</text>
+<text x="512.0" y="183.7" font-size="13" fill="#5c5a57">Trustee; the queue reaches only its allowance</text>
+<path d="M 675.0 208.0 L 675.0 234.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="234.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="283.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="287.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">B</text>
+<text x="512.0" y="266.9" font-size="15.5" fill="#2f6b3a" font-weight="600">Vouchers and mint limits</text>
+<text x="512.0" y="290.8" font-size="13" fill="#5c5a57">signed voucher per claim; per-transaction and 24-hour mint</text>
+<text x="512.0" y="308.6" font-size="13" fill="#5c5a57">limits</text>
+<path d="M 675.0 333.0 L 675.0 359.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="359.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="408.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="412.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">C</text>
+<text x="512.0" y="391.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Role separation</text>
+<text x="512.0" y="415.7" font-size="13" fill="#5c5a57">every privileged call through the access manager; the</text>
+<text x="512.0" y="433.6" font-size="13" fill="#5c5a57">Admin revokes</text>
+<path d="M 675.0 458.0 L 675.0 484.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="484.0" width="410.0" height="99.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="533.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="537.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">D</text>
+<text x="512.0" y="525.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Pause</text>
+<text x="512.0" y="549.7" font-size="13" fill="#5c5a57">the Pauser stops each contract at once</text>
+<path d="M 225.0 583.0 L 225.0 629.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="233.0" y="611.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
+<path d="M 675.0 583.0 L 675.0 629.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="683.0" y="611.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
+<rect x="20.0" y="629.0" width="860.0" height="62.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="450.0" y="652.3" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">Lender capital</text>
+<text x="450.0" y="676.2" font-size="13" fill="#5c5a57" text-anchor="middle">PLUSD staked in the sPLUSD vault</text>
+<text x="20.0" y="721.0" font-size="13" fill="#5c5a57">Terminal mode: the Admin can set one recovery rate below 1 on the withdrawal queue, once. Every claim then pays that fraction of face value.</text>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTphZGY2NjE0OS1mZmFhLTRmNjktYjJjZi01ZmQwYzA5NzQwYjIAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaNPrnZyyE5IUdcfzMSdTD4IAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDoyMzUzMDY3NC03NDhjLTQ3MmItYmExNi0wNWIwOTdlYWFiNmNscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoNTBTzcUCtUfKwntqGOQK8QAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFgg+0X76tg9yjo047+0LinJrdgQLoHusBr57WrRuglljcekZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaCYYjx32vvTXi849Z7MYJDQAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYIIPfMAX2B10cbeNfXZCQasH/wthTmsOVJICDnv8nRLMKZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GSIgZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOmFkZjY2MTQ5LWZmYWEtNGY2OS1iMmNmLTVmZDBjMDk3NDBiMi9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOmRmYTcxNWI3LTFhMDYtNDIyZC1hNDAyLTc2YzVlNDk0NGVmZHJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCD7Rfvq2D3KOjTjv7QuKcmt2BAuge6wGvntatG6CWWNx6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggrWI/SgKzcHzBv4k/L6/hLYb+l83DL6WSuKk09wy7gWSiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggKh3j2xAcJkUCTmcIvGxzX8p2OgTypJ7vWmImy7uXTEB0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQG5QMOgYRhyj9jMtSB0RDi+SIvz8ZoCqKtHpQXnUq05r1rYQ7JewnOtX+I2KuSylE1tGSKVSvvMtHP5V12v4WNs=</c2pa:manifest></metadata></svg>
