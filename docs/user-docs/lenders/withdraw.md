@@ -6,9 +6,11 @@ section: For Lenders
 
 # Withdraw
 
-Unstake sPLUSD to PLUSD if needed, request a withdrawal, then claim USDC. The request moves your PLUSD into the withdrawal queue. Pipeline screens the request and issues a signed voucher. The claim burns your PLUSD and pays USDC from the withdrawal custody account to your address.
+Unstake sPLUSD to PLUSD if needed, then request a withdrawal. Pipeline keeps 10–15% of the pool in an on-chain liquidity buffer for instant exits. Retail withdrawals are paid from the buffer once Pipeline has screened the request. If the buffer runs short, requests are paid in order as it is topped up. Larger withdrawals are paid at the quarterly withdrawal windows.
 
-{% include diagram.html src="d5-withdraw-settle.png" caption="Withdraw to settle. PLUSD is held in the queue. Requests are paid in order. The claim needs a voucher and enough USDC in the withdrawal custody account, then burns PLUSD and pays USDC in one step." %}
+The request moves your PLUSD into the withdrawal queue. Pipeline screens the request and issues a signed voucher. The claim burns your PLUSD and pays USDC from the withdrawal custody account, which holds the buffer, to your address.
+
+{% include diagram.html src="d5-withdraw-settle.png" caption="Withdraw to settle. PLUSD is held in the queue. The claim needs a voucher and enough USDC in the withdrawal custody account, then burns PLUSD and pays USDC in one step." %}
 
 ## Flow
 
@@ -20,18 +22,22 @@ Unstake sPLUSD to PLUSD if needed, request a withdrawal, then claim USDC. The re
 </ol>
 
 <div class="callout info">
-<strong>Paid in order.</strong> Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.
+<strong>Paid in order.</strong> While the buffer covers the queue, a retail request can be claimed as soon as its voucher is signed. When the buffer runs short, requests are paid first in, first out: a request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.
 </div>
 
 A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed.
 
+### Larger withdrawals
+
+Withdrawals above the retail cap are paid at the quarterly withdrawal windows. The rest of the pool is lent in trades of up to 180 days, so larger exits follow the windows.
+
 ### Bank wire withdrawals
 
-You can also withdraw to a bank account. You request a wire-out of an amount of PLUSD. The PLUSD moves into escrow. When the wire is sent, the Trustee settles the request and the PLUSD is burned. The Trustee can cancel the request instead, and the PLUSD returns to you. Your address must be authorised to hold PLUSD to request or to receive it back.
+You can also withdraw to a bank account once you have passed KYC or KYB. You request a wire-out of an amount of PLUSD. The PLUSD moves into escrow. When the wire is sent, the Trustee settles the request and the PLUSD is burned. The Trustee can cancel the request instead, and the PLUSD returns to you. Your address must be authorised to hold PLUSD to request or to receive it back.
 
 ## Compliance re-check at claim
 
-Each claim needs a fresh voucher. Pipeline screens the request before it signs one. If the screen is not clean, no voucher is issued, the claim cannot go through, and your PLUSD stays in the queue. The Trustee decides what happens next off-chain.
+Each claim needs a fresh voucher. Pipeline screens the request before it signs one. If the screen is not clean, no voucher is issued, the claim cannot go through, and your PLUSD stays in the queue. Pipeline decides what happens next off-chain.
 
 ## Queue aggregates
 
@@ -47,7 +53,8 @@ Each request stores the total queued at the moment it was made. That number is i
 ## Delays
 
 - No voucher yet. Screening is still running, or the request did not screen clean.
-- The withdrawal custody account is short. Claims for your position wait until it is funded.
+- The buffer is short. Claims for your position wait until the withdrawal custody account is topped up.
+- The withdrawal is above the retail cap. It is paid at the next quarterly window.
 - The voucher expired before you claimed. Your app fetches a new one.
 - The withdrawal queue is paused. Check the status page before retrying.
 
