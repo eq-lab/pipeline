@@ -432,9 +432,9 @@ async fn process_allows(
             }
         }
 
-        submitted += 1;
         match whitelister.submit_set_authorized(&holder, true).await {
             Ok(()) => {
+                submitted += 1;
                 if let Err(e) = kyc_repo
                     .set_on_chain_allowed(chain_id, &candidate.wallet_address)
                     .await
@@ -660,6 +660,43 @@ mod tests {
         let executed = executed.lock().unwrap().clone();
         let disallowed = store.disallowed.lock().unwrap().clone();
         (executed, disallowed)
+    }
+
+    #[tokio::test]
+    async fn failing_allow_submissions_do_not_use_up_the_batch() {
+        let simulations = Arc::new(Mutex::new(0usize));
+        let mut server = mockito::Server::new_async().await;
+        let seen = Arc::clone(&simulations);
+        let _rpc = server
+            .mock("POST", "/")
+            .with_header("content-type", "application/json")
+            .with_body_from_request(move |req| {
+                let body: Value = serde_json::from_slice(req.body().unwrap()).unwrap();
+                *seen.lock().unwrap() += 1;
+                json!({ "jsonrpc": "2.0", "id": body["id"],
+                    "result": { "latestLedger": 1, "error": "refused by the fake" } })
+                .to_string()
+                .into_bytes()
+            })
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let whitelister = StellarWhitelister::new(
+            CHAIN_ID,
+            &server.url(),
+            "test".to_owned(),
+            ContractStrkey([1u8; 32]),
+            ContractStrkey([2u8; 32]),
+            SigningKey::from_bytes(&[3u8; 32]),
+        );
+        let candidates = (0..2)
+            .map(|_| WhitelistCandidate {
+                wallet_address: holder_strkey(),
+            })
+            .collect();
+        process_allows(&whitelister, &FakeStore::new(false), CHAIN_ID, candidates, 1).await;
+        // Per candidate: one is_authorized check plus one failed submit; a spent batch would stop at one candidate.
+        assert_eq!(*simulations.lock().unwrap(), 4);
     }
 
     #[tokio::test]
