@@ -11,7 +11,7 @@ use alloy::transports::Transport;
 use anyhow::{Context, Result};
 use shared::kyc_repo::KycRepo;
 
-use crate::relayer::revoke::{process_disallows, Revoker};
+use crate::relayer::revoke::{process_disallows, RevokeBackoff, Revoker};
 
 const CONFIRM_TIMEOUT: Duration = Duration::from_mins(2);
 
@@ -28,6 +28,7 @@ pub struct EvmWhitelister<T, P> {
     pub chain_id: i64,
     pub signer: Address,
     registry: WhitelistRegistry::WhitelistRegistryInstance<T, P>,
+    revoke_backoff: RevokeBackoff,
 }
 
 impl<T, P> EvmWhitelister<T, P>
@@ -40,6 +41,7 @@ where
             chain_id,
             signer,
             registry: WhitelistRegistry::new(registry_address, provider),
+            revoke_backoff: RevokeBackoff::default(),
         }
     }
 
@@ -123,7 +125,15 @@ pub async fn phase_sync_whitelist_evm<T, P>(
     let to_disallow = kyc_repo
         .fetch_profiles_to_disallow(chain_id, crystal_enabled)
         .await;
-    process_disallows(whitelister, kyc_repo, chain_id, to_disallow, batch_size).await;
+    process_disallows(
+        whitelister,
+        kyc_repo,
+        chain_id,
+        to_disallow,
+        batch_size,
+        &whitelister.revoke_backoff,
+    )
+    .await;
 }
 
 async fn process_allows<T, P>(
@@ -298,7 +308,8 @@ mod tests {
         let candidates = vec![WhitelistCandidate {
             wallet_address: KYT_FAILED.to_owned(),
         }];
-        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10).await;
+        let backoff = &whitelister.revoke_backoff;
+        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10, backoff).await;
 
         let sent = sent.lock().unwrap().clone();
         let disallowed = store.disallowed.lock().unwrap().clone();

@@ -22,7 +22,7 @@ use stellar_xdr::curr::{Limits, ReadXdr, ScVal, ScVec, VecM};
 
 use crate::indexer::stellar::rpc::{SendResponse, StellarRpc};
 use crate::indexer::stellar::security_registry_views::is_contract_error;
-use crate::relayer::revoke::{process_disallows, DisallowStore, Revoker};
+use crate::relayer::revoke::{process_disallows, DisallowStore, RevokeBackoff, Revoker};
 use crate::relayer::stellar::sim_decode::{decode_auth_entries, decode_soroban_data};
 use crate::stellar::tx::{
     address_account, address_contract, build_invoke_envelope, envelope_to_base64, sign_envelope,
@@ -48,6 +48,7 @@ pub struct StellarWhitelister {
     pub plusd_sac_id: ContractStrkey,
     pub signing_key: SigningKey,
     pub signer_pubkey: Ed25519Pub,
+    revoke_backoff: RevokeBackoff,
 }
 
 impl StellarWhitelister {
@@ -68,6 +69,7 @@ impl StellarWhitelister {
             plusd_sac_id,
             signing_key,
             signer_pubkey,
+            revoke_backoff: RevokeBackoff::default(),
         }
     }
 
@@ -363,7 +365,15 @@ async fn sync_whitelist(
             let to_disallow = kyc_repo
                 .fetch_profiles_to_disallow_stellar(chain_id, sumsub_enabled, elliptic_enabled)
                 .await;
-            process_disallows(whitelister, kyc_repo, chain_id, to_disallow, batch_size).await;
+            process_disallows(
+                whitelister,
+                kyc_repo,
+                chain_id,
+                to_disallow,
+                batch_size,
+                &whitelister.revoke_backoff,
+            )
+            .await;
         },
     )
     .await;
@@ -655,7 +665,8 @@ mod tests {
         let candidates = vec![WhitelistCandidate {
             wallet_address: holder_strkey(),
         }];
-        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10).await;
+        let backoff = &whitelister.revoke_backoff;
+        process_disallows(&whitelister, &store, CHAIN_ID, Ok(candidates), 10, backoff).await;
 
         let executed = executed.lock().unwrap().clone();
         let disallowed = store.disallowed.lock().unwrap().clone();
