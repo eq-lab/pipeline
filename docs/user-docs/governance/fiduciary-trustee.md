@@ -1,42 +1,49 @@
 ---
-title: Fiduciary trustee
+title: Independent Trustee
 order: 25
 section: Governance
 ---
 
-# Fiduciary trustee
+# Independent Trustee
 
-The Trustee is the legal entity that runs the lending vehicle and its operations: loans and cash for the pool. It works from the Trustee console and acts on-chain through the Trustee role.
+The Independent Trustee is a licensed trust company. It supervises every movement of funds out of Pipeline's accounts and signs Pipeline's facility and cash records on-chain through the Trustee role.
 
 ## Role
 
-The Trustee opens loans in the loan registry and records disbursements. It books cash moving between the bank account and USDC custody. It settles and cancels bank withdrawals. It rolls over matured loans and closes loans that are repaid or cancelled. It registers the per-loan debt token.
+- Holds a mandatory key on every custody account, each an MPC wallet with a 3-of-5 quorum
+- Co-signs every payment out of the lending vehicle's and the funding vehicle's accounts, Originator repayments included. Inflows and withdrawals paid automatically from the on-chain buffer are exempt.
+- Approves every drawdown under the trust deed
+- Can freeze payments and have either vehicle's board replaced on a trigger event
 
-## Operational responsibilities
+It holds no security over either vehicle and does not underwrite or verify trades. Enforcement against borrowers belongs to the Security Agent.
 
-- Opens each loan in the loan registry with its fixed terms
-- Records each disbursement to the borrower from the bank account
-- Assigns or returns bank wires that arrive without a known investor
-- Settles investor bank withdrawals when the wire is sent, or cancels them
+## On-chain operations
+
+Through the Trustee role, the Independent Trustee:
+
+- Records each drawdown paid from the bank account into the borrower's collection account
+- Assigns or returns bank wires that arrive without a known lender
+- Settles lender bank withdrawals when the wire is sent, or cancels them
 - Books conversions between USDC and bank dollars, and bank expenses
-- Updates the mutable loan fields during servicing
+- Updates the mutable facility fields during servicing: status between Performing and WatchList, rollover, closing
+- Registers each loan's debt token
 
-Repayments, incoming wires and bank income are booked by a separate role, the Cash reporter.
+Interest, repayments, incoming wires and bank income are booked by a separate role, the Cash reporter.
 
 ## Independence
 
-The Trustee role cannot declare a default, write down a loan, reverse a repayment or change loan economics. Those actions belong to the Risk Council. The Trustee cannot grant roles, pause, unpause or upgrade contracts. It cannot mint PLUSD.
+The Trustee role cannot approve a facility or add it to the loan registry, declare a default, write down a loan, reverse a repayment or change loan economics. Those actions belong to the Risk Council. It cannot grant roles, pause, unpause or upgrade contracts. It cannot mint PLUSD.
 
 ## Mapping to the legal stack
 
-The Trustee runs the lending vehicle. The lending vehicle is bankruptcy remote. It is the initial lender under the master facility agreement (MFA) with each borrower. Other lenders, including the Originator, join by accession or take over a share by transfer certificate.
+A charitable trust owns the lending vehicle, which wholly owns the funding vehicle. The funding vehicle borrows USDC from lenders, keeps the liquidity buffer and lends the rest to the lending vehicle. The lending vehicle lends in every facility under the master facility agreement (MFA), pari passu with the Originator. Other lenders join by accession or take over a share by transfer certificate. The Independent Trustee supervises payments out of both vehicles.
 
-The facility agent and the Security Agent are appointed under the agency deed. The Security Agent is an independent security trustee. It holds the security on trust for all lenders by the priority of payments and co-signs the collection account.
+Pipeline acts as Facility Agent. The Security Agent is an independent security trustee appointed under the agency deed. It holds the security on trust for all lenders by the priority of payments and co-signs the collection account.
 
-Lender decisions belong to the Majority Lenders. Changes to economics and releases of security outside their release condition need all lenders. While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
+Lender decisions belong to the Majority Lenders. Changes to economics and releases of security outside their release condition need all lenders.
 
 Full hierarchy on the [Legal structure](/how-it-works/legal-structure/) page.
 
-## Why a fiduciary trustee, not a contract
+## Why an independent trustee
 
-Trade finance needs a legal entity that signs loan documents, holds the bank account, receives wires and acts in court. The Trustee does this off-chain. The smart contracts record each of its actions.
+Lenders need a regulated body that answers for every movement of their money, rather than individuals or code alone. The Independent Trustee is licensed and independent of Pipeline. No payment leaves the lending vehicle or the funding vehicle without its signature, except automatic withdrawals from the on-chain buffer. The smart contracts record each of its on-chain actions.
