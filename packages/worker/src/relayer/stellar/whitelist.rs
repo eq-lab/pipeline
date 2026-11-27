@@ -9,12 +9,13 @@
 //! expose `is_authorized`, the view-call errors and we fall through to submit; the
 //! `set_authorized(addr, true)` call is itself idempotent on the SAC.
 
+use std::future::Future;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
-use shared::kyc_repo::KycRepo;
+use shared::kyc_repo::{KycRepo, WhitelistCandidate};
 use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrkey};
 use stellar_xdr::curr::{Limits, ReadXdr, ScVal, ScVec, VecM};
 
@@ -266,16 +267,33 @@ pub async fn phase_sync_whitelist_stellar(
         }
     };
 
-    if candidates.is_empty() {
-        return;
+    run_passes(
+        candidates.len(),
+        process_allows(whitelister, kyc_repo, chain_id, candidates, batch_size),
+        process_disallows(kyc_repo, chain_id, sumsub_enabled, elliptic_enabled),
+    )
+    .await;
+}
+
+/// The allow pass runs only when there is something to allow; the disallow pass runs on every tick (BUG-27).
+async fn run_passes(
+    allow_count: usize,
+    allow: impl Future<Output = ()>,
+    disallow: impl Future<Output = ()>,
+) {
+    if allow_count > 0 {
+        allow.await;
     }
+    disallow.await;
+}
 
-    tracing::info!(
-        chain_id,
-        count = candidates.len(),
-        "stellar: processing whitelist allows"
-    );
-
+async fn process_allows(
+    whitelister: &StellarWhitelister,
+    kyc_repo: &KycRepo,
+    chain_id: i64,
+    candidates: Vec<WhitelistCandidate>,
+    batch_size: usize,
+) {
     let mut submitted = 0usize;
     for candidate in candidates {
         if submitted >= batch_size {
@@ -348,10 +366,17 @@ pub async fn phase_sync_whitelist_stellar(
             }
         }
     }
+}
 
-    // Disallow pass: flip DB flag for profiles that have kyt_status = 2 (KYT failed).
-    // Note: DB-side only — the Stellar access_manager has no deauthorize path exposed
-    // by this relayer today. On-chain revocation is a future gap item.
+// Disallow pass: flip DB flag for profiles that have kyt_status = 2 (KYT failed).
+// Note: DB-side only — the Stellar access_manager has no deauthorize path exposed
+// by this relayer today. On-chain revocation is a future gap item.
+async fn process_disallows(
+    kyc_repo: &KycRepo,
+    chain_id: i64,
+    sumsub_enabled: bool,
+    elliptic_enabled: bool,
+) {
     let to_disallow = match kyc_repo
         .fetch_profiles_to_disallow(chain_id, sumsub_enabled, elliptic_enabled)
         .await
@@ -379,5 +404,32 @@ pub async fn phase_sync_whitelist_stellar(
                 "stellar: set_disallowed (DB-only; on-chain deauthorize not yet implemented)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_passes;
+    use std::cell::RefCell;
+
+    async fn passes_run(allow_count: usize) -> Vec<&'static str> {
+        let ran = RefCell::new(vec![]);
+        run_passes(
+            allow_count,
+            async { ran.borrow_mut().push("allow") },
+            async { ran.borrow_mut().push("disallow") },
+        )
+        .await;
+        ran.into_inner()
+    }
+
+    #[tokio::test]
+    async fn disallow_pass_runs_with_zero_allow_candidates() {
+        assert_eq!(passes_run(0).await, ["disallow"]);
+    }
+
+    #[tokio::test]
+    async fn both_passes_run_in_order_with_allow_candidates() {
+        assert_eq!(passes_run(2).await, ["allow", "disallow"]);
     }
 }

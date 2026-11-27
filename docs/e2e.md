@@ -116,7 +116,7 @@ Open entries of [`known-bugs.md`](./exec-plans/known-bugs.md) that the Stellar j
 | Entry | Coverage |
 |-------|----------|
 | BUG-25 (`effective_at` overflow) | not covered yet: needs a `MetalConcentrate` loan with a valuation anchor (the loan journey's is `StandardGoods`) |
-| BUG-27 (whitelist disallow pass) | not covered yet: needs Elliptic, which the stack disables |
+| BUG-27 (whitelist disallow pass; fixed) | not covered: needs Elliptic, which the stack disables; unit-tested in `relayer/stellar/whitelist.rs` |
 | BUG-14 (documents of old loans) | not observable: only loans indexed before `f73d54d` |
 | BUG-9 (`GroupedRequest` amounts) | not observable: no endpoint uses the code |
 | BUG-28, BUG-16 (trustee app) | not observable here: UI defects, for the browser pass |

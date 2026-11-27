@@ -38,13 +38,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** `contracts/minter/src/error.rs` at `ee87852` of `pipeline-stellar-contracts` numbers `NonExistentRepayment = 13` and `ReceiverNotAuthorized = 15`; the mapping was written against an earlier numbering. The deployed Minter spec ships no `#[contracterror]` enum, so the codes are not machine-checkable.
 - **Workaround:** The "View details" dialog shows the raw code. Re-verify the numbering against the deployed contract before changing the mapping.
 
-### BUG-27: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates
-- **Date:** 2026-10-08
-- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar`. Found while mirroring it as `relayer/evm/whitelist.rs` (`docs/exec-plans/active/evm-relayer-v5.md`).
-- **Symptom:** With Elliptic enabled, a profile that turns KYT-failed (`kyt_status = 2`) keeps `on_chain_allowed = TRUE` until some other profile becomes an allow candidate. On a quiet chain that can take arbitrarily long.
-- **Root cause:** The function returns from `if candidates.is_empty() { return; }` before it reaches the disallow pass at its end, so the disallow pass runs only on ticks that also have something to allow.
-- **Workaround:** None. The EVM twin runs its disallow pass unconditionally. The fix here is the same: move the early return so that it skips only the allow loop.
-
 ### BUG-25: An out-of-range `effective_at` becomes a 1969 date instead of a 400
 - **Date:** 2026-10-02
 - **Location:** `packages/api/src/routes/collateral_valuation.rs:598` (`unix_to_datetime`). Found while writing the same helper for #1413's `POST /v1/lps/{id}/bank-deposits`, which has since dropped Unix seconds for an ISO-8601 string and no longer has the helper.
@@ -92,6 +85,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-27: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates [FIXED 2026-11-27 / #2258]
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar`. Found while mirroring it as `relayer/evm/whitelist.rs` (`docs/exec-plans/active/evm-relayer-v5.md`).
+- **Symptom:** With Elliptic enabled, a profile that turns KYT-failed (`kyt_status = 2`) kept `on_chain_allowed = TRUE` until some other profile became an allow candidate.
+- **Root cause:** The function returned from `if candidates.is_empty() { return; }` before the disallow pass.
+- **Resolved:** #2258 splits the phase into `process_allows` and `process_disallows`; `run_passes` skips only the allow pass when there are no candidates, so the disallow pass runs every tick. The SQL of the disallow pass is not covered by a test (no Postgres harness, see #1693).
 
 ### BUG-42: The LP app's Stellar Horizon reads and trustline writes fail on an `http://` Horizon (the e2e stack) [FIXED 2026-11-18 / #2014]
 - **Date:** 2026-11-18
