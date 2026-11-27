@@ -24,6 +24,7 @@ pub mod http_client;
 pub mod json_numeric;
 pub mod kyb_document_repo;
 pub mod kyc_repo;
+pub mod kyt;
 pub mod loan_asset_price_repo;
 pub mod loan_capital_transfers_repo;
 pub mod loan_disbursement_repo;
