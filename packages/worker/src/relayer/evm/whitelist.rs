@@ -168,9 +168,9 @@ async fn process_allows<T, P>(
         "evm: processing whitelist allows"
     );
 
-    let mut submitted = 0usize;
+    let (mut submitted, mut failed) = (0usize, 0usize);
     for candidate in candidates {
-        if submitted >= batch_size {
+        if submitted >= batch_size || failed >= batch_size {
             break;
         }
         let Ok(user) = candidate.wallet_address.parse::<Address>() else {
@@ -227,6 +227,7 @@ async fn process_allows<T, P>(
                 }
             }
             Err(e) => {
+                failed += 1;
                 tracing::error!(
                     wallet = %candidate.wallet_address,
                     error = %e,
