@@ -1,4 +1,4 @@
-use shared::crystal::config::CrystalSettings;
+use shared::crystal::config::{blockchain_for_chain, CrystalSettings};
 use shared::crystal::models::{CrystalResponse, DirectionalSignals, RiskSignals};
 
 fn empty_signals() -> RiskSignals {
@@ -24,6 +24,18 @@ fn settings(threshold: f64, signals: Vec<&str>) -> CrystalSettings {
             .map(std::borrow::ToOwned::to_owned)
             .collect(),
     }
+}
+
+#[test]
+fn per_chain_blockchain_overrides_global_and_absence_keeps_global() {
+    std::env::set_var("CHAIN_987654_CRYSTAL_BLOCKCHAIN", "bsc");
+    let global = || Some("eth".to_owned());
+    assert_eq!(
+        blockchain_for_chain(987_654, global()),
+        Some("bsc".to_owned())
+    );
+    assert_eq!(blockchain_for_chain(987_655, global()), global());
+    assert_eq!(blockchain_for_chain(987_655, None), None);
 }
 
 // ── Response parsing ──────────────────────────────────────────

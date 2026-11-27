@@ -367,7 +367,9 @@ line, whichever section it lands in.
 - **Impact:** Footer is presentationally complete but not functionally wired. No broken/misleading destinations ship; the links simply do nothing.
 - **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
 
-### TD-30: `fetch_unverified_transfers` is not chain-scoped
+### TD-30: `fetch_unverified_transfers` is not chain-scoped [RESOLVED 2026-11-27 / #2260]
+
+- **Resolved:** the unscoped fetch is deleted; the EVM Crystal step uses `fetch_unverified_transfers_for_chain` with its own chain, and `CHAIN_<id>_CRYSTAL_BLOCKCHAIN` overrides the global `CRYSTAL_BLOCKCHAIN`. The original entry follows.
 
 - **Date:** 2026-07-06
 - **Location:** `packages/shared/src/kyc_repo.rs` — `fetch_unverified_transfers`
