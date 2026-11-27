@@ -409,7 +409,7 @@ pub const POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL: &str =
        AND l.address_linked_at IS NOT NULL
      ON CONFLICT (chain_id, wallet_address) DO NOTHING";
 
-pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
+fn stellar_depositor_branch(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
     let deposit_kyt = if elliptic_enabled {
         " AND c.kyt_status = 1"
     } else {
@@ -420,22 +420,55 @@ pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool
     } else {
         ""
     };
+    format!(
+        "(EXISTS (
+                SELECT 1 FROM contract_logs c
+                WHERE c.chain_id = $1
+                  AND c.event_name = 'DepositRequested'
+                  AND c.params->>'user' = p.wallet_address{deposit_kyt}
+              ){sumsub})"
+    )
+}
+
+pub const KYT_FAILED_DISALLOW_CANDIDATES_SQL: &str =
+    "SELECT wallet_address FROM lp_profiles WHERE chain_id = $1 AND kyt_status = 2";
+
+pub fn stellar_disallow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
+    let kyt_failed = if elliptic_enabled {
+        "p.kyt_status = 2"
+    } else {
+        "FALSE"
+    };
+    let depositor = stellar_depositor_branch(sumsub_enabled, elliptic_enabled);
+    format!(
+        "SELECT p.wallet_address FROM lp_profiles p
+         WHERE p.chain_id = $1
+           AND ({kyt_failed}
+             OR (p.on_chain_allowed = TRUE
+               AND EXISTS (
+                  SELECT 1 FROM lp_settlement_address_history h
+                  WHERE h.chain_kind = 'stellar'
+                    AND h.address = p.wallet_address
+                    AND (h.chain_id IS NULL OR h.chain_id = $1)
+               )
+               AND NOT EXISTS (SELECT 1 FROM lps l WHERE l.stellar_address = p.wallet_address)
+               AND NOT {depositor}))"
+    )
+}
+
+pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
     let profile_kyt = if elliptic_enabled {
         " AND p.kyt_status = 1"
     } else {
         ""
     };
+    let depositor = stellar_depositor_branch(sumsub_enabled, elliptic_enabled);
     format!(
         "SELECT p.wallet_address FROM lp_profiles p
          WHERE p.chain_id = $1
            AND p.on_chain_allowed = FALSE{profile_kyt}
            AND (
-             (EXISTS (
-                SELECT 1 FROM contract_logs c
-                WHERE c.chain_id = $1
-                  AND c.event_name = 'DepositRequested'
-                  AND c.params->>'user' = p.wallet_address{deposit_kyt}
-              ){sumsub})
+             {depositor}
              OR EXISTS (
                 SELECT 1 FROM lps l
                 WHERE l.stellar_address = p.wallet_address
@@ -653,21 +686,29 @@ impl KycRepo {
     pub async fn fetch_profiles_to_disallow(
         &self,
         chain_id: i64,
-        _sumsub_enabled: bool,
         kyt_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
         if !kyt_enabled {
             return Ok(vec![]);
         }
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(KYT_FAILED_DISALLOW_CANDIDATES_SQL)
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
 
-        // Sanctions-only: disallow profiles that were allowed but now have kyt_status = 2 (failed)
-        let rows = sqlx::query_as::<_, WhitelistCandidate>(
-            "SELECT wallet_address FROM lp_profiles
-             WHERE chain_id = $1 AND on_chain_allowed = TRUE AND kyt_status = 2",
-        )
-        .bind(chain_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn fetch_profiles_to_disallow_stellar(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+        elliptic_enabled: bool,
+    ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let sql = stellar_disallow_candidates_sql(sumsub_enabled, elliptic_enabled);
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(&sql)
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows)
     }
 
@@ -709,7 +750,7 @@ impl KycRepo {
 
     pub async fn set_disallowed(&self, chain_id: i64, wallet_address: &str) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles SET on_chain_allowed = FALSE, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
+            "UPDATE lp_profiles SET on_chain_allowed = FALSE, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2 AND on_chain_allowed = TRUE",
         )
         .bind(chain_id)
         .bind(wallet_address)

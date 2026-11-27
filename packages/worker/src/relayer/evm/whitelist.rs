@@ -1,14 +1,17 @@
-//! EVM twin of `relayer::stellar::whitelist`: `WhitelistRegistry.allow` in place of
+//! EVM twin of `relayer::stellar::whitelist`: `WhitelistRegistry.allow`/`disallow` in place of
 //! `access_manager.execute(set_authorized)`. See `docs/exec-plans/active/evm-relayer-v5.md` (D2).
 
 use std::time::Duration;
 
+use alloy::network::Ethereum;
 use alloy::primitives::{Address, TxHash};
-use alloy::providers::Provider;
+use alloy::providers::{PendingTransactionBuilder, Provider};
 use alloy::sol;
 use alloy::transports::Transport;
 use anyhow::{Context, Result};
 use shared::kyc_repo::KycRepo;
+
+use crate::relayer::revoke::{process_disallows, Revoker};
 
 const CONFIRM_TIMEOUT: Duration = Duration::from_mins(2);
 
@@ -16,6 +19,7 @@ sol! {
     #[sol(rpc)]
     contract WhitelistRegistry {
         function allow(address user) external;
+        function disallow(address user) external;
         function isAllowed(address user) external view returns (bool);
     }
 }
@@ -54,27 +58,45 @@ where
     }
 
     pub async fn submit_allow(&self, user: Address) -> Result<TxHash> {
-        let pending = self
-            .registry
-            .allow(user)
-            .send()
-            .await
-            .context("allow send failed")?;
-        let tx_hash = *pending.tx_hash();
-        let receipt = pending
-            .with_timeout(Some(CONFIRM_TIMEOUT))
-            .get_receipt()
-            .await
-            .with_context(|| {
-                format!(
-                    "allow tx {tx_hash} did not reach a receipt within {}s",
-                    CONFIRM_TIMEOUT.as_secs()
-                )
-            })?;
-        if !receipt.status() {
-            anyhow::bail!("allow tx {tx_hash} reverted");
-        }
-        Ok(tx_hash)
+        let pending = self.registry.allow(user).send().await;
+        confirm("allow", pending).await
+    }
+}
+
+async fn confirm<T: Transport + Clone>(
+    what: &str,
+    pending: alloy::contract::Result<PendingTransactionBuilder<T, Ethereum>>,
+) -> Result<TxHash> {
+    let pending = pending.with_context(|| format!("{what} send failed"))?;
+    let tx_hash = *pending.tx_hash();
+    let receipt = pending
+        .with_timeout(Some(CONFIRM_TIMEOUT))
+        .get_receipt()
+        .await
+        .with_context(|| {
+            format!(
+                "{what} tx {tx_hash} did not reach a receipt within {}s",
+                CONFIRM_TIMEOUT.as_secs()
+            )
+        })?;
+    if !receipt.status() {
+        anyhow::bail!("{what} tx {tx_hash} reverted");
+    }
+    Ok(tx_hash)
+}
+
+impl<T, P> Revoker for EvmWhitelister<T, P>
+where
+    T: Transport + Clone,
+    P: Provider<T>,
+{
+    async fn is_authorized(&self, wallet: &str) -> Result<bool> {
+        self.is_already_allowed(wallet.parse()?).await
+    }
+
+    async fn revoke(&self, wallet: &str) -> Result<()> {
+        let pending = self.registry.disallow(wallet.parse()?).send().await;
+        confirm("disallow", pending).await.map(drop)
     }
 }
 
@@ -98,7 +120,10 @@ pub async fn phase_sync_whitelist_evm<T, P>(
         batch_size,
     )
     .await;
-    process_disallows(kyc_repo, chain_id, sumsub_enabled, crystal_enabled).await;
+    let to_disallow = kyc_repo
+        .fetch_profiles_to_disallow(chain_id, crystal_enabled)
+        .await;
+    process_disallows(whitelister, kyc_repo, chain_id, to_disallow, batch_size).await;
 }
 
 async fn process_allows<T, P>(
@@ -193,42 +218,6 @@ async fn process_allows<T, P>(
                     "evm: allow tx failed, will retry next iteration"
                 );
             }
-        }
-    }
-}
-
-async fn process_disallows(
-    kyc_repo: &KycRepo,
-    chain_id: i64,
-    sumsub_enabled: bool,
-    crystal_enabled: bool,
-) {
-    let to_disallow = match kyc_repo
-        .fetch_profiles_to_disallow(chain_id, sumsub_enabled, crystal_enabled)
-        .await
-    {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!(error = %e, "evm: failed to fetch profiles to disallow");
-            return;
-        }
-    };
-
-    for candidate in to_disallow {
-        if let Err(e) = kyc_repo
-            .set_disallowed(chain_id, &candidate.wallet_address)
-            .await
-        {
-            tracing::error!(
-                wallet = %candidate.wallet_address,
-                error = %e,
-                "evm: failed to set_disallowed in DB"
-            );
-        } else {
-            tracing::info!(
-                wallet = %candidate.wallet_address,
-                "evm: set_disallowed (DB-only; on-chain disallow not yet implemented, TD-31)"
-            );
         }
     }
 }

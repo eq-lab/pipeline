@@ -1,5 +1,8 @@
 // spec: docs/design-docs/multi-chain-kyc-sharding.md#stellar-relayer-whitelist
-use shared::kyc_repo::{stellar_allow_candidates_sql, POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL};
+use shared::kyc_repo::{
+    stellar_allow_candidates_sql, stellar_disallow_candidates_sql,
+    POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL,
+};
 
 fn flat(sql: &str) -> String {
     sql.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -58,6 +61,42 @@ fn sumsub_applies_to_the_deposit_branch_only() {
 
         let off = flat(&stellar_allow_candidates_sql(false, elliptic));
         assert!(!off.contains("sumsub"), "{off}");
+    }
+}
+
+#[test]
+fn disallow_takes_every_kyt_failed_profile_only_when_elliptic_is_on() {
+    for sumsub in [false, true] {
+        let on = flat(&stellar_disallow_candidates_sql(sumsub, true));
+        assert!(
+            on.contains("AND (p.kyt_status = 2 OR (p.on_chain_allowed = TRUE"),
+            "{on}"
+        );
+        let off = flat(&stellar_disallow_candidates_sql(sumsub, false));
+        assert!(
+            off.contains("AND (FALSE OR (p.on_chain_allowed = TRUE"),
+            "{off}"
+        );
+    }
+}
+
+#[test]
+fn disallow_takes_a_relinked_away_address_unless_the_allow_depositor_branch_still_covers_it() {
+    for (sumsub, elliptic) in COMBOS {
+        let sql = flat(&stellar_disallow_candidates_sql(sumsub, elliptic));
+        for needle in [
+            "p.chain_id = $1",
+            "h.chain_kind = 'stellar' AND h.address = p.wallet_address AND (h.chain_id IS NULL OR h.chain_id = $1)",
+            "AND NOT EXISTS (SELECT 1 FROM lps l WHERE l.stellar_address = p.wallet_address)",
+        ] {
+            assert!(sql.contains(needle), "missing `{needle}` in: {sql}");
+        }
+        let allow = flat(&stellar_allow_candidates_sql(sumsub, elliptic));
+        let depositor = &allow[allow.find("(EXISTS").unwrap()..allow.find(LINKED_BRANCH).unwrap()];
+        assert!(
+            sql.ends_with(&format!("AND NOT {}))", depositor.trim_end())),
+            "{sql}"
+        );
     }
 }
 

@@ -784,7 +784,9 @@ one (`docs/exec-plans/active/evm-relayer-v5.md`). Each tick:
   - Skips any address `isAllowed` already reports.
   - Marks a profile allowed only once a receipt with `status = 1` arrives within 120 s.
   - Signs with the configured chain id rather than the one the RPC reports.
-  - KYT failures are recorded in the database only (TD-31).
+  - When Crystal is on, signs `WhitelistRegistry.disallow(addr)` for KYT-failed profiles that
+    `isAllowed` still reports, within the same batch size and receipt wait, and marks a profile
+    disallowed only once access is confirmed gone (shared with Soroban in `relayer/revoke.rs`).
 - **Phase 5 — wire-in matching.** The same phase as on Soroban (below), run when the indexer's
   `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set.
 
