@@ -62,7 +62,7 @@ Soroban mints yield with a separate `yield_minter.mint_yield` call after `Paymen
 | `submit_set_authorized(user)`: simulate, sign, send, then poll `getTransaction` until SUCCESS / FAILED (30 × 1 s) | `submit_allow(user)`: `allow(user).send()`, then `get_receipt()` under `with_timeout(Some(CONFIRM_TIMEOUT))`. Bail when `status()` is false or the timeout hits. `CONFIRM_TIMEOUT` is 120 s, about 10 Hoodi blocks against Soroban's roughly 6 ledgers. |
 | Sign with the configured `network_passphrase` | Sign with the configured chain id. Build the provider with `ProviderBuilder::with_chain_id(chain_id)` plus the gas and nonce fillers, instead of `with_recommended_fillers()`, whose `ChainIdFiller` trusts the RPC. |
 | `take(batch_size)` from `JOB_RELAYER_STELLAR_BATCH_SIZE` | `take(batch_size)` from `JOB_RELAYER_EVM_BATCH_SIZE`, default 50. |
-| Disallow pass (`fetch_profiles_to_disallow` / `set_disallowed`) with the KYT flag `elliptic_enabled`. Originally DB-only; since #2264 it revokes on-chain (`disallow`) via `relayer/revoke.rs` before clearing the DB flag. | The same pass with the KYT flag `crystal_enabled`. Originally DB-only; since #2264 it revokes on-chain (`set_authorized false`) via `relayer/revoke.rs` before clearing the DB flag. |
+| Disallow pass (`fetch_profiles_to_disallow` / `set_disallowed`) with the KYT flag `elliptic_enabled`. Originally DB-only; since #2264 it revokes on-chain (`set_authorized false`) via `relayer/revoke.rs` before clearing the DB flag. | The same pass with the KYT flag `crystal_enabled`. Originally DB-only; since #2264 it revokes on-chain (`disallow`) via `relayer/revoke.rs` before clearing the DB flag. |
 
 `submit_allow` replaces today's `watch()` call. `watch()` returns once the transaction is included, ignores a revert and never times out, so it is not equivalent to Soroban's terminal-status poll.
 
@@ -203,7 +203,7 @@ Update the spec first (docs-first rule), then the rest.
 - **`docs/product-specs/relayer-service.md`**
   - §3 and §4: on EVM v5 the relayer mints no yield; `PipelineMinter.repay` mints in the same call.
   - §5 and Role Assignments:
-    - the EVM relayer holds `WHITELIST_MANAGER_ROLE` and calls `allow` only;
+    - the EVM relayer holds `WHITELIST_MANAGER_ROLE` and calls `allow` and, since #2264, `disallow` (originally `allow` only);
     - revocation is on-chain on both chains since #2264 (EVM `disallow`, Stellar `set_authorized false`), then the DB flag is cleared.
 - **`docs/references/backend.md`**
   - Add an "EVM relayer" section next to the Soroban one, covering the phases, env vars and role prerequisite.
