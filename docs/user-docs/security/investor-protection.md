@@ -58,4 +58,4 @@ The Admin can set a recovery rate below 1 on the withdrawal queue. It can be set
 
 ## Concentration limits as protection
 
-Concentration limits apply once the pool passes $30M. They are set in the [Credit policy overview](/risks/credit-policy/). The smart contracts do not enforce them.
+Concentration limits apply once the pool passes $30M. They are set in the [Credit Policy](/risks/credit-policy/). The smart contracts do not enforce them.

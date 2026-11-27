@@ -1,10 +1,10 @@
 ---
-title: Credit policy overview
+title: Credit policy
 order: 34
 section: Risk management
 ---
 
-# Credit policy overview
+# Credit policy
 
 The Credit Policy is the rulebook for every Pipeline loan. Part A, the Risk Mandate, sets what Pipeline may finance and the hard limits. Part B sets how facilities are approved, secured, monitored and enforced. The Risk Council approves the policy and every change to it, and reviews it every quarter. Changes apply to new facilities; live facilities keep their terms. This page summarises the current version, v2.3. The full policy is in the lender data room.
 

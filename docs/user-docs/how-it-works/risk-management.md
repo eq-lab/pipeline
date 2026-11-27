@@ -35,7 +35,7 @@ Part B of the Credit Policy puts the Risk Mandate into practice. It sets the ope
 - Interest, grace, default and enforcement
 - Reporting
 
-Every loan is underwritten against the Credit Policy by the Originator, screened by Pipeline and approved by the Risk Council. The full policy is in the lender data room. A summary is published in [Credit policy overview](/risks/credit-policy/).
+Every loan is underwritten against the Credit Policy by the Originator, screened by Pipeline and approved by the Risk Council. The full policy is in the lender data room. A summary is published on the [Credit policy](/risks/credit-policy/) page.
 
 ## Risk Council
 
